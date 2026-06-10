@@ -19,12 +19,10 @@ import {
   Badge,
   Avatar,
   Card,
-  CardHeader,
   ProgressBar,
-  statusTone,
   Modal,
 } from '@/components/ui';
-import { formatDate, cn, pct } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { onboardings as initialOnboardings } from '@/data/onboarding';
 import type { Onboarding, OnboardingTask, TaskStatus } from '@/types';
 
@@ -55,7 +53,7 @@ const CATEGORY_ORDER: TaskCategory[] = [
   'Training',
 ];
 
-const CATEGORY_ICONS: Record<TaskCategory, React.ReactNode> = {
+const CATEGORY_ICONS: Record<TaskCategory, ReactNode> = {
   Documentation: <ClipboardList size={14} />,
   'IT Setup': <CheckSquare size={14} />,
   Orientation: <Users size={14} />,
