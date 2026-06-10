@@ -23,7 +23,7 @@ import {
 } from '@/components/ui';
 import { goals, reviews, ratingDistribution } from '@/data/performance';
 import { getEmployeeName } from '@/data/employees';
-import type { Goal, PerformanceReview, GoalStatus, ReviewStatus } from '@/types';
+import type { Goal, PerformanceReview, GoalStatus } from '@/types';
 import { formatDate } from '@/lib/utils';
 import {
   BarChart,

@@ -4,15 +4,12 @@ import {
   CheckCircle2,
   Users,
   CalendarDays,
-  FileText,
-  Calendar,
   Plus,
 } from 'lucide-react';
 import {
   PageHeader,
   StatCard,
   Card,
-  CardHeader,
   Badge,
   statusTone,
   Button,
@@ -28,11 +25,7 @@ import {
 } from '@/components/ui';
 import {
   leaveRequests as initialLeaveRequests,
-  leaveBalances,
   getEmployeeBalances,
-  getOnLeaveToday,
-  getPendingCount,
-  getApprovedThisMonth,
   balanceEmployeeIds,
 } from '@/data/leave';
 import { holidays } from '@/data/common';
@@ -252,12 +245,11 @@ export function LeavePage() {
   ];
 
   // ---- Balances Tab ----
-  const balancesView = useMemo(() => {
-    return balanceEmployeeIds.map((empId) => {
-      const emp = getEmployee(empId);
-      const balances = getEmployeeBalances(empId);
-      return { emp, balances };
-    }).filter((b) => b.emp !== undefined);
+  type BalanceViewItem = { emp: NonNullable<ReturnType<typeof getEmployee>>; balances: ReturnType<typeof getEmployeeBalances> };
+  const balancesView = useMemo((): BalanceViewItem[] => {
+    return balanceEmployeeIds
+      .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId) }))
+      .filter((b): b is BalanceViewItem => b.emp !== undefined);
   }, []);
 
   // ---- Who's Off Tab ----
@@ -371,14 +363,14 @@ export function LeavePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {balancesView.map(({ emp, balances }) => (
                 <div
-                  key={emp!.id}
+                  key={emp.id}
                   className="border border-ink-100 rounded-xl p-4 hover:shadow-sm transition-shadow"
                 >
                   <div className="flex items-center gap-3 mb-4">
-                    <Avatar name={emp!.fullName} size="sm" />
+                    <Avatar name={emp.fullName} size="sm" />
                     <div>
-                      <p className="font-semibold text-ink-900 text-sm">{emp!.fullName}</p>
-                      <p className="text-xs text-ink-400">{emp!.designation}</p>
+                      <p className="font-semibold text-ink-900 text-sm">{emp.fullName}</p>
+                      <p className="text-xs text-ink-400">{emp.designation}</p>
                     </div>
                   </div>
                   <div className="space-y-3">

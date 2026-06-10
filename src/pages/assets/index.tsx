@@ -18,7 +18,6 @@ import {
   StatCard,
   Table,
   type Column,
-  Tabs,
   Modal,
   SearchInput,
   Select,
