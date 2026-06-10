@@ -5,10 +5,15 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   padding?: boolean;
+  onClick?: () => void;
 }
 
-export function Card({ children, className, padding = true }: CardProps) {
-  return <div className={cn('card', padding && 'p-5', className)}>{children}</div>;
+export function Card({ children, className, padding = true, onClick }: CardProps) {
+  return (
+    <div className={cn('card', padding && 'p-5', className)} onClick={onClick}>
+      {children}
+    </div>
+  );
 }
 
 interface CardHeaderProps {

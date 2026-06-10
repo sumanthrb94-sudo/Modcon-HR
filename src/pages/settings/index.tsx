@@ -2,8 +2,7 @@ import { useState, type ReactNode } from 'react';
 import {
   Building2, Users, CalendarDays, Shield, Bell,
   Plug, CreditCard, ChevronRight, Check, X,
-  Plus, Edit2, Globe, Mail, Phone, MapPin,
-  FileText, Zap, ToggleLeft, ToggleRight,
+  Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
   AlertCircle, CheckCircle2, Star,
 } from 'lucide-react';
