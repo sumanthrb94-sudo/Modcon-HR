@@ -13,51 +13,51 @@ import { type CollectionReference, type DocumentData, type QueryConstraint } fro
 import { subscribe } from './db';
 import { Collections } from './db';
 import type {
-  Employee,
-  LeaveRequest,
-  JobOpening,
-  Candidate,
-  ExpenseClaim,
-  Asset,
-  Payslip,
-  PayrollRun,
-  Goal,
-  PerformanceReview,
-  Onboarding,
-  Ticket,
-  AttendanceRecord,
-  LeaveBalance,
-  RegularizationRequest,
+    Employee,
+    LeaveRequest,
+    JobOpening,
+    Candidate,
+    ExpenseClaim,
+    Asset,
+    Payslip,
+    PayrollRun,
+    Goal,
+    PerformanceReview,
+    Onboarding,
+    Ticket,
+    AttendanceRecord,
+    LeaveBalance,
+    RegularizationRequest,
 } from '@/types';
 
 interface UseCollectionResult<T> {
-  data: T[];
-  loading: boolean;
-  error: Error | null;
+    data: T[];
+    loading: boolean;
+    error: Error | null;
 }
 
 function useCollection<T extends { id?: string }>(
-  colRef: CollectionReference<T>,
-  ...constraints: QueryConstraint[]
+    colRef: CollectionReference<T>,
+    ...constraints: QueryConstraint[]
 ): UseCollectionResult<T> {
-  const [data, setData] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+    const [data, setData] = useState<T[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    const unsub = subscribe(
-      colRef,
-      (docs) => {
-        setData(docs);
-        setLoading(false);
-      },
-      ...constraints,
-    );
-    return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    useEffect(() => {
+        const unsub = subscribe(
+            colRef,
+            (docs) => {
+                setData(docs);
+                setLoading(false);
+            },
+            ...constraints,
+        );
+        return unsub;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-  return { data, loading, error };
+    return { data, loading, error };
 }
 
 // ---------------------------------------------------------------------------
@@ -65,61 +65,61 @@ function useCollection<T extends { id?: string }>(
 // ---------------------------------------------------------------------------
 
 export function useEmployees() {
-  return useCollection<Employee>(Collections.employees);
+    return useCollection<Employee>(Collections.employees);
 }
 
 export function useLeaveRequests() {
-  return useCollection<LeaveRequest>(Collections.leaveRequests);
+    return useCollection<LeaveRequest>(Collections.leaveRequests);
 }
 
 export function useJobOpenings() {
-  return useCollection<JobOpening>(Collections.jobs);
+    return useCollection<JobOpening>(Collections.jobs);
 }
 
 export function useCandidates() {
-  return useCollection<Candidate>(Collections.candidates);
+    return useCollection<Candidate>(Collections.candidates);
 }
 
 export function useExpenses() {
-  return useCollection<ExpenseClaim>(Collections.expenses);
+    return useCollection<ExpenseClaim>(Collections.expenses);
 }
 
 export function useAssets() {
-  return useCollection<Asset>(Collections.assets);
+    return useCollection<Asset>(Collections.assets);
 }
 
 export function usePayslips() {
-  return useCollection<Payslip>(Collections.payslips);
+    return useCollection<Payslip>(Collections.payslips);
 }
 
 export function usePayrollRuns() {
-  return useCollection<PayrollRun>(Collections.payrollRuns);
+    return useCollection<PayrollRun>(Collections.payrollRuns);
 }
 
 export function useGoals() {
-  return useCollection<Goal>(Collections.goals);
+    return useCollection<Goal>(Collections.goals);
 }
 
 export function usePerformanceReviews() {
-  return useCollection<PerformanceReview>(Collections.performanceReviews);
+    return useCollection<PerformanceReview>(Collections.performanceReviews);
 }
 
 export function useOnboarding() {
-  return useCollection<Onboarding>(Collections.onboarding);
+    return useCollection<Onboarding>(Collections.onboarding);
 }
 
 export function useHelpdeskTickets() {
-  return useCollection<Ticket>(Collections.helpdeskTickets);
+    return useCollection<Ticket>(Collections.helpdeskTickets);
 }
 
 export function useAttendance() {
-  return useCollection<AttendanceRecord>(Collections.attendance);
+    return useCollection<AttendanceRecord>(Collections.attendance);
 }
 
 export function useLeaveBalances() {
-  return useCollection<LeaveBalance>(Collections.leaveBalances);
+    return useCollection<LeaveBalance>(Collections.leaveBalances);
 }
 
 export function useRegularizations() {
-  return useCollection<RegularizationRequest>(Collections.regularizations);
+    return useCollection<RegularizationRequest>(Collections.regularizations);
 }

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -14,11 +14,20 @@ const firebaseConfig = {
 };
 
 export const firebaseApp = initializeApp(firebaseConfig);
-export const db = getFirestore(firebaseApp);
+const isLocalDev =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+export const db = isLocalDev
+    ? initializeFirestore(firebaseApp, {
+        experimentalForceLongPolling: true,
+        useFetchStreams: false,
+    })
+    : getFirestore(firebaseApp);
 export const auth = getAuth(firebaseApp);
 
 // Analytics requires a browser environment and feature support.
 export const analyticsPromise =
-    typeof window !== 'undefined'
+    typeof window !== 'undefined' && !isLocalDev
         ? isSupported().then((ok) => (ok ? getAnalytics(firebaseApp) : null))
         : Promise.resolve(null);

@@ -7,7 +7,7 @@ import {
   AlertCircle, CheckCircle2, Star, Database,
 } from 'lucide-react';
 import {
-  PageHeader, Card, CardHeader, Badge, Button, Table,
+  PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
 } from '@/components/ui';
 import type { Column } from '@/components/ui';
 import { departments, employees } from '@/data/employees';
@@ -199,13 +199,59 @@ const DEPT_HEADS: Record<string, string> = {
   Legal: 'Shreya Desai',
 };
 
+const DEFAULT_DEPT_OPEN_ROLES: Record<string, number> = departments.reduce<Record<string, number>>((acc, dept, idx) => {
+  acc[dept] = [2, 1, 0, 3, 1, 0, 0, 1, 2, 0][idx] ?? 0;
+  return acc;
+}, {});
+
 function DepartmentsSection() {
-  const deptRows: DeptRow[] = departments.map((d) => ({
+  const [departmentList, setDepartmentList] = useState<string[]>([...departments]);
+  const [departmentHeads, setDepartmentHeads] = useState<Record<string, string>>({ ...DEPT_HEADS });
+  const [departmentOpenRoles, setDepartmentOpenRoles] = useState<Record<string, number>>(DEFAULT_DEPT_OPEN_ROLES);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptHead, setNewDeptHead] = useState('');
+  const [newDeptOpenRoles, setNewDeptOpenRoles] = useState('0');
+  const [addError, setAddError] = useState('');
+
+  const deptRows: DeptRow[] = departmentList.map((d, idx) => ({
     name: d,
-    head: DEPT_HEADS[d] ?? '—',
+    head: departmentHeads[d] ?? '—',
     headcount: employees.filter((e) => e.department === d).length,
-    openRoles: [2, 1, 0, 3, 1, 0, 0, 1, 2, 0][departments.indexOf(d)] ?? 0,
+    openRoles: departmentOpenRoles[d] ?? (idx < 10 ? [2, 1, 0, 3, 1, 0, 0, 1, 2, 0][idx] : 0),
   }));
+
+  function resetAddForm() {
+    setNewDeptName('');
+    setNewDeptHead('');
+    setNewDeptOpenRoles('0');
+    setAddError('');
+  }
+
+  function handleAddDepartment() {
+    const name = newDeptName.trim();
+    const head = newDeptHead.trim();
+    const openRolesValue = Number(newDeptOpenRoles);
+
+    if (!name) {
+      setAddError('Department name is required.');
+      return;
+    }
+    if (departmentList.some((d) => d.toLowerCase() === name.toLowerCase())) {
+      setAddError('A department with this name already exists.');
+      return;
+    }
+    if (Number.isNaN(openRolesValue) || openRolesValue < 0) {
+      setAddError('Open roles must be 0 or more.');
+      return;
+    }
+
+    setDepartmentList((prev) => [...prev, name]);
+    setDepartmentHeads((prev) => ({ ...prev, [name]: head || '—' }));
+    setDepartmentOpenRoles((prev) => ({ ...prev, [name]: openRolesValue }));
+    setAddOpen(false);
+    resetAddForm();
+  }
 
   const cols: Column<DeptRow>[] = [
     {
@@ -253,10 +299,65 @@ function DepartmentsSection() {
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <p className="text-sm text-ink-500">{deptRows.length} departments configured</p>
-          <Button variant="primary" size="sm" icon={<Plus size={14} />}>Add Department</Button>
+          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Department</Button>
         </div>
         <Table columns={cols} data={deptRows} keyExtractor={(r) => r.name} />
       </Card>
+
+      <Modal
+        open={addOpen}
+        onClose={() => {
+          setAddOpen(false);
+          resetAddForm();
+        }}
+        title="Add Department"
+        subtitle="Create a new organisational unit"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAddOpen(false);
+                resetAddForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleAddDepartment}>Save Department</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Department Name"
+            value={newDeptName}
+            onChange={(v) => {
+              setNewDeptName(v);
+              setAddError('');
+            }}
+          />
+          <Field
+            label="Department Head"
+            value={newDeptHead}
+            onChange={(v) => {
+              setNewDeptHead(v);
+              setAddError('');
+            }}
+            hint="Optional"
+          />
+          <Field
+            label="Open Roles"
+            type="number"
+            value={newDeptOpenRoles}
+            onChange={(v) => {
+              setNewDeptOpenRoles(v);
+              setAddError('');
+            }}
+          />
+          {addError && <p className="text-sm text-rose-600">{addError}</p>}
+        </div>
+      </Modal>
     </SettingsSection>
   );
 }
@@ -286,6 +387,55 @@ const defaultPolicies: LeavePolicy[] = [
 
 function LeavePolicies() {
   const [policies, setPolicies] = useState(defaultPolicies);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newType, setNewType] = useState('');
+  const [newAnnual, setNewAnnual] = useState('12');
+  const [newApplicable, setNewApplicable] = useState('All employees');
+  const [newCarryForward, setNewCarryForward] = useState(false);
+  const [newEncashment, setNewEncashment] = useState(false);
+  const [newHalfDay, setNewHalfDay] = useState(true);
+  const [addError, setAddError] = useState('');
+
+  function resetAddForm() {
+    setNewType('');
+    setNewAnnual('12');
+    setNewApplicable('All employees');
+    setNewCarryForward(false);
+    setNewEncashment(false);
+    setNewHalfDay(true);
+    setAddError('');
+  }
+
+  function handleAddLeaveType() {
+    const leaveType = newType.trim();
+    const annualQuota = Number(newAnnual);
+
+    if (!leaveType) {
+      setAddError('Leave type name is required.');
+      return;
+    }
+    if (policies.some((p) => p.type.toLowerCase() === leaveType.toLowerCase())) {
+      setAddError('This leave type already exists.');
+      return;
+    }
+    if (!Number.isFinite(annualQuota) || annualQuota < 0) {
+      setAddError('Annual quota must be 0 or more.');
+      return;
+    }
+
+    const next: LeavePolicy = {
+      id: `lp${Date.now()}`,
+      type: leaveType,
+      annual: annualQuota,
+      carryForward: newCarryForward,
+      encashment: newEncashment,
+      halfDay: newHalfDay,
+      applicable: newApplicable.trim() || 'All employees',
+    };
+    setPolicies((prev) => [...prev, next]);
+    setAddOpen(false);
+    resetAddForm();
+  }
 
   const toggle = (id: string, key: 'carryForward' | 'encashment' | 'halfDay') => {
     setPolicies((prev) =>
@@ -363,10 +513,72 @@ function LeavePolicies() {
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <p className="text-sm text-ink-500">Click toggles to update policies</p>
-          <Button variant="primary" size="sm" icon={<Plus size={14} />}>Add Leave Type</Button>
+          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Leave Type</Button>
         </div>
         <Table columns={cols} data={policies} keyExtractor={(r) => r.id} />
       </Card>
+
+      <Modal
+        open={addOpen}
+        onClose={() => {
+          setAddOpen(false);
+          resetAddForm();
+        }}
+        title="Add Leave Type"
+        subtitle="Create a leave policy with quota and applicability"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAddOpen(false);
+                resetAddForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleAddLeaveType}>Save Leave Type</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Leave Type"
+            value={newType}
+            onChange={(v) => {
+              setNewType(v);
+              setAddError('');
+            }}
+          />
+          <Field
+            label="Annual Quota"
+            type="number"
+            value={newAnnual}
+            onChange={(v) => {
+              setNewAnnual(v);
+              setAddError('');
+            }}
+            hint="Use 0 for unlimited"
+          />
+          <Field
+            label="Applicable To"
+            value={newApplicable}
+            onChange={(v) => {
+              setNewApplicable(v);
+              setAddError('');
+            }}
+          />
+
+          <div className="rounded-xl border border-ink-100 px-3 py-1">
+            <Toggle checked={newCarryForward} onChange={setNewCarryForward} label="Allow Carry Forward" />
+            <Toggle checked={newEncashment} onChange={setNewEncashment} label="Allow Encashment" />
+            <Toggle checked={newHalfDay} onChange={setNewHalfDay} label="Allow Half-Day" />
+          </div>
+
+          {addError && <p className="text-sm text-rose-600">{addError}</p>}
+        </div>
+      </Modal>
     </SettingsSection>
   );
 }
@@ -395,15 +607,15 @@ type PermissionLevel = 'full' | 'view' | 'none';
 
 const defaultPerms: Record<Module, Record<Role, PermissionLevel>> = {
   'Employee Directory': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
-  Attendance:          { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'view' },
-  'Leave Management':  { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
-  Payroll:             { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'view' },
-  Recruitment:         { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
-  Onboarding:          { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
-  Performance:         { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'view' },
-  Expenses:            { Admin: 'full', 'HR Manager': 'view', Manager: 'view', Employee: 'full' },
+  Attendance: { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'view' },
+  'Leave Management': { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
+  Payroll: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'view' },
+  Recruitment: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
+  Onboarding: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
+  Performance: { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'view' },
+  Expenses: { Admin: 'full', 'HR Manager': 'view', Manager: 'view', Employee: 'full' },
   'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
-  Settings:            { Admin: 'full', 'HR Manager': 'none', Manager: 'none', Employee: 'none' },
+  Settings: { Admin: 'full', 'HR Manager': 'none', Manager: 'none', Employee: 'none' },
 };
 
 const permColor: Record<PermissionLevel, string> = {
@@ -455,9 +667,9 @@ function RolesPermissions() {
                       >
                         {employees.filter((e) =>
                           r === 'Admin' ? e.designation.includes('CEO') || e.designation.includes('Head of Finance') :
-                          r === 'HR Manager' ? e.department === 'Human Resources' :
-                          r === 'Manager' ? e.designation.toLowerCase().includes('manager') || e.designation.toLowerCase().includes('vp') || e.designation.toLowerCase().includes('lead') :
-                          true
+                            r === 'HR Manager' ? e.department === 'Human Resources' :
+                              r === 'Manager' ? e.designation.toLowerCase().includes('manager') || e.designation.toLowerCase().includes('vp') || e.designation.toLowerCase().includes('lead') :
+                                true
                         ).length} users
                       </Badge>
                     </div>

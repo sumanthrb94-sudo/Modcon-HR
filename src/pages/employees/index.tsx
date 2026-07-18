@@ -64,51 +64,158 @@ function computeTenureFull(dateOfJoining: string): string {
 // ---------------------------------------------------------------------------
 // Add Employee Modal
 // ---------------------------------------------------------------------------
-function AddEmployeeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface NewEmployeePayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  designation: string;
+  department: Employee['department'];
+  location: string;
+  employmentType: EmploymentType;
+  dateOfJoining: string;
+  ctc: number;
+  reportingManagerId: string | null;
+}
+
+function AddEmployeeModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (payload: NewEmployeePayload) => void }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [department, setDepartment] = useState<Employee['department']>('Engineering');
+  const [location, setLocation] = useState(locations[0] ?? 'Bengaluru');
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('Full-time');
+  const [dateOfJoining, setDateOfJoining] = useState('');
+  const [ctc, setCtc] = useState('');
+  const [reportingManagerId, setReportingManagerId] = useState('');
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  const validationErrors = useMemo(() => {
+    const errors: Record<string, string> = {};
+    const cleanEmail = email.trim();
+    const annualCtc = Number(ctc);
+
+    if (!firstName.trim()) errors.firstName = 'First name is required.';
+    if (!lastName.trim()) errors.lastName = 'Last name is required.';
+    if (!cleanEmail) {
+      errors.email = 'Work email is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errors.email = 'Enter a valid email address.';
+    }
+    if (!designation.trim()) errors.designation = 'Designation is required.';
+    if (!dateOfJoining) errors.dateOfJoining = 'Date of joining is required.';
+    if (!ctc.trim()) {
+      errors.ctc = 'Annual CTC is required.';
+    } else if (Number.isNaN(annualCtc) || annualCtc <= 0) {
+      errors.ctc = 'Annual CTC must be greater than 0.';
+    }
+
+    return errors;
+  }, [firstName, lastName, email, designation, dateOfJoining, ctc]);
+
+  const hasErrors = Object.keys(validationErrors).length > 0;
+
+  function resetForm() {
+    setFirstName('');
+    setLastName('');
+    setEmail('');
+    setPhone('');
+    setDesignation('');
+    setDepartment('Engineering');
+    setLocation(locations[0] ?? 'Bengaluru');
+    setEmploymentType('Full-time');
+    setDateOfJoining('');
+    setCtc('');
+    setReportingManagerId('');
+    setSubmitAttempted(false);
+  }
+
+  function handleSave() {
+    setSubmitAttempted(true);
+    if (hasErrors) return;
+
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = lastName.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanDesignation = designation.trim();
+    const annualCtc = Number(ctc);
+
+    onSave({
+      firstName: cleanFirstName,
+      lastName: cleanLastName,
+      email: cleanEmail,
+      phone: phone.trim(),
+      designation: cleanDesignation,
+      department,
+      location,
+      employmentType,
+      dateOfJoining,
+      ctc: annualCtc,
+      reportingManagerId: reportingManagerId || null,
+    });
+    resetForm();
+    onClose();
+  }
+
+  function handleClose() {
+    resetForm();
+    onClose();
+  }
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Add New Employee"
       subtitle="Fill in the details to create a new employee profile"
       size="lg"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={onClose}>Save Employee</Button>
+          <Button variant="secondary" onClick={handleClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>Save Employee</Button>
         </>
       }
     >
       <div className="space-y-5">
+        {submitAttempted && hasErrors && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            Please fix the highlighted fields before saving.
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">First Name</label>
-            <input className="input w-full" placeholder="Enter first name" />
+            <input className="input w-full" placeholder="Enter first name" value={firstName} onChange={(event) => setFirstName(event.target.value)} />
+            {submitAttempted && validationErrors.firstName && <p className="mt-1 text-xs text-red-600">{validationErrors.firstName}</p>}
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Last Name</label>
-            <input className="input w-full" placeholder="Enter last name" />
+            <input className="input w-full" placeholder="Enter last name" value={lastName} onChange={(event) => setLastName(event.target.value)} />
+            {submitAttempted && validationErrors.lastName && <p className="mt-1 text-xs text-red-600">{validationErrors.lastName}</p>}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Work Email</label>
-            <input className="input w-full" type="email" placeholder="name@modcon.com" />
+            <input className="input w-full" type="email" placeholder="name@modcon.com" value={email} onChange={(event) => setEmail(event.target.value)} />
+            {submitAttempted && validationErrors.email && <p className="mt-1 text-xs text-red-600">{validationErrors.email}</p>}
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Phone</label>
-            <input className="input w-full" placeholder="+91 XXXXX XXXXX" />
+            <input className="input w-full" placeholder="+91 XXXXX XXXXX" value={phone} onChange={(event) => setPhone(event.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Designation</label>
-            <input className="input w-full" placeholder="Job title" />
+            <input className="input w-full" placeholder="Job title" value={designation} onChange={(event) => setDesignation(event.target.value)} />
+            {submitAttempted && validationErrors.designation && <p className="mt-1 text-xs text-red-600">{validationErrors.designation}</p>}
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Department</label>
-            <select className="input w-full">
-              <option value="">Select department</option>
+            <select className="input w-full" value={department} onChange={(event) => setDepartment(event.target.value as Employee['department'])}>
               {departments.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
@@ -116,14 +223,13 @@ function AddEmployeeModal({ open, onClose }: { open: boolean; onClose: () => voi
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Location</label>
-            <select className="input w-full">
-              <option value="">Select location</option>
+            <select className="input w-full" value={location} onChange={(event) => setLocation(event.target.value)}>
               {locations.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Employment Type</label>
-            <select className="input w-full">
+            <select className="input w-full" value={employmentType} onChange={(event) => setEmploymentType(event.target.value as EmploymentType)}>
               {(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
@@ -133,16 +239,18 @@ function AddEmployeeModal({ open, onClose }: { open: boolean; onClose: () => voi
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Joining</label>
-            <input className="input w-full" type="date" />
+            <input className="input w-full" type="date" value={dateOfJoining} onChange={(event) => setDateOfJoining(event.target.value)} />
+            {submitAttempted && validationErrors.dateOfJoining && <p className="mt-1 text-xs text-red-600">{validationErrors.dateOfJoining}</p>}
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Annual CTC (₹)</label>
-            <input className="input w-full" type="number" placeholder="e.g. 2400000" />
+            <input className="input w-full" type="number" placeholder="e.g. 2400000" value={ctc} onChange={(event) => setCtc(event.target.value)} />
+            {submitAttempted && validationErrors.ctc && <p className="mt-1 text-xs text-red-600">{validationErrors.ctc}</p>}
           </div>
         </div>
         <div>
           <label className="block text-xs font-semibold text-ink-600 mb-1.5">Reporting Manager</label>
-          <select className="input w-full">
+          <select className="input w-full" value={reportingManagerId} onChange={(event) => setReportingManagerId(event.target.value)}>
             <option value="">Select reporting manager</option>
             {employees.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
           </select>
@@ -160,6 +268,7 @@ type DirectoryTab = 'directory' | 'orgchart';
 
 export function EmployeesPage() {
   const navigate = useNavigate();
+  const [employeeList, setEmployeeList] = useState<Employee[]>(employees);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -171,7 +280,7 @@ export function EmployeesPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return employees.filter((e) => {
+    return employeeList.filter((e) => {
       if (q && !e.fullName.toLowerCase().includes(q) && !e.designation.toLowerCase().includes(q) && !e.email.toLowerCase().includes(q) && !e.employeeCode.toLowerCase().includes(q)) return false;
       if (deptFilter && e.department !== deptFilter) return false;
       if (locationFilter && e.location !== locationFilter) return false;
@@ -179,12 +288,51 @@ export function EmployeesPage() {
       if (typeFilter && e.employmentType !== typeFilter) return false;
       return true;
     });
-  }, [search, deptFilter, locationFilter, statusFilter, typeFilter]);
+  }, [employeeList, search, deptFilter, locationFilter, statusFilter, typeFilter]);
 
-  const totalCount = employees.length;
-  const activeCount = employees.filter((e) => e.status === 'Active').length;
-  const probationNotice = employees.filter((e) => e.status === 'Probation' || e.status === 'Notice Period').length;
-  const deptCount = new Set(employees.map((e) => e.department)).size;
+  const totalCount = employeeList.length;
+  const activeCount = employeeList.filter((e) => e.status === 'Active').length;
+  const probationNotice = employeeList.filter((e) => e.status === 'Probation' || e.status === 'Notice Period').length;
+  const deptCount = new Set(employeeList.map((e) => e.department)).size;
+
+  function handleAddEmployee(payload: NewEmployeePayload) {
+    setEmployeeList((prev) => {
+      const nextIndex = prev.length + 1;
+      const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
+      const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
+      const manager = payload.reportingManagerId ? prev.find((e) => e.id === payload.reportingManagerId) : undefined;
+      const nextEmployee: Employee = {
+        id: nextId,
+        employeeCode,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        fullName: `${payload.firstName} ${payload.lastName}`,
+        email: payload.email,
+        phone: payload.phone || 'N/A',
+        avatar: `${payload.firstName} ${payload.lastName}`,
+        gender: 'Other',
+        dateOfBirth: '2000-01-01',
+        designation: payload.designation,
+        department: payload.department,
+        location: payload.location,
+        employmentType: payload.employmentType,
+        status: 'Active',
+        dateOfJoining: payload.dateOfJoining,
+        reportingManagerId: payload.reportingManagerId,
+        reportingManagerName: manager?.fullName,
+        ctc: payload.ctc,
+        maritalStatus: 'Single',
+        address: `${payload.location}, India`,
+        skills: [],
+      };
+      return [nextEmployee, ...prev];
+    });
+    setSearch('');
+    setDeptFilter('');
+    setLocationFilter('');
+    setStatusFilter('');
+    setTypeFilter('');
+  }
 
   const listColumns: Column<Employee>[] = [
     {
@@ -291,7 +439,7 @@ export function EmployeesPage() {
       {activeTab === 'orgchart' ? (
         <Card>
           <CardHeader title="Organisation Chart" subtitle="Company hierarchy from CEO down" />
-          <OrgChart employees={employees} />
+          <OrgChart employees={employeeList} />
         </Card>
       ) : (
         <>
@@ -385,7 +533,7 @@ export function EmployeesPage() {
         </>
       )}
 
-      <AddEmployeeModal open={addModalOpen} onClose={() => setAddModalOpen(false)} />
+      <AddEmployeeModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onSave={handleAddEmployee} />
     </div>
   );
 }
