@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { navGroups, navItems } from '@/lib/nav';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
 
 interface SidebarProps {
   open: boolean;
@@ -9,6 +10,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
+  const { isAdmin } = useAuth();
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
   return (
     <>
       {/* Mobile backdrop */}
@@ -42,7 +45,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <div key={group}>
               <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">{group}</p>
               <div className="space-y-0.5">
-                {navItems
+                {visibleItems
                   .filter((i) => i.group === group)
                   .map((item) => (
                     <NavLink

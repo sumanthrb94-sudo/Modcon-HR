@@ -460,11 +460,10 @@ export function LeavePage() {
                 return (
                   <div
                     key={h.id}
-                    className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
-                      isPast
+                    className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${isPast
                         ? 'border-ink-100 bg-ink-50 opacity-60'
                         : 'border-ink-100 hover:bg-ink-50'
-                    }`}
+                      }`}
                   >
                     <div className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-brand-50 shrink-0">
                       <span className="text-xs font-bold text-brand-700 leading-none">
@@ -593,7 +592,7 @@ export function LeavePage() {
               <strong>
                 {Math.ceil(
                   (new Date(formEnd).getTime() - new Date(formStart).getTime()) /
-                    (1000 * 60 * 60 * 24),
+                  (1000 * 60 * 60 * 24),
                 ) + 1}{' '}
                 day(s)
               </strong>

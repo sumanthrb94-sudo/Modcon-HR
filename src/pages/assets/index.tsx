@@ -4,7 +4,7 @@ import {
   Package,
   Wrench,
   CheckCircle2,
-  DollarSign,
+  IndianRupee,
   Plus,
   UserCheck,
   UserX,
@@ -149,6 +149,123 @@ function AssignModal({ asset, onClose, onAssign }: AssignModalProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Add Asset Modal
+// ---------------------------------------------------------------------------
+
+interface AddAssetModalProps {
+  open: boolean;
+  onClose: () => void;
+  onAdd: (asset: Omit<Asset, 'id'>) => void;
+}
+
+const EMPTY_ASSET_FORM = {
+  name: '',
+  category: '' as AssetCategory | '',
+  serialNumber: '',
+  purchaseDate: new Date().toISOString().slice(0, 10),
+  value: '',
+};
+
+function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
+  const [form, setForm] = useState(EMPTY_ASSET_FORM);
+  const [error, setError] = useState('');
+
+  if (!open) return null;
+
+  const handleSave = () => {
+    if (!form.name.trim() || !form.category || !form.serialNumber.trim() || !form.value) {
+      setError('Please fill all required fields.');
+      return;
+    }
+    const assetCode = `AST-${Math.floor(1000 + Math.random() * 9000)}`;
+    onAdd({
+      assetCode,
+      name: form.name.trim(),
+      category: form.category as AssetCategory,
+      status: 'Available',
+      assignedToId: null,
+      assignedToName: undefined,
+      purchaseDate: form.purchaseDate,
+      value: Number(form.value),
+      serialNumber: form.serialNumber.trim(),
+    });
+    setForm(EMPTY_ASSET_FORM);
+    setError('');
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add New Asset"
+      subtitle="Register a new company asset"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave}>Add Asset</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium text-ink-700 block mb-1">Asset Name *</label>
+          <input
+            className="input w-full"
+            placeholder="e.g. MacBook Pro 14"
+            value={form.name}
+            onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); setError(''); }}
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-ink-700 block mb-1">Category *</label>
+          <Select
+            value={form.category}
+            onChange={(v) => { setForm((f) => ({ ...f, category: v as AssetCategory })); setError(''); }}
+            options={CATEGORY_OPTIONS.filter((c) => c.value)}
+            className="w-full"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-ink-700 block mb-1">Serial Number *</label>
+          <input
+            className="input w-full"
+            placeholder="e.g. SN-2026-0001"
+            value={form.serialNumber}
+            onChange={(e) => { setForm((f) => ({ ...f, serialNumber: e.target.value })); setError(''); }}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm font-medium text-ink-700 block mb-1">Purchase Date</label>
+            <input
+              type="date"
+              className="input w-full"
+              value={form.purchaseDate}
+              onChange={(e) => setForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-ink-700 block mb-1">Value (₹) *</label>
+            <input
+              type="number"
+              className="input w-full"
+              placeholder="e.g. 85000"
+              value={form.value}
+              onChange={(e) => { setForm((f) => ({ ...f, value: e.target.value })); setError(''); }}
+            />
+          </div>
+        </div>
+        {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AssetsPage
 // ---------------------------------------------------------------------------
 
@@ -158,6 +275,7 @@ export function AssetsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [assignAsset, setAssignAsset] = useState<Asset | null>(null);
+  const [addAssetOpen, setAddAssetOpen] = useState(false);
 
   // Stat card aggregates
   const stats = useMemo(() => {
@@ -209,6 +327,11 @@ export function AssetsPage() {
         };
       }),
     );
+  };
+
+  const handleAddAsset = (asset: Omit<Asset, 'id'>) => {
+    const newAsset: Asset = { ...asset, id: `ast-${Date.now()}` };
+    setAssetList((prev) => [newAsset, ...prev]);
   };
 
   const columns: Column<Asset>[] = [
@@ -307,7 +430,7 @@ export function AssetsPage() {
         title="Assets"
         subtitle="Manage company assets — hardware, software licences and furniture."
         actions={
-          <Button>
+          <Button onClick={() => setAddAssetOpen(true)}>
             <Plus size={16} className="mr-1" />
             Add Asset
           </Button>
@@ -343,7 +466,7 @@ export function AssetsPage() {
         <StatCard
           label="Total Value"
           value={formatINR(stats.totalValue, { compact: true })}
-          icon={<DollarSign size={22} />}
+          icon={<IndianRupee size={22} />}
           iconClass="bg-rose-50 text-rose-600"
         />
       </div>
@@ -417,6 +540,13 @@ export function AssetsPage() {
           onAssign={handleAssign}
         />
       )}
+
+      {/* Add Asset Modal */}
+      <AddAssetModal
+        open={addAssetOpen}
+        onClose={() => setAddAssetOpen(false)}
+        onAdd={handleAddAsset}
+      />
     </div>
   );
 }

@@ -2,23 +2,25 @@
 // ModCon HR — Dashboard (HR Command-Center)
 // ===========================================================================
 import { useMemo, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
 import {
   Users, CalendarCheck, CalendarOff, Briefcase, TrendingUp,
-  Clock, Bell, DollarSign, CheckSquare, ChevronRight,
+  Clock, Bell, IndianRupee, CheckSquare, ChevronRight,
   Cake, Star, UserPlus, Zap, Gift, MapPin, Megaphone,
 } from 'lucide-react';
 
 import {
   Card, CardHeader, Badge, Button, Avatar,
-  StatCard, ProgressBar, PageHeader,
+  StatCard, ProgressBar, PageHeader, QuickAddMenu, NotificationsMenu,
 } from '@/components/ui';
 import { employees } from '@/data/employees';
 import { holidays, announcements } from '@/data/common';
 import { formatDate, formatDateShort, timeAgo, pct } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
 import {
   headcountSeries, weeklyAttendance, pendingApprovals,
   activityFeed, DEPT_COLORS, ATTENDANCE_COLORS,
@@ -44,10 +46,17 @@ function annTone(cat: string) {
 // Approval icon map
 // ---------------------------------------------------------------------------
 const APPROVAL_ICONS: Record<string, ReactNode> = {
-  'Leave Requests':   <CalendarOff size={18} />,
-  'Expense Claims':   <DollarSign size={18} />,
-  'Regularizations':  <Clock size={18} />,
+  'Leave Requests': <CalendarOff size={18} />,
+  'Expense Claims': <IndianRupee size={18} />,
+  'Regularizations': <Clock size={18} />,
   'Onboarding Tasks': <CheckSquare size={18} />,
+};
+
+const APPROVAL_ROUTES: Record<string, string> = {
+  'Leave Requests': '/dashboard/pending-approvals/leave-requests',
+  'Expense Claims': '/dashboard/pending-approvals/expense-claims',
+  Regularizations: '/dashboard/pending-approvals/regularizations',
+  'Onboarding Tasks': '/dashboard/pending-approvals/onboarding-tasks',
 };
 
 // ---------------------------------------------------------------------------
@@ -79,6 +88,16 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
 // Main component
 // ---------------------------------------------------------------------------
 export function DashboardPage() {
+  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
+  const greetingPeriod = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  };
+
   // ---- derived stats -------------------------------------------------------
   const stats = useMemo(() => {
     const total = employees.length;
@@ -126,7 +145,7 @@ export function DashboardPage() {
     const f = employees.filter((e) => e.gender === 'Female').length;
     const o = employees.filter((e) => e.gender === 'Other').length;
     return [
-      { name: 'Male',   value: m, fill: '#3366ff' },
+      { name: 'Male', value: m, fill: '#3366ff' },
       { name: 'Female', value: f, fill: '#ec4899' },
       ...(o > 0 ? [{ name: 'Other', value: o, fill: '#10b981' }] : []),
     ];
@@ -138,11 +157,11 @@ export function DashboardPage() {
       .filter((h) => new Date(h.date) > TODAY_DATE)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 5),
-  []);
+    []);
 
   // ---- June celebrations --------------------------------------------------
   type CelebrationItem =
-    | { type: 'Birthday';    name: string; date: string; dept: string }
+    | { type: 'Birthday'; name: string; date: string; dept: string }
     | { type: 'Anniversary'; name: string; date: string; dept: string; years: number };
 
   const celebrations = useMemo((): CelebrationItem[] => {
@@ -170,25 +189,28 @@ export function DashboardPage() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
+  const visiblePendingApprovals = useMemo(
+    () => pendingApprovals.filter((item) => item.count > 0),
+    [],
+  );
+
+  const totalVisiblePendingItems = useMemo(
+    () => visiblePendingApprovals.reduce((sum, item) => sum + item.count, 0),
+    [visiblePendingApprovals],
+  );
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* ----------------------------------------------------------------- */}
       {/* Header                                                             */}
       {/* ----------------------------------------------------------------- */}
       <PageHeader
-        title="Good morning, Ananya 👋"
+        title={`Good ${greetingPeriod()}, ${firstName} 👋`}
         subtitle={todayLabel}
         actions={
           <>
-            <Button variant="secondary" size="sm" icon={<Bell size={15} />}>
-              Notifications
-              <span className="ml-1 h-4 w-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {pendingApprovals.reduce((s, a) => s + a.count, 0)}
-              </span>
-            </Button>
-            <Button variant="primary" size="sm" icon={<Zap size={15} />}>
-              Quick Add
-            </Button>
+            <NotificationsMenu />
+            <QuickAddMenu />
           </>
         }
       />
@@ -196,6 +218,11 @@ export function DashboardPage() {
       {/* ----------------------------------------------------------------- */}
       {/* Stat cards row                                                     */}
       {/* ----------------------------------------------------------------- */}
+      <div className="flex justify-end -mt-2">
+        <Link to="/dashboard/kpi-graphs">
+          <Button variant="secondary" size="sm">View KPI Graphs</Button>
+        </Link>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard
           label="Total Employees"
@@ -262,7 +289,7 @@ export function DashboardPage() {
             <AreaChart data={headcountSeries} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#3366ff" stopOpacity={0.18} />
+                  <stop offset="5%" stopColor="#3366ff" stopOpacity={0.18} />
                   <stop offset="95%" stopColor="#3366ff" stopOpacity={0} />
                 </linearGradient>
               </defs>
@@ -349,9 +376,9 @@ export function DashboardPage() {
               <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="Present" fill={ATTENDANCE_COLORS.Present} radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="WFH"     fill={ATTENDANCE_COLORS.WFH}     radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="Leave"   fill={ATTENDANCE_COLORS.Leave}   radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="Absent"  fill={ATTENDANCE_COLORS.Absent}  radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="WFH" fill={ATTENDANCE_COLORS.WFH} radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="Leave" fill={ATTENDANCE_COLORS.Leave} radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="Absent" fill={ATTENDANCE_COLORS.Absent} radius={[3, 3, 0, 0]} maxBarSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -406,34 +433,48 @@ export function DashboardPage() {
           <Card>
             <CardHeader
               title="Pending Approvals"
-              subtitle={`${pendingApprovals.reduce((s, a) => s + a.count, 0)} items need attention`}
-              action={<Button variant="ghost" size="sm">View all</Button>}
+              subtitle={`${totalVisiblePendingItems} items need attention`}
+              action={(
+                <Link to="/dashboard/pending-approvals" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                  View all
+                </Link>
+              )}
             />
-            <div className="space-y-3">
-              {pendingApprovals.map((item) => (
-                <div
-                  key={item.type}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-ink-50 hover:bg-ink-100 transition-colors cursor-pointer group"
-                >
-                  <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${item.bgClass} ${item.colorClass}`}>
-                    {APPROVAL_ICONS[item.type]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-ink-800">{item.type}</p>
-                    <p className="text-xs text-ink-400">
-                      {item.count} pending{item.urgentCount > 0 ? ` · ${item.urgentCount} urgent` : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {item.urgentCount > 0 && (
-                      <span className="h-5 w-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
-                        {item.urgentCount}
-                      </span>
-                    )}
-                    <ChevronRight size={15} className="text-ink-300 group-hover:text-ink-500 transition-colors" />
-                  </div>
-                </div>
-              ))}
+            {visiblePendingApprovals.length === 0 ? (
+              <p className="text-sm text-ink-400 text-center py-6">No pending approvals</p>
+            ) : (
+              <div className="space-y-3">
+                {visiblePendingApprovals.map((item) => (
+                  <Link
+                    key={item.type}
+                    to={APPROVAL_ROUTES[item.type] ?? '/dashboard/pending-approvals'}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-ink-50 hover:bg-ink-100 transition-colors cursor-pointer group"
+                  >
+                    <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${item.bgClass} ${item.colorClass}`}>
+                      {APPROVAL_ICONS[item.type]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-ink-800">{item.type}</p>
+                      <p className="text-xs text-ink-400">
+                        {item.count} pending{item.urgentCount > 0 ? ` · ${item.urgentCount} urgent` : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {item.urgentCount > 0 && (
+                        <span className="h-5 w-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {item.urgentCount}
+                        </span>
+                      )}
+                      <ChevronRight size={15} className="text-ink-300 group-hover:text-ink-500 transition-colors" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+            <div className="mt-3 pt-3 border-t border-ink-100">
+              <Link to="/dashboard/pending-approvals" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                Open full Pending Approvals page
+              </Link>
             </div>
           </Card>
 
@@ -442,7 +483,7 @@ export function DashboardPage() {
             <CardHeader
               title="Recent Activity"
               subtitle="Across all modules"
-              action={<Button variant="ghost" size="sm">See all</Button>}
+              action={<Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/recent-activity')}>See all</Button>}
             />
             <div className="space-y-3">
               {activityFeed.slice(0, 6).map((item) => (
@@ -469,11 +510,15 @@ export function DashboardPage() {
             <CardHeader
               title="Announcements"
               subtitle="Latest from the team"
-              action={<Badge tone="blue" dot>{announcements.length} new</Badge>}
+              action={(
+                <Link to="/dashboard/announcements" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                  View all
+                </Link>
+              )}
             />
             <div className="space-y-4">
               {announcements.map((ann) => (
-                <div key={ann.id} className="group cursor-pointer">
+                <div key={ann.id} className="group cursor-pointer" onClick={() => navigate('/dashboard/announcements')}>
                   <div className="flex items-start gap-2.5">
                     <div className="h-8 w-8 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 mt-0.5">
                       <Megaphone size={14} className="text-brand-600" />
@@ -495,6 +540,11 @@ export function DashboardPage() {
                 </div>
               ))}
             </div>
+            <div className="mt-3 pt-3 border-t border-ink-100">
+              <Link to="/dashboard/announcements" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                Open full Announcements page
+              </Link>
+            </div>
           </Card>
 
           {/* Upcoming holidays */}
@@ -502,7 +552,7 @@ export function DashboardPage() {
             <CardHeader
               title="Upcoming Holidays"
               subtitle="Rest of 2026"
-              action={<Button variant="ghost" size="sm">Full calendar</Button>}
+              action={<Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/holiday-calendar')}>Full calendar</Button>}
             />
             <div className="space-y-2.5">
               {upcomingHolidays.map((h) => (
@@ -522,8 +572,8 @@ export function DashboardPage() {
                   <Badge
                     tone={
                       h.type === 'National' ? 'green'
-                      : h.type === 'Regional' ? 'blue'
-                      : 'amber'
+                        : h.type === 'Regional' ? 'blue'
+                          : 'amber'
                     }
                   >
                     {h.type}
@@ -541,12 +591,11 @@ export function DashboardPage() {
             <CardHeader
               title="June Celebrations"
               subtitle={`${celebrations.length} birthdays & anniversaries`}
-              action={
-                <Badge tone="pink">
-                  <Gift size={11} />
-                  This month
-                </Badge>
-              }
+              action={(
+                <Link to="/dashboard/celebrations" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                  View all months
+                </Link>
+              )}
             />
             {celebrations.length === 0 ? (
               <p className="text-sm text-ink-400 text-center py-6">No celebrations this month</p>
@@ -556,7 +605,7 @@ export function DashboardPage() {
                   const isBirthday = c.type === 'Birthday';
                   const yearsLabel = isBirthday ? '' : `${(c as { years: number }).years}yr`;
                   return (
-                    <div key={i} className="flex items-center gap-3">
+                    <div key={i} className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/dashboard/celebrations')}>
                       <Avatar name={c.name} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-ink-800 truncate">{c.name}</p>
@@ -576,6 +625,11 @@ export function DashboardPage() {
                 })}
               </div>
             )}
+            <div className="mt-3 pt-3 border-t border-ink-100">
+              <Link to="/dashboard/celebrations" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                Open full Celebrations page
+              </Link>
+            </div>
           </Card>
 
           {/* New joiners / recent hires */}
@@ -583,12 +637,14 @@ export function DashboardPage() {
             <CardHeader
               title="New Joiners"
               subtitle="Joined in last 60 days"
-              action={<Button variant="ghost" size="sm" icon={<UserPlus size={13} />}>Onboard</Button>}
+              action={<Button variant="ghost" size="sm" icon={<UserPlus size={13} />} onClick={() => navigate('/onboarding')}>Onboard</Button>}
             />
             {(() => {
               const cutoff = new Date(TODAY_DATE);
               cutoff.setDate(cutoff.getDate() - 60);
-              const recent = employees.filter((e) => new Date(e.dateOfJoining) >= cutoff);
+              const recent = employees
+                .filter((e) => new Date(e.dateOfJoining) >= cutoff)
+                .sort((a, b) => new Date(b.dateOfJoining).getTime() - new Date(a.dateOfJoining).getTime());
               if (recent.length === 0) {
                 return <p className="text-sm text-ink-400 text-center py-6">No new joiners recently</p>;
               }
@@ -625,9 +681,9 @@ export function DashboardPage() {
             <div className="space-y-4">
               {[
                 { label: 'Offer Acceptance Rate', value: 87, tone: 'green' as const },
-                { label: 'Engagement Score',       value: 74, tone: 'brand' as const },
-                { label: 'Training Completion',    value: 62, tone: 'amber' as const },
-                { label: 'Policy Compliance',      value: 95, tone: 'green' as const },
+                { label: 'Engagement Score', value: 74, tone: 'brand' as const },
+                { label: 'Training Completion', value: 62, tone: 'amber' as const },
+                { label: 'Policy Compliance', value: 95, tone: 'green' as const },
               ].map((m) => (
                 <div key={m.label}>
                   <div className="flex justify-between text-xs mb-1.5">

@@ -53,7 +53,7 @@ const seeds: Seed[] = [
   { code: 'MC-033', first: 'Anjali', last: 'Singh', gender: 'Female', designation: 'Account Executive', department: 'Sales', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-07-22', dob: '1992-11-28', managerId: 'emp-030', ctc: 2500000, skills: ['Enterprise', 'Upsell'] },
 
   // Marketing
-  { code: 'MC-040', first: 'Neha', last: 'Chopra', gender: 'Female', designation: 'Marketing Manager', department: 'Marketing', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2021-06-01', dob: '1990-04-04', managerId: 'emp-005', ctc: 3400000, skills: ['Brand', 'Content', 'SEO'] },
+  { code: 'MC-040', first: 'Neha', last: 'Chopra', gender: 'Female', designation: 'Marketing Manager', department: 'Marketing', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2021-06-01', dob: '1990-04-04', managerId: 'emp-001', ctc: 3400000, skills: ['Brand', 'Content', 'SEO'] },
   { code: 'MC-041', first: 'Varun', last: 'Pillai', gender: 'Male', designation: 'Content Strategist', department: 'Marketing', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2022-09-12', dob: '1994-02-17', managerId: 'emp-040', ctc: 2000000, skills: ['Copywriting', 'Storytelling'] },
   { code: 'MC-042', first: 'Simran', last: 'Kaur', gender: 'Female', designation: 'Performance Marketer', department: 'Marketing', location: 'Bengaluru', type: 'Contract', status: 'Active', doj: '2023-03-01', dob: '1995-09-23', managerId: 'emp-040', ctc: 1900000, skills: ['Paid Ads', 'Analytics'] },
 
@@ -69,12 +69,12 @@ const seeds: Seed[] = [
   { code: 'MC-063', first: 'Lakshmi', last: 'Venkat', gender: 'Female', designation: 'Office Administrator', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2022-05-03', dob: '1990-03-25', managerId: 'emp-062', ctc: 1400000, skills: ['Admin', 'Facilities'] },
 
   // Customer Success
-  { code: 'MC-070', first: 'Gaurav', last: 'Sinha', gender: 'Male', designation: 'Customer Success Manager', department: 'Customer Success', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2021-10-11', dob: '1990-08-30', managerId: 'emp-005', ctc: 3000000, skills: ['Retention', 'Onboarding'] },
+  { code: 'MC-070', first: 'Gaurav', last: 'Sinha', gender: 'Male', designation: 'Customer Success Manager', department: 'Customer Success', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2021-10-11', dob: '1990-08-30', managerId: 'emp-001', ctc: 3000000, skills: ['Retention', 'Onboarding'] },
   { code: 'MC-071', first: 'Ayesha', last: 'Sheikh', gender: 'Female', designation: 'Support Specialist', department: 'Customer Success', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2022-12-05', dob: '1996-04-13', managerId: 'emp-070', ctc: 1500000, skills: ['Support', 'Zendesk'] },
   { code: 'MC-072', first: 'Nikhil', last: 'Bose', gender: 'Male', designation: 'Implementation Specialist', department: 'Customer Success', location: 'Kolkata', type: 'Full-time', status: 'Active', doj: '2023-04-24', dob: '1994-11-02', managerId: 'emp-070', ctc: 1800000, skills: ['Integrations', 'Training'] },
 
   // Legal
-  { code: 'MC-080', first: 'Shreya', last: 'Desai', gender: 'Female', designation: 'Legal Counsel', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-02-28', dob: '1988-09-21', managerId: 'emp-006', ctc: 4000000, skills: ['Contracts', 'Compliance'] },
+  { code: 'MC-080', first: 'Shreya', last: 'Desai', gender: 'Female', designation: 'Legal Counsel', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-02-28', dob: '1988-09-21', managerId: 'emp-001', ctc: 4000000, skills: ['Contracts', 'Compliance'] },
 ];
 
 export const employees: Employee[] = seeds.map((s, idx) => {

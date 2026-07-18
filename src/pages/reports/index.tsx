@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import {
-  Users, TrendingDown, Clock, DollarSign, Heart,
+  Users, TrendingDown, Clock, IndianRupee, Heart,
   BarChart2, Calendar, Briefcase, Award, Activity,
   FileText, Download, ChevronRight, UserCheck,
 } from 'lucide-react';
@@ -104,12 +105,14 @@ interface ReportCard {
   kpis: { label: string; value: string }[];
   color: string;
   bg: string;
+  route: string;
 }
 
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 export function ReportsPage() {
+  const navigate = useNavigate();
   const [dateRange, setDateRange] = useState('ytd');
   const [deptFilter, setDeptFilter] = useState('all');
 
@@ -148,6 +151,7 @@ export function ReportsPage() {
       kpis: [{ label: 'Total Employees', value: String(headcount) }, { label: 'Active', value: String(headcount - 2) }],
       color: 'text-brand-600',
       bg: 'bg-brand-50',
+      route: '/employees',
     },
     {
       icon: <Calendar size={20} />,
@@ -156,14 +160,16 @@ export function ReportsPage() {
       kpis: [{ label: 'Avg Rate', value: '92.4%' }, { label: 'WFH Days', value: '38%' }],
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
+      route: '/attendance',
     },
     {
-      icon: <DollarSign size={20} />,
+      icon: <IndianRupee size={20} />,
       title: 'Payroll Report',
       description: 'Monthly payroll cost, department-wise spend, tax liability, and PF contributions.',
       kpis: [{ label: 'Monthly Cost', value: formatINR(payroll / 12, { compact: true }) }, { label: 'Dept Cost', value: '10 depts' }],
       color: 'text-amber-600',
       bg: 'bg-amber-50',
+      route: '/payroll',
     },
     {
       icon: <Briefcase size={20} />,
@@ -172,6 +178,7 @@ export function ReportsPage() {
       kpis: [{ label: 'Open Roles', value: '8' }, { label: 'Avg TTH', value: '24 days' }],
       color: 'text-violet-600',
       bg: 'bg-violet-50',
+      route: '/recruitment',
     },
     {
       icon: <Heart size={20} />,
@@ -180,6 +187,7 @@ export function ReportsPage() {
       kpis: [{ label: 'Female Ratio', value: `${diversity}%` }, { label: 'Locations', value: '8' }],
       color: 'text-rose-600',
       bg: 'bg-rose-50',
+      route: '/employees',
     },
     {
       icon: <Award size={20} />,
@@ -188,8 +196,26 @@ export function ReportsPage() {
       kpis: [{ label: 'Completed', value: '78%' }, { label: 'Avg Rating', value: '3.8/5' }],
       color: 'text-cyan-600',
       bg: 'bg-cyan-50',
+      route: '/performance',
     },
   ];
+
+  function handleExport() {
+    const rows = [
+      ['Department', 'Headcount'],
+      ...hcByDept.map((d) => [d.department, String(d.count)]),
+    ];
+    const csv = rows.map((r) => r.map((cell) => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `workforce-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="space-y-6">
@@ -201,7 +227,7 @@ export function ReportsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={dateRange} onChange={setDateRange} options={dateOptions} className="text-sm" />
             <Select value={deptFilter} onChange={setDeptFilter} options={deptOptions} className="text-sm" />
-            <Button variant="secondary" size="sm" icon={<Download size={14} />}>
+            <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>
               Export
             </Button>
           </div>
@@ -237,7 +263,7 @@ export function ReportsPage() {
         <StatCard
           label="Annual Payroll"
           value={formatINR(payroll, { compact: true })}
-          icon={<DollarSign size={20} />}
+          icon={<IndianRupee size={20} />}
           iconClass="bg-emerald-50 text-emerald-600"
           delta={8.2}
           deltaLabel="vs last year"
@@ -419,7 +445,7 @@ export function ReportsPage() {
             <h2 className="text-lg font-semibold text-ink-900">Report Library</h2>
             <p className="text-sm text-ink-500 mt-0.5">Pre-built report templates across all HR modules</p>
           </div>
-          <Button variant="secondary" size="sm" icon={<FileText size={14} />}>
+          <Button variant="secondary" size="sm" icon={<FileText size={14} />} onClick={handleExport}>
             All Reports
           </Button>
         </div>
@@ -443,7 +469,7 @@ export function ReportsPage() {
                   </div>
                 ))}
               </div>
-              <Button variant="ghost" size="sm" icon={<ChevronRight size={14} />} className="w-full justify-center">
+              <Button variant="ghost" size="sm" icon={<ChevronRight size={14} />} className="w-full justify-center" onClick={() => navigate(r.route)}>
                 View Report
               </Button>
             </Card>
@@ -461,7 +487,7 @@ export function ReportsPage() {
               <p className="text-sm opacity-80 mt-0.5">Get automated anomaly detection and predictive attrition risk for your workforce.</p>
             </div>
           </div>
-          <Button variant="secondary" size="sm" className="shrink-0 !bg-white !text-brand-700 hover:!bg-brand-50 border-0">
+          <Button variant="secondary" size="sm" className="shrink-0 !bg-white !text-brand-700 hover:!bg-brand-50 border-0" onClick={() => navigate('/dashboard/kpi-graphs')}>
             Explore AI Insights
           </Button>
         </div>

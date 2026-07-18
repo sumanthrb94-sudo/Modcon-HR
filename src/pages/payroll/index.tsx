@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import {
-  DollarSign,
+  IndianRupee,
   Users,
   TrendingUp,
   CalendarClock,
@@ -32,7 +32,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { payslips, payrollRuns, salaryByDepartment } from '@/data/payroll';
+import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment } from '@/data/payroll';
 import { employees, departments, getEmployee } from '@/data/employees';
 import type { Payslip, PayrollRun } from '@/types';
 
@@ -151,14 +151,18 @@ const DEPT_OPTIONS = [
   ...departments.map((d) => ({ label: d, value: d })),
 ];
 
+const CURRENT_PAYROLL_MONTH = '2026-06';
+
 export function PayrollPage() {
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
+  const [payrollRunList, setPayrollRunList] = useState<PayrollRun[]>(initialPayrollRuns);
+  const [payslipList, setPayslipList] = useState<Payslip[]>(initialPayslips);
 
   // ----- Aggregates -----
-  const totalNetPay = useMemo(() => payslips.reduce((s, p) => s + p.netPay, 0), []);
+  const totalNetPay = useMemo(() => payslipList.reduce((s, p) => s + p.netPay, 0), [payslipList]);
   const avgCTC = useMemo(() => {
     const total = employees.reduce((s, e) => s + e.ctc, 0);
     return Math.round(total / employees.length);
@@ -177,7 +181,7 @@ export function PayrollPage() {
 
   // ----- Filtered payslips -----
   const filteredPayslips = useMemo(() => {
-    return payslips.filter((p) => {
+    return payslipList.filter((p) => {
       const emp = getEmployee(p.employeeId);
       if (!emp) return false;
       const q = search.toLowerCase();
@@ -189,7 +193,33 @@ export function PayrollPage() {
       const matchesDept = !deptFilter || emp.department === deptFilter;
       return matchesSearch && matchesDept;
     });
-  }, [search, deptFilter]);
+  }, [payslipList, search, deptFilter]);
+
+  function handleRunPayroll() {
+    const alreadyExists = payrollRunList.some((run) => run.month === CURRENT_PAYROLL_MONTH);
+    if (alreadyExists) {
+      setActiveTab('runs');
+      return;
+    }
+
+    const monthPayslips = employees.map((employee) => buildPayslip(employee, CURRENT_PAYROLL_MONTH, 'Paid'));
+    const grossTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
+    const netTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
+
+    const newRun: PayrollRun = {
+      id: `pr-${CURRENT_PAYROLL_MONTH}`,
+      month: CURRENT_PAYROLL_MONTH,
+      status: 'Paid',
+      employeeCount: employees.length,
+      grossTotal,
+      netTotal,
+      processedOn: `${CURRENT_PAYROLL_MONTH}-30`,
+    };
+
+    setPayrollRunList((prev) => [newRun, ...prev]);
+    setPayslipList((prev) => [...monthPayslips, ...prev]);
+    setActiveTab('runs');
+  }
 
   // ----- Payroll Runs columns -----
   const runColumns: Column<PayrollRun>[] = [
@@ -297,7 +327,7 @@ export function PayrollPage() {
         title="Payroll"
         subtitle="Manage salary disbursements, payslips, and compensation analytics"
         actions={
-          <Button icon={<Play size={16} />} variant="primary">
+          <Button icon={<Play size={16} />} variant="primary" onClick={handleRunPayroll}>
             Run Payroll
           </Button>
         }
@@ -308,7 +338,7 @@ export function PayrollPage() {
         <StatCard
           label="Monthly Payroll Cost"
           value={formatINR(totalNetPay, { compact: true })}
-          icon={<DollarSign size={22} />}
+          icon={<IndianRupee size={22} />}
           iconClass="bg-emerald-50 text-emerald-600"
           delta={2.4}
           deltaLabel="vs last month"
@@ -375,8 +405,8 @@ export function PayrollPage() {
         <div className="px-5 pt-5">
           <Tabs
             tabs={[
-              { id: 'runs', label: 'Payroll Runs', count: payrollRuns.length },
-              { id: 'payslips', label: 'Payslips', count: payslips.length },
+              { id: 'runs', label: 'Payroll Runs', count: payrollRunList.length },
+              { id: 'payslips', label: 'Payslips', count: payslipList.length },
             ]}
             active={activeTab}
             onChange={setActiveTab}
@@ -387,7 +417,7 @@ export function PayrollPage() {
           <div className="p-5">
             <Table<PayrollRun>
               columns={runColumns}
-              data={payrollRuns}
+              data={payrollRunList}
               keyExtractor={(r) => r.id}
             />
           </div>

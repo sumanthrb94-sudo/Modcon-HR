@@ -4,7 +4,7 @@ import {
   Plug, CreditCard, ChevronRight, Check, X,
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
-  AlertCircle, CheckCircle2, Star,
+  AlertCircle, CheckCircle2, Star, Database,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table,
@@ -14,6 +14,7 @@ import { departments, employees } from '@/data/employees';
 import { holidays } from '@/data/common';
 import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
+import { seedFirestore } from '@/lib/seed';
 
 // ===========================================================================
 // Tiny reusable primitives (settings-local)
@@ -936,6 +937,69 @@ function BillingSection() {
 // ===========================================================================
 // Nav definitions
 // ===========================================================================
+// ===========================================================================
+// Section: Database
+// ===========================================================================
+function DatabaseSection() {
+  const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [logs, setLogs] = useState<string[]>([]);
+
+  async function handleSeed() {
+    setStatus('running');
+    setLogs([]);
+    try {
+      await seedFirestore((msg) => setLogs((prev) => [...prev, msg]));
+      setStatus('done');
+    } catch (err) {
+      setLogs((prev) => [...prev, `Error: ${String(err)}`]);
+      setStatus('error');
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Firestore Database"
+      subtitle="Seed Firestore with the built-in mock data. Safe to re-run — existing documents are overwritten."
+    >
+      <Card>
+        <CardHeader title="Seed Collections" subtitle="Pushes all static mock data into Firestore in bulk" />
+        <div className="space-y-4">
+          <p className="text-sm text-ink-500">
+            Collections: <span className="font-medium text-ink-700">employees, attendance, leave, payroll, recruitment, onboarding, performance, expenses, assets, helpdesk</span>
+          </p>
+          <Button
+            variant="primary"
+            icon={<Database size={15} />}
+            onClick={handleSeed}
+            disabled={status === 'running'}
+          >
+            {status === 'running' ? 'Seeding…' : status === 'done' ? 'Seed Again' : 'Seed Firestore'}
+          </Button>
+          {logs.length > 0 && (
+            <div className="rounded-lg bg-ink-950 text-emerald-400 font-mono text-xs p-4 space-y-1 max-h-64 overflow-y-auto">
+              {logs.map((log, i) => (
+                <p key={i}>{log}</p>
+              ))}
+            </div>
+          )}
+          {status === 'done' && (
+            <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+              <CheckCircle2 size={16} />
+              All collections seeded successfully.
+            </div>
+          )}
+          {status === 'error' && (
+            <div className="flex items-center gap-2 text-sm text-rose-600 font-medium">
+              <AlertCircle size={16} />
+              Seeding failed. Check the console for details.
+            </div>
+          )}
+        </div>
+      </Card>
+    </SettingsSection>
+  );
+}
+
 interface NavItem {
   id: string;
   label: string;
@@ -952,6 +1016,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'notifications', label: 'Notifications', icon: <Bell size={17} />, description: 'Alert preferences' },
   { id: 'integrations', label: 'Integrations', icon: <Plug size={17} />, description: 'Third-party connections' },
   { id: 'billing', label: 'Billing', icon: <CreditCard size={17} />, description: 'Plan & payments' },
+  { id: 'database', label: 'Database', icon: <Database size={17} />, description: 'Firestore seed & config' },
 ];
 
 // ===========================================================================
@@ -970,6 +1035,7 @@ export function SettingsPage() {
       case 'notifications': return <NotificationsSection />;
       case 'integrations': return <IntegrationsSection />;
       case 'billing': return <BillingSection />;
+      case 'database': return <DatabaseSection />;
       default: return null;
     }
   }

@@ -88,6 +88,7 @@ export interface LeaveRequest {
 }
 
 export interface LeaveBalance {
+  id?: string; // composite: employeeId_type
   employeeId: ID;
   type: LeaveType;
   total: number;
@@ -279,4 +280,14 @@ export interface Holiday {
   name: string;
   date: string;
   type: 'National' | 'Regional' | 'Optional';
+}
+
+// ---- Regularization / Attendance -----------------------------------------------
+export interface RegularizationRequest {
+  id: ID;
+  employeeId: ID;
+  date: string;
+  reason: string;
+  requestedStatus: AttendanceStatus;
+  status: 'Pending' | 'Approved' | 'Rejected';
 }

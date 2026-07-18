@@ -12,6 +12,7 @@ import {
   LifeBuoy,
   BarChart3,
   Settings,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -20,6 +21,7 @@ export interface NavItem {
   path: string;
   icon: LucideIcon;
   group: 'Main' | 'People' | 'Operations' | 'Insights';
+  adminOnly?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -35,6 +37,7 @@ export const navItems: NavItem[] = [
   { label: 'Assets', path: '/assets', icon: Laptop, group: 'Operations' },
   { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'Operations' },
   { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Insights' },
+  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Insights', adminOnly: true },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Insights' },
 ];
 

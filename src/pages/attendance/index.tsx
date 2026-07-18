@@ -33,14 +33,13 @@ import {
   Modal,
 } from '@/components/ui';
 import {
+  attendanceRecords,
   regularizationRequests,
   WEEK_DATES,
-  getRecordsByDate,
-  getWeekSummary,
   type RegularizationRequest,
 } from '@/data/attendance';
 import { employees, departments, getEmployee } from '@/data/employees';
-import type { AttendanceRecord, Employee } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
@@ -60,14 +59,23 @@ export function AttendancePage() {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [markModalOpen, setMarkModalOpen] = useState(false);
+  const [attendanceState, setAttendanceState] = useState<AttendanceRecord[]>(attendanceRecords);
+  const [markEmployeeId, setMarkEmployeeId] = useState('');
+  const [markStatus, setMarkStatus] = useState<AttendanceStatus>('Present');
+  const [markCheckIn, setMarkCheckIn] = useState('09:00');
+  const [markCheckOut, setMarkCheckOut] = useState('18:00');
 
   // Regularization state — mutable local copy
   const [regRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
 
+  function recordsByDate(date: string) {
+    return attendanceState.filter((record) => record.date === date);
+  }
+
   // Stats for selected date
-  const dayRecords = useMemo(() => getRecordsByDate(selectedDate), [selectedDate]);
+  const dayRecords = useMemo(() => recordsByDate(selectedDate), [attendanceState, selectedDate]);
   const todayStats = useMemo(() => {
-    const todayRecs = getRecordsByDate(TODAY);
+    const todayRecs = recordsByDate(TODAY);
     return {
       present: todayRecs.filter((r) => r.status === 'Present').length,
       wfh: todayRecs.filter((r) => r.status === 'Work From Home').length,
@@ -75,19 +83,21 @@ export function AttendancePage() {
       absent: todayRecs.filter((r) => r.status === 'Absent').length,
       late: todayRecs.filter((r) => r.isLate).length,
     };
-  }, []);
+  }, [attendanceState]);
 
   // Weekly trend data
   const weeklyData = useMemo(() => {
-    const summary = getWeekSummary();
-    return summary.map((s) => ({
-      day: new Date(s.date).toLocaleDateString('en-IN', { weekday: 'short' }),
-      Present: s['Present'],
-      WFH: s['Work From Home'],
-      Leave: s['On Leave'],
-      Absent: s['Absent'],
-    }));
-  }, []);
+    return WEEK_DATES.map((date) => {
+      const records = recordsByDate(date);
+      return {
+        day: new Date(date).toLocaleDateString('en-IN', { weekday: 'short' }),
+        Present: records.filter((r) => r.status === 'Present').length,
+        WFH: records.filter((r) => r.status === 'Work From Home').length,
+        Leave: records.filter((r) => r.status === 'On Leave').length,
+        Absent: records.filter((r) => r.status === 'Absent').length,
+      };
+    });
+  }, [attendanceState]);
 
   // Table rows: join attendance with employee info
   const tableRows = useMemo((): AttendanceRow[] => {
@@ -201,6 +211,47 @@ export function AttendancePage() {
     setRegRequests((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: 'Rejected' as const } : r)),
     );
+  }
+
+  function resetMarkAttendanceForm() {
+    setMarkEmployeeId('');
+    setMarkStatus('Present');
+    setMarkCheckIn('09:00');
+    setMarkCheckOut('18:00');
+  }
+
+  function saveAttendance() {
+    if (!markEmployeeId) return;
+
+    const workedHours = markStatus === 'Absent' || markStatus === 'On Leave'
+      ? 0
+      : Math.max(
+        0,
+        (new Date(`1970-01-01T${markCheckOut}:00`).getTime() - new Date(`1970-01-01T${markCheckIn}:00`).getTime())
+        / (1000 * 60 * 60),
+      );
+    const isLate = markStatus === 'Present' && markCheckIn > '09:15';
+
+    setAttendanceState((prev) => {
+      const nextRecord: AttendanceRecord = {
+        id: `att-manual-${markEmployeeId}-${TODAY}`,
+        employeeId: markEmployeeId,
+        date: TODAY,
+        status: markStatus,
+        checkIn: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckIn,
+        checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
+        workedHours,
+        shift: 'General (09:00 – 18:00)',
+        isLate,
+      };
+
+      const withoutExisting = prev.filter((record) => !(record.employeeId === markEmployeeId && record.date === TODAY));
+      return [...withoutExisting, nextRecord];
+    });
+
+    setMarkModalOpen(false);
+    resetMarkAttendanceForm();
+    setSelectedDate(TODAY);
   }
 
   const regColumns: Column<RegularizationRequest>[] = [
@@ -424,7 +475,7 @@ export function AttendancePage() {
             <Button variant="ghost" onClick={() => setMarkModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={() => setMarkModalOpen(false)}>
+            <Button variant="primary" onClick={saveAttendance} disabled={!markEmployeeId}>
               Save
             </Button>
           </>
@@ -433,7 +484,7 @@ export function AttendancePage() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink-700 mb-1">Employee</label>
-            <select className="input w-full">
+            <select className="input w-full" value={markEmployeeId} onChange={(e) => setMarkEmployeeId(e.target.value)}>
               <option value="">Select employee…</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -444,7 +495,7 @@ export function AttendancePage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-ink-700 mb-1">Status</label>
-            <select className="input w-full">
+            <select className="input w-full" value={markStatus} onChange={(e) => setMarkStatus(e.target.value as AttendanceStatus)}>
               <option value="Present">Present</option>
               <option value="Work From Home">Work From Home</option>
               <option value="Half Day">Half Day</option>
@@ -455,11 +506,11 @@ export function AttendancePage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-ink-700 mb-1">Check-In</label>
-              <input type="time" className="input w-full" defaultValue="09:00" />
+              <input type="time" className="input w-full" value={markCheckIn} onChange={(e) => setMarkCheckIn(e.target.value)} disabled={markStatus === 'Absent' || markStatus === 'On Leave'} />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink-700 mb-1">Check-Out</label>
-              <input type="time" className="input w-full" defaultValue="18:00" />
+              <input type="time" className="input w-full" value={markCheckOut} onChange={(e) => setMarkCheckOut(e.target.value)} disabled={markStatus === 'Absent' || markStatus === 'On Leave'} />
             </div>
           </div>
           <div>

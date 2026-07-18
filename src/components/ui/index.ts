@@ -11,3 +11,5 @@ export { Modal } from './Modal';
 export { SearchInput } from './SearchInput';
 export { EmptyState } from './EmptyState';
 export { Select } from './Select';
+export { QuickAddMenu } from './QuickAddMenu';
+export { NotificationsMenu } from './NotificationsMenu';
