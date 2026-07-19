@@ -90,7 +90,18 @@ const BAR_COLOR = '#6366f1';
 // ---------------------------------------------------------------------------
 // Columns
 // ---------------------------------------------------------------------------
-const goalColumnsWithEdit = (onEditProgress: (id: string, p: number) => void, onEditStatus: (id: string, s: GoalStatus) => void, editingId: string | null, editingStatus: GoalStatus, setEditingStatus: (s: GoalStatus) => void, setEditingGoalId: (id: string | null) => void): Column<Goal>[] => [
+const goalColumnsWithEdit = (
+  onEditProgress: (id: string, p: number) => void,
+  onEditStatus: (id: string, s: GoalStatus) => void,
+  editingId: string | null,
+  editingStatus: GoalStatus,
+  setEditingStatus: (s: GoalStatus) => void,
+  setEditingGoalId: (id: string | null) => void,
+  hoverGoalId: string | null,
+  setHoverGoalId: (id: string | null) => void,
+  hoverProgress: number | null,
+  setHoverProgress: (p: number | null) => void
+): Column<Goal>[] => [
   {
     key: 'owner',
     header: 'Owner',
@@ -135,18 +146,37 @@ const goalColumnsWithEdit = (onEditProgress: (id: string, p: number) => void, on
     render: (row) => (
       <div
         className="w-32 cursor-pointer group relative"
-        onMouseDown={(e) => {
+        onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const x = e.clientX - rect.left;
           const newProgress = Math.round((x / rect.width) * 100);
           const clamped = Math.max(0, Math.min(100, newProgress));
           onEditProgress(row.id, clamped);
+          setHoverGoalId(null);
+          setHoverProgress(null);
         }}
-        title="Click or drag to adjust progress"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const progress = Math.round((x / rect.width) * 100);
+          const clamped = Math.max(0, Math.min(100, progress));
+          setHoverGoalId(row.id);
+          setHoverProgress(clamped);
+        }}
+        onMouseLeave={() => {
+          setHoverGoalId(null);
+          setHoverProgress(null);
+        }}
+        title="Click on the progress bar to adjust"
       >
         <ProgressBar value={row.progress} tone={progressTone(row.progress)} size="sm" showLabel />
-        <div className="absolute -top-8 left-0 px-2 py-1 bg-ink-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-          Click to adjust
+        {hoverGoalId === row.id && hoverProgress !== null && (
+          <div className="absolute -top-7 left-0 px-2 py-1 bg-ink-900 text-white text-xs font-semibold rounded whitespace-nowrap pointer-events-none">
+            {hoverProgress}%
+          </div>
+        )}
+        <div className="absolute -bottom-5 left-0 px-1 text-ink-400 text-xs opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+          Click to set
         </div>
       </div>
     ),
@@ -349,6 +379,10 @@ export function PerformancePage() {
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [editingReviewStatus, setEditingReviewStatus] = useState<ReviewStatus>('Not Started');
   const [editingReviewRating, setEditingReviewRating] = useState<number | null>(null);
+
+  // Hover progress for goals
+  const [hoverGoalId, setHoverGoalId] = useState<string | null>(null);
+  const [hoverProgress, setHoverProgress] = useState<number | null>(null);
 
   useEffect(() => {
     function handleGoalsChanged() {
@@ -561,7 +595,7 @@ export function PerformancePage() {
               />
             </div>
             <Table
-              columns={goalColumnsWithEdit(handleUpdateGoalProgress, handleUpdateGoalStatus, editingGoalId, editingStatus, setEditingStatus, setEditingGoalId)}
+              columns={goalColumnsWithEdit(handleUpdateGoalProgress, handleUpdateGoalStatus, editingGoalId, editingStatus, setEditingStatus, setEditingGoalId, hoverGoalId, setHoverGoalId, hoverProgress, setHoverProgress)}
               data={filteredGoals}
               keyExtractor={(r) => r.id}
               emptyMessage="No goals match your filters."
