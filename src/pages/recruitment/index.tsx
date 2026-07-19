@@ -40,7 +40,7 @@ import {
   ProgressBar,
 } from '@/components/ui';
 import { formatDate, timeAgo } from '@/lib/utils';
-import { candidates, hiringFunnel, getJobOpenings, addJobOpening, deleteJobOpening, JOB_OPENINGS_CHANGED_EVENT } from '@/data/recruitment';
+import { candidates, hiringFunnel, getJobOpenings, addJobOpening, deleteJobOpening, JOB_OPENINGS_CHANGED_EVENT, getCandidates, removeCandidatesForJob, updateCandidateStage, CANDIDATES_CHANGED_EVENT } from '@/data/recruitment';
 import type { JobOpening, Candidate, CandidateStage, Department, EmploymentType, JobStatus } from '@/types';
 import { departments, locations, getEmployeeName } from '@/data/employees';
 
@@ -406,14 +406,15 @@ function CandidateDetailModal({ candidate, onClose }: CandidateDetailModalProps)
 
 interface JobDetailModalProps {
   job: JobOpening | null;
+  candidates: Candidate[];
   onClose: () => void;
   onDelete: () => void;
 }
 
-function JobDetailModal({ job, onClose, onDelete }: JobDetailModalProps) {
+function JobDetailModal({ job, candidates: candidateList, onClose, onDelete }: JobDetailModalProps) {
   if (!job) return null;
   const manager = getEmployeeName(job.hiringManagerId);
-  const jobCandidates = candidates.filter((c) => c.jobId === job.id);
+  const jobCandidates = candidateList.filter((c) => c.jobId === job.id);
   return (
     <Modal
       open={!!job}
@@ -560,19 +561,19 @@ function JobOpeningsTab({ jobs, onJobClick, onDeleteJob }: JobOpeningsTabProps) 
 // Candidate Pipeline (Kanban) Tab
 // ---------------------------------------------------------------------------
 
-function CandidatePipelineTab({ onCandidateClick }: { onCandidateClick: (c: Candidate) => void }) {
+function CandidatePipelineTab({ candidates: candidateList, onCandidateClick }: { candidates: Candidate[]; onCandidateClick: (c: Candidate) => void }) {
   const [search, setSearch] = useState('');
 
   const filteredCandidates = useMemo(() => {
-    if (!search.trim()) return candidates;
+    if (!search.trim()) return candidateList;
     const q = search.toLowerCase();
-    return candidates.filter(
+    return candidateList.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         c.jobTitle.toLowerCase().includes(q) ||
         (c.currentCompany?.toLowerCase().includes(q) ?? false),
     );
-  }, [search]);
+  }, [search, candidateList]);
 
   return (
     <div className="pt-4 space-y-4">
@@ -616,18 +617,18 @@ function CandidatePipelineTab({ onCandidateClick }: { onCandidateClick: (c: Cand
 // Analytics Tab
 // ---------------------------------------------------------------------------
 
-function AnalyticsTab({ jobs }: { jobs: JobOpening[] }) {
-  const funnelData = hiringFunnel();
-  const total = candidates.length;
+function AnalyticsTab({ jobs, candidates: candidateList }: { jobs: JobOpening[]; candidates: Candidate[] }) {
+  const funnelData = hiringFunnel(candidateList);
+  const total = candidateList.length;
   const openJobs = jobs.filter((j) => j.status === 'Open');
 
   const sourceData = useMemo(() => {
     const counts: Record<string, number> = {};
-    candidates.forEach((c) => {
+    candidateList.forEach((c) => {
       counts[c.source] = (counts[c.source] ?? 0) + 1;
     });
     return Object.entries(counts).map(([source, count]) => ({ source, count }));
-  }, []);
+  }, [candidateList]);
 
   return (
     <div className="pt-4 space-y-6">
@@ -723,6 +724,7 @@ const TABS = [
 
 export function RecruitmentPage() {
   const [jobs, setJobs] = useState<JobOpening[]>(() => getJobOpenings());
+  const [candidateList, setCandidateList] = useState<Candidate[]>(() => getCandidates());
   const [activeTab, setActiveTab] = useState('openings');
   const [postJobOpen, setPostJobOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobOpening | null>(null);
@@ -733,18 +735,25 @@ export function RecruitmentPage() {
     function handleJobOpeningsChanged() {
       setJobs(getJobOpenings());
     }
+    function handleCandidatesChanged() {
+      setCandidateList(getCandidates());
+    }
 
     window.addEventListener(JOB_OPENINGS_CHANGED_EVENT, handleJobOpeningsChanged);
-    return () => window.removeEventListener(JOB_OPENINGS_CHANGED_EVENT, handleJobOpeningsChanged);
+    window.addEventListener(CANDIDATES_CHANGED_EVENT, handleCandidatesChanged);
+    return () => {
+      window.removeEventListener(JOB_OPENINGS_CHANGED_EVENT, handleJobOpeningsChanged);
+      window.removeEventListener(CANDIDATES_CHANGED_EVENT, handleCandidatesChanged);
+    };
   }, []);
 
   const stats = useMemo(() => {
     const open = jobs.filter((j) => j.status === 'Open').reduce((s, j) => s + j.openings, 0);
-    const totalApplicants = candidates.length;
-    const inInterview = candidates.filter((c) => c.stage === 'Interview').length;
-    const offers = candidates.filter((c) => c.stage === 'Offer').length;
+    const totalApplicants = candidateList.length;
+    const inInterview = candidateList.filter((c) => c.stage === 'Interview').length;
+    const offers = candidateList.filter((c) => c.stage === 'Offer').length;
     return { open, totalApplicants, inInterview, offers };
-  }, [jobs]);
+  }, [jobs, candidateList]);
 
   function handlePostJob(form: { title: string; department: string; location: string; type: string; openings: string; experience: string }) {
     const newJob: JobOpening = {
@@ -766,6 +775,7 @@ export function RecruitmentPage() {
 
   function handleDeleteJob(job: JobOpening) {
     setJobs(deleteJobOpening(job.id));
+    setCandidateList(removeCandidatesForJob(job.id));
     if (selectedJob?.id === job.id) setSelectedJob(null);
     setDeleteTarget(null);
   }
@@ -774,7 +784,7 @@ export function RecruitmentPage() {
     id: t.id,
     label: t.label,
     count: t.id === 'openings' ? jobs.filter((j) => j.status === 'Open').length
-      : t.id === 'pipeline' ? candidates.filter((c) => c.stage !== 'Rejected').length
+      : t.id === 'pipeline' ? candidateList.filter((c) => c.stage !== 'Rejected').length
       : undefined,
   }));
 
@@ -835,9 +845,9 @@ export function RecruitmentPage() {
         <JobOpeningsTab jobs={jobs} onJobClick={setSelectedJob} onDeleteJob={setDeleteTarget} />
       )}
       {activeTab === 'pipeline' && (
-        <CandidatePipelineTab onCandidateClick={setSelectedCandidate} />
+        <CandidatePipelineTab candidates={candidateList} onCandidateClick={setSelectedCandidate} />
       )}
-      {activeTab === 'analytics' && <AnalyticsTab jobs={jobs} />}
+      {activeTab === 'analytics' && <AnalyticsTab jobs={jobs} candidates={candidateList} />}
 
       <PostJobModal
         open={postJobOpen}
@@ -846,6 +856,7 @@ export function RecruitmentPage() {
       />
       <JobDetailModal
         job={selectedJob}
+        candidates={candidateList}
         onClose={() => setSelectedJob(null)}
         onDelete={() => {
           if (selectedJob) setDeleteTarget(selectedJob);

@@ -160,6 +160,9 @@ export const jobOpenings: JobOpening[] = [
 const JOB_OPENINGS_STORAGE_KEY = 'modcon.hr.jobOpenings';
 export const JOB_OPENINGS_CHANGED_EVENT = 'modcon-hr-job-openings-changed';
 
+const CANDIDATES_STORAGE_KEY = 'modcon.hr.candidates';
+export const CANDIDATES_CHANGED_EVENT = 'modcon-hr-candidates-changed';
+
 function readStoredJobOpenings(): JobOpening[] | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -200,6 +203,55 @@ export function addJobOpening(job: JobOpening) {
 export function deleteJobOpening(jobId: string) {
   const next = getJobOpenings().filter((job) => job.id !== jobId);
   saveJobOpenings(next);
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Candidates persistence
+// ---------------------------------------------------------------------------
+
+function readStoredCandidates(): Candidate[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(CANDIDATES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Candidate[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredCandidates(items: Candidate[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(CANDIDATES_STORAGE_KEY, JSON.stringify(items));
+}
+
+function notifyCandidatesChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(CANDIDATES_CHANGED_EVENT));
+}
+
+export function getCandidates(): Candidate[] {
+  return readStoredCandidates() ?? candidates;
+}
+
+export function saveCandidates(items: Candidate[]) {
+  writeStoredCandidates(items);
+  notifyCandidatesChanged();
+}
+
+export function removeCandidatesForJob(jobId: string) {
+  const next = getCandidates().filter((c) => c.jobId !== jobId);
+  saveCandidates(next);
+  return next;
+}
+
+export function updateCandidateStage(candidateId: string, stage: CandidateStage) {
+  const next = getCandidates().map((c) =>
+    c.id === candidateId ? { ...c, stage } : c,
+  );
+  saveCandidates(next);
   return next;
 }
 
@@ -258,10 +310,11 @@ export interface FunnelStage {
   count: number;
 }
 
-export function hiringFunnel(): FunnelStage[] {
+export function hiringFunnel(candidateList?: Candidate[]): FunnelStage[] {
+  const list = candidateList ?? candidates;
   const stages: CandidateStage[] = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
   return stages.map((stage) => ({
     stage,
-    count: candidates.filter((c) => c.stage === stage).length,
+    count: list.filter((c) => c.stage === stage).length,
   }));
 }

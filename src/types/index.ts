@@ -199,10 +199,12 @@ export interface Goal {
   employeeId: ID;
   title: string;
   category: string;
+  cycle: string;
   progress: number; // 0-100
   status: GoalStatus;
   dueDate: string;
   weight: number;
+  reviewer: string;
 }
 
 export interface PerformanceReview {

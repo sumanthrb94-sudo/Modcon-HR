@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Target,
   Star,
   ClipboardList,
   TrendingUp,
   Award,
+  Plus,
 } from 'lucide-react';
 import {
   Avatar,
@@ -20,10 +21,12 @@ import {
   Select,
   Card,
   CardHeader,
+  Modal,
+  Button,
 } from '@/components/ui';
-import { goals, reviews, ratingDistribution } from '@/data/performance';
-import { getEmployeeName } from '@/data/employees';
-import type { Goal, PerformanceReview, GoalStatus } from '@/types';
+import { goals, reviews, ratingDistribution, getGoals, getReviews, GOALS_CHANGED_EVENT, REVIEWS_CHANGED_EVENT, saveGoals, updateGoalProgress, updateGoalStatus, updateReviewCycleByEmployee, updateReviewerByEmployee, updateReviewStatus, updateReviewRating } from '@/data/performance';
+import { getEmployeeName, employees } from '@/data/employees';
+import type { Goal, PerformanceReview, GoalStatus, ReviewStatus } from '@/types';
 import { formatDate } from '@/lib/utils';
 import {
   BarChart,
@@ -87,7 +90,7 @@ const BAR_COLOR = '#6366f1';
 // ---------------------------------------------------------------------------
 // Columns
 // ---------------------------------------------------------------------------
-const goalColumns: Column<Goal>[] = [
+const goalColumnsWithEdit = (onEditProgress: (id: string, p: number) => void, onEditStatus: (id: string, s: GoalStatus) => void, editingId: string | null, editingStatus: GoalStatus, setEditingStatus: (s: GoalStatus) => void, setEditingGoalId: (id: string | null) => void): Column<Goal>[] => [
   {
     key: 'owner',
     header: 'Owner',
@@ -130,8 +133,21 @@ const goalColumns: Column<Goal>[] = [
     key: 'progress',
     header: 'Progress',
     render: (row) => (
-      <div className="w-32">
+      <div
+        className="w-32 cursor-pointer group relative"
+        onMouseDown={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const newProgress = Math.round((x / rect.width) * 100);
+          const clamped = Math.max(0, Math.min(100, newProgress));
+          onEditProgress(row.id, clamped);
+        }}
+        title="Click or drag to adjust progress"
+      >
         <ProgressBar value={row.progress} tone={progressTone(row.progress)} size="sm" showLabel />
+        <div className="absolute -top-8 left-0 px-2 py-1 bg-ink-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+          Click to adjust
+        </div>
       </div>
     ),
   },
@@ -143,15 +159,53 @@ const goalColumns: Column<Goal>[] = [
   {
     key: 'status',
     header: 'Status',
-    render: (row) => (
-      <Badge tone={goalStatusTone(row.status)} dot>
-        {row.status}
-      </Badge>
-    ),
+    render: (row) =>
+      editingId === row.id ? (
+        <div className="flex items-center gap-1">
+          <Select
+            value={editingStatus}
+            onChange={(v) => setEditingStatus(v as GoalStatus)}
+            options={[
+              { label: 'On Track', value: 'On Track' },
+              { label: 'At Risk', value: 'At Risk' },
+              { label: 'Behind', value: 'Behind' },
+              { label: 'Completed', value: 'Completed' },
+            ]}
+            className="w-32"
+          />
+          <button
+            className="text-xs text-brand-600 hover:text-brand-700 font-semibold"
+            onClick={() => onEditStatus(row.id, editingStatus)}
+          >
+            ✓
+          </button>
+        </div>
+      ) : (
+        <Badge
+          tone={goalStatusTone(row.status)}
+          dot
+          className="cursor-pointer hover:shadow-sm"
+          onClick={() => {
+            setEditingStatus(row.status);
+            setEditingGoalId(row.id);
+          }}
+        >
+          {row.status}
+        </Badge>
+      ),
   },
 ];
 
-const reviewColumns: Column<PerformanceReview>[] = [
+const reviewColumnsWithEdit = (
+  onEditStatus: (id: string, status: ReviewStatus) => void,
+  onEditRating: (id: string, rating: number | null) => void,
+  editingId: string | null,
+  editingStatus: ReviewStatus,
+  editingRating: number | null,
+  setEditingStatus: (s: ReviewStatus) => void,
+  setEditingRating: (r: number | null) => void,
+  setEditingReviewId: (id: string | null) => void
+): Column<PerformanceReview>[] => [
   {
     key: 'employee',
     header: 'Employee',
@@ -180,16 +234,83 @@ const reviewColumns: Column<PerformanceReview>[] = [
   {
     key: 'status',
     header: 'Status',
-    render: (row) => (
-      <Badge tone={statusTone(row.status)} dot>
-        {row.status}
-      </Badge>
-    ),
+    render: (row) =>
+      editingId === row.id ? (
+        <div className="flex items-center gap-2">
+          <Select
+            value={editingStatus}
+            onChange={setEditingStatus}
+            options={[
+              { label: 'Not Started', value: 'Not Started' },
+              { label: 'Self Review', value: 'Self Review' },
+              { label: 'Manager Review', value: 'Manager Review' },
+              { label: 'Calibration', value: 'Calibration' },
+              { label: 'Completed', value: 'Completed' },
+            ]}
+            className="w-32"
+          />
+          <button
+            onClick={() => {
+              onEditStatus(row.id, editingStatus);
+              setEditingReviewId(null);
+            }}
+            className="text-ink-600 hover:text-ink-800"
+          >
+            ✓
+          </button>
+        </div>
+      ) : (
+        <div
+          onClick={() => {
+            setEditingStatus(row.status as ReviewStatus);
+            setEditingReviewId(row.id);
+          }}
+          className="cursor-pointer"
+        >
+          <Badge tone={statusTone(row.status)} dot>
+            {row.status}
+          </Badge>
+        </div>
+      ),
   },
   {
     key: 'rating',
     header: 'Rating',
-    render: (row) => <StarRating rating={row.rating} />,
+    render: (row) =>
+      editingId === row.id ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            max="5"
+            value={editingRating ?? ''}
+            onChange={(e) => {
+              const val = e.target.value ? parseInt(e.target.value) : null;
+              if (val === null || (val >= 0 && val <= 5)) setEditingRating(val);
+            }}
+            className="input w-12"
+          />
+          <button
+            onClick={() => {
+              onEditRating(row.id, editingRating);
+              setEditingReviewId(null);
+            }}
+            className="text-ink-600 hover:text-ink-800"
+          >
+            ✓
+          </button>
+        </div>
+      ) : (
+        <div
+          onClick={() => {
+            setEditingRating(row.rating);
+            setEditingReviewId(row.id);
+          }}
+          className="cursor-pointer"
+        >
+          <StarRating rating={row.rating} />
+        </div>
+      ),
   },
   {
     key: 'dueDate',
@@ -203,29 +324,127 @@ const reviewColumns: Column<PerformanceReview>[] = [
 // ---------------------------------------------------------------------------
 export function PerformancePage() {
   const [tab, setTab] = useState('goals');
+  const [goalList, setGoalList] = useState<typeof goals>(() => getGoals());
+  const [reviewList, setReviewList] = useState<typeof reviews>(() => getReviews());
   const [goalSearch, setGoalSearch] = useState('');
   const [goalStatusFilter, setGoalStatusFilter] = useState('');
   const [reviewStatusFilter, setReviewStatusFilter] = useState('');
 
-  // Stat card aggregates
-  const activeGoals = useMemo(() => goals.filter((g) => g.status !== 'Completed').length, []);
-  const avgProgress = useMemo(() => {
-    if (!goals.length) return 0;
-    return Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length);
+  // Create Goal Modal
+  const [createGoalOpen, setCreateGoalOpen] = useState(false);
+  const [formEmpId, setFormEmpId] = useState('');
+  const [formTitle, setFormTitle] = useState('');
+  const [formCategory, setFormCategory] = useState('Business');
+  const [formCycle, setFormCycle] = useState('H1 2026');
+  const [formDueDate, setFormDueDate] = useState('');
+  const [formWeight, setFormWeight] = useState('25');
+  const [formReviewer, setFormReviewer] = useState('Aarav Sharma');
+  const [formError, setFormError] = useState('');
+
+  // Edit Goal inline
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingStatus, setEditingStatus] = useState<GoalStatus>('On Track');
+
+  // Edit Review inline
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [editingReviewStatus, setEditingReviewStatus] = useState<ReviewStatus>('Not Started');
+  const [editingReviewRating, setEditingReviewRating] = useState<number | null>(null);
+
+  useEffect(() => {
+    function handleGoalsChanged() {
+      setGoalList(getGoals());
+    }
+    function handleReviewsChanged() {
+      setReviewList(getReviews());
+    }
+
+    window.addEventListener(GOALS_CHANGED_EVENT, handleGoalsChanged);
+    window.addEventListener(REVIEWS_CHANGED_EVENT, handleReviewsChanged);
+    return () => {
+      window.removeEventListener(GOALS_CHANGED_EVENT, handleGoalsChanged);
+      window.removeEventListener(REVIEWS_CHANGED_EVENT, handleReviewsChanged);
+    };
   }, []);
+
+  function handleCreateGoal() {
+    if (!formEmpId || !formTitle.trim() || !formDueDate) {
+      setFormError('Please fill all required fields.');
+      return;
+    }
+    const weight = parseInt(formWeight, 10);
+    if (weight < 1 || weight > 100) {
+      setFormError('Weight must be between 1 and 100.');
+      return;
+    }
+
+    const newGoal: Goal = {
+      id: `goal-${String(goalList.length + 1).padStart(3, '0')}`,
+      employeeId: formEmpId,
+      title: formTitle.trim(),
+      category: formCategory,
+      cycle: formCycle,
+      progress: 0,
+      status: 'On Track',
+      dueDate: formDueDate,
+      weight,
+      reviewer: formReviewer,
+    };
+    const updated = [newGoal, ...getGoals()];
+    saveGoals(updated);
+    setGoalList(updated);
+    // Update review cycle and reviewer to match goal
+    updateReviewCycleByEmployee(formEmpId, formCycle);
+    updateReviewerByEmployee(formEmpId, formReviewer);
+    setCreateGoalOpen(false);
+    setFormEmpId('');
+    setFormTitle('');
+    setFormCategory('Business');
+    setFormCycle('H1 2026');
+    setFormDueDate('');
+    setFormWeight('25');
+    setFormReviewer('Aarav Sharma');
+    setFormError('');
+  }
+
+  function handleUpdateGoalProgress(goalId: string, newProgress: number) {
+    updateGoalProgress(goalId, newProgress);
+    setEditingGoalId(null);
+  }
+
+  function handleUpdateGoalStatus(goalId: string, newStatus: GoalStatus) {
+    updateGoalStatus(goalId, newStatus);
+    setEditingGoalId(null);
+  }
+
+  function handleUpdateReviewStatus(reviewId: string, newStatus: ReviewStatus) {
+    updateReviewStatus(reviewId, newStatus);
+    setEditingReviewId(null);
+  }
+
+  function handleUpdateReviewRating(reviewId: string, newRating: number | null) {
+    updateReviewRating(reviewId, newRating);
+    setEditingReviewId(null);
+  }
+
+  // Stat card aggregates
+  const activeGoals = useMemo(() => goalList.filter((g) => g.status !== 'Completed').length, [goalList]);
+  const avgProgress = useMemo(() => {
+    if (!goalList.length) return 0;
+    return Math.round(goalList.reduce((s, g) => s + g.progress, 0) / goalList.length);
+  }, [goalList]);
   const reviewsInProgress = useMemo(
-    () => reviews.filter((r) => r.status !== 'Not Started' && r.status !== 'Completed').length,
-    [],
+    () => reviewList.filter((r) => r.status !== 'Not Started' && r.status !== 'Completed').length,
+    [reviewList],
   );
   const avgRating = useMemo(() => {
-    const rated = reviews.filter((r) => r.rating !== null);
+    const rated = reviewList.filter((r) => r.rating !== null);
     if (!rated.length) return 0;
     return (rated.reduce((s, r) => s + (r.rating ?? 0), 0) / rated.length).toFixed(1);
-  }, []);
+  }, [reviewList]);
 
   // Filtered goals
   const filteredGoals = useMemo(() => {
-    return goals.filter((g) => {
+    return goalList.filter((g) => {
       const name = getEmployeeName(g.employeeId).toLowerCase();
       const matchSearch =
         !goalSearch ||
@@ -234,22 +453,22 @@ export function PerformancePage() {
       const matchStatus = !goalStatusFilter || g.status === goalStatusFilter;
       return matchSearch && matchStatus;
     });
-  }, [goalSearch, goalStatusFilter]);
+  }, [goalList, goalSearch, goalStatusFilter]);
 
   // Filtered reviews
   const filteredReviews = useMemo(() => {
-    return reviews.filter((r) => !reviewStatusFilter || r.status === reviewStatusFilter);
-  }, [reviewStatusFilter]);
+    return reviewList.filter((r) => !reviewStatusFilter || r.status === reviewStatusFilter);
+  }, [reviewList, reviewStatusFilter]);
 
   // Insights data
-  const ratingDist = useMemo(() => ratingDistribution(), []);
+  const ratingDist = useMemo(() => ratingDistribution(reviewList), [reviewList]);
   const goalStatusData = useMemo(() => {
     const map: Partial<Record<GoalStatus, number>> = {};
-    goals.forEach((g) => {
+    goalList.forEach((g) => {
       map[g.status] = (map[g.status] ?? 0) + 1;
     });
     return (Object.entries(map) as [GoalStatus, number][]).map(([name, value]) => ({ name, value }));
-  }, []);
+  }, [goalList]);
 
   const goalStatusOptions: { label: string; value: string }[] = [
     { label: 'All Statuses', value: '' },
@@ -269,8 +488,8 @@ export function PerformancePage() {
   ];
 
   const tabList = [
-    { id: 'goals', label: 'Goals & OKRs', count: goals.length },
-    { id: 'reviews', label: 'Reviews', count: reviews.length },
+    { id: 'goals', label: 'Goals & OKRs', count: goalList.length },
+    { id: 'reviews', label: 'Reviews', count: reviewList.length },
     { id: 'insights', label: 'Insights' },
   ];
 
@@ -279,6 +498,15 @@ export function PerformancePage() {
       <PageHeader
         title="Performance"
         subtitle="Track goals, performance reviews and ratings across the organisation."
+        actions={
+          <Button
+            variant="primary"
+            icon={<Plus size={16} />}
+            onClick={() => setCreateGoalOpen(true)}
+          >
+            Create Goal
+          </Button>
+        }
       />
 
       {/* Stat Cards */}
@@ -333,7 +561,7 @@ export function PerformancePage() {
               />
             </div>
             <Table
-              columns={goalColumns}
+              columns={goalColumnsWithEdit(handleUpdateGoalProgress, handleUpdateGoalStatus, editingGoalId, editingStatus, setEditingStatus, setEditingGoalId)}
               data={filteredGoals}
               keyExtractor={(r) => r.id}
               emptyMessage="No goals match your filters."
@@ -353,7 +581,7 @@ export function PerformancePage() {
               />
             </div>
             <Table
-              columns={reviewColumns}
+              columns={reviewColumnsWithEdit(handleUpdateReviewStatus, handleUpdateReviewRating, editingReviewId, editingReviewStatus, editingReviewRating, setEditingReviewStatus, setEditingReviewRating, setEditingReviewId)}
               data={filteredReviews}
               keyExtractor={(r) => r.id}
               emptyMessage="No reviews match your filter."
@@ -426,6 +654,126 @@ export function PerformancePage() {
           </div>
         )}
       </div>
+
+      {/* Create Goal Modal */}
+      <Modal
+        open={createGoalOpen}
+        onClose={() => {
+          setCreateGoalOpen(false);
+          setFormError('');
+        }}
+        title="Create Goal"
+        subtitle="Add a new goal or OKR for an employee"
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCreateGoalOpen(false);
+                setFormError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleCreateGoal} icon={<Plus size={15} />}>
+              Create Goal
+            </Button>
+          </>
+        }
+      >
+        {formError && (
+          <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
+            {formError}
+          </div>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="label">
+              Employee <span className="text-rose-500">*</span>
+            </label>
+            <Select
+              className="mt-1"
+              value={formEmpId}
+              onChange={setFormEmpId}
+              options={employees.map((e) => ({ label: e.fullName, value: e.id }))}
+              placeholder="Select employee"
+            />
+          </div>
+          <div>
+            <label className="label">
+              Goal Title <span className="text-rose-500">*</span>
+            </label>
+            <input
+              className="input mt-1"
+              placeholder="e.g. Ship 5 new features by Q4"
+              value={formTitle}
+              onChange={(e) => setFormTitle(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Category</label>
+              <Select
+                className="mt-1"
+                value={formCategory}
+                onChange={setFormCategory}
+                options={[
+                  { label: 'Business', value: 'Business' },
+                  { label: 'Technical', value: 'Technical' },
+                  { label: 'Personal Growth', value: 'Personal Growth' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="label">Cycle</label>
+              <Select
+                className="mt-1"
+                value={formCycle}
+                onChange={setFormCycle}
+                options={[
+                  { label: 'H1 2026', value: 'H1 2026' },
+                  { label: 'H2 2026', value: 'H2 2026' },
+                  { label: 'H1 2027', value: 'H1 2027' },
+                  { label: 'H2 2027', value: 'H2 2027' },
+                ]}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label">
+              Due Date <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="date"
+              className="input mt-1"
+              value={formDueDate}
+              onChange={(e) => setFormDueDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Weight (%)</label>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              className="input mt-1"
+              value={formWeight}
+              onChange={(e) => setFormWeight(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Reviewer</label>
+            <Select
+              className="mt-1"
+              value={formReviewer}
+              onChange={setFormReviewer}
+              options={employees.map((e) => ({ label: e.fullName, value: e.fullName }))}
+              placeholder="Select reviewer"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
