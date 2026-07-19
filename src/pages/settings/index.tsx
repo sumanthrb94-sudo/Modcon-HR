@@ -1489,9 +1489,91 @@ function IntegrationsSection() {
 // Section: Billing
 // ===========================================================================
 function BillingSection() {
+  const [planTier, setPlanTier] = useState<'Pro' | 'Enterprise'>('Pro');
+  const [totalSeats, setTotalSeats] = useState(60);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [addSeatsOpen, setAddSeatsOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [billingEmail, setBillingEmail] = useState('finance@modcon.io');
+  const [autoRenew, setAutoRenew] = useState(true);
+  const [addSeatsValue, setAddSeatsValue] = useState('5');
+  const [addSeatsError, setAddSeatsError] = useState('');
+  const [actionNotice, setActionNotice] = useState('');
+
   const usedSeats = employees.length;
-  const totalSeats = 60;
   const usedPct = Math.round((usedSeats / totalSeats) * 100);
+  const isEnterprise = planTier === 'Enterprise';
+
+  const invoices = [
+    { id: 'INV-2026-06', date: '2026-06-01', amount: 299940, status: 'Paid' },
+    { id: 'INV-2026-03', date: '2026-03-01', amount: 299940, status: 'Paid' },
+    { id: 'INV-2025-12', date: '2025-12-01', amount: 279960, status: 'Paid' },
+  ];
+
+  function formatAmount(amount: number) {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  }
+
+  function downloadInvoice(invoiceId: string) {
+    const invoice = invoices.find((item) => item.id === invoiceId);
+    if (!invoice) return;
+
+    const fileText = [
+      'ModCon HR Invoice',
+      `Invoice ID: ${invoice.id}`,
+      `Date: ${formatDate(invoice.date)}`,
+      `Plan: ${planTier}`,
+      `Seats: ${isEnterprise ? 'Unlimited' : totalSeats}`,
+      `Amount: ${formatAmount(invoice.amount)}`,
+      `Status: ${invoice.status}`,
+    ].join('\n');
+
+    const blob = new Blob([fileText], { type: 'text/plain;charset=utf-8' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = `${invoice.id}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(downloadUrl);
+
+    setActionNotice(`Downloaded invoice ${invoice.id}.`);
+  }
+
+  function handleSaveSubscription() {
+    if (!billingEmail.trim()) {
+      return;
+    }
+    setManageOpen(false);
+    setActionNotice('Subscription details updated successfully.');
+  }
+
+  function handleAddSeats() {
+    const seats = Number(addSeatsValue);
+    if (!Number.isFinite(seats) || seats <= 0) {
+      setAddSeatsError('Please enter a valid number of seats to add.');
+      return;
+    }
+
+    setTotalSeats((prev) => prev + seats);
+    setAddSeatsOpen(false);
+    setAddSeatsValue('5');
+    setAddSeatsError('');
+    setActionNotice(`${seats} seat${seats > 1 ? 's' : ''} added to your plan.`);
+  }
+
+  function handleUpgradeEnterprise() {
+    setPlanTier('Enterprise');
+    setTotalSeats((prev) => Math.max(prev, 500));
+    setUpgradeOpen(false);
+    setActionNotice('Enterprise upgrade initiated. Our team will contact you shortly.');
+  }
 
   const planFeatures = [
     { feature: 'Employees (seats)', starter: '10', pro: '60', enterprise: 'Unlimited' },
@@ -1515,18 +1597,26 @@ function BillingSection() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-ink-900 text-lg">ModCon HR Pro</span>
+                <span className="font-bold text-ink-900 text-lg">{`ModCon HR ${planTier}`}</span>
                 <Badge tone="violet">Active</Badge>
               </div>
-              <p className="text-sm text-ink-500">Billed annually · ₹4,999/seat/year</p>
+              <p className="text-sm text-ink-500">
+                {isEnterprise ? 'Custom enterprise contract' : 'Billed annually · ₹4,999/seat/year'}
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm">Manage Subscription</Button>
-            <Button variant="ghost" size="sm">View Invoices</Button>
+            <Button variant="secondary" size="sm" onClick={() => setManageOpen(true)}>Manage Subscription</Button>
+            <Button variant="ghost" size="sm" onClick={() => setInvoiceOpen(true)}>View Invoices</Button>
           </div>
         </div>
       </Card>
+
+      {actionNotice && (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {actionNotice}
+        </div>
+      )}
 
       {/* Usage + next invoice */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
@@ -1555,11 +1645,15 @@ function BillingSection() {
             )}>
               <AlertCircle size={14} />
               {usedPct > 85
-                ? 'You\'re nearly at capacity. Upgrade to add more seats.'
-                : 'Consider upgrading soon to avoid disruption.'}
+                ? isEnterprise
+                  ? 'Seat usage is high. Consider adding more buffer seats.'
+                  : 'You\'re nearly at capacity. Upgrade to add more seats.'
+                : isEnterprise
+                  ? 'Usage is growing steadily across your organisation.'
+                  : 'Consider upgrading soon to avoid disruption.'}
             </div>
           )}
-          <Button variant="primary" size="sm" className="mt-3">Add Seats</Button>
+          <Button variant="primary" size="sm" className="mt-3" onClick={() => setAddSeatsOpen(true)}>Add Seats</Button>
         </Card>
 
         {/* Next invoice */}
@@ -1567,8 +1661,10 @@ function BillingSection() {
           <CardHeader title="Next Invoice" />
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-ink-500">Pro Plan (60 seats)</span>
-              <span className="font-semibold">₹2,99,940</span>
+              <span className="text-ink-500">
+                {isEnterprise ? 'Enterprise Plan' : `Pro Plan (${totalSeats} seats)`}
+              </span>
+              <span className="font-semibold">{formatAmount(299940)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-ink-500">Due date</span>
@@ -1580,7 +1676,7 @@ function BillingSection() {
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-ink-100">
-            <Button variant="secondary" size="sm" className="w-full">
+            <Button variant="secondary" size="sm" className="w-full" onClick={() => downloadInvoice(invoices[0].id)}>
               Download Last Invoice
             </Button>
           </div>
@@ -1636,9 +1732,128 @@ function BillingSection() {
           </table>
         </div>
         <div className="px-5 py-4 border-t border-ink-100">
-          <Button variant="primary" icon={<Zap size={15} />}>Upgrade to Enterprise</Button>
+          <Button
+            variant="primary"
+            icon={<Zap size={15} />}
+            onClick={() => setUpgradeOpen(true)}
+            disabled={isEnterprise}
+          >
+            {isEnterprise ? 'Enterprise Active' : 'Upgrade to Enterprise'}
+          </Button>
         </div>
       </Card>
+
+      <Modal
+        open={manageOpen}
+        onClose={() => setManageOpen(false)}
+        title="Manage Subscription"
+        subtitle="Update billing contact and renewal preferences"
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setManageOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleSaveSubscription}>Save Changes</Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <Field label="Billing Contact Email" type="email" value={billingEmail} onChange={setBillingEmail} />
+          <div className="rounded-xl border border-ink-100 px-3 py-1">
+            <Toggle
+              checked={autoRenew}
+              onChange={setAutoRenew}
+              label="Auto-renew subscription"
+              description="Renew plan automatically on billing date"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={invoiceOpen}
+        onClose={() => setInvoiceOpen(false)}
+        title="Invoices"
+        subtitle="View and download recent invoices"
+        size="lg"
+        footer={(
+          <Button variant="secondary" onClick={() => setInvoiceOpen(false)}>Close</Button>
+        )}
+      >
+        <div className="space-y-3">
+          {invoices.map((invoice) => (
+            <div key={invoice.id} className="flex flex-col gap-2 rounded-xl border border-ink-100 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-ink-800">{invoice.id}</p>
+                <p className="text-xs text-ink-500">{formatDate(invoice.date)} · {invoice.status}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-ink-800">{formatAmount(invoice.amount)}</span>
+                <Button variant="ghost" size="sm" onClick={() => downloadInvoice(invoice.id)}>Download</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      <Modal
+        open={addSeatsOpen}
+        onClose={() => {
+          setAddSeatsOpen(false);
+          setAddSeatsError('');
+          setAddSeatsValue('5');
+        }}
+        title="Add Seats"
+        subtitle="Increase your seat capacity immediately"
+        size="sm"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAddSeatsOpen(false);
+                setAddSeatsError('');
+                setAddSeatsValue('5');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleAddSeats}>Add Seats</Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <Field
+            label="Seats to Add"
+            type="number"
+            value={addSeatsValue}
+            onChange={(value) => {
+              setAddSeatsValue(value);
+              setAddSeatsError('');
+            }}
+            hint="Seats are provisioned instantly for your workspace"
+          />
+          {addSeatsError && <p className="text-sm text-rose-600">{addSeatsError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        title="Upgrade to Enterprise"
+        subtitle="Unlock unlimited seats, SSO, AI insights, and priority support"
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setUpgradeOpen(false)}>Not Now</Button>
+            <Button variant="primary" onClick={handleUpgradeEnterprise}>Confirm Upgrade</Button>
+          </>
+        )}
+      >
+        <div className="space-y-2 text-sm text-ink-600">
+          <p>Enterprise upgrade requests are activated by our billing team.</p>
+          <p>You will receive a confirmation email at {billingEmail}.</p>
+        </div>
+      </Modal>
     </SettingsSection>
   );
 }
