@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import {
   LayoutGrid,
@@ -922,8 +922,122 @@ export function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [profileOverrides, setProfileOverrides] = useState<Record<string, Partial<Employee>>>({});
 
-  const emp = id ? getEmployee(id) : undefined;
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [messageSubject, setMessageSubject] = useState('');
+  const [messageBody, setMessageBody] = useState('');
+  const [messageError, setMessageError] = useState('');
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editDesignation, setEditDesignation] = useState('');
+  const [editDepartment, setEditDepartment] = useState<Employee['department']>(departments[0] as Employee['department']);
+  const [editLocation, setEditLocation] = useState(locations[0] ?? 'Bengaluru');
+  const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>('Full-time');
+  const [editStatus, setEditStatus] = useState<EmployeeStatus>('Active');
+  const [editError, setEditError] = useState('');
+
+  const baseEmp = id ? getEmployee(id) : undefined;
+  const emp = useMemo(() => {
+    if (!baseEmp) return undefined;
+    const override = profileOverrides[baseEmp.id];
+    if (!override) return baseEmp;
+
+    const merged = { ...baseEmp, ...override } as Employee;
+    merged.fullName = `${merged.firstName} ${merged.lastName}`.trim();
+    return merged;
+  }, [baseEmp, profileOverrides]);
+
+  useEffect(() => {
+    if (!emp) return;
+    setMessageSubject(`Hello ${emp.firstName}`);
+    setMessageBody('');
+    setMessageError('');
+    setEditError('');
+  }, [emp?.id]);
+
+  function openMessageModal() {
+    if (!emp) return;
+    setMessageSubject(`Hello ${emp.firstName}`);
+    setMessageBody('');
+    setMessageError('');
+    setMessageOpen(true);
+  }
+
+  function handleSendMessage() {
+    if (!emp) return;
+    const subject = messageSubject.trim();
+    const body = messageBody.trim();
+
+    if (!body) {
+      setMessageError('Please add a message before sending.');
+      return;
+    }
+
+    const mailto = `mailto:${emp.email}?subject=${encodeURIComponent(subject || `Hello ${emp.firstName}`)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+    setMessageOpen(false);
+  }
+
+  function openEditProfile() {
+    if (!emp) return;
+    setEditFirstName(emp.firstName);
+    setEditLastName(emp.lastName);
+    setEditEmail(emp.email);
+    setEditPhone(emp.phone);
+    setEditDesignation(emp.designation);
+    setEditDepartment(emp.department);
+    setEditLocation(emp.location);
+    setEditEmploymentType(emp.employmentType);
+    setEditStatus(emp.status);
+    setEditError('');
+    setEditOpen(true);
+  }
+
+  function handleSaveProfile() {
+    if (!emp) return;
+
+    const firstName = editFirstName.trim();
+    const lastName = editLastName.trim();
+    const email = editEmail.trim().toLowerCase();
+    const designation = editDesignation.trim();
+
+    if (!firstName || !lastName) {
+      setEditError('First name and last name are required.');
+      return;
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEditError('Please enter a valid email address.');
+      return;
+    }
+    if (!designation) {
+      setEditError('Designation is required.');
+      return;
+    }
+
+    setProfileOverrides((prev) => ({
+      ...prev,
+      [emp.id]: {
+        ...prev[emp.id],
+        firstName,
+        lastName,
+        fullName: `${firstName} ${lastName}`.trim(),
+        email,
+        phone: editPhone.trim(),
+        designation,
+        department: editDepartment,
+        location: editLocation,
+        employmentType: editEmploymentType,
+        status: editStatus,
+      },
+    }));
+
+    setEditOpen(false);
+  }
 
   if (!emp) {
     return (
@@ -1004,8 +1118,8 @@ export function EmployeeDetailPage() {
 
           {/* Action buttons */}
           <div className="flex md:flex-col items-start gap-2 md:ml-auto shrink-0">
-            <Button variant="secondary" size="sm" icon={<MessageSquare size={14} />}>Message</Button>
-            <Button variant="secondary" size="sm" icon={<Edit2 size={14} />}>Edit Profile</Button>
+            <Button variant="secondary" size="sm" icon={<MessageSquare size={14} />} onClick={openMessageModal}>Message</Button>
+            <Button variant="secondary" size="sm" icon={<Edit2 size={14} />} onClick={openEditProfile}>Edit Profile</Button>
           </div>
         </div>
 
@@ -1050,6 +1164,146 @@ export function EmployeeDetailPage() {
       {activeTab === 'compensation' && <CompensationTab emp={emp} />}
       {activeTab === 'documents' && <DocumentsTab />}
       {activeTab === 'timeoff' && <TimeOffTab />}
+
+      <Modal
+        open={messageOpen}
+        onClose={() => {
+          setMessageOpen(false);
+          setMessageError('');
+        }}
+        title={`Message ${emp.fullName}`}
+        subtitle="Compose an email message"
+        size="sm"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setMessageOpen(false);
+                setMessageError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSendMessage}>Send Message</Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Subject</label>
+            <input
+              type="text"
+              value={messageSubject}
+              onChange={(event) => {
+                setMessageSubject(event.target.value);
+                setMessageError('');
+              }}
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Message</label>
+            <textarea
+              value={messageBody}
+              onChange={(event) => {
+                setMessageBody(event.target.value);
+                setMessageError('');
+              }}
+              rows={5}
+              className="input w-full resize-none"
+              placeholder="Write your message"
+            />
+          </div>
+          {messageError && <p className="text-sm text-rose-600">{messageError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false);
+          setEditError('');
+        }}
+        title="Edit Profile"
+        subtitle="Update employee information"
+        size="lg"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditOpen(false);
+                setEditError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveProfile}>Save Changes</Button>
+          </>
+        )}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">First Name</label>
+            <input type="text" value={editFirstName} onChange={(event) => setEditFirstName(event.target.value)} className="input w-full" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Last Name</label>
+            <input type="text" value={editLastName} onChange={(event) => setEditLastName(event.target.value)} className="input w-full" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Email</label>
+            <input type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} className="input w-full" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Phone</label>
+            <input type="tel" value={editPhone} onChange={(event) => setEditPhone(event.target.value)} className="input w-full" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Designation</label>
+            <input
+              type="text"
+              value={editDesignation}
+              onChange={(event) => setEditDesignation(event.target.value)}
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Department</label>
+            <Select
+              value={editDepartment}
+              onChange={(value) => setEditDepartment(value as Employee['department'])}
+              options={departments.map((department) => ({ label: department, value: department }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Location</label>
+            <Select
+              value={editLocation}
+              onChange={setEditLocation}
+              options={locations.map((location) => ({ label: location, value: location }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Employment Type</label>
+            <Select
+              value={editEmploymentType}
+              onChange={(value) => setEditEmploymentType(value as EmploymentType)}
+              options={(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((type) => ({ label: type, value: type }))}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Status</label>
+            <Select
+              value={editStatus}
+              onChange={(value) => setEditStatus(value as EmployeeStatus)}
+              options={(['Active', 'On Leave', 'Probation', 'Notice Period', 'Resigned'] as EmployeeStatus[]).map((status) => ({ label: status, value: status }))}
+            />
+          </div>
+          {editError && <p className="md:col-span-2 text-sm text-rose-600">{editError}</p>}
+        </div>
+      </Modal>
     </div>
   );
 }
