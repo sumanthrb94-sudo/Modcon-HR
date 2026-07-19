@@ -18,6 +18,16 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const [open, setOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement | null>(null);
 
+  // Reset the search dropdown when navigating to a new route. Adjusting
+  // state during render (rather than in an effect) avoids an extra
+  // cascading render on every navigation.
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  if (location.pathname !== prevPathname) {
+    setPrevPathname(location.pathname);
+    setOpen(false);
+    setQuery('');
+  }
+
   const searchableItems = useMemo(
     () => [
       ...navItems.map((item) => ({
@@ -43,11 +53,6 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       .filter((item) => item.label.toLowerCase().includes(term) || item.subtitle.toLowerCase().includes(term))
       .slice(0, 8);
   }, [query, searchableItems]);
-
-  useEffect(() => {
-    setOpen(false);
-    setQuery('');
-  }, [location.pathname]);
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {

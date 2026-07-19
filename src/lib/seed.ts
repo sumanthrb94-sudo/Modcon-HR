@@ -38,7 +38,7 @@ async function batchWrite<T extends { id?: string }>(
         const chunk = items.slice(i, i + BATCH_SIZE);
         const batch = writeBatch(db);
         for (const item of chunk) {
-            const id = (item as any).id || '';
+            const id = item.id || '';
             if (!id) continue; // Skip items without IDs
             const ref = doc(db, collectionPath, id);
             // Remove undefined fields (Firestore doesn't accept them)
@@ -59,7 +59,7 @@ export async function seedFirestore(
         onProgress?.(msg);
     };
 
-    const collections = [
+    const collections: { name: string; data: { id?: string }[] }[] = [
         { name: 'employees', data: employees },
         { name: 'attendance', data: attendanceRecords },
         { name: 'leave_requests', data: leaveRequests },
@@ -86,7 +86,7 @@ export async function seedFirestore(
     for (const col of collections) {
         try {
             log(`Seeding ${col.name}…`);
-            await batchWrite(col.name, col.data as any);
+            await batchWrite(col.name, col.data);
         } catch (err) {
             log(`⚠️  Skipped ${col.name}: ${String(err)}`);
         }

@@ -15,6 +15,7 @@ import { holidays } from '@/data/common';
 import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore } from '@/lib/seed';
+import { useAuth } from '@/lib/auth';
 
 // ===========================================================================
 // Tiny reusable primitives (settings-local)
@@ -1228,6 +1229,9 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'notifications', label: 'Notifications', icon: <Bell size={17} />, description: 'Alert preferences' },
   { id: 'integrations', label: 'Integrations', icon: <Plug size={17} />, description: 'Third-party connections' },
   { id: 'billing', label: 'Billing', icon: <CreditCard size={17} />, description: 'Plan & payments' },
+];
+
+const ADMIN_ONLY_NAV_ITEMS: NavItem[] = [
   { id: 'database', label: 'Database', icon: <Database size={17} />, description: 'Firestore seed & config' },
 ];
 
@@ -1235,7 +1239,9 @@ const NAV_ITEMS: NavItem[] = [
 // Main page
 // ===========================================================================
 export function SettingsPage() {
+  const { isAdmin } = useAuth();
   const [active, setActive] = useState('company');
+  const navItems = isAdmin ? [...NAV_ITEMS, ...ADMIN_ONLY_NAV_ITEMS] : NAV_ITEMS;
 
   function renderContent() {
     switch (active) {
@@ -1247,12 +1253,12 @@ export function SettingsPage() {
       case 'notifications': return <NotificationsSection />;
       case 'integrations': return <IntegrationsSection />;
       case 'billing': return <BillingSection />;
-      case 'database': return <DatabaseSection />;
+      case 'database': return isAdmin ? <DatabaseSection /> : null;
       default: return null;
     }
   }
 
-  const current = NAV_ITEMS.find((n) => n.id === active);
+  const current = navItems.find((n) => n.id === active);
 
   return (
     <div className="space-y-6">
@@ -1271,7 +1277,7 @@ export function SettingsPage() {
         <aside className="w-56 shrink-0 sticky top-6">
           <Card padding={false}>
             <nav className="py-2">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActive(item.id)}

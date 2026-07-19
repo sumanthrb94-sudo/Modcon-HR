@@ -21,7 +21,6 @@ const isLocalDev =
 export const db = isLocalDev
     ? initializeFirestore(firebaseApp, {
         experimentalForceLongPolling: true,
-        useFetchStreams: false,
     })
     : getFirestore(firebaseApp);
 export const auth = getAuth(firebaseApp);
