@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Building2, Users, CalendarDays, Shield, Bell,
   Plug, CreditCard, ChevronRight, Check, X,
@@ -1488,7 +1489,7 @@ function IntegrationsSection() {
 // ===========================================================================
 // Section: Billing
 // ===========================================================================
-function BillingSection() {
+function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: number }) {
   const [planTier, setPlanTier] = useState<'Pro' | 'Enterprise'>('Pro');
   const [totalSeats, setTotalSeats] = useState(60);
   const [manageOpen, setManageOpen] = useState(false);
@@ -1574,6 +1575,12 @@ function BillingSection() {
     setUpgradeOpen(false);
     setActionNotice('Enterprise upgrade initiated. Our team will contact you shortly.');
   }
+
+  useEffect(() => {
+    if (upgradeRequestToken > 0 && !isEnterprise) {
+      setUpgradeOpen(true);
+    }
+  }, [upgradeRequestToken, isEnterprise]);
 
   const planFeatures = [
     { feature: 'Employees (seats)', starter: '10', pro: '60', enterprise: 'Unlimited' },
@@ -1947,7 +1954,36 @@ const NAV_ITEMS: NavItem[] = [
 // Main page
 // ===========================================================================
 export function SettingsPage() {
+  const location = useLocation();
   const [active, setActive] = useState('company');
+  const [billingUpgradeRequestToken, setBillingUpgradeRequestToken] = useState(0);
+
+  useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    const queryTab = query.get('tab');
+    const queryAction = query.get('action');
+
+    if (queryTab && NAV_ITEMS.some((item) => item.id === queryTab)) {
+      setActive(queryTab);
+    }
+
+    if (queryAction === 'upgrade-plan') {
+      setActive('billing');
+      setBillingUpgradeRequestToken((prev) => prev + 1);
+    }
+
+    const state = location.state as { settingsTab?: string; billingAction?: string } | null;
+    if (!state) return;
+
+    if (state.settingsTab && NAV_ITEMS.some((item) => item.id === state.settingsTab)) {
+      setActive(state.settingsTab);
+    }
+
+    if (state.billingAction === 'upgrade-plan') {
+      setActive('billing');
+      setBillingUpgradeRequestToken((prev) => prev + 1);
+    }
+  }, [location.search, location.state]);
 
   function renderContent() {
     switch (active) {
@@ -1958,7 +1994,7 @@ export function SettingsPage() {
       case 'holidays': return <HolidaysSection />;
       case 'notifications': return <NotificationsSection />;
       case 'integrations': return <IntegrationsSection />;
-      case 'billing': return <BillingSection />;
+      case 'billing': return <BillingSection upgradeRequestToken={billingUpgradeRequestToken} />;
       case 'database': return <DatabaseSection />;
       default: return null;
     }

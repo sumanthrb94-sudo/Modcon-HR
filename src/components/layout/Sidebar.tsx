@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { navGroups, navItems } from '@/lib/nav';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,14 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+
+  function handleUpgradePlan() {
+    navigate('/settings?tab=billing&action=upgrade-plan');
+    onClose();
+  }
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -76,7 +83,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 p-4 text-white">
             <p className="text-sm font-semibold">ModCon HR Pro</p>
             <p className="text-xs text-brand-100 mt-0.5">Unlock advanced analytics & automations.</p>
-            <button className="mt-3 w-full rounded-lg bg-white/15 hover:bg-white/25 py-1.5 text-xs font-semibold transition-colors">
+            <button
+              type="button"
+              onClick={handleUpgradePlan}
+              className="mt-3 w-full rounded-lg bg-white/15 hover:bg-white/25 py-1.5 text-xs font-semibold transition-colors"
+            >
               Upgrade plan
             </button>
           </div>
