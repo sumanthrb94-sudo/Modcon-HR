@@ -39,7 +39,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, departments, locations } from '@/data/employees';
+import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, departments, locations } from '@/data/employees';
 import type { Employee, EmployeeStatus, EmploymentType } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { OrgChart } from './OrgChart';
@@ -944,6 +944,9 @@ export function EmployeeDetailPage() {
   const [messageBody, setMessageBody] = useState('');
   const [messageError, setMessageError] = useState('');
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   const [editOpen, setEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -996,6 +999,19 @@ export function EmployeeDetailPage() {
     const mailto = `mailto:${emp.email}?subject=${encodeURIComponent(subject || `Hello ${emp.firstName}`)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
     setMessageOpen(false);
+  }
+
+  function openDeleteProfile() {
+    if (!emp) return;
+    setDeleteError('');
+    setDeleteOpen(true);
+  }
+
+  function handleDeleteProfile() {
+    if (!emp) return;
+    deleteEmployeeFromDirectory(emp.id);
+    setDeleteOpen(false);
+    navigate('/employees');
   }
 
   function openEditProfile() {
@@ -1135,6 +1151,7 @@ export function EmployeeDetailPage() {
           <div className="flex md:flex-col items-start gap-2 md:ml-auto shrink-0">
             <Button variant="secondary" size="sm" icon={<MessageSquare size={14} />} onClick={openMessageModal}>Message</Button>
             <Button variant="secondary" size="sm" icon={<Edit2 size={14} />} onClick={openEditProfile}>Edit Profile</Button>
+            <Button variant="secondary" size="sm" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={openDeleteProfile}>Delete</Button>
           </div>
         </div>
 
@@ -1317,6 +1334,38 @@ export function EmployeeDetailPage() {
             />
           </div>
           {editError && <p className="md:col-span-2 text-sm text-rose-600">{editError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => {
+          setDeleteOpen(false);
+          setDeleteError('');
+        }}
+        title="Delete Profile"
+        subtitle={`Remove ${emp.fullName} from the employee directory`}
+        size="sm"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setDeleteOpen(false);
+                setDeleteError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleDeleteProfile}>Delete Profile</Button>
+          </>
+        )}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-ink-600">
+            This will remove the profile from the employee directory and it will no longer open at this route.
+          </p>
+          {deleteError && <p className="text-sm text-rose-600">{deleteError}</p>}
         </div>
       </Modal>
     </div>

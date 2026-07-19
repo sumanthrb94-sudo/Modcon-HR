@@ -110,6 +110,8 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
 }
 
 const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';
+const DELETED_EMPLOYEE_STORAGE_KEY = 'modcon.hr.deletedEmployees';
+const EMPLOYEE_DIRECTORY_CHANGED_EVENT = 'modcon-hr-directory-changed';
 
 function readCustomEmployees(): Employee[] {
   if (typeof window === 'undefined') return [];
@@ -128,8 +130,32 @@ function writeCustomEmployees(items: Employee[]) {
   window.localStorage.setItem(CUSTOM_EMPLOYEE_STORAGE_KEY, JSON.stringify(items));
 }
 
+function readDeletedEmployeeIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_EMPLOYEE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDeletedEmployeeIds(ids: string[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DELETED_EMPLOYEE_STORAGE_KEY, JSON.stringify(ids));
+}
+
+function notifyEmployeeDirectoryChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(EMPLOYEE_DIRECTORY_CHANGED_EVENT));
+}
+
 export function getEmployeeDirectory(): Employee[] {
-  const combined = [...buildEmployeeDirectory(seeds), ...readCustomEmployees()];
+  const deletedIds = new Set(readDeletedEmployeeIds());
+  const combined = [...buildEmployeeDirectory(seeds), ...readCustomEmployees()]
+    .filter((employee) => !deletedIds.has(employee.id));
   const byEmployeeId = new Map<string, Employee>();
   combined.forEach((employee) => {
     byEmployeeId.set(employee.id, employee);
@@ -146,7 +172,18 @@ export function getNextEmployeeSequence(directory: Employee[] = getEmployeeDirec
 
 export function addEmployeeToDirectory(employee: Employee) {
   const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
+  const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
   writeCustomEmployees([employee, ...customEmployees]);
+  writeDeletedEmployeeIds(deletedEmployeeIds);
+  notifyEmployeeDirectoryChanged();
+}
+
+export function deleteEmployeeFromDirectory(employeeId: string) {
+  const customEmployees = readCustomEmployees().filter((item) => item.id !== employeeId);
+  const deletedEmployeeIds = Array.from(new Set([...readDeletedEmployeeIds(), employeeId]));
+  writeCustomEmployees(customEmployees);
+  writeDeletedEmployeeIds(deletedEmployeeIds);
+  notifyEmployeeDirectoryChanged();
 }
 
 export const employees: Employee[] = getEmployeeDirectory();

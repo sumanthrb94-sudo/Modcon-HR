@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Clock,
   CheckCircle2,
@@ -24,9 +24,12 @@ import {
   EmptyState,
 } from '@/components/ui';
 import {
-  leaveRequests as initialLeaveRequests,
+  getLeaveRequests,
   getEmployeeBalances,
   balanceEmployeeIds,
+  saveLeaveRequests,
+  updateLeaveRequestStatus,
+  LEAVE_REQUESTS_CHANGED_EVENT,
 } from '@/data/leave';
 import { holidays } from '@/data/common';
 import { employees, getEmployee, getEmployeeName } from '@/data/employees';
@@ -54,7 +57,7 @@ const holidayTypeTone = (type: string) => {
 
 export function LeavePage() {
   const [activeTab, setActiveTab] = useState('requests');
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(initialLeaveRequests);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => getLeaveRequests());
 
   // Request filters
   const [search, setSearch] = useState('');
@@ -87,6 +90,15 @@ export function LeavePage() {
     [holidays],
   );
 
+  useEffect(() => {
+    function handleLeaveRequestsChanged() {
+      setLeaveRequests(getLeaveRequests());
+    }
+
+    window.addEventListener(LEAVE_REQUESTS_CHANGED_EVENT, handleLeaveRequestsChanged);
+    return () => window.removeEventListener(LEAVE_REQUESTS_CHANGED_EVENT, handleLeaveRequestsChanged);
+  }, []);
+
   // Filtered requests
   const filteredRequests = useMemo(() => {
     return leaveRequests.filter((r) => {
@@ -99,18 +111,15 @@ export function LeavePage() {
 
   // Approve / Reject handlers
   function approveLeave(id: string) {
-    setLeaveRequests((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? { ...r, status: 'Approved' as LeaveStatus, approverId: 'emp-004', approverName: 'Ananya Reddy' }
-          : r,
-      ),
-    );
+    const updated = updateLeaveRequestStatus(id, 'Approved', {
+      approverId: 'emp-004',
+      approverName: 'Ananya Reddy',
+    });
+    setLeaveRequests(updated);
   }
   function rejectLeave(id: string) {
-    setLeaveRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'Rejected' as LeaveStatus } : r)),
-    );
+    const updated = updateLeaveRequestStatus(id, 'Rejected');
+    setLeaveRequests(updated);
   }
 
   // Submit apply leave
@@ -140,7 +149,9 @@ export function LeavePage() {
       appliedOn: TODAY,
       approverId: null,
     };
-    setLeaveRequests((prev) => [newRequest, ...prev]);
+    const updatedRequests = [newRequest, ...leaveRequests];
+    saveLeaveRequests(updatedRequests);
+    setLeaveRequests(updatedRequests);
     setApplyOpen(false);
     setFormEmpId('');
     setFormType('Casual');
@@ -248,9 +259,9 @@ export function LeavePage() {
   type BalanceViewItem = { emp: NonNullable<ReturnType<typeof getEmployee>>; balances: ReturnType<typeof getEmployeeBalances> };
   const balancesView = useMemo((): BalanceViewItem[] => {
     return balanceEmployeeIds
-      .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId) }))
+      .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId, leaveRequests) }))
       .filter((b): b is BalanceViewItem => b.emp !== undefined);
-  }, []);
+  }, [leaveRequests]);
 
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {

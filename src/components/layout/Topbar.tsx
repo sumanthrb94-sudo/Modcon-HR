@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Search } from 'lucide-react';
 import { Avatar, Button, NotificationsMenu, QuickAddMenu } from '@/components/ui';
 import { navItems } from '@/lib/nav';
-import { employees } from '@/data/employees';
+import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 
 interface TopbarProps {
@@ -16,6 +16,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const { profile, signOutUser } = useAuth();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [directoryRevision, setDirectoryRevision] = useState(0);
   const searchRef = useRef<HTMLDivElement | null>(null);
 
   const searchableItems = useMemo(
@@ -26,14 +27,14 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         subtitle: `${item.group} module`,
         path: item.path,
       })),
-      ...employees.slice(0, 30).map((employee) => ({
+      ...getEmployeeDirectory().slice(0, 30).map((employee) => ({
         id: `emp-${employee.id}`,
         label: employee.fullName,
         subtitle: `${employee.designation} · ${employee.department}`,
         path: `/employees/${employee.id}`,
       })),
     ],
-    [],
+    [directoryRevision],
   );
 
   const results = useMemo(() => {
@@ -59,6 +60,15 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    function handleDirectoryChange() {
+      setDirectoryRevision((value) => value + 1);
+    }
+
+    window.addEventListener('modcon-hr-directory-changed', handleDirectoryChange);
+    return () => window.removeEventListener('modcon-hr-directory-changed', handleDirectoryChange);
   }, []);
 
   function goTo(path: string) {

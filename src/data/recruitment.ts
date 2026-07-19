@@ -157,6 +157,52 @@ export const jobOpenings: JobOpening[] = [
   },
 ];
 
+const JOB_OPENINGS_STORAGE_KEY = 'modcon.hr.jobOpenings';
+export const JOB_OPENINGS_CHANGED_EVENT = 'modcon-hr-job-openings-changed';
+
+function readStoredJobOpenings(): JobOpening[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(JOB_OPENINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as JobOpening[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredJobOpenings(items: JobOpening[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(JOB_OPENINGS_STORAGE_KEY, JSON.stringify(items));
+}
+
+function notifyJobOpeningsChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(JOB_OPENINGS_CHANGED_EVENT));
+}
+
+export function getJobOpenings(): JobOpening[] {
+  return readStoredJobOpenings() ?? jobOpenings;
+}
+
+export function saveJobOpenings(items: JobOpening[]) {
+  writeStoredJobOpenings(items);
+  notifyJobOpeningsChanged();
+}
+
+export function addJobOpening(job: JobOpening) {
+  const next = [job, ...getJobOpenings().filter((item) => item.id !== job.id)];
+  saveJobOpenings(next);
+  return next;
+}
+
+export function deleteJobOpening(jobId: string) {
+  const next = getJobOpenings().filter((job) => job.id !== jobId);
+  saveJobOpenings(next);
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // Candidates
 // ---------------------------------------------------------------------------

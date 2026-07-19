@@ -1,4 +1,7 @@
-import type { LeaveRequest, LeaveBalance, LeaveType } from '@/types';
+import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
+
+const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
+export const LEAVE_REQUESTS_CHANGED_EVENT = 'modcon-hr-leave-requests-changed';
 
 // ---- Leave Requests ---------------------------------------------------------
 export const leaveRequests: LeaveRequest[] = [
@@ -180,6 +183,57 @@ export const leaveRequests: LeaveRequest[] = [
   },
 ];
 
+function readStoredLeaveRequests(): LeaveRequest[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(LEAVE_REQUESTS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LeaveRequest[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLeaveRequests(requests: LeaveRequest[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(LEAVE_REQUESTS_STORAGE_KEY, JSON.stringify(requests));
+}
+
+function notifyLeaveRequestsChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(LEAVE_REQUESTS_CHANGED_EVENT));
+}
+
+export function getLeaveRequests(): LeaveRequest[] {
+  const stored = readStoredLeaveRequests();
+  return stored ? stored : leaveRequests;
+}
+
+export function saveLeaveRequests(requests: LeaveRequest[]) {
+  writeStoredLeaveRequests(requests);
+  notifyLeaveRequestsChanged();
+}
+
+export function updateLeaveRequestStatus(
+  requestId: string,
+  nextStatus: LeaveStatus,
+  approver?: { approverId?: string | null; approverName?: string },
+) {
+  const updated = getLeaveRequests().map((request) =>
+    request.id === requestId
+      ? {
+          ...request,
+          status: nextStatus,
+          approverId: nextStatus === 'Approved' ? (approver?.approverId ?? request.approverId) : null,
+          approverName: nextStatus === 'Approved' ? (approver?.approverName ?? request.approverName) : undefined,
+        }
+      : request,
+  );
+  saveLeaveRequests(updated);
+  return updated;
+}
+
 // ---- Leave Balances ---------------------------------------------------------
 const LEAVE_TYPES: LeaveType[] = ['Casual', 'Sick', 'Earned'];
 
@@ -220,26 +274,66 @@ export const leaveBalances: LeaveBalance[] = balanceSeeds.flatMap((s) => [
   { employeeId: s.empId, type: 'Earned' as LeaveType, total: s.earned[0], used: s.earned[1], available: s.earned[0] - s.earned[1] },
 ]);
 
+const leaveBalanceTypes = new Set<LeaveType>(['Casual', 'Sick', 'Earned']);
+const leaveRequestBaseStatus = new Map(leaveRequests.map((request) => [request.id, request.status]));
+
+function cloneBalances(): LeaveBalance[] {
+  return leaveBalances.map((balance) => ({ ...balance }));
+}
+
+function applyLeaveRequestDelta(balances: LeaveBalance[], requests: LeaveRequest[]) {
+  const balanceByEmployee = new Map<string, Map<LeaveType, LeaveBalance>>();
+
+  balances.forEach((balance) => {
+    const employeeBalances = balanceByEmployee.get(balance.employeeId) ?? new Map<LeaveType, LeaveBalance>();
+    employeeBalances.set(balance.type, balance);
+    balanceByEmployee.set(balance.employeeId, employeeBalances);
+  });
+
+  requests.forEach((request) => {
+    if (!leaveBalanceTypes.has(request.type)) return;
+
+    const baseStatus = leaveRequestBaseStatus.get(request.id) ?? 'Pending';
+    const currentApproved = request.status === 'Approved' ? 1 : 0;
+    const baseApproved = baseStatus === 'Approved' ? 1 : 0;
+    const delta = currentApproved - baseApproved;
+    if (delta === 0) return;
+
+    const employeeBalances = balanceByEmployee.get(request.employeeId);
+    const balance = employeeBalances?.get(request.type);
+    if (!balance) return;
+
+    balance.used = Math.max(0, balance.used + request.days * delta);
+    balance.available = Math.max(0, balance.total - balance.used);
+  });
+
+  return balances;
+}
+
 // Helper: get balances for a specific employee
-export function getEmployeeBalances(employeeId: string): LeaveBalance[] {
-  return leaveBalances.filter((b) => b.employeeId === employeeId);
+export function getEmployeeBalances(employeeId: string, requests: LeaveRequest[] = getLeaveRequests()): LeaveBalance[] {
+  return applyLeaveRequestDelta(cloneBalances(), requests).filter((balance) => balance.employeeId === employeeId);
+}
+
+export function getLeaveBalances(requests: LeaveRequest[] = getLeaveRequests()): LeaveBalance[] {
+  return applyLeaveRequestDelta(cloneBalances(), requests);
 }
 
 // Helper: employees who are on approved leave on a given date
 export function getOnLeaveToday(date: string): LeaveRequest[] {
-  return leaveRequests.filter(
+  return getLeaveRequests().filter(
     (r) => r.status === 'Approved' && r.startDate <= date && r.endDate >= date,
   );
 }
 
 // Helper: pending count
 export function getPendingCount(): number {
-  return leaveRequests.filter((r) => r.status === 'Pending').length;
+  return getLeaveRequests().filter((r) => r.status === 'Pending').length;
 }
 
 // Helper: approved this month
 export function getApprovedThisMonth(month = '2026-06'): number {
-  return leaveRequests.filter(
+  return getLeaveRequests().filter(
     (r) => r.status === 'Approved' && r.appliedOn.startsWith(month),
   ).length;
 }

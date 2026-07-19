@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Briefcase,
   Users,
   MessageSquare,
   Gift,
   Plus,
+  Trash2,
   MapPin,
   Clock,
   Star,
@@ -39,7 +40,7 @@ import {
   ProgressBar,
 } from '@/components/ui';
 import { formatDate, timeAgo } from '@/lib/utils';
-import { jobOpenings as initialJobOpenings, candidates, hiringFunnel } from '@/data/recruitment';
+import { candidates, hiringFunnel, getJobOpenings, addJobOpening, deleteJobOpening, JOB_OPENINGS_CHANGED_EVENT } from '@/data/recruitment';
 import type { JobOpening, Candidate, CandidateStage, Department, EmploymentType, JobStatus } from '@/types';
 import { departments, locations, getEmployeeName } from '@/data/employees';
 
@@ -111,9 +112,10 @@ function StarRating({ rating }: { rating: number }) {
 interface JobCardProps {
   job: JobOpening;
   onClick: () => void;
+  onDelete: () => void;
 }
 
-function JobCard({ job, onClick }: JobCardProps) {
+function JobCard({ job, onClick, onDelete }: JobCardProps) {
   const manager = getEmployeeName(job.hiringManagerId);
   return (
     <Card
@@ -156,6 +158,20 @@ function JobCard({ job, onClick }: JobCardProps) {
         </div>
       </div>
       <div className="mt-2 text-xs text-ink-400">Posted {timeAgo(job.postedOn)}</div>
+      <div className="mt-3 flex justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+          icon={<Trash2 size={14} />}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+        >
+          Delete
+        </Button>
+      </div>
     </Card>
   );
 }
@@ -391,9 +407,10 @@ function CandidateDetailModal({ candidate, onClose }: CandidateDetailModalProps)
 interface JobDetailModalProps {
   job: JobOpening | null;
   onClose: () => void;
+  onDelete: () => void;
 }
 
-function JobDetailModal({ job, onClose }: JobDetailModalProps) {
+function JobDetailModal({ job, onClose, onDelete }: JobDetailModalProps) {
   if (!job) return null;
   const manager = getEmployeeName(job.hiringManagerId);
   const jobCandidates = candidates.filter((c) => c.jobId === job.id);
@@ -447,6 +464,12 @@ function JobDetailModal({ job, onClose }: JobDetailModalProps) {
             </div>
           </div>
         )}
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-ink-100">
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+          <Button variant="danger" icon={<Trash2 size={14} />} onClick={onDelete}>
+            Delete Job
+          </Button>
+        </div>
       </div>
     </Modal>
   );
@@ -463,9 +486,10 @@ const ALL = 'All';
 interface JobOpeningsTabProps {
   jobs: JobOpening[];
   onJobClick: (job: JobOpening) => void;
+  onDeleteJob: (job: JobOpening) => void;
 }
 
-function JobOpeningsTab({ jobs, onJobClick }: JobOpeningsTabProps) {
+function JobOpeningsTab({ jobs, onJobClick, onDeleteJob }: JobOpeningsTabProps) {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState(ALL);
   const [statusFilter, setStatusFilter] = useState(ALL);
@@ -519,7 +543,12 @@ function JobOpeningsTab({ jobs, onJobClick }: JobOpeningsTabProps) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((job) => (
-            <JobCard key={job.id} job={job} onClick={() => onJobClick(job)} />
+            <JobCard
+              key={job.id}
+              job={job}
+              onClick={() => onJobClick(job)}
+              onDelete={() => onDeleteJob(job)}
+            />
           ))}
         </div>
       )}
@@ -587,10 +616,10 @@ function CandidatePipelineTab({ onCandidateClick }: { onCandidateClick: (c: Cand
 // Analytics Tab
 // ---------------------------------------------------------------------------
 
-function AnalyticsTab() {
+function AnalyticsTab({ jobs }: { jobs: JobOpening[] }) {
   const funnelData = hiringFunnel();
   const total = candidates.length;
-  const openJobs = initialJobOpenings.filter((j) => j.status === 'Open');
+  const openJobs = jobs.filter((j) => j.status === 'Open');
 
   const sourceData = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -693,11 +722,21 @@ const TABS = [
 ];
 
 export function RecruitmentPage() {
-  const [jobs, setJobs] = useState<JobOpening[]>(initialJobOpenings);
+  const [jobs, setJobs] = useState<JobOpening[]>(() => getJobOpenings());
   const [activeTab, setActiveTab] = useState('openings');
   const [postJobOpen, setPostJobOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobOpening | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JobOpening | null>(null);
+
+  useEffect(() => {
+    function handleJobOpeningsChanged() {
+      setJobs(getJobOpenings());
+    }
+
+    window.addEventListener(JOB_OPENINGS_CHANGED_EVENT, handleJobOpeningsChanged);
+    return () => window.removeEventListener(JOB_OPENINGS_CHANGED_EVENT, handleJobOpeningsChanged);
+  }, []);
 
   const stats = useMemo(() => {
     const open = jobs.filter((j) => j.status === 'Open').reduce((s, j) => s + j.openings, 0);
@@ -722,7 +761,13 @@ export function RecruitmentPage() {
       experience: form.experience || 'Not specified',
       description: '',
     };
-    setJobs((prev) => [newJob, ...prev]);
+    setJobs(addJobOpening(newJob));
+  }
+
+  function handleDeleteJob(job: JobOpening) {
+    setJobs(deleteJobOpening(job.id));
+    if (selectedJob?.id === job.id) setSelectedJob(null);
+    setDeleteTarget(null);
   }
 
   const tabItems = TABS.map((t) => ({
@@ -787,20 +832,46 @@ export function RecruitmentPage() {
       <Tabs tabs={tabItems} active={activeTab} onChange={setActiveTab} className="mb-0" />
 
       {activeTab === 'openings' && (
-        <JobOpeningsTab jobs={jobs} onJobClick={setSelectedJob} />
+        <JobOpeningsTab jobs={jobs} onJobClick={setSelectedJob} onDeleteJob={setDeleteTarget} />
       )}
       {activeTab === 'pipeline' && (
         <CandidatePipelineTab onCandidateClick={setSelectedCandidate} />
       )}
-      {activeTab === 'analytics' && <AnalyticsTab />}
+      {activeTab === 'analytics' && <AnalyticsTab jobs={jobs} />}
 
       <PostJobModal
         open={postJobOpen}
         onClose={() => setPostJobOpen(false)}
         onSubmit={handlePostJob}
       />
-      <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <JobDetailModal
+        job={selectedJob}
+        onClose={() => setSelectedJob(null)}
+        onDelete={() => {
+          if (selectedJob) setDeleteTarget(selectedJob);
+        }}
+      />
       <CandidateDetailModal candidate={selectedCandidate} onClose={() => setSelectedCandidate(null)} />
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete Job"
+        subtitle={`Remove ${deleteTarget?.title ?? 'this job'} from the recruitment board`}
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="danger" onClick={() => deleteTarget && handleDeleteJob(deleteTarget)}>
+              Delete Job
+            </Button>
+          </>
+        )}
+      >
+        <p className="text-sm text-ink-600">
+          Deleted job posts are removed from the job board and stay deleted after refresh.
+        </p>
+      </Modal>
     </div>
   );
 }

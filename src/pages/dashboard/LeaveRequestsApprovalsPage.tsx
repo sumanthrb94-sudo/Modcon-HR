@@ -1,31 +1,41 @@
 import { ChevronLeft, CalendarOff } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { leaveRequests } from '@/data/leave';
+import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
 import { employees } from '@/data/employees';
 import { formatDate } from '@/lib/utils';
-import type { LeaveStatus } from '@/types';
 
 export function LeaveRequestsApprovalsPage() {
     const navigate = useNavigate();
-    const [requestStatuses, setRequestStatuses] = useState<Record<string, LeaveStatus>>(() =>
-        leaveRequests.reduce((acc, request) => {
-            acc[request.id] = request.status;
-            return acc;
-        }, {} as Record<string, LeaveStatus>),
-    );
+    const [leaveRequests, setLeaveRequests] = useState(() => getLeaveRequests());
+
+    useEffect(() => {
+        function handleLeaveRequestsChanged() {
+            setLeaveRequests(getLeaveRequests());
+        }
+
+        window.addEventListener(LEAVE_REQUESTS_CHANGED_EVENT, handleLeaveRequestsChanged);
+        return () => window.removeEventListener(LEAVE_REQUESTS_CHANGED_EVENT, handleLeaveRequestsChanged);
+    }, []);
 
     function updateRequestStatus(requestId: string, nextStatus: 'Approved' | 'Rejected') {
-        setRequestStatuses((prev) => ({ ...prev, [requestId]: nextStatus }));
+        const updated = updateLeaveRequestStatus(
+            requestId,
+            nextStatus,
+            nextStatus === 'Approved'
+                ? { approverId: 'emp-004', approverName: 'Ananya Reddy' }
+                : undefined,
+        );
+        setLeaveRequests(updated);
     }
 
     const pendingRequests = useMemo(
         () => leaveRequests
-            .filter((r) => requestStatuses[r.id] === 'Pending')
+            .filter((r) => r.status === 'Pending')
             .sort((a, b) => new Date(b.appliedOn).getTime() - new Date(a.appliedOn).getTime()),
-        [requestStatuses],
+        [leaveRequests],
     );
 
     return (
