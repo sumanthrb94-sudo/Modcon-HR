@@ -15,6 +15,7 @@ import {
   Plus,
   ThumbsUp,
   ThumbsDown,
+  IndianRupee,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -451,7 +452,7 @@ export function ExpensesPage() {
         <StatCard
           label="Total Claims"
           value={stats.total}
-          icon={<Receipt size={22} />}
+          icon={<IndianRupee size={22} />}
           iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
