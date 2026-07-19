@@ -79,43 +79,81 @@ const seeds: Seed[] = [
   { code: 'MC-082', first: 'Kabir', last: 'Mishra', gender: 'Male', designation: 'Legal Associate', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2024-01-08', dob: '1995-04-16', managerId: 'emp-036', ctc: 2100000, skills: ['Compliance', 'Policy', 'Contracts'] },
 ];
 
-export const employees: Employee[] = seeds.map((s, idx) => {
-  const id = `emp-${String(idx + 1).padStart(3, '0')}`;
-  return {
-    id,
-    employeeCode: s.code,
-    firstName: s.first,
-    lastName: s.last,
-    fullName: `${s.first} ${s.last}`,
-    email: `${s.first.toLowerCase()}.${s.last.toLowerCase()}@modcon.com`,
-    phone: `+91 ${90000 + idx}${String(10000 + idx * 7).slice(0, 5)}`,
-    avatar: `${s.first} ${s.last}`,
-    gender: s.gender,
-    dateOfBirth: s.dob,
-    designation: s.designation,
-    department: s.department,
-    location: s.location,
-    employmentType: s.type,
-    status: s.status,
-    dateOfJoining: s.doj,
-    reportingManagerId: s.managerId,
-    ctc: s.ctc,
-    bloodGroup: ['O+', 'A+', 'B+', 'AB+', 'O-'][idx % 5],
-    maritalStatus: idx % 3 === 0 ? 'Married' : 'Single',
-    address: `${s.location}, India`,
-    skills: s.skills,
-  };
-});
+function buildEmployeeDirectory(source: Seed[]): Employee[] {
+  return source.map((s, idx) => {
+    const id = `emp-${String(idx + 1).padStart(3, '0')}`;
+    return {
+      id,
+      employeeCode: s.code,
+      firstName: s.first,
+      lastName: s.last,
+      fullName: `${s.first} ${s.last}`,
+      email: `${s.first.toLowerCase()}.${s.last.toLowerCase()}@modcon.com`,
+      phone: `+91 ${90000 + idx}${String(10000 + idx * 7).slice(0, 5)}`,
+      avatar: `${s.first} ${s.last}`,
+      gender: s.gender,
+      dateOfBirth: s.dob,
+      designation: s.designation,
+      department: s.department,
+      location: s.location,
+      employmentType: s.type,
+      status: s.status,
+      dateOfJoining: s.doj,
+      reportingManagerId: s.managerId,
+      ctc: s.ctc,
+      bloodGroup: ['O+', 'A+', 'B+', 'AB+', 'O-'][idx % 5],
+      maritalStatus: idx % 3 === 0 ? 'Married' : 'Single',
+      address: `${s.location}, India`,
+      skills: s.skills,
+    };
+  });
+}
 
-// Resolve manager names now that ids are stable.
-const byId = new Map(employees.map((e) => [e.id, e]));
-employees.forEach((e) => {
-  e.reportingManagerName = e.reportingManagerId ? byId.get(e.reportingManagerId)?.fullName : undefined;
-});
+const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';
 
-export const getEmployee = (id: string): Employee | undefined => byId.get(id);
+function readCustomEmployees(): Employee[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_EMPLOYEE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Employee[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
-export const getEmployeeName = (id: string): string => byId.get(id)?.fullName ?? 'Unknown';
+function writeCustomEmployees(items: Employee[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(CUSTOM_EMPLOYEE_STORAGE_KEY, JSON.stringify(items));
+}
+
+export function getEmployeeDirectory(): Employee[] {
+  const combined = [...buildEmployeeDirectory(seeds), ...readCustomEmployees()];
+  const byEmployeeId = new Map<string, Employee>();
+  combined.forEach((employee) => {
+    byEmployeeId.set(employee.id, employee);
+  });
+  return Array.from(byEmployeeId.values());
+}
+
+export function getNextEmployeeSequence(directory: Employee[] = getEmployeeDirectory()): number {
+  return directory.reduce((max, employee) => {
+    const match = Number.parseInt(employee.id.replace('emp-', ''), 10);
+    return Number.isFinite(match) ? Math.max(max, match) : max;
+  }, 0) + 1;
+}
+
+export function addEmployeeToDirectory(employee: Employee) {
+  const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
+  writeCustomEmployees([employee, ...customEmployees]);
+}
+
+export const employees: Employee[] = getEmployeeDirectory();
+
+export const getEmployee = (id: string): Employee | undefined => getEmployeeDirectory().find((employee) => employee.id === id);
+
+export const getEmployeeName = (id: string): string => getEmployeeDirectory().find((employee) => employee.id === id)?.fullName ?? 'Unknown';
 
 export const departments: Department[] = [
   'Engineering',
@@ -130,4 +168,10 @@ export const departments: Department[] = [
   'Legal',
 ];
 
-export const locations = Array.from(new Set(employees.map((e) => e.location))).sort();
+export const locations = Array.from(new Set(employees.map((employee) => employee.location))).sort();
+
+// Resolve manager names now that ids are stable.
+const byId = new Map(employees.map((employee) => [employee.id, employee]));
+employees.forEach((employee) => {
+  employee.reportingManagerName = employee.reportingManagerId ? byId.get(employee.reportingManagerId)?.fullName : undefined;
+});

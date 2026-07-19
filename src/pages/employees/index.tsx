@@ -39,7 +39,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { employees, getEmployee, departments, locations } from '@/data/employees';
+import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, departments, locations } from '@/data/employees';
 import type { Employee, EmployeeStatus, EmploymentType } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { OrgChart } from './OrgChart';
@@ -78,7 +78,17 @@ interface NewEmployeePayload {
   reportingManagerId: string | null;
 }
 
-function AddEmployeeModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (payload: NewEmployeePayload) => void }) {
+function AddEmployeeModal({
+  open,
+  onClose,
+  onSave,
+  employeeOptions,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (payload: NewEmployeePayload) => void;
+  employeeOptions: Employee[];
+}) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -252,7 +262,7 @@ function AddEmployeeModal({ open, onClose, onSave }: { open: boolean; onClose: (
           <label className="block text-xs font-semibold text-ink-600 mb-1.5">Reporting Manager</label>
           <select className="input w-full" value={reportingManagerId} onChange={(event) => setReportingManagerId(event.target.value)}>
             <option value="">Select reporting manager</option>
-            {employees.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
+            {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
           </select>
         </div>
       </div>
@@ -268,7 +278,7 @@ type DirectoryTab = 'directory' | 'orgchart';
 
 export function EmployeesPage() {
   const navigate = useNavigate();
-  const [employeeList, setEmployeeList] = useState<Employee[]>(employees);
+  const [employeeList, setEmployeeList] = useState<Employee[]>(() => getEmployeeDirectory());
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -296,37 +306,37 @@ export function EmployeesPage() {
   const deptCount = new Set(employeeList.map((e) => e.department)).size;
 
   function handleAddEmployee(payload: NewEmployeePayload) {
-    setEmployeeList((prev) => {
-      const nextIndex = prev.length + 1;
-      const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
-      const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
-      const manager = payload.reportingManagerId ? prev.find((e) => e.id === payload.reportingManagerId) : undefined;
-      const nextEmployee: Employee = {
-        id: nextId,
-        employeeCode,
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        fullName: `${payload.firstName} ${payload.lastName}`,
-        email: payload.email,
-        phone: payload.phone || 'N/A',
-        avatar: `${payload.firstName} ${payload.lastName}`,
-        gender: 'Other',
-        dateOfBirth: '2000-01-01',
-        designation: payload.designation,
-        department: payload.department,
-        location: payload.location,
-        employmentType: payload.employmentType,
-        status: 'Active',
-        dateOfJoining: payload.dateOfJoining,
-        reportingManagerId: payload.reportingManagerId,
-        reportingManagerName: manager?.fullName,
-        ctc: payload.ctc,
-        maritalStatus: 'Single',
-        address: `${payload.location}, India`,
-        skills: [],
-      };
-      return [nextEmployee, ...prev];
-    });
+    const nextIndex = getNextEmployeeSequence(employeeList);
+    const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
+    const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
+    const manager = employeeList.find((e) => e.id === payload.reportingManagerId);
+    const nextEmployee: Employee = {
+      id: nextId,
+      employeeCode,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      fullName: `${payload.firstName} ${payload.lastName}`,
+      email: payload.email,
+      phone: payload.phone || 'N/A',
+      avatar: `${payload.firstName} ${payload.lastName}`,
+      gender: 'Other',
+      dateOfBirth: '2000-01-01',
+      designation: payload.designation,
+      department: payload.department,
+      location: payload.location,
+      employmentType: payload.employmentType,
+      status: 'Active',
+      dateOfJoining: payload.dateOfJoining,
+      reportingManagerId: payload.reportingManagerId,
+      reportingManagerName: manager?.fullName,
+      ctc: payload.ctc,
+      maritalStatus: 'Single',
+      address: `${payload.location}, India`,
+      skills: [],
+    };
+
+    addEmployeeToDirectory(nextEmployee);
+    setEmployeeList((prev) => [nextEmployee, ...prev]);
     setSearch('');
     setDeptFilter('');
     setLocationFilter('');
@@ -533,7 +543,12 @@ export function EmployeesPage() {
         </>
       )}
 
-      <AddEmployeeModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onSave={handleAddEmployee} />
+      <AddEmployeeModal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        onSave={handleAddEmployee}
+        employeeOptions={employeeList}
+      />
     </div>
   );
 }
