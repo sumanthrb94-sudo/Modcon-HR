@@ -10,11 +10,13 @@ import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
 } from '@/components/ui';
 import type { Column } from '@/components/ui';
+import { Select } from '@/components/ui';
 import { departments, employees } from '@/data/employees';
-import { holidays } from '@/data/common';
+import { holidays as holidaySeed } from '@/data/common';
 import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore } from '@/lib/seed';
+import type { Holiday } from '@/types';
 
 // ===========================================================================
 // Tiny reusable primitives (settings-local)
@@ -209,10 +211,15 @@ function DepartmentsSection() {
   const [departmentHeads, setDepartmentHeads] = useState<Record<string, string>>({ ...DEPT_HEADS });
   const [departmentOpenRoles, setDepartmentOpenRoles] = useState<Record<string, number>>(DEFAULT_DEPT_OPEN_ROLES);
   const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingDeptName, setEditingDeptName] = useState('');
+  const [editingDeptHead, setEditingDeptHead] = useState('');
+  const [editingDeptOpenRoles, setEditingDeptOpenRoles] = useState('0');
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptHead, setNewDeptHead] = useState('');
   const [newDeptOpenRoles, setNewDeptOpenRoles] = useState('0');
   const [addError, setAddError] = useState('');
+  const [editError, setEditError] = useState('');
 
   const deptRows: DeptRow[] = departmentList.map((d, idx) => ({
     name: d,
@@ -226,6 +233,21 @@ function DepartmentsSection() {
     setNewDeptHead('');
     setNewDeptOpenRoles('0');
     setAddError('');
+  }
+
+  function resetEditForm() {
+    setEditingDeptName('');
+    setEditingDeptHead('');
+    setEditingDeptOpenRoles('0');
+    setEditError('');
+  }
+
+  function openEditDepartment(row: DeptRow) {
+    setEditingDeptName(row.name);
+    setEditingDeptHead(row.head === '—' ? '' : row.head);
+    setEditingDeptOpenRoles(String(row.openRoles));
+    setEditError('');
+    setEditOpen(true);
   }
 
   function handleAddDepartment() {
@@ -251,6 +273,26 @@ function DepartmentsSection() {
     setDepartmentOpenRoles((prev) => ({ ...prev, [name]: openRolesValue }));
     setAddOpen(false);
     resetAddForm();
+  }
+
+  function handleUpdateDepartment() {
+    const name = editingDeptName.trim();
+    const head = editingDeptHead.trim();
+    const openRolesValue = Number(editingDeptOpenRoles);
+
+    if (!name) {
+      setEditError('Department name is required.');
+      return;
+    }
+    if (Number.isNaN(openRolesValue) || openRolesValue < 0) {
+      setEditError('Open roles must be 0 or more.');
+      return;
+    }
+
+    setDepartmentHeads((prev) => ({ ...prev, [name]: head || '—' }));
+    setDepartmentOpenRoles((prev) => ({ ...prev, [name]: openRolesValue }));
+    setEditOpen(false);
+    resetEditForm();
   }
 
   const cols: Column<DeptRow>[] = [
@@ -288,8 +330,10 @@ function DepartmentsSection() {
       key: 'actions',
       header: '',
       align: 'right',
-      render: () => (
-        <Button variant="ghost" size="sm" icon={<Edit2 size={13} />}>Edit</Button>
+      render: (r) => (
+        <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditDepartment(r)}>
+          Edit
+        </Button>
       ),
     },
   ];
@@ -358,6 +402,53 @@ function DepartmentsSection() {
           {addError && <p className="text-sm text-rose-600">{addError}</p>}
         </div>
       </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false);
+          resetEditForm();
+        }}
+        title="Edit Department"
+        subtitle="Update the department head and open roles"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditOpen(false);
+                resetEditForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleUpdateDepartment}>Save Changes</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Department Name" value={editingDeptName} onChange={setEditingDeptName} disabled hint="Department names are fixed in this demo." />
+          <Field
+            label="Department Head"
+            value={editingDeptHead}
+            onChange={(v) => {
+              setEditingDeptHead(v);
+              setEditError('');
+            }}
+          />
+          <Field
+            label="Open Roles"
+            type="number"
+            value={editingDeptOpenRoles}
+            onChange={(v) => {
+              setEditingDeptOpenRoles(v);
+              setEditError('');
+            }}
+          />
+          {editError && <p className="text-sm text-rose-600">{editError}</p>}
+        </div>
+      </Modal>
     </SettingsSection>
   );
 }
@@ -388,6 +479,14 @@ const defaultPolicies: LeavePolicy[] = [
 function LeavePolicies() {
   const [policies, setPolicies] = useState(defaultPolicies);
   const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingPolicyId, setEditingPolicyId] = useState('');
+  const [editingType, setEditingType] = useState('');
+  const [editingAnnual, setEditingAnnual] = useState('12');
+  const [editingApplicable, setEditingApplicable] = useState('All employees');
+  const [editingCarryForward, setEditingCarryForward] = useState(false);
+  const [editingEncashment, setEditingEncashment] = useState(false);
+  const [editingHalfDay, setEditingHalfDay] = useState(true);
   const [newType, setNewType] = useState('');
   const [newAnnual, setNewAnnual] = useState('12');
   const [newApplicable, setNewApplicable] = useState('All employees');
@@ -395,6 +494,7 @@ function LeavePolicies() {
   const [newEncashment, setNewEncashment] = useState(false);
   const [newHalfDay, setNewHalfDay] = useState(true);
   const [addError, setAddError] = useState('');
+  const [editError, setEditError] = useState('');
 
   function resetAddForm() {
     setNewType('');
@@ -404,6 +504,29 @@ function LeavePolicies() {
     setNewEncashment(false);
     setNewHalfDay(true);
     setAddError('');
+  }
+
+  function resetEditForm() {
+    setEditingPolicyId('');
+    setEditingType('');
+    setEditingAnnual('12');
+    setEditingApplicable('All employees');
+    setEditingCarryForward(false);
+    setEditingEncashment(false);
+    setEditingHalfDay(true);
+    setEditError('');
+  }
+
+  function openEditPolicy(policy: LeavePolicy) {
+    setEditingPolicyId(policy.id);
+    setEditingType(policy.type);
+    setEditingAnnual(String(policy.annual));
+    setEditingApplicable(policy.applicable);
+    setEditingCarryForward(policy.carryForward);
+    setEditingEncashment(policy.encashment);
+    setEditingHalfDay(policy.halfDay);
+    setEditError('');
+    setEditOpen(true);
   }
 
   function handleAddLeaveType() {
@@ -435,6 +558,36 @@ function LeavePolicies() {
     setPolicies((prev) => [...prev, next]);
     setAddOpen(false);
     resetAddForm();
+  }
+
+  function handleUpdateLeaveType() {
+    const leaveType = editingType.trim();
+    const annualQuota = Number(editingAnnual);
+
+    if (!leaveType) {
+      setEditError('Leave type name is required.');
+      return;
+    }
+    if (!Number.isFinite(annualQuota) || annualQuota < 0) {
+      setEditError('Annual quota must be 0 or more.');
+      return;
+    }
+
+    setPolicies((prev) => prev.map((policy) => (
+      policy.id === editingPolicyId
+        ? {
+            ...policy,
+            type: leaveType,
+            annual: annualQuota,
+            applicable: editingApplicable.trim() || 'All employees',
+            carryForward: editingCarryForward,
+            encashment: editingEncashment,
+            halfDay: editingHalfDay,
+          }
+        : policy
+    )));
+    setEditOpen(false);
+    resetEditForm();
   }
 
   const toggle = (id: string, key: 'carryForward' | 'encashment' | 'halfDay') => {
@@ -504,7 +657,7 @@ function LeavePolicies() {
       key: 'actions',
       header: '',
       align: 'right',
-      render: () => <Button variant="ghost" size="sm" icon={<Edit2 size={13} />}>Edit</Button>,
+      render: (r) => <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditPolicy(r)}>Edit</Button>,
     },
   ];
 
@@ -577,6 +730,68 @@ function LeavePolicies() {
           </div>
 
           {addError && <p className="text-sm text-rose-600">{addError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false);
+          resetEditForm();
+        }}
+        title="Edit Leave Type"
+        subtitle="Update the leave quota and rules"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditOpen(false);
+                resetEditForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleUpdateLeaveType}>Save Changes</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Leave Type"
+            value={editingType}
+            onChange={(v) => {
+              setEditingType(v);
+              setEditError('');
+            }}
+          />
+          <Field
+            label="Annual Quota"
+            type="number"
+            value={editingAnnual}
+            onChange={(v) => {
+              setEditingAnnual(v);
+              setEditError('');
+            }}
+            hint="Use 0 for unlimited"
+          />
+          <Field
+            label="Applicable To"
+            value={editingApplicable}
+            onChange={(v) => {
+              setEditingApplicable(v);
+              setEditError('');
+            }}
+          />
+
+          <div className="rounded-xl border border-ink-100 px-3 py-1">
+            <Toggle checked={editingCarryForward} onChange={setEditingCarryForward} label="Allow Carry Forward" />
+            <Toggle checked={editingEncashment} onChange={setEditingEncashment} label="Allow Encashment" />
+            <Toggle checked={editingHalfDay} onChange={setEditingHalfDay} label="Allow Half-Day" />
+          </div>
+
+          {editError && <p className="text-sm text-rose-600">{editError}</p>}
         </div>
       </Modal>
     </SettingsSection>
@@ -712,13 +927,107 @@ function RolesPermissions() {
 // Section: Holidays
 // ===========================================================================
 function HolidaysSection() {
+  const [holidayRows, setHolidayRows] = useState<Holiday[]>([...holidaySeed]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingHolidayId, setEditingHolidayId] = useState('');
+  const [editingHolidayName, setEditingHolidayName] = useState('');
+  const [editingHolidayDate, setEditingHolidayDate] = useState('');
+  const [editingHolidayType, setEditingHolidayType] = useState<Holiday['type']>('National');
+  const [newHolidayName, setNewHolidayName] = useState('');
+  const [newHolidayDate, setNewHolidayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newHolidayType, setNewHolidayType] = useState<Holiday['type']>('National');
+  const [addError, setAddError] = useState('');
+  const [editError, setEditError] = useState('');
+
   const typeTone: Record<string, BadgeTone> = {
     National: 'green',
     Regional: 'amber',
     Optional: 'blue',
   };
 
-  const cols: Column<typeof holidays[0]>[] = [
+  const holidayTypeOptions = [
+    { label: 'National', value: 'National' },
+    { label: 'Regional', value: 'Regional' },
+    { label: 'Optional', value: 'Optional' },
+  ];
+
+  function resetAddForm() {
+    setNewHolidayName('');
+    setNewHolidayDate(new Date().toISOString().slice(0, 10));
+    setNewHolidayType('National');
+    setAddError('');
+  }
+
+  function resetEditForm() {
+    setEditingHolidayId('');
+    setEditingHolidayName('');
+    setEditingHolidayDate('');
+    setEditingHolidayType('National');
+    setEditError('');
+  }
+
+  function openEditHoliday(holiday: Holiday) {
+    setEditingHolidayId(holiday.id);
+    setEditingHolidayName(holiday.name);
+    setEditingHolidayDate(holiday.date);
+    setEditingHolidayType(holiday.type);
+    setEditError('');
+    setEditOpen(true);
+  }
+
+  function handleAddHoliday() {
+    const name = newHolidayName.trim();
+    const date = newHolidayDate.trim();
+    const type = newHolidayType;
+
+    if (!name) {
+      setAddError('Holiday name is required.');
+      return;
+    }
+    if (!date) {
+      setAddError('Holiday date is required.');
+      return;
+    }
+    if (holidayRows.some((holiday) => holiday.name.toLowerCase() === name.toLowerCase() && holiday.date === date)) {
+      setAddError('This holiday already exists on that date.');
+      return;
+    }
+
+    const id = `h${Date.now()}`;
+    setHolidayRows((prev) => [...prev, { id, name, date, type }]);
+    setAddOpen(false);
+    resetAddForm();
+  }
+
+  function handleUpdateHoliday() {
+    const name = editingHolidayName.trim();
+    const date = editingHolidayDate.trim();
+    const type = editingHolidayType;
+
+    if (!name) {
+      setEditError('Holiday name is required.');
+      return;
+    }
+    if (!date) {
+      setEditError('Holiday date is required.');
+      return;
+    }
+    if (holidayRows.some((holiday) => holiday.id !== editingHolidayId && holiday.name.toLowerCase() === name.toLowerCase() && holiday.date === date)) {
+      setEditError('Another holiday already exists on that date.');
+      return;
+    }
+
+    setHolidayRows((prev) => prev.map((holiday) => (
+      holiday.id === editingHolidayId
+        ? { ...holiday, name, date, type }
+        : holiday
+    )));
+    setEditOpen(false);
+    resetEditForm();
+  }
+
+  const cols: Column<Holiday>[] = [
     { key: 'name', header: 'Holiday', render: (r) => <span className="font-medium text-ink-900">{r.name}</span> },
     { key: 'date', header: 'Date', render: (r) => <span className="text-ink-600">{formatDate(r.date)}</span> },
     {
@@ -739,7 +1048,7 @@ function HolidaysSection() {
       key: 'actions',
       header: '',
       align: 'right',
-      render: () => <Button variant="ghost" size="sm" icon={<Edit2 size={13} />}>Edit</Button>,
+      render: (r) => <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditHoliday(r)}>Edit</Button>,
     },
   ];
 
@@ -748,17 +1057,131 @@ function HolidaysSection() {
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <div className="flex items-center gap-4">
-            <p className="text-sm text-ink-500">{holidays.length} holidays — FY 2026</p>
+            <p className="text-sm text-ink-500">{holidayRows.length} holidays — FY 2026</p>
             <div className="flex gap-2">
               <Badge tone="green">National</Badge>
               <Badge tone="amber">Regional</Badge>
               <Badge tone="blue">Optional</Badge>
             </div>
           </div>
-          <Button variant="primary" size="sm" icon={<Plus size={14} />}>Add Holiday</Button>
+          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Holiday</Button>
         </div>
-        <Table columns={cols} data={holidays} keyExtractor={(r) => r.id} />
+        <Table columns={cols} data={holidayRows} keyExtractor={(r) => r.id} />
       </Card>
+
+      <Modal
+        open={addOpen}
+        onClose={() => {
+          setAddOpen(false);
+          resetAddForm();
+        }}
+        title="Add Holiday"
+        subtitle="Add a new holiday to the calendar"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAddOpen(false);
+                resetAddForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleAddHoliday}>Save Holiday</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Holiday Name"
+            value={newHolidayName}
+            onChange={(v) => {
+              setNewHolidayName(v);
+              setAddError('');
+            }}
+          />
+          <Field
+            label="Date"
+            type="date"
+            value={newHolidayDate}
+            onChange={(v) => {
+              setNewHolidayDate(v);
+              setAddError('');
+            }}
+          />
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Type</label>
+            <Select
+              value={newHolidayType}
+              onChange={(v) => {
+                setNewHolidayType(v as Holiday['type']);
+                setAddError('');
+              }}
+              options={holidayTypeOptions}
+            />
+          </div>
+          {addError && <p className="text-sm text-rose-600">{addError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false);
+          resetEditForm();
+        }}
+        title="Edit Holiday"
+        subtitle="Update the selected holiday"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditOpen(false);
+                resetEditForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleUpdateHoliday}>Save Changes</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Holiday Name"
+            value={editingHolidayName}
+            onChange={(v) => {
+              setEditingHolidayName(v);
+              setEditError('');
+            }}
+          />
+          <Field
+            label="Date"
+            type="date"
+            value={editingHolidayDate}
+            onChange={(v) => {
+              setEditingHolidayDate(v);
+              setEditError('');
+            }}
+          />
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Type</label>
+            <Select
+              value={editingHolidayType}
+              onChange={(v) => {
+                setEditingHolidayType(v as Holiday['type']);
+                setEditError('');
+              }}
+              options={holidayTypeOptions}
+            />
+          </div>
+          {editError && <p className="text-sm text-rose-600">{editError}</p>}
+        </div>
+      </Modal>
     </SettingsSection>
   );
 }
@@ -931,6 +1354,10 @@ const defaultIntegrations: Integration[] = [
 
 function IntegrationsSection() {
   const [integrations, setIntegrations] = useState(defaultIntegrations);
+  const [configureOpen, setConfigureOpen] = useState(false);
+  const [editingIntegration, setEditingIntegration] = useState<Integration | null>(null);
+  const [configLabel, setConfigLabel] = useState('');
+  const [configError, setConfigError] = useState('');
 
   const toggleConnect = (id: string) => {
     setIntegrations((prev) =>
@@ -940,6 +1367,34 @@ function IntegrationsSection() {
           : i,
       ),
     );
+  };
+
+  const openConfigure = (integration: Integration) => {
+    setEditingIntegration(integration);
+    setConfigLabel(integration.badge ?? (integration.connected ? 'Connected' : 'Not connected'));
+    setConfigError('');
+    setConfigureOpen(true);
+  };
+
+  const saveConfigure = () => {
+    if (!editingIntegration) return;
+    const nextLabel = configLabel.trim();
+    if (!nextLabel) {
+      setConfigError('Display label is required.');
+      return;
+    }
+
+    setIntegrations((prev) =>
+      prev.map((integration) =>
+        integration.id === editingIntegration.id
+          ? { ...integration, badge: nextLabel }
+          : integration,
+      ),
+    );
+    setConfigureOpen(false);
+    setEditingIntegration(null);
+    setConfigLabel('');
+    setConfigError('');
   };
 
   const categories = Array.from(new Set(integrations.map((i) => i.category)));
@@ -974,7 +1429,7 @@ function IntegrationsSection() {
                         {integ.connected ? 'Disconnect' : 'Connect'}
                       </Button>
                       {integ.connected && (
-                        <Button variant="ghost" size="sm" icon={<Edit2 size={13} />}>Configure</Button>
+                        <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openConfigure(integ)}>Configure</Button>
                       )}
                     </div>
                   </div>
@@ -984,6 +1439,48 @@ function IntegrationsSection() {
           </div>
         </div>
       ))}
+
+      <Modal
+        open={configureOpen}
+        onClose={() => {
+          setConfigureOpen(false);
+          setEditingIntegration(null);
+          setConfigLabel('');
+          setConfigError('');
+        }}
+        title="Configure Integration"
+        subtitle={editingIntegration ? `Adjust settings for ${editingIntegration.name}` : 'Adjust integration settings'}
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setConfigureOpen(false);
+                setEditingIntegration(null);
+                setConfigLabel('');
+                setConfigError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={saveConfigure}>Save Changes</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Display Label"
+            value={configLabel}
+            onChange={(v) => {
+              setConfigLabel(v);
+              setConfigError('');
+            }}
+            hint="Shown as the integration badge in this demo"
+          />
+          {configError && <p className="text-sm text-rose-600">{configError}</p>}
+        </div>
+      </Modal>
     </SettingsSection>
   );
 }

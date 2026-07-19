@@ -84,7 +84,7 @@ export function LeavePage() {
   );
   const upcomingHolidays = useMemo(
     () => holidays.filter((h) => h.date >= TODAY).length,
-    [],
+    [holidays],
   );
 
   // Filtered requests
@@ -262,7 +262,7 @@ export function LeavePage() {
   // ---- Holidays sorted by upcoming first ----
   const sortedHolidays = useMemo(
     () => [...holidays].sort((a, b) => a.date.localeCompare(b.date)),
-    [],
+    [holidays],
   );
 
   const statusOptions = [
