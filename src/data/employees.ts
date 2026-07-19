@@ -76,6 +76,7 @@ const seeds: Seed[] = [
   // Legal
   { code: 'MC-080', first: 'Shreya', last: 'Desai', gender: 'Female', designation: 'Legal Counsel', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-02-28', dob: '1988-09-21', managerId: 'emp-001', ctc: 4000000, skills: ['Contracts', 'Compliance'] },
   { code: 'MC-081', first: 'Nandini', last: 'Rao', gender: 'Female', designation: 'Legal Associate', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2023-08-14', dob: '1994-05-09', managerId: 'emp-035', ctc: 2200000, skills: ['Contracts', 'Documentation', 'Compliance'] },
+  { code: 'MC-082', first: 'Kabir', last: 'Mishra', gender: 'Male', designation: 'Legal Associate', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2024-01-08', dob: '1995-04-16', managerId: 'emp-036', ctc: 2100000, skills: ['Compliance', 'Policy', 'Contracts'] },
 ];
 
 export const employees: Employee[] = seeds.map((s, idx) => {
