@@ -11,12 +11,31 @@ interface StatCardProps {
   delta?: number; // percent change
   deltaLabel?: string;
   footer?: ReactNode;
+  onClick?: () => void;
+  active?: boolean;
 }
 
-export function StatCard({ label, value, icon, iconClass, delta, deltaLabel, footer }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  icon,
+  iconClass,
+  delta,
+  deltaLabel,
+  footer,
+  onClick,
+  active,
+}: StatCardProps) {
   const positive = (delta ?? 0) >= 0;
   return (
-    <Card className="hover:shadow-card-hover transition-shadow">
+    <Card
+      className={cn(
+        'hover:shadow-card-hover transition-all duration-200',
+        onClick && 'cursor-pointer select-none active:scale-[0.98]',
+        active && 'ring-2 ring-brand-500 border-brand-500 bg-brand-50/10'
+      )}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-ink-500">{label}</p>

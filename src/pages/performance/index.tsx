@@ -211,17 +211,21 @@ const goalColumnsWithEdit = (
           </button>
         </div>
       ) : (
-        <Badge
-          tone={goalStatusTone(row.status)}
-          dot
-          className="cursor-pointer hover:shadow-sm"
+        <span
+          className="cursor-pointer inline-flex"
           onClick={() => {
             setEditingStatus(row.status);
             setEditingGoalId(row.id);
           }}
         >
-          {row.status}
-        </Badge>
+          <Badge
+            tone={goalStatusTone(row.status)}
+            dot
+            className="hover:shadow-sm"
+          >
+            {row.status}
+          </Badge>
+        </span>
       ),
   },
 ];
@@ -269,7 +273,7 @@ const reviewColumnsWithEdit = (
         <div className="flex items-center gap-2">
           <Select
             value={editingStatus}
-            onChange={setEditingStatus}
+            onChange={(val) => setEditingStatus(val as ReviewStatus)}
             options={[
               { label: 'Not Started', value: 'Not Started' },
               { label: 'Self Review', value: 'Self Review' },

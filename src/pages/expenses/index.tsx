@@ -6,6 +6,13 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  LineChart,
+  Line,
 } from 'recharts';
 import {
   Receipt,
@@ -16,6 +23,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   IndianRupee,
+  BarChart3,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -254,6 +262,123 @@ function NewClaimModal({ open, onClose, onSubmit }: NewClaimModalProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Claim Detail Modal
+// ---------------------------------------------------------------------------
+
+interface ClaimDetailModalProps {
+  claim: ExpenseClaim | null;
+  onClose: () => void;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}
+
+function ClaimDetailModal({ claim, onClose, onApprove, onReject }: ClaimDetailModalProps) {
+  if (!claim) return null;
+  const name = getEmployeeName(claim.employeeId);
+  const emp = getEmployee(claim.employeeId);
+
+  return (
+    <Modal
+      open={!!claim}
+      onClose={onClose}
+      title="Expense Claim Details"
+      subtitle={claim.id}
+      size="md"
+      footer={
+        <div className="flex justify-between items-center w-full">
+          {claim.status === 'Submitted' ? (
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                icon={<ThumbsUp size={16} />}
+                onClick={() => {
+                  onApprove(claim.id);
+                  onClose();
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
+              >
+                Approve
+              </Button>
+              <Button
+                variant="secondary"
+                icon={<ThumbsDown size={16} />}
+                onClick={() => {
+                  onReject(claim.id);
+                  onClose();
+                }}
+                className="text-rose-600 hover:bg-rose-50 border-rose-200"
+              >
+                Reject
+              </Button>
+            </div>
+          ) : (
+            <div />
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-6">
+        {/* Employee Info Header */}
+        <div className="flex items-center gap-3 pb-4 border-b border-ink-100">
+          <Avatar name={name} size="md" />
+          <div>
+            <h4 className="font-semibold text-ink-900 text-base">{name}</h4>
+            <p className="text-sm text-ink-500">
+              {emp?.department || 'Department'} • {emp?.designation || 'Employee'}
+            </p>
+          </div>
+        </div>
+
+        {/* Claim Details Grid */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Title</p>
+            <p className="text-sm font-medium text-ink-800 mt-0.5">{claim.title}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Category</p>
+            <div className="mt-0.5">
+              <Badge tone={categoryTone(claim.category)}>{claim.category}</Badge>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Amount</p>
+            <p className="text-base font-bold text-ink-900 mt-0.5">{formatINR(claim.amount)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Status</p>
+            <div className="mt-0.5">
+              <Badge tone={statusTone(claim.status)} dot>{claim.status}</Badge>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Expense Date</p>
+            <p className="text-sm text-ink-700 mt-0.5">{formatDate(claim.date)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Submitted On</p>
+            <p className="text-sm text-ink-700 mt-0.5">{formatDate(claim.submittedOn)}</p>
+          </div>
+        </div>
+
+        {/* Description */}
+        {claim.description && (
+          <div className="pt-4 border-t border-ink-100">
+            <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">Description</p>
+            <p className="text-sm text-ink-600 mt-1 whitespace-pre-line leading-relaxed">
+              {claim.description}
+            </p>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -266,15 +391,26 @@ const STATUS_TABS: { id: TabId; label: string }[] = [
   { id: 'Draft', label: 'Draft' },
 ];
 
+type ViewTab = 'claims' | 'analytics';
+
+const VIEW_TABS = [
+  { id: 'claims', label: 'Claims' },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={14} /> },
+];
+
 export function ExpensesPage() {
   const [claims, setClaims] = useState<ExpenseClaim[]>(expenseClaims);
   const [activeTab, setActiveTab] = useState<TabId>('all');
+  const [activeView, setActiveView] = useState<ViewTab>('claims');
   const [search, setSearch] = useState('');
   const [newClaimOpen, setNewClaimOpen] = useState(false);
+  const [selectedClaim, setSelectedClaim] = useState<ExpenseClaim | null>(null);
 
   // ----- Actions -----
   function handleAddClaim(claim: ExpenseClaim) {
     setClaims((prev) => [claim, ...prev]);
+    setActiveTab('Submitted');
+    setSearch('');
   }
 
   function handleApprove(id: string) {
@@ -305,8 +441,6 @@ export function ExpensesPage() {
     return { total, submittedCount, submittedAmount, approvedThisMonth, reimbursedTotal };
   }, [claims]);
 
-  // ----- Chart data -----
-  const chartData = useMemo(() => expenseByCategory(claims), [claims]);
 
   // ----- Tab counts -----
   const tabsWithCounts = useMemo(
@@ -335,6 +469,33 @@ export function ExpensesPage() {
       return matchesTab && matchesSearch;
     });
   }, [claims, activeTab, search]);
+
+  // ----- Chart data -----
+  const chartData = useMemo(() => expenseByCategory(filteredClaims), [filteredClaims]);
+
+  const statusChartData = useMemo(
+    () =>
+      STATUS_TABS.filter((tab) => tab.id !== 'all').map((tab) => ({
+        status: tab.label,
+        count: claims.filter((claim) => claim.status === tab.id).length,
+      })),
+    [claims],
+  );
+
+  const monthlySpendData = useMemo(() => {
+    const monthlyTotals = filteredClaims.reduce<Record<string, number>>((acc, claim) => {
+      const monthKey = claim.submittedOn.slice(0, 7);
+      acc[monthKey] = (acc[monthKey] ?? 0) + claim.amount;
+      return acc;
+    }, {});
+
+    return Object.entries(monthlyTotals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, total]) => ({
+        month,
+        total,
+      }));
+  }, [filteredClaims]);
 
   // ----- Table columns -----
   const columns: Column<ExpenseClaim>[] = [
@@ -454,12 +615,16 @@ export function ExpensesPage() {
           value={stats.total}
           icon={<IndianRupee size={22} />}
           iconClass="bg-brand-50 text-brand-600"
+          onClick={() => setActiveTab('all')}
+          active={activeTab === 'all'}
         />
         <StatCard
           label="Pending Approval"
           value={stats.submittedCount}
           icon={<Clock size={22} />}
           iconClass="bg-amber-50 text-amber-600"
+          onClick={() => setActiveTab('Submitted')}
+          active={activeTab === 'Submitted'}
           footer={
             <span className="text-ink-400 text-sm">
               {formatINR(stats.submittedAmount, { compact: true })} pending
@@ -471,6 +636,8 @@ export function ExpensesPage() {
           value={stats.approvedThisMonth}
           icon={<CheckCircle size={22} />}
           iconClass="bg-emerald-50 text-emerald-600"
+          onClick={() => setActiveTab('Approved')}
+          active={activeTab === 'Approved'}
           delta={8}
           deltaLabel="vs last month"
         />
@@ -479,117 +646,226 @@ export function ExpensesPage() {
           value={formatINR(stats.reimbursedTotal, { compact: true })}
           icon={<Wallet size={22} />}
           iconClass="bg-violet-50 text-violet-600"
+          onClick={() => setActiveTab('Reimbursed')}
+          active={activeTab === 'Reimbursed'}
         />
       </div>
 
-      {/* Chart + Table layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-        {/* Donut chart */}
-        <Card className="xl:col-span-1">
-          <CardHeader title="Expenses by Category" subtitle="All-time distribution" />
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey="total"
-                  nameKey="category"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={56}
-                  outerRadius={88}
-                  paddingAngle={3}
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${entry.category}`}
-                      fill={PIE_COLORS[index % PIE_COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value: number) => [formatINR(value, { compact: true }), 'Amount']}
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(value: string) => (
-                    <span style={{ fontSize: 12, color: '#6b7280' }}>{value}</span>
-                  )}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        {/* Summary by category */}
-        <Card className="xl:col-span-2">
-          <CardHeader title="Category Breakdown" subtitle="Total claimed per category" />
-          <div className="divide-y divide-ink-100">
-            {chartData.map((row, i) => {
-              const grandTotal = chartData.reduce((s, r) => s + r.total, 0);
-              const pct = grandTotal ? Math.round((row.total / grandTotal) * 100) : 0;
-              return (
-                <div key={row.category} className="flex items-center gap-4 py-3">
-                  <span
-                    className="h-3 w-3 rounded-full shrink-0"
-                    style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
-                  />
-                  <span className="text-sm text-ink-700 flex-1">{row.category}</span>
-                  <div className="flex-1 bg-ink-100 rounded-full h-1.5 max-w-[120px]">
-                    <div
-                      className="h-1.5 rounded-full"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
-                      }}
-                    />
-                  </div>
-                  <span className="text-xs text-ink-400 w-8 text-right">{pct}%</span>
-                  <span className="text-sm font-semibold text-ink-900 w-20 text-right">
-                    {formatINR(row.total, { compact: true })}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
+      {/* View Switch */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="inline-flex rounded-lg border border-ink-200 bg-white p-1">
+          {VIEW_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveView(tab.id as ViewTab)}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeView === tab.id
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'text-ink-600 hover:bg-ink-50'
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Claims Table */}
-      <Card padding={false}>
-        <div className="px-5 pt-5">
-          <Tabs
-            tabs={tabsWithCounts}
-            active={activeTab}
-            onChange={(id) => setActiveTab(id as TabId)}
-          />
-        </div>
-
-        <div className="p-5">
-          <div className="mb-4">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Search by employee, title, category…"
-              className="max-w-sm"
-            />
+      {activeView === 'claims' ? (
+        <>
+          {/* Chart + Table layout */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+        {/* Donut chart */}
+            <Card className="xl:col-span-1">
+          <CardHeader title="Expenses by Category" subtitle="Current selection" />
+          <div className="h-64 flex flex-col justify-center items-center">
+            {chartData.length === 0 ? (
+              <div className="text-center text-ink-400 p-4">
+                <Receipt size={32} className="mx-auto mb-2 text-ink-300 animate-pulse" />
+                <p className="text-sm font-medium">No data available</p>
+                <p className="text-xs text-ink-400 mt-1">No claims match the active filters.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    dataKey="total"
+                    nameKey="category"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={56}
+                    outerRadius={88}
+                    paddingAngle={3}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${entry.category}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => [formatINR(value, { compact: true }), 'Amount']}
+                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                  />
+                  <Legend
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(value: string) => (
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{value}</span>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
-          <Table<ExpenseClaim>
-            columns={columns}
-            data={filteredClaims}
-            keyExtractor={(c) => c.id}
-            emptyMessage="No claims found"
-          />
+            </Card>
+
+        {/* Summary by category */}
+            <Card className="xl:col-span-2">
+          <CardHeader title="Category Breakdown" subtitle="Total claimed per category in selection" />
+          <div className="divide-y divide-ink-100 min-h-64 flex flex-col justify-center">
+            {chartData.length === 0 ? (
+              <div className="text-center text-ink-400 p-4">
+                <p className="text-sm font-medium text-ink-500">No data to display</p>
+              </div>
+            ) : (
+              chartData.map((row, i) => {
+                const grandTotal = chartData.reduce((s, r) => s + r.total, 0);
+                const pct = grandTotal ? Math.round((row.total / grandTotal) * 100) : 0;
+                return (
+                  <div key={row.category} className="flex items-center gap-4 py-3">
+                    <span
+                      className="h-3 w-3 rounded-full shrink-0"
+                      style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                    />
+                    <span className="text-sm text-ink-700 flex-1">{row.category}</span>
+                    <div className="flex-1 bg-ink-100 rounded-full h-1.5 max-w-[120px]">
+                      <div
+                        className="h-1.5 rounded-full"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs text-ink-400 w-8 text-right">{pct}%</span>
+                    <span className="text-sm font-semibold text-ink-900 w-20 text-right">
+                      {formatINR(row.total, { compact: true })}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+            </Card>
+          </div>
+
+          {/* Claims Table */}
+          <Card padding={false}>
+            <div className="px-5 pt-5">
+              <Tabs
+                tabs={tabsWithCounts}
+                active={activeTab}
+                onChange={(id) => setActiveTab(id as TabId)}
+              />
+            </div>
+
+            <div className="p-5">
+              <div className="mb-4">
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by employee, title, category…"
+                  className="max-w-sm"
+                />
+              </div>
+              <Table<ExpenseClaim>
+                columns={columns}
+                data={filteredClaims}
+                keyExtractor={(c) => c.id}
+                emptyMessage="No claims found"
+                onRowClick={(c) => setSelectedClaim(c)}
+              />
+            </div>
+          </Card>
+        </>
+      ) : (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader
+              title="Claims by Status"
+              subtitle="Distribution across all claims"
+            />
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={statusChartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                  <XAxis dataKey="status" tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                  <Tooltip
+                    formatter={(value: number) => [value, 'Claims']}
+                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                  />
+                  <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Submitted Spend Trend"
+              subtitle="Monthly amount for current filters"
+            />
+            <div className="h-72">
+              {monthlySpendData.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-ink-400">
+                  <BarChart3 size={28} className="mb-2 text-ink-300" />
+                  <p className="text-sm font-medium">No trend data available</p>
+                  <p className="text-xs mt-1">Adjust filters to include submitted claims.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlySpendData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                    <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                    <Tooltip
+                      formatter={(value: number) => [formatINR(value), 'Submitted']}
+                      contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#10b981' }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </Card>
         </div>
-      </Card>
+      )}
 
       {/* New Claim Modal */}
       <NewClaimModal
         open={newClaimOpen}
         onClose={() => setNewClaimOpen(false)}
         onSubmit={handleAddClaim}
+      />
+
+      {/* Claim Detail Modal */}
+      <ClaimDetailModal
+        claim={selectedClaim}
+        onClose={() => setSelectedClaim(null)}
+        onApprove={handleApprove}
+        onReject={handleReject}
       />
     </div>
   );
