@@ -8,7 +8,7 @@ export default tseslint.config(
     { ignores: ['dist', 'test-results', 'playwright-report'] },
     {
         extends: [js.configs.recommended, ...tseslint.configs.recommended],
-        files: ['**/*.{ts,tsx}'],
+        files: ['src/**/*.{ts,tsx}'],
         languageOptions: {
             ecmaVersion: 2022,
             globals: globals.browser,
@@ -28,6 +28,23 @@ export default tseslint.config(
                 'warn',
                 { allowConstantExport: true },
             ],
+            '@typescript-eslint/no-unused-vars': [
+                'warn',
+                { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+            ],
+        },
+    },
+    {
+        // Playwright test/config files: plain TS rules only. The
+        // react-hooks plugin misreads Playwright's `use` fixture parameter
+        // as the React `use()` hook, so it's not applied here.
+        extends: [js.configs.recommended, ...tseslint.configs.recommended],
+        files: ['e2e/**/*.ts', 'playwright*.config.ts'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            globals: { ...globals.node, ...globals.browser },
+        },
+        rules: {
             '@typescript-eslint/no-unused-vars': [
                 'warn',
                 { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

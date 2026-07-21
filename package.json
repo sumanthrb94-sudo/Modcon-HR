@@ -13,6 +13,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test:e2e": "playwright test",
+    "test:e2e:auth": "playwright test --config=playwright.emulator.config.ts",
+    "emulators": "firebase emulators:start --only auth,firestore --project modcon-hr",
+    "dev:emulator": "VITE_USE_FIREBASE_EMULATOR=true vite",
     "firebase:serve": "firebase emulators:start --only hosting",
     "firebase:deploy": "firebase deploy --only hosting"
   },
@@ -37,6 +40,7 @@
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
+    "firebase-tools": "^15.24.0",
     "globals": "^17.7.0",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.7",

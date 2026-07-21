@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'firebase/firestore';
+import { connectAuthEmulator, getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
     apiKey: 'AIzaSyCDTZ1Sc3ajyKE7fKnzDguzoIphn9tDRQU',
@@ -25,8 +25,17 @@ export const db = isLocalDev
     : getFirestore(firebaseApp);
 export const auth = getAuth(firebaseApp);
 
+// Point at the local Firebase Emulator Suite (see `firebase emulators:start`)
+// instead of the live project. Opt-in only, via VITE_USE_FIREBASE_EMULATOR=true
+// — used for local/CI e2e testing so tests never touch production data.
+const useEmulator = import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true';
+if (useEmulator) {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+}
+
 // Analytics requires a browser environment and feature support.
 export const analyticsPromise =
-    typeof window !== 'undefined' && !isLocalDev
+    typeof window !== 'undefined' && !isLocalDev && !useEmulator
         ? isSupported().then((ok) => (ok ? getAnalytics(firebaseApp) : null))
         : Promise.resolve(null);

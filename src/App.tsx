@@ -1,34 +1,47 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
 
-import { DashboardPage } from '@/pages/dashboard';
-import { EmployeesPage, EmployeeDetailPage } from '@/pages/employees';
-import { AttendancePage } from '@/pages/attendance';
-import { LeavePage } from '@/pages/leave';
-import { PayrollPage } from '@/pages/payroll';
-import { RecruitmentPage } from '@/pages/recruitment';
-import { OnboardingPage } from '@/pages/onboarding';
-import { PerformancePage } from '@/pages/performance';
-import { ExpensesPage } from '@/pages/expenses';
-import { AssetsPage } from '@/pages/assets';
-import { HelpdeskPage } from '@/pages/helpdesk';
-import { ReportsPage } from '@/pages/reports';
-import { SettingsPage } from '@/pages/settings';
-import { AdminDashboardPage } from '@/pages/admin';
-import { PendingApprovalsPage } from '@/pages/dashboard/PendingApprovalsPage';
-import { LeaveRequestsApprovalsPage } from '@/pages/dashboard/LeaveRequestsApprovalsPage';
-import { ExpenseClaimsApprovalsPage } from '@/pages/dashboard/ExpenseClaimsApprovalsPage';
-import { RegularizationsApprovalsPage } from '@/pages/dashboard/RegularizationsApprovalsPage';
-import { OnboardingTasksApprovalsPage } from '@/pages/dashboard/OnboardingTasksApprovalsPage';
-import { AnnouncementsPage } from '@/pages/dashboard/AnnouncementsPage';
-import { CelebrationsPage } from '@/pages/dashboard/CelebrationsPage';
-import { KpiGraphsPage } from '@/pages/dashboard/KpiGraphsPage';
-import { HolidayCalendarPage } from '@/pages/dashboard/HolidayCalendarPage';
-import { RecentActivityPage } from '@/pages/dashboard/RecentActivityPage';
-import { NotFoundPage } from '@/pages/NotFound';
-import { LoginPage } from '@/pages/login';
+// Route-level code splitting: each page module (and its heavy deps, e.g.
+// recharts on dashboard/reports) only loads when its route is visited,
+// instead of all being bundled into one ~1MB initial chunk.
+const DashboardPage = lazy(() => import('@/pages/dashboard').then((m) => ({ default: m.DashboardPage })));
+const EmployeesPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeesPage })));
+const EmployeeDetailPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeeDetailPage })));
+const AttendancePage = lazy(() => import('@/pages/attendance').then((m) => ({ default: m.AttendancePage })));
+const LeavePage = lazy(() => import('@/pages/leave').then((m) => ({ default: m.LeavePage })));
+const PayrollPage = lazy(() => import('@/pages/payroll').then((m) => ({ default: m.PayrollPage })));
+const RecruitmentPage = lazy(() => import('@/pages/recruitment').then((m) => ({ default: m.RecruitmentPage })));
+const OnboardingPage = lazy(() => import('@/pages/onboarding').then((m) => ({ default: m.OnboardingPage })));
+const PerformancePage = lazy(() => import('@/pages/performance').then((m) => ({ default: m.PerformancePage })));
+const ExpensesPage = lazy(() => import('@/pages/expenses').then((m) => ({ default: m.ExpensesPage })));
+const AssetsPage = lazy(() => import('@/pages/assets').then((m) => ({ default: m.AssetsPage })));
+const HelpdeskPage = lazy(() => import('@/pages/helpdesk').then((m) => ({ default: m.HelpdeskPage })));
+const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })));
+const SettingsPage = lazy(() => import('@/pages/settings').then((m) => ({ default: m.SettingsPage })));
+const AdminDashboardPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminDashboardPage })));
+const PendingApprovalsPage = lazy(() => import('@/pages/dashboard/PendingApprovalsPage').then((m) => ({ default: m.PendingApprovalsPage })));
+const LeaveRequestsApprovalsPage = lazy(() => import('@/pages/dashboard/LeaveRequestsApprovalsPage').then((m) => ({ default: m.LeaveRequestsApprovalsPage })));
+const ExpenseClaimsApprovalsPage = lazy(() => import('@/pages/dashboard/ExpenseClaimsApprovalsPage').then((m) => ({ default: m.ExpenseClaimsApprovalsPage })));
+const RegularizationsApprovalsPage = lazy(() => import('@/pages/dashboard/RegularizationsApprovalsPage').then((m) => ({ default: m.RegularizationsApprovalsPage })));
+const OnboardingTasksApprovalsPage = lazy(() => import('@/pages/dashboard/OnboardingTasksApprovalsPage').then((m) => ({ default: m.OnboardingTasksApprovalsPage })));
+const AnnouncementsPage = lazy(() => import('@/pages/dashboard/AnnouncementsPage').then((m) => ({ default: m.AnnouncementsPage })));
+const CelebrationsPage = lazy(() => import('@/pages/dashboard/CelebrationsPage').then((m) => ({ default: m.CelebrationsPage })));
+const KpiGraphsPage = lazy(() => import('@/pages/dashboard/KpiGraphsPage').then((m) => ({ default: m.KpiGraphsPage })));
+const HolidayCalendarPage = lazy(() => import('@/pages/dashboard/HolidayCalendarPage').then((m) => ({ default: m.HolidayCalendarPage })));
+const RecentActivityPage = lazy(() => import('@/pages/dashboard/RecentActivityPage').then((m) => ({ default: m.RecentActivityPage })));
+const NotFoundPage = lazy(() => import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })));
+const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.LoginPage })));
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-ink-50">
+      <Loader2 className="animate-spin text-brand-600" size={28} />
+    </div>
+  );
+}
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -59,6 +72,7 @@ function AppRoutes() {
   const { user, loading } = useAuth();
 
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route
         path="login"
@@ -93,6 +107,7 @@ function AppRoutes() {
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 
