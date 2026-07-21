@@ -8,7 +8,6 @@ import {
   MapPin,
   Clock,
   Star,
-  ChevronRight,
   BarChart3,
   Layers,
 } from 'lucide-react';

@@ -181,8 +181,6 @@ export const leaveRequests: LeaveRequest[] = [
 ];
 
 // ---- Leave Balances ---------------------------------------------------------
-const LEAVE_TYPES: LeaveType[] = ['Casual', 'Sick', 'Earned'];
-
 interface BalanceSeed {
   empId: string;
   casual: [number, number]; // [total, used]

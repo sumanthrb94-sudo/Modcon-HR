@@ -7,11 +7,11 @@ import {
 } from 'recharts';
 import {
   Users, TrendingDown, Clock, IndianRupee, Heart,
-  BarChart2, Calendar, Briefcase, Award, Activity,
+  Calendar, Briefcase, Award, Activity,
   FileText, Download, ChevronRight, UserCheck,
 } from 'lucide-react';
 import {
-  PageHeader, StatCard, Card, CardHeader, Badge, Button, Select,
+  PageHeader, StatCard, Card, CardHeader, Button, Select,
 } from '@/components/ui';
 import { formatINR } from '@/lib/utils';
 import {

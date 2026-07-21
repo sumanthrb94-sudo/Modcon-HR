@@ -23,7 +23,6 @@ import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    isSignInWithEmailLink,
     signOut,
     updateProfile,
     type User,

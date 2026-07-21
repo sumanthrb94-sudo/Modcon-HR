@@ -5,10 +5,7 @@ import {
     UserCog,
     Building2,
     Briefcase,
-    Wallet,
     Loader2,
-    ShieldAlert,
-    Search,
     Trash2,
 } from 'lucide-react';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, orderBy, query } from 'firebase/firestore';
@@ -54,7 +51,7 @@ function useUserDirectory() {
 export function AdminDashboardPage() {
     const { profile } = useAuth();
     const { users, loading: usersLoading } = useUserDirectory();
-    const { data: employees, loading: empLoading } = useEmployees();
+    const { data: employees } = useEmployees();
     const { data: jobs } = useJobOpenings();
     const { data: payrollRuns } = usePayrollRuns();
     const { data: expenses } = useExpenses();

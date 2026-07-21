@@ -9,9 +9,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { type CollectionReference, type DocumentData, type QueryConstraint } from 'firebase/firestore';
-import { subscribe } from './db';
-import { Collections } from './db';
+import { type CollectionReference, type QueryConstraint } from 'firebase/firestore';
+import { subscribe, Collections } from './db';
 import type {
     Employee,
     LeaveRequest,
@@ -49,6 +48,10 @@ function useCollection<T extends { id?: string }>(
             colRef,
             (docs) => {
                 setData(docs);
+                setLoading(false);
+            },
+            (err) => {
+                setError(err);
                 setLoading(false);
             },
             ...constraints,

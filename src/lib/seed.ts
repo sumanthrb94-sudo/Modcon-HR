@@ -13,7 +13,6 @@
 
 import { writeBatch, doc } from 'firebase/firestore';
 import { db } from './firebase';
-import { Collections } from './db';
 
 // Static data imports
 import { employees } from '@/data/employees';

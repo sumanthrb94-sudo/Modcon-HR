@@ -9,8 +9,8 @@ import {
 } from 'recharts';
 import {
   Users, CalendarCheck, CalendarOff, Briefcase, TrendingUp,
-  Clock, Bell, IndianRupee, CheckSquare, ChevronRight,
-  Cake, Star, UserPlus, Zap, Gift, MapPin, Megaphone,
+  Clock, IndianRupee, CheckSquare, ChevronRight,
+  Cake, Star, UserPlus, MapPin, Megaphone,
 } from 'lucide-react';
 
 import {

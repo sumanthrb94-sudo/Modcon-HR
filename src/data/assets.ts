@@ -1,4 +1,4 @@
-import type { Asset, AssetCategory, AssetStatus } from '@/types';
+import type { Asset } from '@/types';
 
 export const assets: Asset[] = [
   // Laptops

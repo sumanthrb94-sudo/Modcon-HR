@@ -1,4 +1,4 @@
-import type { Goal, GoalStatus, PerformanceReview, ReviewStatus } from '@/types';
+import type { Goal, PerformanceReview } from '@/types';
 
 export const goals: Goal[] = [
   // Engineering

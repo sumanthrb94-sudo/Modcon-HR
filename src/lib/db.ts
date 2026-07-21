@@ -131,12 +131,17 @@ export async function remove<T>(
 export function subscribe<T extends { id?: string }>(
     colRef: CollectionReference<T>,
     callback: (data: T[]) => void,
+    onError: ((error: Error) => void) | undefined,
     ...constraints: QueryConstraint[]
 ): Unsubscribe {
     const q = constraints.length ? query(colRef, ...constraints) : colRef;
-    return onSnapshot(q as CollectionReference<T>, (snap) => {
-        callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as T)));
-    });
+    return onSnapshot(
+        q as CollectionReference<T>,
+        (snap) => {
+            callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as T)));
+        },
+        onError,
+    );
 }
 
 // Re-export query helpers for convenience
