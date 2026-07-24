@@ -35,6 +35,18 @@ export interface Employee {
   skills?: string[];
 }
 
+// `ctc` lives on `Employee` above for the in-app mock/demo dataset, which is
+// never security-sensitive (synthetic data already shipped in the client
+// bundle). For the Firestore-backed path, compensation is written to its own
+// `employee_compensation` collection (see src/lib/seed.ts and
+// firestore.rules) so the broadly-readable `employees` collection doesn't
+// carry real salary data once this app is pointed at real employees.
+export interface EmployeeCompensation {
+  id?: ID; // Firestore doc id — always set equal to employeeId
+  employeeId: ID;
+  ctc: number;
+}
+
 export type Department =
   | 'Engineering'
   | 'Product'
@@ -225,6 +237,11 @@ export type ExpenseCategory = 'Travel' | 'Meals' | 'Accommodation' | 'Software' 
 export interface ExpenseClaim {
   id: ID;
   employeeId: ID;
+  // Firebase Auth uid of whoever created this claim. Distinct from
+  // `employeeId` (which is the mock HR employee id, e.g. "emp-003") — this
+  // is what Firestore security rules check to let a user manage their own
+  // claim, since employeeId never equals request.auth.uid.
+  ownerUid?: string;
   title: string;
   category: ExpenseCategory;
   amount: number;
@@ -232,6 +249,7 @@ export interface ExpenseClaim {
   status: ExpenseStatus;
   submittedOn: string;
   description: string;
+  receiptImage?: string;
 }
 
 // ---- Assets --------------------------------------------------------------

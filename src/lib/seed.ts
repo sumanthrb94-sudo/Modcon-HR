@@ -4,7 +4,14 @@
  * Call `seedFirestore()` from a dev-only UI or browser console to push all
  * static mock data into Firestore. It uses `setDoc` with the existing IDs so
  * it is idempotent — re-running it overwrites existing docs without creating
- * duplicates.
+ * duplicates (and, per the compensation split below, without leaving a
+ * stale `ctc` field behind from an older seed run).
+ *
+ * Employee compensation (`ctc`) is intentionally NOT written onto the
+ * `employees` collection — it's split into a separate `employee_compensation`
+ * collection so the broadly-readable employee directory never carries salary
+ * data. See the matching admin-only rule for that collection in
+ * firestore.rules.
  *
  * Usage (browser console):
  *   import { seedFirestore } from '@/lib/seed';
@@ -37,7 +44,7 @@ async function batchWrite<T extends { id?: string }>(
         const chunk = items.slice(i, i + BATCH_SIZE);
         const batch = writeBatch(db);
         for (const item of chunk) {
-            const id = (item as any).id || '';
+            const id = item.id ?? '';
             if (!id) continue; // Skip items without IDs
             const ref = doc(db, collectionPath, id);
             // Remove undefined fields (Firestore doesn't accept them)
@@ -58,8 +65,15 @@ export async function seedFirestore(
         onProgress?.(msg);
     };
 
+    // Compensation is seeded into its own admin-only collection (see
+    // firestore.rules) rather than left inline on the employee record, so
+    // the broadly-readable `employees` directory doesn't carry salary data.
+    const employeesWithoutComp = employees.map(({ ctc: _ctc, ...rest }) => rest);
+    const compensation = employees.map((e) => ({ id: e.id, employeeId: e.id, ctc: e.ctc }));
+
     const collections = [
-        { name: 'employees', data: employees },
+        { name: 'employees', data: employeesWithoutComp },
+        { name: 'employee_compensation', data: compensation },
         { name: 'attendance', data: attendanceRecords },
         { name: 'leave_requests', data: leaveRequests },
         {
@@ -85,7 +99,13 @@ export async function seedFirestore(
     for (const col of collections) {
         try {
             log(`Seeding ${col.name}…`);
-            await batchWrite(col.name, col.data as any);
+            // `collections` mixes several unrelated record shapes (Employee, Payslip,
+            // Ticket, ...) in one array literal, so TS can't unify a single element
+            // type across them. Every item does carry an `id` plus arbitrary other
+            // fields though, which is exactly what `batchWrite` needs — expressing
+            // that narrows the escape hatch from a bare `any` to a shape that still
+            // catches obvious mistakes (e.g. passing a non-object).
+            await batchWrite(col.name, col.data as Array<{ id?: string } & Record<string, unknown>>);
         } catch (err) {
             log(`⚠️  Skipped ${col.name}: ${String(err)}`);
         }

@@ -14,6 +14,7 @@ import { subscribe } from './db';
 import { Collections } from './db';
 import type {
     Employee,
+    EmployeeCompensation,
     LeaveRequest,
     JobOpening,
     Candidate,
@@ -66,6 +67,11 @@ function useCollection<T extends { id?: string }>(
 
 export function useEmployees() {
     return useCollection<Employee>(Collections.employees);
+}
+
+/** Admin-only: see Collections.employeeCompensation / firestore.rules. */
+export function useEmployeeCompensation() {
+    return useCollection<EmployeeCompensation>(Collections.employeeCompensation);
 }
 
 export function useLeaveRequests() {

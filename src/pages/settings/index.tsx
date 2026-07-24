@@ -1,23 +1,57 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Building2, Users, CalendarDays, Shield, Bell,
   Plug, CreditCard, ChevronRight, Check, X,
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
-  AlertCircle, CheckCircle2, Star, Database,
+  AlertCircle, CheckCircle2, Star, Database, Trash2,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
 } from '@/components/ui';
 import type { Column } from '@/components/ui';
 import { Select } from '@/components/ui';
-import { departments, employees } from '@/data/employees';
-import { holidays as holidaySeed } from '@/data/common';
+import { employees } from '@/data/employees';
+import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { getLeavePolicies, saveLeavePolicies, type LeavePolicy } from '@/data/leavePolicies';
+import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
+import {
+  APP_MODULES,
+  APP_ROLES,
+  defaultPermissions,
+  type AppModule,
+  type AppRole,
+  type PermissionLevel,
+  type PermissionMatrix,
+  savePermissionMatrix,
+  getPermissionMatrix,
+} from '@/lib/accessControl';
+import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
+import { getHolidayDirectory, saveHolidayDirectory } from '@/data/holidays';
+import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
+import { getIntegrationPreferences, saveIntegrationPreferences } from '@/data/integrations';
+import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
+import { getNotificationPreferences, saveNotificationPreferences, type NotificationPreference } from '@/data/notificationPreferences';
+import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
+import {
+  appendBillingInvoice,
+  getBillingInvoices,
+  getBillingPreferences,
+  saveBillingPreferences,
+  type BillingInvoice,
+  type BillingPlanTier,
+} from '@/data/billing';
+import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
+import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
 import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore } from '@/lib/seed';
 import type { Holiday } from '@/types';
+
+const COMPANY_LOGO_STORAGE_KEY = 'modcon.hr.companyLogo';
 
 // ===========================================================================
 // Tiny reusable primitives (settings-local)
@@ -111,6 +145,7 @@ function SettingsSection({ title, subtitle, children }: {
 // Section: Company Profile
 // ===========================================================================
 function CompanyProfile() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState({
     name: 'ModCon Technologies Pvt Ltd',
     legalName: 'ModCon Technologies Private Limited',
@@ -124,7 +159,25 @@ function CompanyProfile() {
     supportEmail: 'hr@modcon.io',
     phone: '+91 80 4567 8900',
   });
+  const [logoDataUrl, setLogoDataUrl] = useState('');
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const storedLogo = window.localStorage.getItem(COMPANY_LOGO_STORAGE_KEY);
+      if (storedLogo) setLogoDataUrl(storedLogo);
+    } catch {
+      // Ignore storage errors and fall back to the default logo.
+    }
+  }, []);
+
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      employeeCount: String(employees.length),
+    }));
+  }, [employees.length]);
 
   const update = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -133,24 +186,71 @@ function CompanyProfile() {
     setTimeout(() => setSaved(false), 2500);
   }
 
+  function handlePickLogo() {
+    fileInputRef.current?.click();
+  }
+
+  function handleLogoSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nextLogo = typeof reader.result === 'string' ? reader.result : '';
+      setLogoDataUrl(nextLogo);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(COMPANY_LOGO_STORAGE_KEY, nextLogo);
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  }
+
+  function handleRemoveLogo() {
+    setLogoDataUrl('');
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(COMPANY_LOGO_STORAGE_KEY);
+    }
+  }
+
   return (
     <SettingsSection title="Company Profile" subtitle="Core organisational information shown across the platform.">
       <Card>
         {/* Logo block */}
         <div className="flex items-center gap-5 pb-6 mb-6 border-b border-ink-100">
-          <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-brand-600 to-violet-600 flex items-center justify-center shrink-0 shadow-md">
-            <span className="text-white text-2xl font-black tracking-tighter">MC</span>
+          <div className="h-20 w-20 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-violet-600 flex items-center justify-center shrink-0 shadow-md">
+            {logoDataUrl ? (
+              <img src={logoDataUrl} alt="Company logo" className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-white text-2xl font-black tracking-tighter">MC</span>
+            )}
           </div>
           <div>
             <p className="font-semibold text-ink-900 text-lg">{form.name}</p>
             <p className="text-sm text-ink-500 mt-0.5">{form.industry} · Founded {form.founded}</p>
             <div className="flex gap-2 mt-2">
-              <Button variant="secondary" size="sm" icon={<Edit2 size={13} />}>
+              <Button variant="secondary" size="sm" icon={<Edit2 size={13} />} onClick={handlePickLogo}>
                 Change Logo
               </Button>
-              <Button variant="ghost" size="sm">Remove</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Trash2 size={13} />}
+                onClick={handleRemoveLogo}
+                disabled={!logoDataUrl}
+                className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
+              >
+                Remove
+              </Button>
             </div>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleLogoSelected}
+          />
         </div>
 
         {/* Form grid */}
@@ -189,49 +289,27 @@ interface DeptRow {
   openRoles: number;
 }
 
-const DEPT_HEADS: Record<string, string> = {
-  Engineering: 'Diya Mehta',
-  Product: 'Rohan Iyer',
-  Design: 'Kavya Menon',
-  Sales: 'Vikram Nair',
-  Marketing: 'Neha Chopra',
-  'Human Resources': 'Ananya Reddy',
-  Finance: 'Priya Kapoor',
-  Operations: 'Harsh Mehra',
-  'Customer Success': 'Gaurav Sinha',
-  Legal: 'Shreya Desai',
-};
-
-const DEFAULT_DEPT_OPEN_ROLES: Record<string, number> = departments.reduce<Record<string, number>>((acc, dept, idx) => {
-  acc[dept] = [2, 1, 0, 3, 1, 0, 0, 1, 2, 0][idx] ?? 0;
-  return acc;
-}, {});
-
 function DepartmentsSection() {
-  const [departmentList, setDepartmentList] = useState<string[]>([...departments]);
-  const [departmentHeads, setDepartmentHeads] = useState<Record<string, string>>({ ...DEPT_HEADS });
-  const [departmentOpenRoles, setDepartmentOpenRoles] = useState<Record<string, number>>(DEFAULT_DEPT_OPEN_ROLES);
+  const departmentRevision = useDepartmentDirectoryRevision();
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingDeptName, setEditingDeptName] = useState('');
   const [editingDeptHead, setEditingDeptHead] = useState('');
+  const [editingDeptHeadcount, setEditingDeptHeadcount] = useState('0');
   const [editingDeptOpenRoles, setEditingDeptOpenRoles] = useState('0');
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptHead, setNewDeptHead] = useState('');
+  const [newDeptHeadcount, setNewDeptHeadcount] = useState('0');
   const [newDeptOpenRoles, setNewDeptOpenRoles] = useState('0');
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
 
-  const deptRows: DeptRow[] = departmentList.map((d, idx) => ({
-    name: d,
-    head: departmentHeads[d] ?? '—',
-    headcount: employees.filter((e) => e.department === d).length,
-    openRoles: departmentOpenRoles[d] ?? (idx < 10 ? [2, 1, 0, 3, 1, 0, 0, 1, 2, 0][idx] : 0),
-  }));
+  const deptRows: DeptRow[] = useMemo(() => getDepartmentDirectory(), [departmentRevision]);
 
   function resetAddForm() {
     setNewDeptName('');
     setNewDeptHead('');
+    setNewDeptHeadcount('0');
     setNewDeptOpenRoles('0');
     setAddError('');
   }
@@ -239,6 +317,7 @@ function DepartmentsSection() {
   function resetEditForm() {
     setEditingDeptName('');
     setEditingDeptHead('');
+    setEditingDeptHeadcount('0');
     setEditingDeptOpenRoles('0');
     setEditError('');
   }
@@ -246,6 +325,7 @@ function DepartmentsSection() {
   function openEditDepartment(row: DeptRow) {
     setEditingDeptName(row.name);
     setEditingDeptHead(row.head === '—' ? '' : row.head);
+    setEditingDeptHeadcount(String(row.headcount));
     setEditingDeptOpenRoles(String(row.openRoles));
     setEditError('');
     setEditOpen(true);
@@ -254,14 +334,19 @@ function DepartmentsSection() {
   function handleAddDepartment() {
     const name = newDeptName.trim();
     const head = newDeptHead.trim();
+    const headcountValue = Number(newDeptHeadcount);
     const openRolesValue = Number(newDeptOpenRoles);
 
     if (!name) {
       setAddError('Department name is required.');
       return;
     }
-    if (departmentList.some((d) => d.toLowerCase() === name.toLowerCase())) {
+    if (deptRows.some((department) => department.name.toLowerCase() === name.toLowerCase())) {
       setAddError('A department with this name already exists.');
+      return;
+    }
+    if (Number.isNaN(headcountValue) || headcountValue < 0) {
+      setAddError('Headcount must be 0 or more.');
       return;
     }
     if (Number.isNaN(openRolesValue) || openRolesValue < 0) {
@@ -269,9 +354,12 @@ function DepartmentsSection() {
       return;
     }
 
-    setDepartmentList((prev) => [...prev, name]);
-    setDepartmentHeads((prev) => ({ ...prev, [name]: head || '—' }));
-    setDepartmentOpenRoles((prev) => ({ ...prev, [name]: openRolesValue }));
+    addDepartmentToDirectory({
+      name,
+      head: head || '—',
+      headcount: headcountValue,
+      openRoles: openRolesValue,
+    });
     setAddOpen(false);
     resetAddForm();
   }
@@ -285,13 +373,23 @@ function DepartmentsSection() {
       setEditError('Department name is required.');
       return;
     }
+    const headcountValue = Number(editingDeptHeadcount);
     if (Number.isNaN(openRolesValue) || openRolesValue < 0) {
       setEditError('Open roles must be 0 or more.');
       return;
     }
+    if (Number.isNaN(headcountValue) || headcountValue < 0) {
+      setEditError('Headcount must be 0 or more.');
+      return;
+    }
 
-    setDepartmentHeads((prev) => ({ ...prev, [name]: head || '—' }));
-    setDepartmentOpenRoles((prev) => ({ ...prev, [name]: openRolesValue }));
+    const currentRecord = getDepartmentRecord(name);
+    updateDepartmentInDirectory({
+      name,
+      head: head || '—',
+      headcount: headcountValue,
+      openRoles: openRolesValue,
+    });
     setEditOpen(false);
     resetEditForm();
   }
@@ -392,6 +490,15 @@ function DepartmentsSection() {
             hint="Optional"
           />
           <Field
+            label="Headcount"
+            type="number"
+            value={newDeptHeadcount}
+            onChange={(v) => {
+              setNewDeptHeadcount(v);
+              setAddError('');
+            }}
+          />
+          <Field
             label="Open Roles"
             type="number"
             value={newDeptOpenRoles}
@@ -439,6 +546,15 @@ function DepartmentsSection() {
             }}
           />
           <Field
+            label="Headcount"
+            type="number"
+            value={editingDeptHeadcount}
+            onChange={(v) => {
+              setEditingDeptHeadcount(v);
+              setEditError('');
+            }}
+          />
+          <Field
             label="Open Roles"
             type="number"
             value={editingDeptOpenRoles}
@@ -457,28 +573,10 @@ function DepartmentsSection() {
 // ===========================================================================
 // Section: Leave Policies
 // ===========================================================================
-interface LeavePolicy {
-  id: string;
-  type: string;
-  annual: number;
-  carryForward: boolean;
-  encashment: boolean;
-  halfDay: boolean;
-  applicable: string;
-}
-
-const defaultPolicies: LeavePolicy[] = [
-  { id: 'lp1', type: 'Casual Leave', annual: 12, carryForward: false, encashment: false, halfDay: true, applicable: 'All employees' },
-  { id: 'lp2', type: 'Sick Leave', annual: 12, carryForward: false, encashment: false, halfDay: true, applicable: 'All employees' },
-  { id: 'lp3', type: 'Earned Leave', annual: 18, carryForward: true, encashment: true, halfDay: true, applicable: 'All employees' },
-  { id: 'lp4', type: 'Unpaid Leave', annual: 0, carryForward: false, encashment: false, halfDay: false, applicable: 'All employees' },
-  { id: 'lp5', type: 'Maternity Leave', annual: 182, carryForward: false, encashment: false, halfDay: false, applicable: 'Female employees' },
-  { id: 'lp6', type: 'Paternity Leave', annual: 5, carryForward: false, encashment: false, halfDay: false, applicable: 'Male employees' },
-  { id: 'lp7', type: 'Comp Off', annual: 0, carryForward: true, encashment: false, halfDay: false, applicable: 'All employees' },
-];
 
 function LeavePolicies() {
-  const [policies, setPolicies] = useState(defaultPolicies);
+  const leavePoliciesRevision = useLeavePoliciesRevision();
+  const [policies, setPolicies] = useState<LeavePolicy[]>(() => getLeavePolicies());
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState('');
@@ -496,6 +594,10 @@ function LeavePolicies() {
   const [newHalfDay, setNewHalfDay] = useState(true);
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
+
+  useEffect(() => {
+    setPolicies(getLeavePolicies());
+  }, [leavePoliciesRevision]);
 
   function resetAddForm() {
     setNewType('');
@@ -556,7 +658,9 @@ function LeavePolicies() {
       halfDay: newHalfDay,
       applicable: newApplicable.trim() || 'All employees',
     };
-    setPolicies((prev) => [...prev, next]);
+    const updated = [...policies, next];
+    saveLeavePolicies(updated);
+    setPolicies(updated);
     setAddOpen(false);
     resetAddForm();
   }
@@ -574,7 +678,7 @@ function LeavePolicies() {
       return;
     }
 
-    setPolicies((prev) => prev.map((policy) => (
+    const updated = policies.map((policy) => (
       policy.id === editingPolicyId
         ? {
             ...policy,
@@ -586,15 +690,17 @@ function LeavePolicies() {
             halfDay: editingHalfDay,
           }
         : policy
-    )));
+    ));
+    saveLeavePolicies(updated);
+    setPolicies(updated);
     setEditOpen(false);
     resetEditForm();
   }
 
   const toggle = (id: string, key: 'carryForward' | 'encashment' | 'halfDay') => {
-    setPolicies((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, [key]: !p[key] } : p)),
-    );
+    const updated = policies.map((policy) => (policy.id === id ? { ...policy, [key]: !policy[key] } : policy));
+    saveLeavePolicies(updated);
+    setPolicies(updated);
   };
 
   const cols: Column<LeavePolicy>[] = [
@@ -802,38 +908,6 @@ function LeavePolicies() {
 // ===========================================================================
 // Section: Roles & Permissions
 // ===========================================================================
-const ROLES = ['Admin', 'HR Manager', 'Manager', 'Employee'] as const;
-type Role = typeof ROLES[number];
-
-const MODULES = [
-  'Employee Directory',
-  'Attendance',
-  'Leave Management',
-  'Payroll',
-  'Recruitment',
-  'Onboarding',
-  'Performance',
-  'Expenses',
-  'Reports & Analytics',
-  'Settings',
-] as const;
-type Module = typeof MODULES[number];
-
-type PermissionLevel = 'full' | 'view' | 'none';
-
-const defaultPerms: Record<Module, Record<Role, PermissionLevel>> = {
-  'Employee Directory': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
-  Attendance: { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'view' },
-  'Leave Management': { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
-  Payroll: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'view' },
-  Recruitment: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
-  Onboarding: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
-  Performance: { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'view' },
-  Expenses: { Admin: 'full', 'HR Manager': 'view', Manager: 'view', Employee: 'full' },
-  'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
-  Settings: { Admin: 'full', 'HR Manager': 'none', Manager: 'none', Employee: 'none' },
-};
-
 const permColor: Record<PermissionLevel, string> = {
   full: 'text-emerald-600',
   view: 'text-amber-500',
@@ -847,46 +921,71 @@ const permCycle: Record<PermissionLevel, PermissionLevel> = {
 };
 
 function RolesPermissions() {
-  const [perms, setPerms] = useState(defaultPerms);
+  const permissionsRevision = useAccessControlRevision();
+  const [perms, setPerms] = useState<PermissionMatrix>(() => getPermissionMatrix());
 
-  const cycle = (mod: Module, role: Role) => {
-    setPerms((prev) => ({
-      ...prev,
+  useEffect(() => {
+    setPerms(getPermissionMatrix());
+  }, [permissionsRevision]);
+
+  const cycle = (mod: AppModule, role: AppRole) => {
+    const updated: PermissionMatrix = {
+      ...perms,
       [mod]: {
-        ...prev[mod],
-        [role]: permCycle[prev[mod][role]],
+        ...perms[mod],
+        [role]: permCycle[perms[mod][role]],
       },
-    }));
+    };
+    savePermissionMatrix(updated);
+    setPerms(updated);
   };
 
-  const PermIcon = ({ level }: { level: PermissionLevel }) => {
-    if (level === 'full') return <CheckCircle2 size={18} className="text-emerald-500" />;
-    if (level === 'view') return <AlertCircle size={18} className="text-amber-400" />;
-    return <X size={18} className="text-ink-200" />;
+  const resetToDefaults = () => {
+    savePermissionMatrix(defaultPermissions);
+    setPerms(defaultPermissions);
   };
+
+  const cycleHint = 'Define what each role can access. Click any cell to cycle: Full -> View -> None.';
+
+  const roleUserCount = (role: AppRole) => employees.filter((employee) =>
+    role === 'Admin'
+      ? employee.designation.includes('CEO') || employee.designation.includes('Head of Finance')
+      : role === 'HR Manager'
+        ? employee.department === 'Human Resources'
+        : role === 'Manager'
+          ? employee.designation.toLowerCase().includes('manager')
+            || employee.designation.toLowerCase().includes('vp')
+            || employee.designation.toLowerCase().includes('lead')
+          : true,
+  ).length;
 
   return (
-    <SettingsSection title="Roles & Permissions" subtitle="Define what each role can access. Click any cell to cycle: Full → View → None.">
+    <SettingsSection title="Roles & Permissions" subtitle={cycleHint}>
+      <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <AlertCircle size={16} className="mt-0.5 shrink-0" />
+        <p>
+          Only <strong>Admin</strong> and <strong>Employee</strong> can currently be assigned to a real
+          account (see the Admin dashboard&apos;s Role column). <strong>HR Manager</strong> and{' '}
+          <strong>Manager</strong> permissions configured below are not yet enforced for any signed-in
+          user — the &quot;users&quot; counts shown are an estimate based on job title/department, not an
+          active assignment.
+        </p>
+      </div>
       <Card padding={false}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ink-200">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide w-52">Module</th>
-                {ROLES.map((r) => (
-                  <th key={r} className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">
+                {APP_ROLES.map((role) => (
+                  <th key={role} className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">
                     <div className="flex flex-col items-center gap-1">
-                      <span>{r}</span>
+                      <span>{role}</span>
                       <Badge
-                        tone={r === 'Admin' ? 'violet' : r === 'HR Manager' ? 'blue' : r === 'Manager' ? 'amber' : 'gray'}
+                        tone={role === 'Admin' ? 'violet' : role === 'HR Manager' ? 'blue' : role === 'Manager' ? 'amber' : 'gray'}
                         className="text-[10px] px-2 py-0"
                       >
-                        {employees.filter((e) =>
-                          r === 'Admin' ? e.designation.includes('CEO') || e.designation.includes('Head of Finance') :
-                            r === 'HR Manager' ? e.department === 'Human Resources' :
-                              r === 'Manager' ? e.designation.toLowerCase().includes('manager') || e.designation.toLowerCase().includes('vp') || e.designation.toLowerCase().includes('lead') :
-                                true
-                        ).length} users
+                        {roleUserCount(role)} users
                       </Badge>
                     </div>
                   </th>
@@ -894,18 +993,18 @@ function RolesPermissions() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
-              {MODULES.map((mod) => (
-                <tr key={mod} className="hover:bg-ink-50">
-                  <td className="px-5 py-3 font-medium text-ink-800">{mod}</td>
-                  {ROLES.map((role) => (
+              {APP_MODULES.map((module) => (
+                <tr key={module} className="hover:bg-ink-50">
+                  <td className="px-5 py-3 font-medium text-ink-800">{module}</td>
+                  {APP_ROLES.map((role) => (
                     <td key={role} className="px-4 py-3 text-center">
                       <button
-                        title={`${mod} / ${role}: ${perms[mod][role]} — click to change`}
-                        onClick={() => cycle(mod, role)}
-                        className={cn('inline-flex items-center justify-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors hover:bg-ink-100', permColor[perms[mod][role]])}
+                        title={`${module} / ${role}: ${perms[module][role]} - click to change`}
+                        onClick={() => cycle(module, role)}
+                        className={cn('inline-flex items-center justify-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors hover:bg-ink-100', permColor[perms[module][role]])}
                       >
-                        <PermIcon level={perms[mod][role]} />
-                        <span className="capitalize">{perms[mod][role]}</span>
+                        <PermIcon level={perms[module][role]} />
+                        <span className="capitalize">{perms[module][role]}</span>
                       </button>
                     </td>
                   ))}
@@ -914,21 +1013,31 @@ function RolesPermissions() {
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-3 border-t border-ink-100 flex items-center gap-6 text-xs text-ink-500">
-          <span className="flex items-center gap-1.5"><CheckCircle2 size={14} className="text-emerald-500" /> Full access</span>
-          <span className="flex items-center gap-1.5"><AlertCircle size={14} className="text-amber-400" /> View only</span>
-          <span className="flex items-center gap-1.5"><X size={14} className="text-ink-300" /> No access</span>
+        <div className="px-5 py-3 border-t border-ink-100 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 text-xs text-ink-500">
+            <span className="flex items-center gap-1.5"><CheckCircle2 size={14} className="text-emerald-500" /> Full access</span>
+            <span className="flex items-center gap-1.5"><AlertCircle size={14} className="text-amber-400" /> View only</span>
+            <span className="flex items-center gap-1.5"><X size={14} className="text-ink-300" /> No access</span>
+          </div>
+          <Button variant="secondary" size="sm" onClick={resetToDefaults}>Reset Defaults</Button>
         </div>
       </Card>
     </SettingsSection>
   );
 }
 
+const PermIcon = ({ level }: { level: PermissionLevel }) => {
+  if (level === 'full') return <CheckCircle2 size={18} className="text-emerald-500" />;
+  if (level === 'view') return <AlertCircle size={18} className="text-amber-400" />;
+  return <X size={18} className="text-ink-200" />;
+};
+
 // ===========================================================================
 // Section: Holidays
 // ===========================================================================
 function HolidaysSection() {
-  const [holidayRows, setHolidayRows] = useState<Holiday[]>([...holidaySeed]);
+  const holidayRevision = useHolidayDirectoryRevision();
+  const [holidayRows, setHolidayRows] = useState<Holiday[]>(() => getHolidayDirectory());
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingHolidayId, setEditingHolidayId] = useState('');
@@ -940,6 +1049,10 @@ function HolidaysSection() {
   const [newHolidayType, setNewHolidayType] = useState<Holiday['type']>('National');
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
+
+  useEffect(() => {
+    setHolidayRows(getHolidayDirectory());
+  }, [holidayRevision]);
 
   const typeTone: Record<string, BadgeTone> = {
     National: 'green',
@@ -996,7 +1109,9 @@ function HolidaysSection() {
     }
 
     const id = `h${Date.now()}`;
-    setHolidayRows((prev) => [...prev, { id, name, date, type }]);
+    const updatedRows = [...holidayRows, { id, name, date, type }];
+    saveHolidayDirectory(updatedRows);
+    setHolidayRows(updatedRows);
     setAddOpen(false);
     resetAddForm();
   }
@@ -1019,13 +1134,24 @@ function HolidaysSection() {
       return;
     }
 
-    setHolidayRows((prev) => prev.map((holiday) => (
+    const updatedRows = holidayRows.map((holiday) => (
       holiday.id === editingHolidayId
         ? { ...holiday, name, date, type }
         : holiday
-    )));
+    ));
+    saveHolidayDirectory(updatedRows);
+    setHolidayRows(updatedRows);
     setEditOpen(false);
     resetEditForm();
+  }
+
+  function handleDeleteHoliday(holiday: Holiday) {
+    const confirmed = window.confirm(`Delete ${holiday.name} (${formatDate(holiday.date)})?`);
+    if (!confirmed) return;
+
+    const updatedRows = holidayRows.filter((row) => row.id !== holiday.id);
+    saveHolidayDirectory(updatedRows);
+    setHolidayRows(updatedRows);
   }
 
   const cols: Column<Holiday>[] = [
@@ -1049,7 +1175,20 @@ function HolidaysSection() {
       key: 'actions',
       header: '',
       align: 'right',
-      render: (r) => <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditHoliday(r)}>Edit</Button>,
+      render: (r) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditHoliday(r)}>Edit</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trash2 size={13} />}
+            className="text-rose-600 hover:bg-rose-50"
+            onClick={() => handleDeleteHoliday(r)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -1190,37 +1329,18 @@ function HolidaysSection() {
 // ===========================================================================
 // Section: Notifications
 // ===========================================================================
-interface NotifPref {
-  id: string;
-  category: string;
-  label: string;
-  description: string;
-  email: boolean;
-  inApp: boolean;
-}
-
-const defaultNotifs: NotifPref[] = [
-  { id: 'n1', category: 'Leave', label: 'Leave Request Submitted', description: 'Notify manager when employee submits a leave request', email: true, inApp: true },
-  { id: 'n2', category: 'Leave', label: 'Leave Approved / Rejected', description: 'Notify employee when their leave status changes', email: true, inApp: true },
-  { id: 'n3', category: 'Payroll', label: 'Payroll Processed', description: 'Notify employees when salary is processed', email: true, inApp: false },
-  { id: 'n4', category: 'Payroll', label: 'Payslip Generated', description: 'Send payslip download link to employees', email: true, inApp: true },
-  { id: 'n5', category: 'Attendance', label: 'Late Arrival Alert', description: 'Notify manager if employee clocks in after shift start', email: false, inApp: true },
-  { id: 'n6', category: 'Attendance', label: 'Absent Without Approval', description: 'Alert HR and manager for unapproved absences', email: true, inApp: true },
-  { id: 'n7', category: 'Onboarding', label: 'New Employee Joined', description: 'Broadcast welcome message on new joiner start date', email: true, inApp: true },
-  { id: 'n8', category: 'Onboarding', label: 'Task Deadline Reminder', description: 'Remind assignees of pending onboarding tasks', email: false, inApp: true },
-  { id: 'n9', category: 'Performance', label: 'Review Cycle Started', description: 'Notify employees when a new performance cycle is initiated', email: true, inApp: true },
-  { id: 'n10', category: 'Performance', label: 'Review Due Reminder', description: 'Remind managers to complete overdue reviews', email: true, inApp: true },
-  { id: 'n11', category: 'Recruitment', label: 'New Application Received', description: 'Notify hiring manager on new candidate application', email: false, inApp: true },
-  { id: 'n12', category: 'Recruitment', label: 'Offer Letter Accepted', description: 'Alert HR team when candidate accepts an offer', email: true, inApp: true },
-];
-
 function NotificationsSection() {
-  const [notifs, setNotifs] = useState(defaultNotifs);
+  const notificationRevision = useNotificationPreferencesRevision();
+  const [notifs, setNotifs] = useState<NotificationPreference[]>(() => getNotificationPreferences());
+
+  useEffect(() => {
+    setNotifs(getNotificationPreferences());
+  }, [notificationRevision]);
 
   const toggle = (id: string, key: 'email' | 'inApp') => {
-    setNotifs((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, [key]: !n[key] } : n)),
-    );
+    const updated = notifs.map((notif) => (notif.id === id ? { ...notif, [key]: !notif[key] } : notif));
+    saveNotificationPreferences(updated);
+    setNotifs(updated);
   };
 
   const categories = Array.from(new Set(notifs.map((n) => n.category)));
@@ -1354,20 +1474,35 @@ const defaultIntegrations: Integration[] = [
 ];
 
 function IntegrationsSection() {
+  const integrationRevision = useIntegrationPreferencesRevision();
   const [integrations, setIntegrations] = useState(defaultIntegrations);
   const [configureOpen, setConfigureOpen] = useState(false);
   const [editingIntegration, setEditingIntegration] = useState<Integration | null>(null);
   const [configLabel, setConfigLabel] = useState('');
   const [configError, setConfigError] = useState('');
 
-  const toggleConnect = (id: string) => {
-    setIntegrations((prev) =>
-      prev.map((i) =>
-        i.id === id
-          ? { ...i, connected: !i.connected, badge: !i.connected ? 'Connected' : undefined }
-          : i,
-      ),
+  useEffect(() => {
+    const preferenceById = new Map(getIntegrationPreferences().map((integration) => [integration.id, integration]));
+    setIntegrations(
+      defaultIntegrations.map((integration) => {
+        const preference = preferenceById.get(integration.id);
+        return {
+          ...integration,
+          connected: preference?.connected ?? integration.connected,
+          badge: preference?.badge ?? (preference?.connected ?? integration.connected ? 'Connected' : undefined),
+        };
+      }),
     );
+  }, [integrationRevision]);
+
+  const toggleConnect = (id: string) => {
+    const updated = integrations.map((integration) => (
+      integration.id === id
+        ? { ...integration, connected: !integration.connected, badge: !integration.connected ? 'Connected' : undefined }
+        : integration
+    ));
+    saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge })));
+    setIntegrations(updated);
   };
 
   const openConfigure = (integration: Integration) => {
@@ -1385,13 +1520,13 @@ function IntegrationsSection() {
       return;
     }
 
-    setIntegrations((prev) =>
-      prev.map((integration) =>
-        integration.id === editingIntegration.id
-          ? { ...integration, badge: nextLabel }
-          : integration,
-      ),
-    );
+    const updated = integrations.map((integration) => (
+      integration.id === editingIntegration.id
+        ? { ...integration, badge: nextLabel }
+        : integration
+    ));
+    saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge })));
+    setIntegrations(updated);
     setConfigureOpen(false);
     setEditingIntegration(null);
     setConfigLabel('');
@@ -1490,27 +1625,45 @@ function IntegrationsSection() {
 // Section: Billing
 // ===========================================================================
 function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: number }) {
-  const [planTier, setPlanTier] = useState<'Pro' | 'Enterprise'>('Pro');
-  const [totalSeats, setTotalSeats] = useState(60);
+  const billingRevision = useBillingPreferencesRevision();
+  const invoiceRevision = useBillingInvoicesRevision();
+  const [planTier, setPlanTier] = useState<BillingPlanTier>(() => getBillingPreferences().planTier);
+  const [totalSeats, setTotalSeats] = useState(() => getBillingPreferences().totalSeats);
   const [manageOpen, setManageOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [addSeatsOpen, setAddSeatsOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [billingEmail, setBillingEmail] = useState('finance@modcon.io');
-  const [autoRenew, setAutoRenew] = useState(true);
+  const [billingEmail, setBillingEmail] = useState(() => getBillingPreferences().billingEmail);
+  const [autoRenew, setAutoRenew] = useState(() => getBillingPreferences().autoRenew);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [addSeatsValue, setAddSeatsValue] = useState('5');
   const [addSeatsError, setAddSeatsError] = useState('');
   const [actionNotice, setActionNotice] = useState('');
+
+  useEffect(() => {
+    const preferences = getBillingPreferences();
+    setPlanTier(preferences.planTier);
+    setTotalSeats(preferences.totalSeats);
+    setBillingEmail(preferences.billingEmail);
+    setAutoRenew(preferences.autoRenew);
+  }, [billingRevision]);
+
+  const invoices = getBillingInvoices();
+  void invoiceRevision;
+
+  useEffect(() => {
+    if (!selectedInvoiceId && invoices.length > 0) {
+      setSelectedInvoiceId(invoices[0].id);
+    }
+  }, [invoices, selectedInvoiceId]);
 
   const usedSeats = employees.length;
   const usedPct = Math.round((usedSeats / totalSeats) * 100);
   const isEnterprise = planTier === 'Enterprise';
 
-  const invoices = [
-    { id: 'INV-2026-06', date: '2026-06-01', amount: 299940, status: 'Paid' },
-    { id: 'INV-2026-03', date: '2026-03-01', amount: 299940, status: 'Paid' },
-    { id: 'INV-2025-12', date: '2025-12-01', amount: 279960, status: 'Paid' },
-  ];
+  const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? invoices[0] ?? null;
+  const pricePerSeat = 4999;
+  const latestInvoice = invoices[0] ?? null;
 
   function formatAmount(amount: number) {
     return new Intl.NumberFormat('en-IN', {
@@ -1520,19 +1673,27 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
     }).format(amount);
   }
 
+  function createInvoiceDetails(invoice: BillingInvoice) {
+    return [
+      'ModCon HR Invoice',
+      `Invoice ID: ${invoice.id}`,
+      `Date: ${formatDate(invoice.date)}`,
+      `Title: ${invoice.title}`,
+      `Description: ${invoice.description}`,
+      `Plan: ${invoice.planTier}`,
+      `Seats: ${invoice.totalSeats}`,
+      `Billing Email: ${invoice.billingEmail}`,
+      `Auto-renew: ${invoice.autoRenew ? 'Enabled' : 'Disabled'}`,
+      `Amount: ${formatAmount(invoice.amount)}`,
+      `Status: ${invoice.status}`,
+    ].join('\n');
+  }
+
   function downloadInvoice(invoiceId: string) {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice) return;
 
-    const fileText = [
-      'ModCon HR Invoice',
-      `Invoice ID: ${invoice.id}`,
-      `Date: ${formatDate(invoice.date)}`,
-      `Plan: ${planTier}`,
-      `Seats: ${isEnterprise ? 'Unlimited' : totalSeats}`,
-      `Amount: ${formatAmount(invoice.amount)}`,
-      `Status: ${invoice.status}`,
-    ].join('\n');
+    const fileText = createInvoiceDetails(invoice);
 
     const blob = new Blob([fileText], { type: 'text/plain;charset=utf-8' });
     const downloadUrl = URL.createObjectURL(blob);
@@ -1551,6 +1712,12 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
     if (!billingEmail.trim()) {
       return;
     }
+    saveBillingPreferences({
+      planTier,
+      totalSeats,
+      billingEmail: billingEmail.trim(),
+      autoRenew,
+    });
     setManageOpen(false);
     setActionNotice('Subscription details updated successfully.');
   }
@@ -1562,7 +1729,25 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
       return;
     }
 
-    setTotalSeats((prev) => prev + seats);
+    const nextSeats = totalSeats + seats;
+    setTotalSeats(nextSeats);
+    saveBillingPreferences({
+      planTier,
+      totalSeats: nextSeats,
+      billingEmail,
+      autoRenew,
+    });
+    appendBillingInvoice({
+      date: new Date().toISOString().slice(0, 10),
+      amount: seats * pricePerSeat,
+      status: 'Paid',
+      title: 'Additional Seats Added',
+      description: `${seats} seat${seats > 1 ? 's' : ''} added to the plan.`,
+      planTier,
+      totalSeats: nextSeats,
+      billingEmail,
+      autoRenew,
+    });
     setAddSeatsOpen(false);
     setAddSeatsValue('5');
     setAddSeatsError('');
@@ -1570,8 +1755,26 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   }
 
   function handleUpgradeEnterprise() {
+    const nextSeats = Math.max(totalSeats, 500);
     setPlanTier('Enterprise');
-    setTotalSeats((prev) => Math.max(prev, 500));
+    setTotalSeats(nextSeats);
+    saveBillingPreferences({
+      planTier: 'Enterprise',
+      totalSeats: nextSeats,
+      billingEmail,
+      autoRenew,
+    });
+    appendBillingInvoice({
+      date: new Date().toISOString().slice(0, 10),
+      amount: nextSeats * pricePerSeat,
+      status: 'Paid',
+      title: 'Enterprise Upgrade',
+      description: 'Plan upgraded to Enterprise with expanded seat capacity.',
+      planTier: 'Enterprise',
+      totalSeats: nextSeats,
+      billingEmail,
+      autoRenew,
+    });
     setUpgradeOpen(false);
     setActionNotice('Enterprise upgrade initiated. Our team will contact you shortly.');
   }
@@ -1595,7 +1798,6 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
 
   return (
     <SettingsSection title="Billing & Plan" subtitle="Manage your subscription, seats, and invoices.">
-      {/* Current plan card */}
       <Card className="mb-5 border-2 border-brand-200 bg-gradient-to-br from-brand-50 to-violet-50">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1608,7 +1810,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                 <Badge tone="violet">Active</Badge>
               </div>
               <p className="text-sm text-ink-500">
-                {isEnterprise ? 'Custom enterprise contract' : 'Billed annually · ₹4,999/seat/year'}
+                {isEnterprise ? 'Enterprise plan with expanded seat capacity' : 'Billed annually · ₹4,999/seat/year'}
               </p>
             </div>
           </div>
@@ -1625,9 +1827,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
         </div>
       )}
 
-      {/* Usage + next invoice */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        {/* Seat usage */}
         <Card className="md:col-span-2">
           <CardHeader title="Seat Usage" subtitle={`${usedSeats} of ${totalSeats} seats used`} />
           <div className="relative h-4 bg-ink-100 rounded-full overflow-hidden mb-2">
@@ -1663,7 +1863,6 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
           <Button variant="primary" size="sm" className="mt-3" onClick={() => setAddSeatsOpen(true)}>Add Seats</Button>
         </Card>
 
-        {/* Next invoice */}
         <Card>
           <CardHeader title="Next Invoice" />
           <div className="space-y-2 text-sm">
@@ -1682,15 +1881,33 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
               <span className="font-semibold">•••• 4242</span>
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-ink-100">
-            <Button variant="secondary" size="sm" className="w-full" onClick={() => downloadInvoice(invoices[0].id)}>
+          <div className="mt-4 pt-4 border-t border-ink-100 space-y-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                if (latestInvoice) {
+                  setSelectedInvoiceId(latestInvoice.id);
+                }
+                setInvoiceOpen(true);
+              }}
+            >
+              View Invoice Details
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={() => latestInvoice && downloadInvoice(latestInvoice.id)}
+              disabled={!latestInvoice}
+            >
               Download Last Invoice
             </Button>
           </div>
         </Card>
       </div>
 
-      {/* Plan comparison */}
       <Card padding={false}>
         <div className="px-5 py-4 border-b border-ink-100">
           <h3 className="text-base font-semibold text-ink-900">Plan Comparison</h3>
@@ -1786,19 +2003,55 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
           <Button variant="secondary" onClick={() => setInvoiceOpen(false)}>Close</Button>
         )}
       >
-        <div className="space-y-3">
-          {invoices.map((invoice) => (
-            <div key={invoice.id} className="flex flex-col gap-2 rounded-xl border border-ink-100 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-ink-800">{invoice.id}</p>
-                <p className="text-xs text-ink-500">{formatDate(invoice.date)} · {invoice.status}</p>
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-3">
+            {invoices.map((invoice) => {
+              const isSelected = invoice.id === selectedInvoice?.id;
+              return (
+                <button
+                  key={invoice.id}
+                  type="button"
+                  onClick={() => setSelectedInvoiceId(invoice.id)}
+                  className={cn(
+                    'w-full rounded-xl border p-3 text-left transition-colors',
+                    isSelected ? 'border-brand-300 bg-brand-50' : 'border-ink-100 hover:bg-ink-50',
+                  )}
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-ink-800">{invoice.title}</p>
+                      <p className="text-xs text-ink-500">{invoice.id} · {formatDate(invoice.date)} · {invoice.status}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-ink-800">{formatAmount(invoice.amount)}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="rounded-xl border border-ink-100 bg-ink-50 p-4">
+            {selectedInvoice ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink-800">{selectedInvoice.title}</p>
+                  <p className="text-xs text-ink-500">{selectedInvoice.id}</p>
+                </div>
+                <div className="space-y-2 text-sm text-ink-600">
+                  <p>{selectedInvoice.description}</p>
+                  <p>Plan: {selectedInvoice.planTier}</p>
+                  <p>Seats: {selectedInvoice.totalSeats}</p>
+                  <p>Billing: {selectedInvoice.billingEmail}</p>
+                  <p>Auto-renew: {selectedInvoice.autoRenew ? 'Enabled' : 'Disabled'}</p>
+                  <p>Status: {selectedInvoice.status}</p>
+                  <p className="font-semibold text-ink-800">Amount: {formatAmount(selectedInvoice.amount)}</p>
+                </div>
+                <Button variant="primary" className="w-full" onClick={() => downloadInvoice(selectedInvoice.id)}>
+                  Download Selected Invoice
+                </Button>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-ink-800">{formatAmount(invoice.amount)}</span>
-                <Button variant="ghost" size="sm" onClick={() => downloadInvoice(invoice.id)}>Download</Button>
-              </div>
-            </div>
-          ))}
+            ) : (
+              <p className="text-sm text-ink-500">No invoices available.</p>
+            )}
+          </div>
         </div>
       </Modal>
 
@@ -1847,7 +2100,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
         title="Upgrade to Enterprise"
-        subtitle="Unlock unlimited seats, SSO, AI insights, and priority support"
+        subtitle="Unlock higher seat capacity, SSO, AI insights, and priority support"
         size="sm"
         footer={(
           <>
@@ -1955,6 +2208,9 @@ const NAV_ITEMS: NavItem[] = [
 // ===========================================================================
 export function SettingsPage() {
   const location = useLocation();
+  useEmployeeDirectoryRevision();
+  const billingRevision = useBillingPreferencesRevision();
+  const billingPreferences = getBillingPreferences();
   const [active, setActive] = useState('company');
   const [billingUpgradeRequestToken, setBillingUpgradeRequestToken] = useState(0);
 
@@ -1984,6 +2240,7 @@ export function SettingsPage() {
       setBillingUpgradeRequestToken((prev) => prev + 1);
     }
   }, [location.search, location.state]);
+  void billingRevision;
 
   function renderContent() {
     switch (active) {
@@ -2053,7 +2310,9 @@ export function SettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-ink-800 truncate">ModCon HR</p>
-                  <p className="text-[10px] text-ink-400">Pro Plan · v2.1.0</p>
+                  <p className="text-[10px] text-ink-400">
+                    {billingPreferences.planTier} Plan · {billingPreferences.planTier === 'Enterprise' ? 'Unlimited seats' : `${billingPreferences.totalSeats} seats`}
+                  </p>
                 </div>
               </div>
             </div>

@@ -4,9 +4,10 @@ A modern, full-featured **HRMS (Human Resource Management System)** built as an
 investor-ready product demo. ModCon HR covers the complete employee lifecycle —
 from hire to retire — in a single, polished web application.
 
-> **Demo mode:** authentication/authorization is intentionally disabled so the
-> product can be explored end-to-end without any login. All data is realistic
-> mock data generated in-app.
+> **Demo mode:** the app ships with realistic mock data generated in-app, and a
+> one-click "Employee Profile" demo login on the sign-in screen. Sign-in itself
+> is a real, required step (email/password via Firebase Auth) with role-based
+> route and module access — it is not disabled.
 
 ![Stack](https://img.shields.io/badge/React-18-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Vite](https://img.shields.io/badge/Vite-5-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 

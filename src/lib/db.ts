@@ -23,6 +23,7 @@ import {
 import { db } from './firebase';
 import type {
     Employee,
+    EmployeeCompensation,
     AttendanceRecord,
     LeaveRequest,
     LeaveBalance,
@@ -53,6 +54,9 @@ function col<T = DocumentData>(path: string) {
 
 export const Collections = {
     employees: col<Employee>('employees'),
+    // Compensation lives separately from `employees` so the broadly-readable
+    // directory collection never carries salary data — see EmployeeCompensation.
+    employeeCompensation: col<EmployeeCompensation>('employee_compensation'),
     attendance: col<AttendanceRecord>('attendance'),
     leaveRequests: col<LeaveRequest>('leave_requests'),
     leaveBalances: col<LeaveBalance>('leave_balances'),
