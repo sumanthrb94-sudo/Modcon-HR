@@ -58,13 +58,8 @@ service cloud.firestore {
 
     match /attendance/{docId} {
       allow read: if isSignedIn();
-      // Employees may self-record their own check-in/out; managers & admins
-      // may mark or amend attendance for anyone on their team.
-      allow create: if isSignedIn() &&
-        (request.resource.data.employeeId == request.auth.uid || isManager());
-      allow update: if isSignedIn() &&
-        (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isManager();
+      // Managers & admins may mark or amend attendance for their team.
+      allow write: if isManager();
     }
 
     match /leave_requests/{docId} {

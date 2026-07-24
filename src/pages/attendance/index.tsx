@@ -42,7 +42,6 @@ import { employees, departments, getEmployee } from '@/data/employees';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
-import { SelfCheckIn } from './SelfCheckIn';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
 
@@ -349,9 +348,6 @@ export function AttendancePage() {
           ) : undefined
         }
       />
-
-      {/* Self-service check in / out (geolocation) */}
-      <SelfCheckIn />
 
       {/* Stat Cards — today's numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
