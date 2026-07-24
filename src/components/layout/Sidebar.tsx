@@ -10,9 +10,11 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const navigate = useNavigate();
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+  const visibleItems = navItems.filter(
+    (item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || isManager),
+  );
 
   function handleUpgradePlan() {
     navigate('/settings?tab=billing&action=upgrade-plan');

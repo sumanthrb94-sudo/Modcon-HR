@@ -1,59 +1,83 @@
 import { defineConfig, devices } from '@playwright/test';
+import { PERSONAS, OFFICE_GEO } from './tests/e2e/config';
 
 /**
  * Playwright E2E configuration.
  *
- * Runs the production build via `vite preview` and drives it in a real
- * Chromium browser. A global setup provisions a dedicated test account in
- * Firebase Auth so the sign-in flow can be exercised end-to-end.
+ * Runs the production build via `vite preview` and drives it in real Chromium.
+ * The three role personas (employee / manager / admin) run as separate projects
+ * so they execute in parallel. A global setup provisions their Firebase Auth
+ * accounts, and the preview build enables the E2E role allow-list.
  */
 const PORT = Number(process.env.E2E_PORT ?? 4173);
 
-// When running inside a proxied sandbox (e.g. Claude Code on the web), route
-// the browser's outbound HTTPS (Firebase Auth/Firestore) through the agent
-// proxy while letting the local preview server bypass it. No-ops in normal CI
-// or local dev where HTTPS_PROXY is unset.
+// Route the browser's outbound HTTPS (Firebase) through the sandbox proxy while
+// the local preview server bypasses it. No-op when HTTPS_PROXY is unset.
 const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy;
 const proxy = proxyServer
   ? { server: proxyServer, bypass: 'localhost,127.0.0.1,::1' }
   : undefined;
+
+const proxyArgs = proxy
+  ? ['--ssl-version-max=tls1.2', '--disable-quic', '--disable-features=EncryptedClientHello']
+  : [];
+
+const commonUse = {
+  baseURL: `http://localhost:${PORT}`,
+  proxy,
+  ignoreHTTPSErrors: Boolean(proxy),
+  trace: 'retain-on-failure' as const,
+  screenshot: 'only-on-failure' as const,
+  // Location-based attendance needs geolocation; default to the office.
+  permissions: ['geolocation'],
+  geolocation: OFFICE_GEO,
+  ...devices['Desktop Chrome'],
+  launchOptions: {
+    executablePath: process.env.PW_CHROMIUM_PATH || undefined,
+    args: proxyArgs,
+  },
+};
 
 export default defineConfig({
   testDir: './tests/e2e',
   globalSetup: './tests/e2e/global-setup.ts',
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  workers: process.env.CI ? 2 : 4,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
-  use: {
-    baseURL: `http://localhost:${PORT}`,
-    proxy,
-    // The sandbox proxy re-terminates TLS; let the test browser trust it.
-    ignoreHTTPSErrors: Boolean(proxy),
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-    ...devices['Desktop Chrome'],
-    launchOptions: {
-      executablePath: process.env.PW_CHROMIUM_PATH || undefined,
-      // In a proxied sandbox the intercepting egress proxy resets Chromium's
-      // TLS 1.3 handshakes to Google endpoints (Firebase Auth/Firestore).
-      // Capping at TLS 1.2 and disabling QUIC/ECH makes them succeed. No-ops
-      // when no proxy is configured (normal CI / local dev).
-      args: proxy
-        ? [
-            '--ssl-version-max=tls1.2',
-            '--disable-quic',
-            '--disable-features=EncryptedClientHello',
-          ]
-        : [],
+  projects: [
+    {
+      name: 'app',
+      testMatch: /(smoke|interactions|geo-attendance)\.spec\.ts$/,
+      use: commonUse,
     },
-  },
+    {
+      name: 'role-employee',
+      testMatch: /roles\.spec\.ts$/,
+      metadata: { persona: PERSONAS.employee },
+      use: commonUse,
+    },
+    {
+      name: 'role-manager',
+      testMatch: /roles\.spec\.ts$/,
+      metadata: { persona: PERSONAS.manager },
+      use: commonUse,
+    },
+    {
+      name: 'role-admin',
+      testMatch: /roles\.spec\.ts$/,
+      metadata: { persona: PERSONAS.admin },
+      use: commonUse,
+    },
+  ],
   webServer: {
-    command: `npm run preview -- --port ${PORT} --strictPort`,
+    // Build with the E2E role allow-list enabled, then serve the production
+    // bundle. Never reuse a stale server so the correct build is always served.
+    command: `VITE_ENABLE_E2E_ACCOUNTS=true npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    reuseExistingServer: false,
+    timeout: 180_000,
   },
 });

@@ -34,12 +34,25 @@ import { auth, db } from './firebase';
 // ---------------------------------------------------------------------------
 // Admin allow-list
 // ---------------------------------------------------------------------------
+// E2E test accounts are only granted elevated roles when the build explicitly
+// enables them (VITE_ENABLE_E2E_ACCOUNTS=true), so production deployments never
+// ship privileged test logins.
+const E2E_ACCOUNTS_ENABLED = import.meta.env.VITE_ENABLE_E2E_ACCOUNTS === 'true';
+const E2E_ADMIN_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-admin@modcon-hr.test'] : [];
+const E2E_MANAGER_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-manager@modcon-hr.test'] : [];
+
 export const ADMIN_EMAILS = [
     'sumanthbolla97@gmail.com',
     'saikrishnakoppaka@gmail.com',
+    ...E2E_ADMIN_EMAILS,
 ].map((e) => e.toLowerCase());
 
-export type UserRole = 'admin' | 'employee';
+// Emails that are always granted the `manager` role on sign-in.
+export const MANAGER_EMAILS = [
+    ...E2E_MANAGER_EMAILS,
+].map((e) => e.toLowerCase());
+
+export type UserRole = 'admin' | 'manager' | 'employee';
 
 export interface UserProfile {
     uid: string;
@@ -57,12 +70,15 @@ export interface UserProfile {
 async function upsertUserProfile(user: User): Promise<UserProfile> {
     const email = (user.email ?? '').toLowerCase();
     const isHardcodedAdmin = ADMIN_EMAILS.includes(email);
+    const isHardcodedManager = MANAGER_EMAILS.includes(email);
     const ref = doc(db, 'users', user.uid);
     const existing = await getDoc(ref);
 
     const role: UserRole = isHardcodedAdmin
         ? 'admin'
-        : (existing.exists() ? (existing.data().role as UserRole) : 'employee') ?? 'employee';
+        : isHardcodedManager
+            ? 'manager'
+            : (existing.exists() ? (existing.data().role as UserRole) : 'employee') ?? 'employee';
 
     const profile: UserProfile = {
         uid: user.uid,
@@ -93,6 +109,8 @@ interface AuthContextValue {
     profile: UserProfile | null;
     loading: boolean;
     isAdmin: boolean;
+    /** True for managers and admins (admins have all manager privileges). */
+    isManager: boolean;
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
@@ -171,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const isAdmin = profile?.role === 'admin';
+    const isManager = profile?.role === 'manager' || isAdmin;
 
     return (
         <AuthContext.Provider
@@ -179,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 profile,
                 loading,
                 isAdmin,
+                isManager,
                 error,
                 clearError,
                 signInEmail,

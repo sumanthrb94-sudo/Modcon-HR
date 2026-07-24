@@ -4,11 +4,13 @@ A modern, full-featured **HRMS (Human Resource Management System)** built as an
 investor-ready product demo. ModCon HR covers the complete employee lifecycle —
 from hire to retire — in a single, polished web application.
 
-> **Access:** the app is protected by Firebase email/password authentication.
-> Sign up (or sign in) with a work email to explore every module. Accounts in
-> the admin allow-list (`src/lib/auth.tsx`) get the admin dashboard; everyone
-> else signs in as an employee. Module data is realistic mock data generated
-> in-app; live Firestore backs the admin views and seeding.
+> **Access & roles:** the app is protected by Firebase email/password
+> authentication with three roles — **employee**, **manager**, and **admin**.
+> Employees get the core modules; managers additionally get the **Approvals**
+> workspace; admins get everything including the Admin dashboard. Roles come
+> from the allow-lists in `src/lib/auth.tsx` (or are assigned by an admin).
+> Module data is realistic mock data generated in-app; live Firestore backs the
+> admin views and seeding.
 
 ![Stack](https://img.shields.io/badge/React-18-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Vite](https://img.shields.io/badge/Vite-5-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 
@@ -18,7 +20,7 @@ from hire to retire — in a single, polished web application.
 | --- | --- |
 | **Dashboard** | HR command-center: headcount growth, attendance trends, diversity, pending approvals, announcements, celebrations |
 | **Employees** | Searchable directory with filters, grid/list views, rich profiles, and an interactive **org chart** |
-| **Attendance** | Daily attendance, check-in/out, late tracking, weekly trends, regularization approvals |
+| **Attendance** | Location-based check-in (office geofence → on-site/off-site), daily attendance, check-in/out, late tracking, weekly trends, regularization approvals |
 | **Leave** | Requests with approve/reject, leave balances, who's-off calendar, holiday list, apply-leave flow |
 | **Payroll** | Payroll runs, per-employee payslips with full earnings/deductions breakdown, salary cost by department |
 | **Recruitment** | Job openings, a drag-style **candidate Kanban pipeline**, hiring funnel analytics, post-a-job flow |
@@ -52,12 +54,28 @@ npm run test:e2e # end-to-end tests (Playwright, drives the production build)
 ### End-to-end tests
 
 `npm run test:e2e` builds/serves the app and drives it in a real Chromium
-browser (Playwright), signing in through Firebase Auth and walking every
-module plus key interactions (modals, 404, sign-out). A dedicated test account
-is provisioned automatically. Override credentials or the browser binary via
-`E2E_EMAIL` / `E2E_PASSWORD` / `PW_CHROMIUM_PATH`. When run behind an
-HTTPS-intercepting proxy the browser is configured automatically (TLS 1.2,
-proxy tunnelling) so Firebase calls succeed.
+browser (Playwright), signing in through Firebase Auth. Coverage:
+
+- **All modules** (Dashboard → Settings), employee detail, modals, 404,
+  sign-out, and a zero-runtime-errors assertion across the walkthrough.
+- **Per-role flows run in parallel** — separate Playwright projects for
+  `role-employee`, `role-manager`, and `role-admin` assert role-appropriate
+  navigation and access control (Approvals/Admin gating and route redirects).
+- **Location-based attendance** — geolocation is mocked to the office
+  (on-site → Present), a far location (off-site → Work From Home), and a
+  denied permission (error surfaced).
+
+Dedicated test accounts are provisioned automatically; the manager/admin
+accounts are only privileged when the app is built with
+`VITE_ENABLE_E2E_ACCOUNTS=true` (the test harness does this), so production
+builds never trust them. Override credentials or the browser binary via
+`E2E_EMAIL` / `E2E_MANAGER_EMAIL` / `E2E_ADMIN_EMAIL` / `E2E_PASSWORD` /
+`PW_CHROMIUM_PATH`. Behind an HTTPS-intercepting proxy the browser is
+configured automatically (TLS 1.2, proxy tunnelling) so Firebase calls
+succeed.
+
+Office geofence is configurable via `VITE_OFFICE_LAT` / `VITE_OFFICE_LNG` /
+`VITE_OFFICE_RADIUS` / `VITE_OFFICE_NAME`.
 
 ## 🧱 Architecture
 

@@ -16,6 +16,9 @@ import {
   UserX,
   Clock,
   CheckCircle,
+  MapPin,
+  Navigation,
+  Loader2,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -41,6 +44,7 @@ import {
 import { employees, departments, getEmployee } from '@/data/employees';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { checkInWithLocation, formatDistance, OFFICE, type GeoCheckInResult } from '@/lib/geo';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
 
@@ -67,6 +71,29 @@ export function AttendancePage() {
 
   // Regularization state — mutable local copy
   const [regRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
+
+  // Location-based check-in state
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState('');
+  const [geoResult, setGeoResult] = useState<(GeoCheckInResult & { time: string }) | null>(null);
+
+  async function handleGeoCheckIn() {
+    setGeoError('');
+    setGeoLoading(true);
+    try {
+      const result = await checkInWithLocation();
+      const time = new Date(result.timestamp).toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      setGeoResult({ ...result, time });
+    } catch (err) {
+      setGeoResult(null);
+      setGeoError(err instanceof Error ? err.message : 'Could not check in.');
+    } finally {
+      setGeoLoading(false);
+    }
+  }
 
   function recordsByDate(date: string) {
     return attendanceState.filter((record) => record.date === date);
@@ -344,6 +371,66 @@ export function AttendancePage() {
           </Button>
         }
       />
+
+      {/* Location-based self check-in */}
+      <Card>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+              <MapPin size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-ink-900">Check in with your location</h3>
+              <p className="text-sm text-ink-500">
+                We verify you're within {formatDistance(OFFICE.radiusMeters)} of {OFFICE.name}.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            icon={geoLoading ? <Loader2 size={16} className="animate-spin" /> : <Navigation size={16} />}
+            onClick={handleGeoCheckIn}
+            disabled={geoLoading}
+            data-testid="geo-checkin"
+          >
+            {geoLoading ? 'Locating…' : 'Check in'}
+          </Button>
+        </div>
+
+        {geoError && (
+          <p
+            className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700"
+            data-testid="geo-error"
+          >
+            {geoError}
+          </p>
+        )}
+
+        {geoResult && (
+          <div
+            className="mt-4 flex flex-col gap-2 rounded-xl border border-ink-100 bg-ink-50/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+            data-testid="geo-result"
+          >
+            <div className="flex items-center gap-3">
+              <Badge tone={geoResult.withinOffice ? 'green' : 'amber'} dot>
+                {geoResult.withinOffice ? 'On-site' : 'Off-site'}
+              </Badge>
+              <div>
+                <p className="text-sm font-medium text-ink-900">
+                  Checked in at {geoResult.time} — {geoResult.suggestedStatus}
+                </p>
+                <p className="text-xs text-ink-500">
+                  {formatDistance(geoResult.distanceMeters)} from {OFFICE.name}
+                  {' · '}
+                  <span data-testid="geo-coords">
+                    {geoResult.lat.toFixed(4)}, {geoResult.lng.toFixed(4)}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Stat Cards — today's numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

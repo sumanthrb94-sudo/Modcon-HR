@@ -139,7 +139,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           <Avatar name={profile?.displayName || profile?.email || 'User'} size="sm" />
           <div className="hidden md:block leading-tight">
             <p className="text-sm font-semibold text-ink-900">{profile?.displayName || profile?.email}</p>
-            <p className="text-[11px] text-ink-400">{profile?.role === 'admin' ? 'Administrator' : 'Employee'}</p>
+            <p className="text-[11px] text-ink-400">{profile?.role === 'admin' ? 'Administrator' : profile?.role === 'manager' ? 'Manager' : 'Employee'}</p>
           </div>
           <button
             type="button"

@@ -57,6 +57,13 @@ export type AttendanceStatus =
   | 'Weekend'
   | 'Work From Home';
 
+export interface AttendanceLocation {
+  lat: number;
+  lng: number;
+  distanceMeters: number;
+  withinOffice: boolean;
+}
+
 export interface AttendanceRecord {
   id: ID;
   employeeId: ID;
@@ -67,6 +74,8 @@ export interface AttendanceRecord {
   workedHours: number;
   shift: string;
   isLate: boolean;
+  /** Present when the record was created via a location-based check-in. */
+  location?: AttendanceLocation | null;
 }
 
 // ---- Leave ---------------------------------------------------------------

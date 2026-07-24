@@ -68,6 +68,19 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
   return isAdmin ? children : <Navigate to="/" replace />;
 }
 
+function RequireManager({ children }: { children: JSX.Element }) {
+  const { user, isManager, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+        <Loader2 className="animate-spin text-brand-600" size={28} />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  return isManager ? children : <Navigate to="/" replace />;
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth();
 
@@ -94,11 +107,12 @@ function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="admin" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
-        <Route path="dashboard/pending-approvals" element={<PendingApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/leave-requests" element={<LeaveRequestsApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/expense-claims" element={<ExpenseClaimsApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/regularizations" element={<RegularizationsApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/onboarding-tasks" element={<OnboardingTasksApprovalsPage />} />
+        <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/leave-requests" element={<RequireManager><LeaveRequestsApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/expense-claims" element={<RequireManager><ExpenseClaimsApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/regularizations" element={<RequireManager><RegularizationsApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/onboarding-tasks" element={<RequireManager><OnboardingTasksApprovalsPage /></RequireManager>} />
         <Route path="dashboard/announcements" element={<AnnouncementsPage />} />
         <Route path="dashboard/celebrations" element={<CelebrationsPage />} />
         <Route path="dashboard/kpi-graphs" element={<KpiGraphsPage />} />

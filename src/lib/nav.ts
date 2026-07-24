@@ -13,6 +13,7 @@ import {
   BarChart3,
   Settings,
   ShieldCheck,
+  ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -22,6 +23,8 @@ export interface NavItem {
   icon: LucideIcon;
   group: 'Main' | 'People' | 'Operations' | 'Insights';
   adminOnly?: boolean;
+  /** Visible to managers and admins only. */
+  managerOnly?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -36,6 +39,7 @@ export const navItems: NavItem[] = [
   { label: 'Expenses', path: '/expenses', icon: Receipt, group: 'Operations' },
   { label: 'Assets', path: '/assets', icon: Laptop, group: 'Operations' },
   { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'Operations' },
+  { label: 'Approvals', path: '/approvals', icon: ClipboardCheck, group: 'Operations', managerOnly: true },
   { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Insights' },
   { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Insights', adminOnly: true },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Insights' },
