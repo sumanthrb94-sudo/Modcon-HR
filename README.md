@@ -4,9 +4,11 @@ A modern, full-featured **HRMS (Human Resource Management System)** built as an
 investor-ready product demo. ModCon HR covers the complete employee lifecycle —
 from hire to retire — in a single, polished web application.
 
-> **Demo mode:** authentication/authorization is intentionally disabled so the
-> product can be explored end-to-end without any login. All data is realistic
-> mock data generated in-app.
+> **Access:** the app is protected by Firebase email/password authentication.
+> Sign up (or sign in) with a work email to explore every module. Accounts in
+> the admin allow-list (`src/lib/auth.tsx`) get the admin dashboard; everyone
+> else signs in as an employee. Module data is realistic mock data generated
+> in-app; live Firestore backs the admin views and seeding.
 
 ![Stack](https://img.shields.io/badge/React-18-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Vite](https://img.shields.io/badge/Vite-5-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 
@@ -44,7 +46,18 @@ npm install      # install dependencies
 npm run dev      # start dev server → http://localhost:5173
 npm run build    # type-check + production build
 npm run preview  # preview the production build
+npm run test:e2e # end-to-end tests (Playwright, drives the production build)
 ```
+
+### End-to-end tests
+
+`npm run test:e2e` builds/serves the app and drives it in a real Chromium
+browser (Playwright), signing in through Firebase Auth and walking every
+module plus key interactions (modals, 404, sign-out). A dedicated test account
+is provisioned automatically. Override credentials or the browser binary via
+`E2E_EMAIL` / `E2E_PASSWORD` / `PW_CHROMIUM_PATH`. When run behind an
+HTTPS-intercepting proxy the browser is configured automatically (TLS 1.2,
+proxy tunnelling) so Firebase calls succeed.
 
 ## 🧱 Architecture
 

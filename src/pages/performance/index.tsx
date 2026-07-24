@@ -269,7 +269,7 @@ const reviewColumnsWithEdit = (
         <div className="flex items-center gap-2">
           <Select
             value={editingStatus}
-            onChange={setEditingStatus}
+            onChange={(v) => setEditingStatus(v as ReviewStatus)}
             options={[
               { label: 'Not Started', value: 'Not Started' },
               { label: 'Self Review', value: 'Self Review' },
