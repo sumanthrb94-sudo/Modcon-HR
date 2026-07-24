@@ -71,6 +71,43 @@ builds never trust them. Override credentials or the browser binary via
 configured automatically (TLS 1.2, proxy tunnelling) so Firebase calls
 succeed.
 
+## 🚢 Deployment
+
+The app is hosted on **Firebase Hosting** at
+[modcon-hr.web.app](https://modcon-hr.web.app) (project `modcon-hr`, see
+`.firebaserc` / `firebase.json`).
+
+### Automated (GitHub Actions)
+
+Every push to `main` builds and deploys via
+`.github/workflows/firebase-hosting.yml`. It needs one repository secret:
+
+1. Generate a Firebase CI token on a machine logged into the project:
+   ```bash
+   npm i -g firebase-tools
+   firebase login:ci        # opens a browser, prints a token
+   ```
+2. In GitHub: **Settings → Secrets and variables → Actions → New repository
+   secret**, name it `FIREBASE_TOKEN`, and paste the token.
+
+Pushes to `main` then deploy automatically; you can also trigger a deploy
+from the **Actions** tab (workflow_dispatch).
+
+> `firebase login:ci` tokens are being phased out in favour of service
+> accounts. To use one instead, store the service-account JSON as a secret
+> and swap the deploy step for
+> [`FirebaseExtended/action-hosting-deploy`](https://github.com/FirebaseExtended/action-hosting-deploy).
+
+### Manual
+
+```bash
+npm run build
+npm run firebase:deploy   # firebase deploy --only hosting  (after: firebase login)
+```
+
+Firestore security rules (`firestore.rules`) are deployed separately with
+`firebase deploy --only firestore:rules`.
+
 ## 🧱 Architecture
 
 ```
