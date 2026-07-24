@@ -47,6 +47,19 @@ test.describe.serial('geolocation attendance', () => {
     await expect(page.getByTestId('geo-coords')).toBeVisible();
   });
 
+  test('check-out records the time and worked hours', async () => {
+    // After checking in, the check-out button becomes enabled.
+    const checkout = page.getByTestId('geo-checkout');
+    await expect(checkout).toBeEnabled();
+    await checkout.click();
+    const result = page.getByTestId('geo-checkout-result');
+    await expect(result).toBeVisible();
+    await expect(result).toContainText(/Checked out at/);
+    await expect(result).toContainText(/h worked/);
+    // Once checked out, check-in is available again.
+    await expect(page.getByTestId('geo-checkin')).toBeEnabled();
+  });
+
   test('check-in far away is marked Off-site / Work From Home', async () => {
     await context.setGeolocation(REMOTE_GEO);
     await page.getByTestId('geo-checkin').click();
@@ -57,6 +70,10 @@ test.describe.serial('geolocation attendance', () => {
   });
 
   test('denied location permission surfaces an error', async () => {
+    // The previous test left us checked in (off-site); check out so the
+    // check-in button is enabled again.
+    const checkout = page.getByTestId('geo-checkout');
+    if (await checkout.isEnabled()) await checkout.click();
     // Deterministically drive the error path: force getCurrentPosition to
     // invoke its error callback with PERMISSION_DENIED (code 1).
     await page.evaluate(() => {
