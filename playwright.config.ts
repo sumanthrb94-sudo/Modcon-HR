@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { PERSONAS, OFFICE_GEO } from './tests/e2e/config';
+import { PERSONAS } from './tests/e2e/config';
 
 /**
  * Playwright E2E configuration.
@@ -28,9 +28,6 @@ const commonUse = {
   ignoreHTTPSErrors: Boolean(proxy),
   trace: 'retain-on-failure' as const,
   screenshot: 'only-on-failure' as const,
-  // Location-based attendance needs geolocation; default to the office.
-  permissions: ['geolocation'],
-  geolocation: OFFICE_GEO,
   ...devices['Desktop Chrome'],
   launchOptions: {
     executablePath: process.env.PW_CHROMIUM_PATH || undefined,
@@ -50,7 +47,7 @@ export default defineConfig({
   projects: [
     {
       name: 'app',
-      testMatch: /(smoke|interactions|geo-attendance)\.spec\.ts$/,
+      testMatch: /(smoke|interactions)\.spec\.ts$/,
       use: commonUse,
     },
     {

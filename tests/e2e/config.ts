@@ -54,8 +54,3 @@ export const PERSONAS: Record<Role, Persona> = {
 export const TEST_EMAIL = PERSONAS.employee.email;
 export const TEST_PASSWORD = PERSONAS.employee.password;
 export const TEST_NAME = PERSONAS.employee.name;
-
-/** Office geofence used by the geolocation attendance feature (src/lib/geo.ts). */
-export const OFFICE_GEO = { latitude: 12.9716, longitude: 77.5946 };
-/** A location well outside the office geofence (central London). */
-export const REMOTE_GEO = { latitude: 51.5074, longitude: -0.1278 };

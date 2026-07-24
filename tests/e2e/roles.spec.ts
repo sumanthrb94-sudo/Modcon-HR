@@ -1,13 +1,12 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import { OFFICE_GEO, type Persona } from './config';
+import { type Persona } from './config';
 
 /**
  * Per-role end-to-end flow.
  *
  * This spec runs once per role project (role-employee / role-manager /
  * role-admin), which execute in parallel. Each persona signs in and the test
- * asserts role-appropriate navigation, access control, and a location-based
- * attendance check-in.
+ * asserts role-appropriate navigation and access control.
  */
 
 function persona(): Persona {
@@ -29,10 +28,7 @@ test.describe.serial('role-based access', () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
-    context = await browser.newContext({
-      permissions: ['geolocation'],
-      geolocation: OFFICE_GEO,
-    });
+    context = await browser.newContext();
     page = await context.newPage();
     await login(page, persona());
   });
@@ -94,14 +90,5 @@ test.describe.serial('role-based access', () => {
     } else {
       await expect(page).not.toHaveURL(/\/admin$/);
     }
-  });
-
-  test('location-based attendance check-in (on-site)', async () => {
-    await context.setGeolocation(OFFICE_GEO);
-    await page.getByRole('link', { name: 'Attendance', exact: true }).first().click();
-    await page.getByTestId('geo-checkin').click();
-    const result = page.getByTestId('geo-result');
-    await expect(result).toBeVisible();
-    await expect(result).toContainText('On-site');
   });
 });

@@ -20,7 +20,7 @@ from hire to retire — in a single, polished web application.
 | --- | --- |
 | **Dashboard** | HR command-center: headcount growth, attendance trends, diversity, pending approvals, announcements, celebrations |
 | **Employees** | Searchable directory with filters, grid/list views, rich profiles, and an interactive **org chart** |
-| **Attendance** | Location-based check-in (office geofence → on-site/off-site), daily attendance, check-in/out, late tracking, weekly trends, regularization approvals |
+| **Attendance** | Daily attendance, check-in/out, late tracking, weekly trends, regularization approvals |
 | **Leave** | Requests with approve/reject, leave balances, who's-off calendar, holiday list, apply-leave flow |
 | **Payroll** | Payroll runs, per-employee payslips with full earnings/deductions breakdown, salary cost by department |
 | **Recruitment** | Job openings, a drag-style **candidate Kanban pipeline**, hiring funnel analytics, post-a-job flow |
@@ -61,9 +61,6 @@ browser (Playwright), signing in through Firebase Auth. Coverage:
 - **Per-role flows run in parallel** — separate Playwright projects for
   `role-employee`, `role-manager`, and `role-admin` assert role-appropriate
   navigation and access control (Approvals/Admin gating and route redirects).
-- **Location-based attendance** — geolocation is mocked to the office
-  (on-site → Present), a far location (off-site → Work From Home), and a
-  denied permission (error surfaced).
 
 Dedicated test accounts are provisioned automatically; the manager/admin
 accounts are only privileged when the app is built with
@@ -73,9 +70,6 @@ builds never trust them. Override credentials or the browser binary via
 `PW_CHROMIUM_PATH`. Behind an HTTPS-intercepting proxy the browser is
 configured automatically (TLS 1.2, proxy tunnelling) so Firebase calls
 succeed.
-
-Office geofence is configurable via `VITE_OFFICE_LAT` / `VITE_OFFICE_LNG` /
-`VITE_OFFICE_RADIUS` / `VITE_OFFICE_NAME`.
 
 ## 🧱 Architecture
 
