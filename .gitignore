@@ -10,6 +10,7 @@ dist-ssr
 npm-debug.log*
 .vite
 coverage
+*.tsbuildinfo
 .idea
 .vscode/*
 !.vscode/extensions.json

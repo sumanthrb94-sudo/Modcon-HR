@@ -39,7 +39,12 @@ export const ADMIN_EMAILS = [
     'saikrishnakoppaka@gmail.com',
 ].map((e) => e.toLowerCase());
 
-export type UserRole = 'admin' | 'employee';
+export type UserRole = 'admin' | 'manager' | 'employee';
+
+// Roles that carry approval / team-management privileges.
+export function isManagerRole(role: UserRole | undefined | null): boolean {
+    return role === 'manager' || role === 'admin';
+}
 
 export interface UserProfile {
     uid: string;
@@ -93,6 +98,7 @@ interface AuthContextValue {
     profile: UserProfile | null;
     loading: boolean;
     isAdmin: boolean;
+    isManager: boolean;
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
@@ -171,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const isAdmin = profile?.role === 'admin';
+    const isManager = isManagerRole(profile?.role);
 
     return (
         <AuthContext.Provider
@@ -179,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 profile,
                 loading,
                 isAdmin,
+                isManager,
                 error,
                 clearError,
                 signInEmail,

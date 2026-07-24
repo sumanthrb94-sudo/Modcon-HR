@@ -4,10 +4,16 @@ import { LogOut, Menu, Search } from 'lucide-react';
 import { Avatar, Button, NotificationsMenu, QuickAddMenu } from '@/components/ui';
 import { navItems } from '@/lib/nav';
 import { employees } from '@/data/employees';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type UserRole } from '@/lib/auth';
 
 interface TopbarProps {
   onMenuClick: () => void;
+}
+
+function roleLabel(role: UserRole | undefined): string {
+  if (role === 'admin') return 'Administrator';
+  if (role === 'manager') return 'Manager';
+  return 'Employee';
 }
 
 export function Topbar({ onMenuClick }: TopbarProps) {
@@ -129,7 +135,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           <Avatar name={profile?.displayName || profile?.email || 'User'} size="sm" />
           <div className="hidden md:block leading-tight">
             <p className="text-sm font-semibold text-ink-900">{profile?.displayName || profile?.email}</p>
-            <p className="text-[11px] text-ink-400">{profile?.role === 'admin' ? 'Administrator' : 'Employee'}</p>
+            <p className="text-[11px] text-ink-400">{roleLabel(profile?.role)}</p>
           </div>
           <button
             type="button"

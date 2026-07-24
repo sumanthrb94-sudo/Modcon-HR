@@ -10,8 +10,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { isAdmin } = useAuth();
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+  const { isAdmin, isManager } = useAuth();
+  const visibleItems = navItems.filter((item) => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.managerOnly && !isManager) return false;
+    return true;
+  });
   return (
     <>
       {/* Mobile backdrop */}

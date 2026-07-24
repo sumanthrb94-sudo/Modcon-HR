@@ -89,7 +89,7 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
 // ---------------------------------------------------------------------------
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, isManager } = useAuth();
   const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
   const greetingPeriod = () => {
     const hour = new Date().getHours();
@@ -429,7 +429,8 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* ---- Col 1: Pending Approvals + Activity Feed ---- */}
         <div className="space-y-5">
-          {/* Pending approvals */}
+          {/* Pending approvals — managers & admins only */}
+          {isManager && (
           <Card>
             <CardHeader
               title="Pending Approvals"
@@ -477,6 +478,7 @@ export function DashboardPage() {
               </Link>
             </div>
           </Card>
+          )}
 
           {/* Activity feed */}
           <Card>

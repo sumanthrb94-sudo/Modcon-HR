@@ -41,6 +41,8 @@ import {
 import { employees, departments, getEmployee } from '@/data/employees';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { SelfCheckIn } from './SelfCheckIn';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
 
@@ -55,6 +57,7 @@ function dayLabel(iso: string): string {
 }
 
 export function AttendancePage() {
+  const { isManager } = useAuth();
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
@@ -304,7 +307,7 @@ export function AttendancePage() {
       key: 'actions',
       header: 'Actions',
       render: (row) =>
-        row.status === 'Pending' ? (
+        row.status === 'Pending' && isManager ? (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -339,11 +342,16 @@ export function AttendancePage() {
         title="Attendance"
         subtitle={`Week of ${formatDate(WEEK_DATES[0])} – ${formatDate(WEEK_DATES[4])}`}
         actions={
-          <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
-            Mark Attendance
-          </Button>
+          isManager ? (
+            <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
+              Mark Attendance
+            </Button>
+          ) : undefined
         }
       />
+
+      {/* Self-service check in / out (geolocation) */}
+      <SelfCheckIn />
 
       {/* Stat Cards — today's numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

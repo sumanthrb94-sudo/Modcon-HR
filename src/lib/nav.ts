@@ -13,6 +13,7 @@ import {
   BarChart3,
   Settings,
   ShieldCheck,
+  ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -21,11 +22,15 @@ export interface NavItem {
   path: string;
   icon: LucideIcon;
   group: 'Main' | 'People' | 'Operations' | 'Insights';
+  /** Visible only to admins. */
   adminOnly?: boolean;
+  /** Visible only to managers and admins (approval / team management). */
+  managerOnly?: boolean;
 }
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main' },
+  { label: 'Approvals', path: '/dashboard/pending-approvals', icon: ClipboardCheck, group: 'Main', managerOnly: true },
   { label: 'Employees', path: '/employees', icon: Users, group: 'People' },
   { label: 'Attendance', path: '/attendance', icon: CalendarCheck, group: 'People' },
   { label: 'Leave', path: '/leave', icon: CalendarOff, group: 'People' },

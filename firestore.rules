@@ -20,6 +20,13 @@ service cloud.firestore {
         myProfile().role == 'admin';
     }
 
+    // Managers and admins both carry approval / team-management privileges.
+    function isManager() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (myProfile().role == 'manager' || myProfile().role == 'admin');
+    }
+
     // Employee record linked to the signed-in user (matched by email).
     function myEmployeeDoc() {
       return get(/databases/$(database)/documents/employees/$(request.auth.uid));
@@ -51,7 +58,13 @@ service cloud.firestore {
 
     match /attendance/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      // Employees may self-record their own check-in/out; managers & admins
+      // may mark or amend attendance for anyone on their team.
+      allow create: if isSignedIn() &&
+        (request.resource.data.employeeId == request.auth.uid || isManager());
+      allow update: if isSignedIn() &&
+        (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isManager();
     }
 
     match /leave_requests/{docId} {
@@ -59,8 +72,8 @@ service cloud.firestore {
       // Employees can create/update their own leave requests; admins can
       // manage all of them (e.g. approve/reject).
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isManager();
     }
 
     match /leave_balances/{docId} {
@@ -107,8 +120,8 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // Employees can submit/edit their own expense claims; admins manage all.
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isManager();
     }
 
     match /assets/{docId} {
@@ -120,15 +133,15 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // Employees can raise/update their own tickets; admins manage all.
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isManager());
+      allow delete: if isManager();
     }
 
     match /regularizations/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isManager();
     }
 
     // -------------------------------------------------------------------

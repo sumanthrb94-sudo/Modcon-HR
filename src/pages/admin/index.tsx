@@ -102,8 +102,8 @@ export function AdminDashboardPage() {
             key: 'role',
             header: 'Role',
             render: (u) => (
-                <Badge tone={u.role === 'admin' ? 'violet' : 'gray'}>
-                    {u.role === 'admin' ? 'Admin' : 'Employee'}
+                <Badge tone={u.role === 'admin' ? 'violet' : u.role === 'manager' ? 'blue' : 'gray'}>
+                    {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'Employee'}
                 </Badge>
             ),
         },
@@ -133,6 +133,7 @@ export function AdminDashboardPage() {
                             onChange={(e) => setRole(u.uid, e.target.value as UserRole)}
                         >
                             <option value="employee">Employee</option>
+                            <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
                         </select>
                         <button
