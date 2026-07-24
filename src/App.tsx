@@ -11,6 +11,7 @@ const DashboardPage = lazy(() => import('@/pages/dashboard').then((m) => ({ defa
 const EmployeesPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeesPage })));
 const EmployeeDetailPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeeDetailPage })));
 const AttendancePage = lazy(() => import('@/pages/attendance').then((m) => ({ default: m.AttendancePage })));
+const MyAttendancePage = lazy(() => import('@/pages/my-attendance').then((m) => ({ default: m.MyAttendancePage })));
 const LeavePage = lazy(() => import('@/pages/leave').then((m) => ({ default: m.LeavePage })));
 const PayrollPage = lazy(() => import('@/pages/payroll').then((m) => ({ default: m.PayrollPage })));
 const RecruitmentPage = lazy(() => import('@/pages/recruitment').then((m) => ({ default: m.RecruitmentPage })));
@@ -96,6 +97,7 @@ function AppRoutes() {
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="employees/:id" element={<EmployeeDetailPage />} />
         <Route path="attendance" element={<AttendancePage />} />
+        <Route path="my-attendance" element={<MyAttendancePage />} />
         <Route path="leave" element={<LeavePage />} />
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="recruitment" element={<RecruitmentPage />} />

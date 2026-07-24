@@ -14,6 +14,7 @@ import {
   Settings,
   ShieldCheck,
   ClipboardCheck,
+  CalendarClock,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ export const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main' },
   { label: 'Employees', path: '/employees', icon: Users, group: 'People' },
   { label: 'Attendance', path: '/attendance', icon: CalendarCheck, group: 'People' },
+  { label: 'My Attendance', path: '/my-attendance', icon: CalendarClock, group: 'People' },
   { label: 'Leave', path: '/leave', icon: CalendarOff, group: 'People' },
   { label: 'Payroll', path: '/payroll', icon: Wallet, group: 'Operations' },
   { label: 'Recruitment', path: '/recruitment', icon: Briefcase, group: 'Operations' },
