@@ -3,8 +3,11 @@
 // Derived from employees + mock time-series data.
 // ===========================================================================
 
-import { employees } from './employees';
+import { employees, locations } from './employees';
 import { getDepartmentDirectory } from './departments';
+import { getJobOpenings, getCandidates } from './recruitment';
+import { getReviews } from './performance';
+import { getWeekSummary } from './attendance';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
@@ -169,4 +172,47 @@ export function diversityRatio(): number {
 
 export function currentAttritionRate(): number {
   return attritionTrend.length ? attritionTrend[attritionTrend.length - 1].attrition : 0;
+}
+
+export function departmentCount(): number {
+  return getDepartmentDirectory().length;
+}
+
+export function locationCount(): number {
+  return locations.length;
+}
+
+export function attendanceSummary(): { avgRate: number; wfhPercent: number } {
+  const week = getWeekSummary();
+  const marked = week.reduce((acc, d) => acc + d.Present + d['Work From Home'] + d['On Leave'] + d.Absent + d['Half Day'], 0);
+  if (!marked) return { avgRate: 0, wfhPercent: 0 };
+  const attended = week.reduce((acc, d) => acc + d.Present + d['Work From Home'] + d['Half Day'], 0);
+  const wfh = week.reduce((acc, d) => acc + d['Work From Home'], 0);
+  return {
+    avgRate: Math.round((attended / marked) * 1000) / 10,
+    wfhPercent: attended ? Math.round((wfh / attended) * 100) : 0,
+  };
+}
+
+export function openRolesCount(): number {
+  return getJobOpenings().filter((job) => job.status === 'Open').length;
+}
+
+export function avgTimeToHireDays(): number {
+  const hired = getCandidates().filter((c) => c.stage === 'Hired');
+  if (!hired.length) return 0;
+  const totalDays = hired.reduce((acc, c) => acc + (TODAY.getTime() - new Date(c.appliedOn).getTime()) / (1000 * 60 * 60 * 24), 0);
+  return Math.round(totalDays / hired.length);
+}
+
+export function performanceSummary(): { completedPercent: number; avgRating: number } {
+  const list = getReviews();
+  if (!list.length) return { completedPercent: 0, avgRating: 0 };
+  const completed = list.filter((r) => r.status === 'Completed');
+  const rated = completed.filter((r) => typeof r.rating === 'number');
+  const avgRating = rated.length ? rated.reduce((acc, r) => acc + (r.rating ?? 0), 0) / rated.length : 0;
+  return {
+    completedPercent: Math.round((completed.length / list.length) * 100),
+    avgRating: Math.round(avgRating * 10) / 10,
+  };
 }

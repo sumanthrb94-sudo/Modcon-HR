@@ -30,6 +30,12 @@ import {
   totalAnnualPayroll,
   diversityRatio,
   currentAttritionRate,
+  departmentCount,
+  locationCount,
+  attendanceSummary,
+  openRolesCount,
+  avgTimeToHireDays,
+  performanceSummary,
 } from '@/data/reports';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -142,6 +148,12 @@ export function ReportsPage() {
   const tenure = avgTenureYears();
   const payroll = totalAnnualPayroll();
   const diversity = diversityRatio();
+  const deptCount = departmentCount();
+  const locCount = locationCount();
+  const attendance = attendanceSummary();
+  const openRoles = openRolesCount();
+  const avgTTH = avgTimeToHireDays();
+  const performance = performanceSummary();
 
   const deptOptions = [
     { label: 'All Departments', value: 'all' },
@@ -168,7 +180,7 @@ export function ReportsPage() {
       icon: <Calendar size={20} />,
       title: 'Attendance Report',
       description: 'Daily attendance rates, late arrivals, work-from-home split, and absenteeism.',
-      kpis: [{ label: 'Avg Rate', value: '92.4%' }, { label: 'WFH Days', value: '38%' }],
+      kpis: [{ label: 'Avg Rate', value: `${attendance.avgRate}%` }, { label: 'WFH Days', value: `${attendance.wfhPercent}%` }],
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
       route: '/attendance',
@@ -177,7 +189,7 @@ export function ReportsPage() {
       icon: <IndianRupee size={20} />,
       title: 'Payroll Report',
       description: 'Monthly payroll cost, department-wise spend, tax liability, and PF contributions.',
-      kpis: [{ label: 'Monthly Cost', value: formatINR(payroll / 12, { compact: true }) }, { label: 'Dept Cost', value: '10 depts' }],
+      kpis: [{ label: 'Monthly Cost', value: formatINR(payroll / 12, { compact: true }) }, { label: 'Dept Cost', value: `${deptCount} depts` }],
       color: 'text-amber-600',
       bg: 'bg-amber-50',
       route: '/payroll',
@@ -186,7 +198,7 @@ export function ReportsPage() {
       icon: <Briefcase size={20} />,
       title: 'Recruitment Report',
       description: 'Open positions, offer acceptance rates, time-to-hire, and source effectiveness.',
-      kpis: [{ label: 'Open Roles', value: '8' }, { label: 'Avg TTH', value: '24 days' }],
+      kpis: [{ label: 'Open Roles', value: String(openRoles) }, { label: 'Avg TTH', value: `${avgTTH} days` }],
       color: 'text-violet-600',
       bg: 'bg-violet-50',
       route: '/recruitment',
@@ -195,7 +207,7 @@ export function ReportsPage() {
       icon: <Heart size={20} />,
       title: 'DEI Report',
       description: 'Gender diversity, inclusion metrics, pay equity analysis, and representation data.',
-      kpis: [{ label: 'Female Ratio', value: `${diversity}%` }, { label: 'Locations', value: '8' }],
+      kpis: [{ label: 'Female Ratio', value: `${diversity}%` }, { label: 'Locations', value: String(locCount) }],
       color: 'text-rose-600',
       bg: 'bg-rose-50',
       route: '/employees',
@@ -204,7 +216,7 @@ export function ReportsPage() {
       icon: <Award size={20} />,
       title: 'Performance Report',
       description: 'Review completion rates, rating distributions, goal attainment, and top performers.',
-      kpis: [{ label: 'Completed', value: '78%' }, { label: 'Avg Rating', value: '3.8/5' }],
+      kpis: [{ label: 'Completed', value: `${performance.completedPercent}%` }, { label: 'Avg Rating', value: `${performance.avgRating}/5` }],
       color: 'text-cyan-600',
       bg: 'bg-cyan-50',
       route: '/performance',
