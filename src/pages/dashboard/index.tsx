@@ -634,7 +634,11 @@ function AdminDashboard() {
           <CardHeader
             title="Headcount Growth"
             subtitle="Last 12 months"
-            action={<Badge tone="blue">+{headcountSeries[headcountSeries.length - 1].count - headcountSeries[0].count} new hires</Badge>}
+            action={
+              headcountSeries.length > 0 ? (
+                <Badge tone="blue">+{headcountSeries[headcountSeries.length - 1].count - headcountSeries[0].count} new hires</Badge>
+              ) : null
+            }
           />
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={headcountSeries} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
