@@ -41,6 +41,18 @@ function EmployeeFinancePage() {
     };
   }, []);
 
+  // Declared above the `!employee` guard below: hooks must run in the same
+  // order on every render, and an unmatched profile must not change the count.
+  const payslipHistory = useMemo(
+    () =>
+      employee
+        ? payrollRuns
+            .map((run) => buildPayslip(employee, run.month, run.status))
+            .sort((a, b) => b.month.localeCompare(a.month))
+        : [],
+    [employee],
+  );
+
   if (!employee) {
     return (
       <EmptyState
@@ -135,14 +147,6 @@ function EmployeeFinancePage() {
       showDownloadNotice('Unable to generate PDF right now. Please try again.');
     }
   }
-
-  const payslipHistory = useMemo(
-    () =>
-      payrollRuns
-        .map((run) => buildPayslip(employee, run.month, run.status))
-        .sort((a, b) => b.month.localeCompare(a.month)),
-    [employee],
-  );
 
   const payslipColumns: Column<Payslip>[] = [
     {
