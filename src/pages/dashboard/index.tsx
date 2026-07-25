@@ -10,7 +10,7 @@ import {
 import {
   Users, CalendarCheck, CalendarOff, Briefcase, TrendingUp,
   Clock, Bell, IndianRupee, CheckSquare, ChevronRight,
-  Cake, Star, UserPlus, Zap, Gift, MapPin, Megaphone,
+  Cake, Star, UserPlus, Zap, Gift, Megaphone, Mail, Phone, MapPin,
 } from 'lucide-react';
 
 import {
@@ -18,9 +18,18 @@ import {
   StatCard, ProgressBar, PageHeader, QuickAddMenu, NotificationsMenu,
 } from '@/components/ui';
 import { employees } from '@/data/employees';
-import { holidays, announcements } from '@/data/common';
+import { getLeaveRequests, getEmployeeBalances } from '@/data/leave';
+import { expenseClaims } from '@/data/expenses';
+import { tickets } from '@/data/helpdesk';
+import { getDepartmentDirectory } from '@/data/departments';
+import { announcements } from '@/data/common';
+import { getHolidayDirectory } from '@/data/holidays';
 import { formatDate, formatDateShort, timeAgo, pct } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import {
   headcountSeries, weeklyAttendance, pendingApprovals,
   activityFeed, DEPT_COLORS, ATTENDANCE_COLORS,
@@ -84,12 +93,358 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
   );
 }
 
+function EmployeeDashboard() {
+  const { profile } = useAuth();
+  const currentEmployee = getCurrentEmployee(profile);
+  const holidayRevision = useHolidayDirectoryRevision();
+  const displayName = currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Employee';
+  const firstName = displayName.split(' ')[0].split('@')[0];
+
+  const leaveRequests = useMemo(
+    () => (currentEmployee ? getLeaveRequests().filter((request) => request.employeeId === currentEmployee.id) : []),
+    [currentEmployee],
+  );
+  const leaveBalances = useMemo(
+    () => (currentEmployee ? getEmployeeBalances(currentEmployee.id, getLeaveRequests()) : []),
+    [currentEmployee],
+  );
+  const employeeExpenses = useMemo(
+    () => (currentEmployee ? expenseClaims.filter((claim) => claim.employeeId === currentEmployee.id) : []),
+    [currentEmployee],
+  );
+  const expenseRows = useMemo(
+    () => employeeExpenses
+      .slice()
+      .sort((a, b) => b.submittedOn.localeCompare(a.submittedOn))
+      .slice(0, 4),
+    [employeeExpenses],
+  );
+  const employeeTickets = useMemo(
+    () => (currentEmployee ? tickets.filter((ticket) => ticket.raisedById === currentEmployee.id) : []),
+    [currentEmployee],
+  );
+  const ticketRows = useMemo(
+    () => employeeTickets
+      .slice()
+      .sort((a, b) => b.createdOn.localeCompare(a.createdOn))
+      .slice(0, 4),
+    [employeeTickets],
+  );
+  const upcomingHolidays = useMemo(
+    () => getHolidayDirectory()
+      .filter((holiday) => new Date(holiday.date) >= TODAY_DATE)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 3),
+    [holidayRevision],
+  );
+  const latestAnnouncements = useMemo(
+    () => announcements
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 3),
+    [],
+  );
+  const nextPlannedLeave = useMemo(
+    () => leaveRequests
+      .filter((request) => request.status !== 'Rejected' && request.status !== 'Cancelled' && new Date(request.startDate) >= TODAY_DATE)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))[0],
+    [leaveRequests],
+  );
+  const activeExpenseAmount = useMemo(
+    () => employeeExpenses
+      .filter((claim) => claim.status === 'Submitted' || claim.status === 'Approved')
+      .reduce((sum, claim) => sum + claim.amount, 0),
+    [employeeExpenses],
+  );
+  const newestActiveTicket = useMemo(
+    () => employeeTickets
+      .filter((ticket) => ticket.status === 'Open' || ticket.status === 'In Progress')
+      .sort((a, b) => b.createdOn.localeCompare(a.createdOn))[0],
+    [employeeTickets],
+  );
+  const quickActions = [
+    {
+      title: 'Request Leave',
+      subtitle: 'View balances and apply',
+      to: '/leave',
+      icon: <CalendarOff size={18} className="text-violet-600" />,
+      accent: 'bg-violet-50 border-violet-100',
+    },
+    {
+      title: 'Submit Expense',
+      subtitle: 'Track reimbursements',
+      to: '/expenses',
+      icon: <IndianRupee size={18} className="text-amber-600" />,
+      accent: 'bg-amber-50 border-amber-100',
+    },
+    {
+      title: 'Raise Ticket',
+      subtitle: 'Get HR or IT support',
+      to: '/helpdesk',
+      icon: <Bell size={18} className="text-brand-600" />,
+      accent: 'bg-brand-50 border-brand-100',
+    },
+    {
+      title: 'Read Updates',
+      subtitle: 'Announcements and news',
+      to: '/dashboard/announcements',
+      icon: <Megaphone size={18} className="text-emerald-600" />,
+      accent: 'bg-emerald-50 border-emerald-100',
+    },
+  ] as const;
+
+  const leaveSummary = {
+    pending: leaveRequests.filter((request) => request.status === 'Pending').length,
+    approved: leaveRequests.filter((request) => request.status === 'Approved').length,
+  };
+
+  const openTickets = employeeTickets.filter((ticket) => ticket.status === 'Open' || ticket.status === 'In Progress').length;
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title={`Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, ${firstName} 👋`}
+        subtitle={currentEmployee ? `${currentEmployee.designation} · ${currentEmployee.department}` : 'Employee workspace'}
+        actions={<NotificationsMenu />}
+      />
+
+      <div className="grid grid-cols-1 gap-4">
+        <Card>
+          <CardHeader title="My Leave Balance" subtitle="Your available leave buckets" />
+          {leaveBalances.length === 0 ? (
+            <p className="text-sm text-ink-500">No leave balance data available for this account yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {leaveBalances.map((balance) => (
+                <div key={balance.type} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-ink-700">{balance.type}</span>
+                    <span className="text-ink-500">{balance.available}/{balance.total} available</span>
+                  </div>
+                  <ProgressBar value={pct(balance.used, balance.total)} tone={pct(balance.used, balance.total) > 75 ? 'amber' : 'brand'} size="sm" />
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Leave Requests" value={String(leaveRequests.length)} icon={<CalendarOff size={18} />} />
+        <StatCard label="Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} />
+        <StatCard label="Expense Claims" value={String(expenseRows.length)} icon={<IndianRupee size={18} />} />
+        <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <Card className="xl:col-span-2">
+          <CardHeader title="My Workspace" subtitle="Jump into the workflows you use most" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {quickActions.map((action) => (
+              <Link
+                key={action.title}
+                to={action.to}
+                className={`rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-card-hover ${action.accent}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-white/80 flex items-center justify-center shadow-sm">
+                    {action.icon}
+                  </div>
+                  <ChevronRight size={16} className="text-ink-300" />
+                </div>
+                <p className="mt-4 text-sm font-semibold text-ink-900">{action.title}</p>
+                <p className="mt-1 text-sm text-ink-500">{action.subtitle}</p>
+              </Link>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+            <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <CalendarCheck size={16} className="text-brand-600" />
+                Next time off
+              </div>
+              {nextPlannedLeave ? (
+                <>
+                  <p className="mt-3 text-sm font-medium text-ink-900">{nextPlannedLeave.type} leave</p>
+                  <p className="mt-1 text-sm text-ink-500">{formatDate(nextPlannedLeave.startDate)} to {formatDate(nextPlannedLeave.endDate)}</p>
+                  <Badge tone={nextPlannedLeave.status === 'Approved' ? 'green' : 'amber'} dot className="mt-3">{nextPlannedLeave.status}</Badge>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm font-medium text-ink-900">No upcoming leave planned</p>
+                  <p className="mt-1 text-sm text-ink-500">Use Leave Management when you need time away.</p>
+                </>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <IndianRupee size={16} className="text-amber-600" />
+                Reimbursements in flight
+              </div>
+              <p className="mt-3 text-lg font-semibold text-ink-900">
+                {activeExpenseAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}
+              </p>
+              <p className="mt-1 text-sm text-ink-500">
+                {employeeExpenses.filter((claim) => claim.status === 'Submitted' || claim.status === 'Approved').length} claims awaiting payout or final reimbursement.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <Bell size={16} className="text-brand-600" />
+                Support status
+              </div>
+              <p className="mt-3 text-sm font-medium text-ink-900">
+                {newestActiveTicket ? newestActiveTicket.subject : 'No open support requests'}
+              </p>
+              <p className="mt-1 text-sm text-ink-500">
+                {newestActiveTicket
+                  ? `${newestActiveTicket.status} · ${newestActiveTicket.assignedTo}`
+                  : 'Raise a helpdesk ticket if you need HR, IT, payroll, or facilities support.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Coming Up"
+            subtitle="Important dates and company moments"
+            action={
+              <Link to="/dashboard/holiday-calendar" className="text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors">
+                View calendar
+              </Link>
+            }
+          />
+          <div className="space-y-3">
+            {upcomingHolidays.length === 0 ? (
+              <p className="text-sm text-ink-500">No upcoming holidays are published yet.</p>
+            ) : upcomingHolidays.map((holiday) => (
+              <div key={holiday.id} className="rounded-xl border border-ink-100 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-ink-900">{holiday.name}</p>
+                    <p className="text-sm text-ink-500 mt-1">{formatDate(holiday.date)}</p>
+                  </div>
+                  <Badge tone={holiday.type === 'National' ? 'blue' : holiday.type === 'Optional' ? 'amber' : 'green'}>
+                    {holiday.type}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+            {latestAnnouncements[0] && (
+              <div className="rounded-2xl bg-brand-50 p-4">
+                <div className="flex items-center gap-2">
+                  <Megaphone size={16} className="text-brand-600" />
+                  <p className="text-sm font-semibold text-ink-900">Latest announcement</p>
+                </div>
+                <p className="mt-3 text-sm font-medium text-ink-900">{latestAnnouncements[0].title}</p>
+                <p className="mt-1 text-sm text-ink-500 line-clamp-3">{latestAnnouncements[0].body}</p>
+                <p className="mt-3 text-xs text-ink-400">{formatDate(latestAnnouncements[0].date)} · {latestAnnouncements[0].author}</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader title="Recent Leave Requests" subtitle="Your latest submissions" />
+          <div className="space-y-3">
+            {leaveRequests.length === 0 ? (
+              <p className="text-sm text-ink-500">No leave requests found.</p>
+            ) : leaveRequests.slice(0, 4).map((request) => (
+              <div key={request.id} className="rounded-xl border border-ink-100 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-ink-900">{request.type}</p>
+                  <p className="text-xs text-ink-400">{request.startDate} to {request.endDate}</p>
+                </div>
+                <Badge tone={request.status === 'Approved' ? 'green' : request.status === 'Rejected' ? 'red' : 'amber'} dot>{request.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Recent Expense Claims" subtitle="Your latest reimbursements" />
+          <div className="space-y-3">
+            {expenseRows.length === 0 ? (
+              <p className="text-sm text-ink-500">No expense claims found.</p>
+            ) : expenseRows.map((claim) => (
+              <div key={claim.id} className="rounded-xl border border-ink-100 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-ink-900">{claim.title}</p>
+                  <p className="text-xs text-ink-400">{claim.category} · {claim.date}</p>
+                </div>
+                <Badge tone={claim.status === 'Reimbursed' ? 'green' : claim.status === 'Submitted' ? 'amber' : 'gray'} dot>{claim.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Recent Helpdesk Tickets" subtitle="Your latest requests" />
+          <div className="space-y-3">
+            {ticketRows.length === 0 ? (
+              <p className="text-sm text-ink-500">No support tickets found.</p>
+            ) : ticketRows.map((ticket) => (
+              <div key={ticket.id} className="rounded-xl border border-ink-100 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-ink-900">{ticket.subject}</p>
+                  <p className="text-xs text-ink-400">{ticket.category} · {ticket.ticketCode}</p>
+                </div>
+                <Badge tone={ticket.status === 'Open' ? 'blue' : ticket.status === 'In Progress' ? 'amber' : 'green'} dot>{ticket.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Company Updates"
+            subtitle="Recent announcements from people ops and leadership"
+            action={
+              <Link to="/dashboard/announcements" className="text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors">
+                View all
+              </Link>
+            }
+          />
+          <div className="space-y-3">
+            {latestAnnouncements.map((announcement) => (
+              <div key={announcement.id} className="rounded-xl border border-ink-100 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-ink-900">{announcement.title}</p>
+                  <Badge tone={annTone(announcement.category)}>{announcement.category}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-ink-500 line-clamp-2">{announcement.body}</p>
+                <p className="mt-3 text-xs text-ink-400">{formatDate(announcement.date)} · {announcement.author}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function DashboardPage() {
+  const { profile } = useAuth();
+
+  return profile?.role === 'admin' ? <AdminDashboard /> : <EmployeeDashboard />;
+}
+
+function AdminDashboard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const departmentRevision = useDepartmentDirectoryRevision();
+  const holidayRevision = useHolidayDirectoryRevision();
+  const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
   const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
   const greetingPeriod = () => {
     const hour = new Date().getHours();
@@ -126,18 +481,14 @@ export function DashboardPage() {
     );
 
     return { total, active, onLeave, presentToday, wfhToday, openPositions, attritionRate, avgTenure };
-  }, []);
+  }, [directoryRevision]);
 
   // ---- dept distribution for pie chart ------------------------------------
   const deptData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    employees.forEach((e) => {
-      counts[e.department] = (counts[e.department] ?? 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value, fill: DEPT_COLORS[name] ?? '#94a3b8' }))
+    return getDepartmentDirectory()
+      .map((dept) => ({ name: dept.name, value: dept.headcount, fill: DEPT_COLORS[dept.name] ?? '#94a3b8' }))
       .sort((a, b) => b.value - a.value);
-  }, []);
+  }, [directoryRevision, departmentRevision]);
 
   // ---- gender diversity ---------------------------------------------------
   const genderData = useMemo(() => {
@@ -149,7 +500,7 @@ export function DashboardPage() {
       { name: 'Female', value: f, fill: '#ec4899' },
       ...(o > 0 ? [{ name: 'Other', value: o, fill: '#10b981' }] : []),
     ];
-  }, []);
+  }, [directoryRevision]);
 
   // ---- upcoming holidays (after today) ------------------------------------
   const upcomingHolidays = useMemo(() =>
@@ -182,7 +533,7 @@ export function DashboardPage() {
       const db = new Date(b.date).getDate();
       return da - db;
     });
-  }, []);
+  }, [directoryRevision]);
 
   // ---- today date display -------------------------------------------------
   const todayLabel = TODAY_DATE.toLocaleDateString('en-IN', {

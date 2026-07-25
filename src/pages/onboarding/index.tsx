@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react';
 import {
   CheckSquare,
   ClipboardList,
@@ -25,6 +25,29 @@ import {
 import { formatDate, cn } from '@/lib/utils';
 import { onboardings as initialOnboardings } from '@/data/onboarding';
 import type { Onboarding, OnboardingTask, TaskStatus } from '@/types';
+
+const ONBOARDING_STATE_STORAGE_KEY = 'modcon.hr.onboarding.state';
+
+function readStoredOnboardings(): Onboarding[] | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(ONBOARDING_STATE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+
+    return parsed as Onboarding[];
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredOnboardings(onboardings: Onboarding[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(ONBOARDING_STATE_STORAGE_KEY, JSON.stringify(onboardings));
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -355,7 +378,11 @@ function OnboardingCard({ onboarding, onToggleTask }: OnboardingCardProps) {
 // ---------------------------------------------------------------------------
 
 export function OnboardingPage() {
-  const [onboardings, setOnboardings] = useState<Onboarding[]>(initialOnboardings);
+  const [onboardings, setOnboardings] = useState<Onboarding[]>(() => readStoredOnboardings() ?? initialOnboardings);
+
+  useEffect(() => {
+    writeStoredOnboardings(onboardings);
+  }, [onboardings]);
 
   const handleToggleTask = useCallback((onboardingId: string, taskId: string) => {
     setOnboardings((prev) =>

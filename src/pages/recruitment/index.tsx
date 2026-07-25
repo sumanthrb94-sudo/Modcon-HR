@@ -42,7 +42,10 @@ import {
 import { formatDate, timeAgo } from '@/lib/utils';
 import { candidates, hiringFunnel, getJobOpenings, addJobOpening, deleteJobOpening, JOB_OPENINGS_CHANGED_EVENT, getCandidates, removeCandidatesForJob, updateCandidateStage, CANDIDATES_CHANGED_EVENT } from '@/data/recruitment';
 import type { JobOpening, Candidate, CandidateStage, Department, EmploymentType, JobStatus } from '@/types';
-import { departments, locations, getEmployeeName } from '@/data/employees';
+import { locations, getEmployeeName } from '@/data/employees';
+import { departments } from '@/data/departments';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -723,6 +726,8 @@ const TABS = [
 ];
 
 export function RecruitmentPage() {
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const departmentRevision = useDepartmentDirectoryRevision();
   const [jobs, setJobs] = useState<JobOpening[]>(() => getJobOpenings());
   const [candidateList, setCandidateList] = useState<Candidate[]>(() => getCandidates());
   const [activeTab, setActiveTab] = useState('openings');
@@ -753,7 +758,7 @@ export function RecruitmentPage() {
     const inInterview = candidateList.filter((c) => c.stage === 'Interview').length;
     const offers = candidateList.filter((c) => c.stage === 'Offer').length;
     return { open, totalApplicants, inInterview, offers };
-  }, [jobs, candidateList]);
+  }, [jobs, candidateList, directoryRevision, departmentRevision]);
 
   function handlePostJob(form: { title: string; department: string; location: string; type: string; openings: string; experience: string }) {
     const newJob: JobOpening = {

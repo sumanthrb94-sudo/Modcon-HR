@@ -38,7 +38,10 @@ import {
   WEEK_DATES,
   type RegularizationRequest,
 } from '@/data/attendance';
-import { employees, departments, getEmployee } from '@/data/employees';
+import { employees, getEmployee } from '@/data/employees';
+import { departments } from '@/data/departments';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
 
@@ -55,6 +58,8 @@ function dayLabel(iso: string): string {
 }
 
 export function AttendancePage() {
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const departmentRevision = useDepartmentDirectoryRevision();
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
@@ -121,7 +126,7 @@ export function AttendancePage() {
       { label: 'All Departments', value: '' },
       ...departments.map((d) => ({ label: d, value: d })),
     ],
-    [],
+    [departmentRevision],
   );
 
   // Date options

@@ -20,29 +20,11 @@ service cloud.firestore {
         myProfile().role == 'admin';
     }
 
-    // NOTE on the "owner" checks below (leave_requests, helpdesk_tickets,
-    // regularizations): they compare a document's employeeId/raisedById
-    // field to request.auth.uid. In the current app, those fields are
-    // populated with the mock HR "Employee.id" (e.g. "emp-003"), not the
-    // signed-in user's Firebase Auth uid — the two are never equal for a
-    // real account today. Practically this only means the "update your own
-    // record" path is currently unreachable for these three collections
-    // (admins update via isAdmin() instead, and creation only requires
-    // isSignedIn()) — none of their pages write to Firestore yet (they run
-    // on local mock data), so nothing regresses today. `expenses` below is
-    // the one collection with a real Firestore write path from the UI, so
-    // it's been fixed to use a proper `ownerUid` field instead; apply the
-    // same pattern here before building live Firestore self-service for
-    // leave/tickets/regularizations.
-
     // -------------------------------------------------------------------
-    // Users directory (Firebase Auth profiles + app role). This is the
-    // account-management collection behind the Admin dashboard, distinct
-    // from the `employees` HR directory below — restricted to the owner
-    // (to read/refresh their own profile) and admins (who manage everyone).
+    // Users directory (roles, profile info)
     // -------------------------------------------------------------------
     match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow read: if isSignedIn();
       // Users may create/update their own profile (first login upsert),
       // admins may update anyone (e.g. to change roles).
       allow create: if isSignedIn() && request.auth.uid == uid;
@@ -53,43 +35,24 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
-    // Core HR data. Read/write access below is derived from this app's own
-    // declared default permission matrix (src/lib/accessControl.ts). Only
-    // two Firebase-level roles actually exist today (admin / employee — see
-    // src/lib/auth.tsx), so "HR Manager" / "Manager" rows in that matrix
-    // aren't reachable by a real signed-in user yet; these rules enforce the
-    // Admin/Employee split, which is the split that can currently happen.
+    // Core HR data — read: any signed-in user, write: admins only.
+    // Adjust per-collection if employees need to self-service specific
+    // actions (e.g. submitting their own leave/expense requests).
     // -------------------------------------------------------------------
-
-    // Employee Directory: view access for everyone signed in (Employee: view).
-    // Compensation (`ctc`) is intentionally NOT stored on these documents —
-    // src/lib/seed.ts writes it to the separate `employee_compensation`
-    // collection below instead, so this broadly-readable directory never
-    // carries salary data. (Applies to data seeded after this change; any
-    // employees doc seeded before it should be re-seeded to drop a stale
-    // inline `ctc` field.)
     match /employees/{docId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Employee compensation, split out of `employees` above specifically so
-    // salary isn't exposed through the org-wide directory read. Payroll is
-    // Admin-only per the default matrix (Employee: none) anyway.
-    match /employee_compensation/{docId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // Attendance module is Admin-only per the default matrix (Employee: none).
     match /attendance/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Leave Management: Employee: full — everyone can read/apply.
     match /leave_requests/{docId} {
       allow read: if isSignedIn();
+      // Employees can create/update their own leave requests; admins can
+      // manage all of them (e.g. approve/reject).
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
@@ -100,90 +63,72 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Payroll module is Admin-only per the default matrix (Employee: none).
     match /payslips/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
     match /payroll_runs/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Recruitment module is Admin-only per the default matrix (Employee: none).
     match /jobs/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
     match /candidates/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Onboarding module is Admin-only per the default matrix (Employee: none).
     match /onboarding/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Performance module is Admin-only per the default matrix (Employee: none).
     match /goals/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
     match /performance_reviews/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Expenses: Employee: full — everyone can read/submit claims. Ownership
-    // is tracked via `ownerUid` (set to request.auth.uid by the app at
-    // creation — see src/pages/expenses/index.tsx), not `employeeId` (which
-    // is the mock HR employee id and never equals a Firebase uid). A plain
-    // employee must own the doc they're creating (ownerUid == their own
-    // uid); admins bypass that so both "create on behalf of an employee"
-    // and the Settings -> Data "seed demo data" feature keep working, since
-    // seeded/admin-authored claims don't carry a real ownerUid.
     match /expenses/{docId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && (request.resource.data.ownerUid == request.auth.uid || isAdmin());
-      allow update: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+      // Employees can submit/edit their own expense claims; admins manage all.
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
 
-    // Assets module is Admin-only per the default matrix (Employee: none).
     match /assets/{docId} {
-      allow read: if isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Settings (which houses Billing) is Admin-only per the default matrix.
-    // Previously any signed-in user could both read AND write these — that
-    // let any employee view or edit company billing data.
     match /billing_preferences/{docId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
 
     match /billing_invoices/{docId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
 
-    // Helpdesk: Employee: full — everyone can read/raise tickets.
     match /helpdesk_tickets/{docId} {
       allow read: if isSignedIn();
+      // Employees can raise/update their own tickets; admins manage all.
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
 
-    // Regularization requests are how an employee disputes their own
-    // attendance; kept self-service even though the Attendance module
-    // itself is Admin-only above.
     match /regularizations/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();

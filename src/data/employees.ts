@@ -9,6 +9,7 @@ interface Seed {
   code: string;
   first: string;
   last: string;
+  email?: string;
   gender: Gender;
   designation: string;
   department: Department;
@@ -77,6 +78,13 @@ const seeds: Seed[] = [
   { code: 'MC-080', first: 'Shreya', last: 'Desai', gender: 'Female', designation: 'Legal Counsel', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-02-28', dob: '1988-09-21', managerId: 'emp-001', ctc: 4000000, skills: ['Contracts', 'Compliance'] },
   { code: 'MC-081', first: 'Nandini', last: 'Rao', gender: 'Female', designation: 'Legal Associate', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2023-08-14', dob: '1994-05-09', managerId: 'emp-035', ctc: 2200000, skills: ['Contracts', 'Documentation', 'Compliance'] },
   { code: 'MC-082', first: 'Kabir', last: 'Mishra', gender: 'Male', designation: 'Legal Associate', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2024-01-08', dob: '1995-04-16', managerId: 'emp-036', ctc: 2100000, skills: ['Compliance', 'Policy', 'Contracts'] },
+
+  // Demo employee accounts used for login walkthroughs
+  { code: 'MC-090', first: 'Riya', last: 'Sharma', email: 'riya.sharma@modconhr.test', gender: 'Female', designation: 'Software Engineer', department: 'Engineering', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2022-09-05', dob: '1996-07-18', managerId: 'emp-010', ctc: 2600000, skills: ['React', 'TypeScript', 'Frontend'] },
+  { code: 'MC-091', first: 'Arjun', last: 'Mehta', email: 'arjun.mehta@modconhr.test', gender: 'Male', designation: 'Operations Analyst', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2023-01-16', dob: '1995-02-11', managerId: 'emp-062', ctc: 2200000, skills: ['Reporting', 'Process Improvement'] },
+  { code: 'MC-092', first: 'Priya', last: 'Nair', email: 'priya.nair@modconhr.test', gender: 'Female', designation: 'Accountant', department: 'Finance', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-11-21', dob: '1994-10-06', managerId: 'emp-006', ctc: 2400000, skills: ['Accounting', 'Reconciliation'] },
+  { code: 'MC-093', first: 'Karan', last: 'Verma', email: 'karan.verma@modconhr.test', gender: 'Male', designation: 'Customer Support Specialist', department: 'Customer Success', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2023-04-03', dob: '1997-01-27', managerId: 'emp-070', ctc: 1800000, skills: ['Support', 'Communication'] },
+  { code: 'MC-094', first: 'Neha', last: 'Gupta', email: 'neha.gupta@modconhr.test', gender: 'Female', designation: 'HR Executive', department: 'Human Resources', location: 'Hyderabad', type: 'Full-time', status: 'Active', doj: '2023-06-12', dob: '1996-12-14', managerId: 'emp-004', ctc: 1900000, skills: ['Onboarding', 'People Ops'] },
 ];
 
 function buildEmployeeDirectory(source: Seed[]): Employee[] {
@@ -88,7 +96,7 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
       firstName: s.first,
       lastName: s.last,
       fullName: `${s.first} ${s.last}`,
-      email: `${s.first.toLowerCase()}.${s.last.toLowerCase()}@modcon.com`,
+      email: s.email ?? `${s.first.toLowerCase()}.${s.last.toLowerCase()}@modcon.com`,
       phone: `+91 ${90000 + idx}${String(10000 + idx * 7).slice(0, 5)}`,
       avatar: `${s.first} ${s.last}`,
       gender: s.gender,
@@ -111,7 +119,10 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
 
 const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';
 const DELETED_EMPLOYEE_STORAGE_KEY = 'modcon.hr.deletedEmployees';
-const EMPLOYEE_DIRECTORY_CHANGED_EVENT = 'modcon-hr-directory-changed';
+export const EMPLOYEE_DIRECTORY_CHANGED_EVENT = 'modcon-hr-directory-changed';
+
+export const employees: Employee[] = [];
+export const locations: string[] = [];
 
 function readCustomEmployees(): Employee[] {
   if (typeof window === 'undefined') return [];
@@ -160,7 +171,24 @@ export function getEmployeeDirectory(): Employee[] {
   combined.forEach((employee) => {
     byEmployeeId.set(employee.id, employee);
   });
-  return Array.from(byEmployeeId.values());
+
+  const directory = Array.from(byEmployeeId.values());
+  const byId = new Map(directory.map((employee) => [employee.id, employee]));
+  directory.forEach((employee) => {
+    employee.reportingManagerName = employee.reportingManagerId
+      ? byId.get(employee.reportingManagerId)?.fullName
+      : undefined;
+  });
+
+  return directory;
+}
+
+function syncDirectorySnapshots() {
+  const directory = getEmployeeDirectory();
+  employees.splice(0, employees.length, ...directory);
+
+  const uniqueLocations = Array.from(new Set(directory.map((employee) => employee.location))).sort();
+  locations.splice(0, locations.length, ...uniqueLocations);
 }
 
 export function getNextEmployeeSequence(directory: Employee[] = getEmployeeDirectory()): number {
@@ -175,6 +203,16 @@ export function addEmployeeToDirectory(employee: Employee) {
   const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
   writeCustomEmployees([employee, ...customEmployees]);
   writeDeletedEmployeeIds(deletedEmployeeIds);
+  syncDirectorySnapshots();
+  notifyEmployeeDirectoryChanged();
+}
+
+export function updateEmployeeInDirectory(employee: Employee) {
+  const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
+  const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
+  writeCustomEmployees([employee, ...customEmployees]);
+  writeDeletedEmployeeIds(deletedEmployeeIds);
+  syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
 }
 
@@ -183,12 +221,14 @@ export function deleteEmployeeFromDirectory(employeeId: string) {
   const deletedEmployeeIds = Array.from(new Set([...readDeletedEmployeeIds(), employeeId]));
   writeCustomEmployees(customEmployees);
   writeDeletedEmployeeIds(deletedEmployeeIds);
+  syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
 }
 
-export const employees: Employee[] = getEmployeeDirectory();
-
 export const getEmployee = (id: string): Employee | undefined => getEmployeeDirectory().find((employee) => employee.id === id);
+
+export const getEmployeeByEmail = (email: string): Employee | undefined =>
+  getEmployeeDirectory().find((employee) => employee.email.toLowerCase() === email.toLowerCase());
 
 export const getEmployeeName = (id: string): string => getEmployeeDirectory().find((employee) => employee.id === id)?.fullName ?? 'Unknown';
 
@@ -205,10 +245,13 @@ export const departments: Department[] = [
   'Legal',
 ];
 
-export const locations = Array.from(new Set(employees.map((employee) => employee.location))).sort();
+syncDirectorySnapshots();
 
-// Resolve manager names now that ids are stable.
-const byId = new Map(employees.map((employee) => [employee.id, employee]));
-employees.forEach((employee) => {
-  employee.reportingManagerName = employee.reportingManagerId ? byId.get(employee.reportingManagerId)?.fullName : undefined;
-});
+if (typeof window !== 'undefined') {
+  window.addEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, syncDirectorySnapshots);
+  window.addEventListener('storage', (event) => {
+    if (event.key === CUSTOM_EMPLOYEE_STORAGE_KEY || event.key === DELETED_EMPLOYEE_STORAGE_KEY) {
+      syncDirectorySnapshots();
+    }
+  });
+}

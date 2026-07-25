@@ -4,6 +4,7 @@ interface AvatarProps {
   name: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
+  imageSrc?: string | null;
 }
 
 const sizes = {
@@ -14,18 +15,22 @@ const sizes = {
   xl: 'h-20 w-20 text-2xl',
 };
 
-export function Avatar({ name, size = 'md', className }: AvatarProps) {
+export function Avatar({ name, size = 'md', className, imageSrc }: AvatarProps) {
   return (
     <div
       className={cn(
-        'flex items-center justify-center rounded-full font-semibold text-white shrink-0 ring-2 ring-white',
+        'flex items-center justify-center overflow-hidden rounded-full font-semibold text-white shrink-0 ring-2 ring-white',
         avatarColor(name),
         sizes[size],
         className,
       )}
       title={name}
     >
-      {initials(name)}
+      {imageSrc ? (
+        <img src={imageSrc} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        initials(name)
+      )}
     </div>
   );
 }

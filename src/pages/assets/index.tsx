@@ -24,8 +24,9 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { assets as initialAssets, assetsByCategory } from '@/data/assets';
+import { assets as initialAssets } from '@/data/assets';
 import { employees } from '@/data/employees';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
 import { formatINR, formatDate } from '@/lib/utils';
 import {
@@ -270,6 +271,7 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
 // ---------------------------------------------------------------------------
 
 export function AssetsPage() {
+  const directoryRevision = useEmployeeDirectoryRevision();
   const [assetList, setAssetList] = useState<Asset[]>(initialAssets);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -285,17 +287,32 @@ export function AssetsPage() {
     const inRepair = assetList.filter((a) => a.status === 'In Repair').length;
     const totalValue = assetList.reduce((s, a) => s + a.value, 0);
     return { total, assigned, available, inRepair, totalValue };
-  }, [assetList]);
+  }, [assetList, directoryRevision]);
 
-  // Category chart data (uses stable initial data for chart)
+  // Category chart data (reactive to latest assets)
   const categoryData = useMemo(
-    () =>
-      assetsByCategory().map((d) => ({
-        name: d.category,
-        value: d.count,
-        color: CATEGORY_COLORS[d.category as AssetCategory] ?? '#94a3b8',
-      })),
-    [],
+    () => {
+      const byCategory = assetList.reduce<Record<AssetCategory, number>>((acc, asset) => {
+        acc[asset.category] = (acc[asset.category] ?? 0) + 1;
+        return acc;
+      }, {
+        Laptop: 0,
+        Monitor: 0,
+        Phone: 0,
+        Accessories: 0,
+        Furniture: 0,
+        'Software License': 0,
+      });
+
+      return Object.entries(byCategory)
+        .filter(([, value]) => value > 0)
+        .map(([category, value]) => ({
+          name: category,
+          value,
+          color: CATEGORY_COLORS[category as AssetCategory] ?? '#94a3b8',
+        }));
+    },
+    [assetList, directoryRevision],
   );
 
   // Filtered assets
@@ -312,7 +329,7 @@ export function AssetsPage() {
       const matchStatus = !statusFilter || a.status === statusFilter;
       return matchSearch && matchCategory && matchStatus;
     });
-  }, [assetList, search, categoryFilter, statusFilter]);
+  }, [assetList, search, categoryFilter, statusFilter, directoryRevision]);
 
   const handleAssign = (assetId: string, empId: string | null) => {
     const emp = empId ? employees.find((e) => e.id === empId) : null;
@@ -332,6 +349,9 @@ export function AssetsPage() {
   const handleAddAsset = (asset: Omit<Asset, 'id'>) => {
     const newAsset: Asset = { ...asset, id: `ast-${Date.now()}` };
     setAssetList((prev) => [newAsset, ...prev]);
+    setSearch('');
+    setCategoryFilter('');
+    setStatusFilter('');
   };
 
   const columns: Column<Asset>[] = [

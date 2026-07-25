@@ -14,6 +14,7 @@ interface Seed {
   status: ExpenseStatus;
   submittedOn: string;
   description: string;
+  receiptImage?: string;
 }
 
 const seeds: Seed[] = [
@@ -27,6 +28,7 @@ const seeds: Seed[] = [
     status: 'Reimbursed',
     submittedOn: '2026-05-05',
     description: 'Return flight Bengaluru–Delhi for Q2 leadership summit.',
+    receiptImage: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400"><rect width="300" height="400" fill="%23f8fafc"/><rect x="20" y="20" width="260" height="360" rx="8" fill="white" stroke="%23cbd5e1" stroke-width="2"/><text x="150" y="60" font-family="monospace" font-size="18" font-weight="bold" text-anchor="middle" fill="%230f172a">TAX INVOICE</text><text x="40" y="100" font-family="monospace" font-size="12" fill="%23334155">Date: 2026-05-04</text><text x="40" y="120" font-family="monospace" font-size="12" fill="%23334155">Receipt No: TX-84920</text><line x1="40" y1="140" x2="260" y2="140" stroke="%23cbd5e1" stroke-dasharray="4"/><text x="40" y="170" font-family="monospace" font-size="12" font-weight="bold" fill="%23334155">Description</text><text x="260" y="170" font-family="monospace" font-size="12" font-weight="bold" text-anchor="end" fill="%23334155">Amount</text><text x="40" y="200" font-family="monospace" font-size="12" fill="%23475569">Cab Fare (BLR-Delhi)</text><text x="260" y="200" font-family="monospace" font-size="12" text-anchor="end" fill="%23475569">₹18,500.00</text><line x1="40" y1="240" x2="260" y2="240" stroke="%23cbd5e1"/><text x="40" y="270" font-family="monospace" font-size="14" font-weight="bold" fill="%230f172a">TOTAL</text><text x="260" y="270" font-family="monospace" font-size="14" font-weight="bold" text-anchor="end" fill="%230f172a">₹18,500.00</text><text x="150" y="340" font-family="monospace" font-size="10" fill="%2394a3b8" text-anchor="middle">Thank you for traveling with us!</text></svg>',
   },
   {
     id: 'exp-002',
@@ -60,6 +62,7 @@ const seeds: Seed[] = [
     status: 'Reimbursed',
     submittedOn: '2026-05-02',
     description: 'Annual GitHub Copilot Business seats (4 devs, 1 month).',
+    receiptImage: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400"><rect width="300" height="400" fill="%23f8fafc"/><rect x="20" y="20" width="260" height="360" rx="8" fill="white" stroke="%23cbd5e1" stroke-width="2"/><text x="150" y="60" font-family="monospace" font-size="18" font-weight="bold" text-anchor="middle" fill="%230f172a">AWS INVOICE</text><text x="40" y="100" font-family="monospace" font-size="12" fill="%23334155">Date: 2026-05-01</text><text x="40" y="120" font-family="monospace" font-size="12" fill="%23334155">Inv No: AWS-99381</text><line x1="40" y1="140" x2="260" y2="140" stroke="%23cbd5e1" stroke-dasharray="4"/><text x="40" y="170" font-family="monospace" font-size="12" font-weight="bold" fill="%23334155">Service</text><text x="260" y="170" font-family="monospace" font-size="12" font-weight="bold" text-anchor="end" fill="%23334155">Amount</text><text x="40" y="200" font-family="monospace" font-size="12" fill="%23475569">Copilot Business Seats</text><text x="260" y="200" font-family="monospace" font-size="12" text-anchor="end" fill="%23475569">₹5,600.00</text><line x1="40" y1="240" x2="260" y2="240" stroke="%23cbd5e1"/><text x="40" y="270" font-family="monospace" font-size="14" font-weight="bold" fill="%230f172a">TOTAL PAID</text><text x="260" y="270" font-family="monospace" font-size="14" font-weight="bold" text-anchor="end" fill="%230f172a">₹5,600.00</text><text x="150" y="340" font-family="monospace" font-size="10" fill="%2394a3b8" text-anchor="middle">Amazon Web Services India</text></svg>',
   },
   {
     id: 'exp-005',
@@ -192,6 +195,39 @@ const seeds: Seed[] = [
     status: 'Draft',
     submittedOn: '2026-05-29',
     description: 'Cab fare for vendor site visit in Bengaluru.',
+  },
+  {
+    id: 'exp-017',
+    employeeId: 'emp-038',
+    title: 'Team Lunch with QA Squad',
+    category: 'Meals',
+    amount: 2450,
+    date: '2026-06-14',
+    status: 'Reimbursed',
+    submittedOn: '2026-06-15',
+    description: 'Sprint closure team lunch with QA and frontend engineers.',
+  },
+  {
+    id: 'exp-018',
+    employeeId: 'emp-038',
+    title: 'Developer Conference Ticket',
+    category: 'Training',
+    amount: 7800,
+    date: '2026-07-05',
+    status: 'Submitted',
+    submittedOn: '2026-07-06',
+    description: 'Frontend developer conference pass for React and performance sessions.',
+  },
+  {
+    id: 'exp-019',
+    employeeId: 'emp-038',
+    title: 'Cloud IDE Monthly Subscription',
+    category: 'Software',
+    amount: 1599,
+    date: '2026-07-10',
+    status: 'Approved',
+    submittedOn: '2026-07-11',
+    description: 'Cloud IDE subscription used for pair programming and code review sessions.',
   },
 ];
 

@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, Link, Navigate } from 'react-router-dom';
 import {
   LayoutGrid,
   List,
@@ -39,12 +39,51 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, departments, locations } from '@/data/employees';
-import type { Employee, EmployeeStatus, EmploymentType } from '@/types';
+import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
+import { addDocumentToLibrary, updateDocumentStatus, useEmployeeDocumentLibrary, type DocumentRecord, type DocumentStatus } from '@/data/documents';
+import { departments } from '@/data/departments';
+import type { Employee, EmployeeStatus, EmploymentType, Gender } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { OrgChart } from './OrgChart';
 import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
+import { updateEmployeeInDirectory } from '@/data/employees';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { useAuth } from '@/lib/auth';
+import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { resolveAppRole } from '@/lib/accessControl';
+
+const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
+
+function readEmployeeProfilePictures(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+}
+
+function getEmployeeProfilePicture(employeeId: string): string | null {
+  return readEmployeeProfilePictures()[employeeId] ?? null;
+}
+
+function writeEmployeeProfilePicture(employeeId: string, imageSrc: string) {
+  if (typeof window === 'undefined') return;
+  const pictures = readEmployeeProfilePictures();
+  window.localStorage.setItem(
+    EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY,
+    JSON.stringify({
+      ...pictures,
+      [employeeId]: imageSrc,
+    }),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Tenure helper
@@ -61,6 +100,15 @@ function computeTenureFull(dateOfJoining: string): string {
   return `${years} year${years !== 1 ? 's' : ''} ${months} month${months !== 1 ? 's' : ''}`;
 }
 
+function ProfileField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-ink-50 p-3 min-w-0">
+      <p className="text-ink-400 text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="font-medium text-ink-900 mt-1 truncate">{value}</p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Add Employee Modal
 // ---------------------------------------------------------------------------
@@ -73,6 +121,7 @@ interface NewEmployeePayload {
   department: Employee['department'];
   location: string;
   employmentType: EmploymentType;
+  gender: Gender;
   dateOfJoining: string;
   ctc: number;
   reportingManagerId: string | null;
@@ -97,6 +146,7 @@ function AddEmployeeModal({
   const [department, setDepartment] = useState<Employee['department']>('Engineering');
   const [location, setLocation] = useState(locations[0] ?? 'Bengaluru');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('Full-time');
+  const [gender, setGender] = useState<Gender>('Male');
   const [dateOfJoining, setDateOfJoining] = useState('');
   const [ctc, setCtc] = useState('');
   const [reportingManagerId, setReportingManagerId] = useState('');
@@ -136,6 +186,7 @@ function AddEmployeeModal({
     setDepartment('Engineering');
     setLocation(locations[0] ?? 'Bengaluru');
     setEmploymentType('Full-time');
+    setGender('Male');
     setDateOfJoining('');
     setCtc('');
     setReportingManagerId('');
@@ -161,6 +212,7 @@ function AddEmployeeModal({
       department,
       location,
       employmentType,
+      gender,
       dateOfJoining,
       ctc: annualCtc,
       reportingManagerId: reportingManagerId || null,
@@ -238,6 +290,16 @@ function AddEmployeeModal({
             </select>
           </div>
           <div>
+            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Gender</label>
+            <select className="input w-full" value={gender} onChange={(event) => setGender(event.target.value as Gender)}>
+              {(['Male', 'Female', 'Other'] as Gender[]).map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Employment Type</label>
             <select className="input w-full" value={employmentType} onChange={(event) => setEmploymentType(event.target.value as EmploymentType)}>
               {(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((t) => (
@@ -278,7 +340,9 @@ type DirectoryTab = 'directory' | 'orgchart';
 
 export function EmployeesPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [employeeList, setEmployeeList] = useState<Employee[]>(() => getEmployeeDirectory());
+  useDepartmentDirectoryRevision();
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -288,9 +352,30 @@ export function EmployeesPage() {
   const [activeTab, setActiveTab] = useState<DirectoryTab>('directory');
   const [addModalOpen, setAddModalOpen] = useState(false);
 
+  useEffect(() => {
+    const syncEmployeeList = () => {
+      setEmployeeList(getEmployeeDirectory());
+    };
+
+    window.addEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, syncEmployeeList);
+    window.addEventListener('storage', syncEmployeeList);
+
+    return () => {
+      window.removeEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, syncEmployeeList);
+      window.removeEventListener('storage', syncEmployeeList);
+    };
+  }, []);
+
+  const currentEmployee = useMemo(() => getCurrentEmployee(profile), [profile, employeeList]);
+  const isEmployeeSelfView = resolveAppRole(profile) === 'Employee';
+  const visibleEmployeeList = useMemo(() => {
+    if (!isEmployeeSelfView) return employeeList;
+    return currentEmployee ? employeeList.filter((employee) => employee.id === currentEmployee.id) : [];
+  }, [currentEmployee, employeeList, isEmployeeSelfView]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return employeeList.filter((e) => {
+    return visibleEmployeeList.filter((e) => {
       if (q && !e.fullName.toLowerCase().includes(q) && !e.designation.toLowerCase().includes(q) && !e.email.toLowerCase().includes(q) && !e.employeeCode.toLowerCase().includes(q)) return false;
       if (deptFilter && e.department !== deptFilter) return false;
       if (locationFilter && e.location !== locationFilter) return false;
@@ -298,18 +383,19 @@ export function EmployeesPage() {
       if (typeFilter && e.employmentType !== typeFilter) return false;
       return true;
     });
-  }, [employeeList, search, deptFilter, locationFilter, statusFilter, typeFilter]);
+  }, [visibleEmployeeList, search, deptFilter, locationFilter, statusFilter, typeFilter]);
 
-  const totalCount = employeeList.length;
-  const activeCount = employeeList.filter((e) => e.status === 'Active').length;
-  const probationNotice = employeeList.filter((e) => e.status === 'Probation' || e.status === 'Notice Period').length;
-  const deptCount = new Set(employeeList.map((e) => e.department)).size;
+  const totalCount = visibleEmployeeList.length;
+  const activeCount = visibleEmployeeList.filter((e) => e.status === 'Active').length;
+  const probationNotice = visibleEmployeeList.filter((e) => e.status === 'Probation' || e.status === 'Notice Period').length;
+  const deptCount = new Set(visibleEmployeeList.map((e) => e.department)).size;
 
   function handleAddEmployee(payload: NewEmployeePayload) {
-    const nextIndex = getNextEmployeeSequence(employeeList);
+    const directory = getEmployeeDirectory();
+    const nextIndex = getNextEmployeeSequence(directory);
     const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
     const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
-    const manager = employeeList.find((e) => e.id === payload.reportingManagerId);
+    const manager = directory.find((e) => e.id === payload.reportingManagerId);
     const nextEmployee: Employee = {
       id: nextId,
       employeeCode,
@@ -319,7 +405,7 @@ export function EmployeesPage() {
       email: payload.email,
       phone: payload.phone || 'N/A',
       avatar: `${payload.firstName} ${payload.lastName}`,
-      gender: 'Other',
+      gender: payload.gender,
       dateOfBirth: '2000-01-01',
       designation: payload.designation,
       department: payload.department,
@@ -336,7 +422,7 @@ export function EmployeesPage() {
     };
 
     addEmployeeToDirectory(nextEmployee);
-    setEmployeeList((prev) => [nextEmployee, ...prev]);
+    setEmployeeList(getEmployeeDirectory());
     setSearch('');
     setDeptFilter('');
     setLocationFilter('');
@@ -392,15 +478,29 @@ export function EmployeesPage() {
 
   const tabs = [
     { id: 'directory', label: 'Directory' },
-    { id: 'orgchart', label: 'Org Chart' },
+    ...(!isEmployeeSelfView ? [{ id: 'orgchart', label: 'Org Chart' }] : []),
   ];
+
+  if (isEmployeeSelfView) {
+    return currentEmployee ? (
+      <EmployeeProfileExperience employeeId={currentEmployee.id} embeddedSelfView />
+    ) : (
+      <EmptyState
+        icon={<User size={26} />}
+        title="Employee not found"
+        description="Your employee profile is not available yet."
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Employees"
-        subtitle={`${totalCount} people across ${deptCount} departments`}
-        actions={
+        subtitle={isEmployeeSelfView
+          ? (currentEmployee ? 'Your employee record' : 'Your employee profile is not available yet')
+          : `${totalCount} people across ${deptCount} departments`}
+        actions={!isEmployeeSelfView ? (
           <Button
             variant="primary"
             icon={<Plus size={16} />}
@@ -408,23 +508,27 @@ export function EmployeesPage() {
           >
             Add Employee
           </Button>
-        }
+        ) : undefined}
       />
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Employees"
-          value={totalCount}
-          icon={<Users size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
-        />
-        <StatCard
-          label="Active"
-          value={activeCount}
-          icon={<UserCheck size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
-        />
+      <div className={`grid gap-4 ${isEmployeeSelfView ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
+        {!isEmployeeSelfView && (
+          <>
+            <StatCard
+              label="Total Employees"
+              value={totalCount}
+              icon={<Users size={22} />}
+              iconClass="bg-brand-50 text-brand-600"
+            />
+            <StatCard
+              label="Active"
+              value={activeCount}
+              icon={<UserCheck size={22} />}
+              iconClass="bg-emerald-50 text-emerald-600"
+            />
+          </>
+        )}
         <StatCard
           label="Probation / Notice"
           value={probationNotice}
@@ -446,69 +550,71 @@ export function EmployeesPage() {
         onChange={(id) => setActiveTab(id as DirectoryTab)}
       />
 
-      {activeTab === 'orgchart' ? (
+      {!isEmployeeSelfView && activeTab === 'orgchart' ? (
         <Card>
           <CardHeader title="Organisation Chart" subtitle="Company hierarchy from CEO down" />
-          <OrgChart employees={employeeList} />
+          <OrgChart employees={visibleEmployeeList} />
         </Card>
       ) : (
         <>
           {/* Toolbar */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Search name, role, email, code…"
-              className="w-64"
-            />
-            <Select
-              value={deptFilter}
-              onChange={setDeptFilter}
-              placeholder="All Departments"
-              options={departments.map((d) => ({ label: d, value: d }))}
-              className="w-44"
-            />
-            <Select
-              value={locationFilter}
-              onChange={setLocationFilter}
-              placeholder="All Locations"
-              options={locations.map((l) => ({ label: l, value: l }))}
-              className="w-36"
-            />
-            <Select
-              value={statusFilter}
-              onChange={setStatusFilter}
-              placeholder="All Statuses"
-              options={(['Active', 'On Leave', 'Probation', 'Notice Period', 'Resigned'] as EmployeeStatus[]).map((s) => ({ label: s, value: s }))}
-              className="w-40"
-            />
-            <Select
-              value={typeFilter}
-              onChange={setTypeFilter}
-              placeholder="All Types"
-              options={(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((t) => ({ label: t, value: t }))}
-              className="w-36"
-            />
-            <div className="ml-auto flex items-center gap-1 border border-ink-200 rounded-lg p-1 bg-white">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={cn('p-1.5 rounded-md transition-colors', viewMode === 'grid' ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-100')}
-                title="Grid view"
-              >
-                <LayoutGrid size={16} />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-100')}
-                title="List view"
-              >
-                <List size={16} />
-              </button>
+          {!isEmployeeSelfView && (
+            <div className="flex flex-wrap gap-3 items-center">
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Search name, role, email, code…"
+                className="w-64"
+              />
+              <Select
+                value={deptFilter}
+                onChange={setDeptFilter}
+                placeholder="All Departments"
+                options={departments.map((d) => ({ label: d, value: d }))}
+                className="w-44"
+              />
+              <Select
+                value={locationFilter}
+                onChange={setLocationFilter}
+                placeholder="All Locations"
+                options={locations.map((l) => ({ label: l, value: l }))}
+                className="w-36"
+              />
+              <Select
+                value={statusFilter}
+                onChange={setStatusFilter}
+                placeholder="All Statuses"
+                options={(['Active', 'On Leave', 'Probation', 'Notice Period', 'Resigned'] as EmployeeStatus[]).map((s) => ({ label: s, value: s }))}
+                className="w-40"
+              />
+              <Select
+                value={typeFilter}
+                onChange={setTypeFilter}
+                placeholder="All Types"
+                options={(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((t) => ({ label: t, value: t }))}
+                className="w-36"
+              />
+              <div className="ml-auto flex items-center gap-1 border border-ink-200 rounded-lg p-1 bg-white">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={cn('p-1.5 rounded-md transition-colors', viewMode === 'grid' ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-100')}
+                  title="Grid view"
+                >
+                  <LayoutGrid size={16} />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-100')}
+                  title="List view"
+                >
+                  <List size={16} />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Results count */}
-          {(search || deptFilter || locationFilter || statusFilter || typeFilter) && (
+          {!isEmployeeSelfView && (search || deptFilter || locationFilter || statusFilter || typeFilter) && (
             <p className="text-sm text-ink-500">
               Showing <span className="font-semibold text-ink-800">{filtered.length}</span> of {totalCount} employees
             </p>
@@ -526,7 +632,7 @@ export function EmployeesPage() {
                 </Button>
               }
             />
-          ) : viewMode === 'grid' ? (
+          ) : isEmployeeSelfView ? null : viewMode === 'grid' ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
               {filtered.map((e) => <EmployeeCard key={e.id} employee={e} />)}
             </div>
@@ -568,9 +674,34 @@ function InfoRow({ label, value }: { label: string; value: string | undefined | 
 // ---------------------------------------------------------------------------
 // Overview Tab
 // ---------------------------------------------------------------------------
-function OverviewTab({ emp }: { emp: Employee }) {
+function OverviewTab({
+  emp,
+  profilePicture,
+  onUploadProfilePicture,
+  profilePictureError,
+}: {
+  emp: Employee;
+  profilePicture: string | null;
+  onUploadProfilePicture: () => void;
+  profilePictureError: string;
+}) {
   return (
     <div className="space-y-5">
+      <Card>
+        <CardHeader title="Photo" subtitle="This photo stays in sync with the profile picture above." />
+        <div className="flex flex-col items-center gap-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <Avatar name={emp.fullName} size="xl" imageSrc={profilePicture} />
+            <div>
+              <p className="text-sm font-semibold text-ink-900">{emp.fullName}</p>
+              <p className="text-xs text-ink-500">Profile photo</p>
+            </div>
+          </div>
+          <Button variant="secondary" size="sm" onClick={onUploadProfilePicture}>Upload Profile Pic</Button>
+        </div>
+        {profilePictureError ? <p className="text-xs font-medium text-rose-600">{profilePictureError}</p> : null}
+      </Card>
+
       {/* Personal Info */}
       <Card>
         <CardHeader title="Personal Information" />
@@ -622,7 +753,7 @@ function OverviewTab({ emp }: { emp: Employee }) {
 // ---------------------------------------------------------------------------
 // Team Tab
 // ---------------------------------------------------------------------------
-function TeamTab({ emp }: { emp: Employee }) {
+function TeamTab({ emp, embeddedSelfView = false }: { emp: Employee; embeddedSelfView?: boolean }) {
   const navigate = useNavigate();
   const manager = emp.reportingManagerId ? getEmployee(emp.reportingManagerId) : null;
   const directReports = employees.filter((e) => e.reportingManagerId === emp.id);
@@ -630,7 +761,7 @@ function TeamTab({ emp }: { emp: Employee }) {
   return (
     <div className="space-y-5">
       {/* Manager */}
-      {manager && (
+      {!embeddedSelfView && manager && (
         <Card>
           <CardHeader title="Reporting Manager" />
           <div
@@ -782,25 +913,21 @@ function CompensationTab({ emp }: { emp: Employee }) {
 // ---------------------------------------------------------------------------
 // Documents Tab
 // ---------------------------------------------------------------------------
-type DocStatus = 'Verified' | 'Pending' | 'Expired';
+type DocStatus = DocumentStatus;
+type DocRecord = DocumentRecord;
+type DocumentUploadCategory = 'primary' | 'secondary';
 
-interface MockDoc {
-  name: string;
-  type: string;
-  status: DocStatus;
-  uploaded: string;
-  size: string;
-}
+const PRIMARY_DOCUMENT_NAMES = new Set([
+  'aadhaar card',
+  'aadhar card',
+  'pan card',
+  'bank account details',
+]);
 
-const MOCK_DOCS: MockDoc[] = [
-  { name: 'Offer Letter', type: 'PDF', status: 'Verified', uploaded: '2021-01-15', size: '245 KB' },
-  { name: 'Employment Contract', type: 'PDF', status: 'Verified', uploaded: '2021-01-18', size: '512 KB' },
-  { name: 'Aadhaar Card', type: 'PDF', status: 'Verified', uploaded: '2021-02-01', size: '180 KB' },
-  { name: 'PAN Card', type: 'PDF', status: 'Verified', uploaded: '2021-02-01', size: '95 KB' },
-  { name: 'Bank Account Details', type: 'PDF', status: 'Verified', uploaded: '2021-02-05', size: '120 KB' },
-  { name: 'Educational Certificates', type: 'ZIP', status: 'Pending', uploaded: '2021-02-10', size: '2.1 MB' },
-  { name: 'Previous Relieving Letter', type: 'PDF', status: 'Verified', uploaded: '2021-02-10', size: '310 KB' },
-  { name: 'Medical Insurance Form', type: 'PDF', status: 'Expired', uploaded: '2022-04-01', size: '88 KB' },
+const PRIMARY_DOCUMENT_OPTIONS = [
+  { label: 'Aadhaar Card', value: 'Aadhaar Card' },
+  { label: 'PAN Card', value: 'PAN Card' },
+  { label: 'Bank Account Details', value: 'Bank Account Details' },
 ];
 
 function docStatusTone(s: DocStatus): 'green' | 'amber' | 'red' {
@@ -809,11 +936,97 @@ function docStatusTone(s: DocStatus): 'green' | 'amber' | 'red' {
   return 'red';
 }
 
-function DocumentsTab() {
+function DocumentsTab({ employeeId }: { employeeId: string }) {
+  const { profile } = useAuth();
+  const documents = useEmployeeDocumentLibrary(employeeId);
+  const canEditStatus = profile?.role === 'admin';
+  const primaryDocuments = documents.filter((document) => PRIMARY_DOCUMENT_NAMES.has(document.name.trim().toLowerCase()));
+  const secondaryDocuments = documents.filter((document) => !PRIMARY_DOCUMENT_NAMES.has(document.name.trim().toLowerCase()));
+  const [uploadCategory, setUploadCategory] = useState<DocumentUploadCategory>('primary');
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [primaryDocumentName, setPrimaryDocumentName] = useState('Aadhaar Card');
+  const [secondaryDocumentName, setSecondaryDocumentName] = useState('');
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState('');
+
+  function formatUploadedSize(sizeBytes: number): string {
+    if (sizeBytes >= 1024 * 1024) return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (sizeBytes >= 1024) return `${Math.round(sizeBytes / 1024)} KB`;
+    return `${sizeBytes} B`;
+  }
+
+  function detectDocumentType(fileName: string): string {
+    const extension = fileName.split('.').pop()?.toUpperCase();
+    if (!extension) return 'FILE';
+    if (extension === 'PDF' || extension === 'ZIP') return extension;
+    return extension;
+  }
+
+  function resetUploadForm(category: DocumentUploadCategory) {
+    setUploadCategory(category);
+    setPrimaryDocumentName('Aadhaar Card');
+    setSecondaryDocumentName('');
+    setSelectedUploadFile(null);
+    setUploadError('');
+  }
+
+  function openUploadModal(category: DocumentUploadCategory) {
+    resetUploadForm(category);
+    setUploadModalOpen(true);
+  }
+
+  function closeUploadModal() {
+    setUploadModalOpen(false);
+    resetUploadForm(uploadCategory);
+  }
+
+  function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setSelectedUploadFile(file);
+    setUploadError('');
+
+    if (file && uploadCategory === 'secondary' && !secondaryDocumentName.trim()) {
+      setSecondaryDocumentName(file.name.replace(/\.[^.]+$/, ''));
+    }
+  }
+
+  async function handleUploadSubmit() {
+    if (!selectedUploadFile) {
+      setUploadError('Select a file to upload.');
+      return;
+    }
+
+    const documentName = uploadCategory === 'primary'
+      ? primaryDocumentName
+      : secondaryDocumentName.trim();
+
+    if (!documentName) {
+      setUploadError(uploadCategory === 'primary'
+        ? 'Select a compulsory document type.'
+        : 'Enter a document name for the optional submission.');
+      return;
+    }
+
+    const uploadedAt = new Date().toISOString().slice(0, 10);
+    const existingDocument = documents.find((document) => document.name.trim().toLowerCase() === documentName.trim().toLowerCase());
+    const nextDoc: DocRecord = {
+      id: existingDocument?.id ?? `doc-${Date.now()}`,
+      name: documentName,
+      type: detectDocumentType(selectedUploadFile.name),
+      status: 'Pending',
+      uploaded: uploadedAt,
+      size: formatUploadedSize(selectedUploadFile.size),
+    };
+
+    await addDocumentToLibrary(employeeId, nextDoc);
+    setUploadModalOpen(false);
+    resetUploadForm(uploadCategory);
+  }
+
   const docIcon = (type: string) =>
     type === 'ZIP' ? <Award size={14} className="text-amber-500" /> : <FileText size={14} className="text-brand-500" />;
 
-  const docColumns: Column<MockDoc>[] = [
+  const docColumns: Column<DocRecord>[] = [
     {
       key: 'name',
       header: 'Document',
@@ -830,7 +1043,22 @@ function DocumentsTab() {
     {
       key: 'status',
       header: 'Status',
-      render: (d) => <Badge tone={docStatusTone(d.status)} dot>{d.status}</Badge>,
+      render: (d) =>
+        canEditStatus ? (
+          <select
+            className="input !py-1 !text-xs w-32"
+            value={d.status}
+            onChange={(event) => void updateDocumentStatus(employeeId, d.id, event.target.value as DocStatus)}
+          >
+            <option value="Verified">Verified</option>
+            <option value="Pending">Pending</option>
+            <option value="Expired">Expired</option>
+          </select>
+        ) : (
+          <Badge tone={docStatusTone(d.status)} dot>
+            {d.status}
+          </Badge>
+        ),
     },
     {
       key: 'uploaded',
@@ -850,12 +1078,126 @@ function DocumentsTab() {
     },
   ];
 
+  function renderDocumentSection(
+    title: string,
+    subtitle: string,
+    requirementLabel: string,
+    requirementTone: 'red' | 'blue',
+    sectionDocuments: DocRecord[],
+    emptyMessage: string,
+    uploadButtonLabel: string,
+    uploadButtonAction: () => void,
+  ) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2 px-5 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink-900">{title}</h3>
+            <p className="text-xs text-ink-500">{subtitle}</p>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <Badge tone={requirementTone}>{requirementLabel}</Badge>
+            <Button variant="secondary" size="sm" onClick={uploadButtonAction}>
+              {uploadButtonLabel}
+            </Button>
+          </div>
+        </div>
+        <Table
+          columns={docColumns}
+          data={sectionDocuments}
+          keyExtractor={(d) => d.id}
+          emptyMessage={emptyMessage}
+        />
+      </div>
+    );
+  }
+
   return (
     <Card padding={false}>
-      <div className="p-5 border-b border-ink-100">
-        <CardHeader title="Employee Documents" subtitle="Uploaded verification documents and contracts" />
+      <div className="p-5 border-b border-ink-100 space-y-4">
+        <CardHeader
+          title="Employee Documents"
+          subtitle="Primary documents are compulsory. Secondary documents are optional submissions."
+        />
       </div>
-      <Table columns={docColumns} data={MOCK_DOCS} keyExtractor={(d) => d.name} />
+      <div className="py-5 space-y-6">
+        {renderDocumentSection(
+          'Primary Documents',
+          'Aadhaar Card, PAN Card, and Bank Account Details must be submitted.',
+          'Compulsory Submission',
+          'red',
+          primaryDocuments,
+          'Primary documents pending upload',
+          'Upload Compulsory',
+          () => openUploadModal('primary'),
+        )}
+        {renderDocumentSection(
+          'Secondary Documents',
+          'All documents other than the primary set are optional submissions.',
+          'Optional Submission',
+          'blue',
+          secondaryDocuments,
+          'No secondary documents uploaded',
+          'Upload Optional',
+          () => openUploadModal('secondary'),
+        )}
+      </div>
+      <Modal
+        open={uploadModalOpen}
+        onClose={closeUploadModal}
+        title={uploadCategory === 'primary' ? 'Upload Compulsory Document' : 'Upload Optional Document'}
+        subtitle={uploadCategory === 'primary'
+          ? 'Submit one of the required primary documents.'
+          : 'Optional documents will appear in the secondary submissions table.'}
+        footer={(
+          <>
+            <Button variant="ghost" size="sm" onClick={closeUploadModal}>Cancel</Button>
+            <Button size="sm" onClick={() => void handleUploadSubmit()}>Upload</Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          {uploadCategory === 'primary' ? (
+            <div className="space-y-1.5">
+              <label className="label">Compulsory document type</label>
+              <Select
+                value={primaryDocumentName}
+                onChange={setPrimaryDocumentName}
+                options={PRIMARY_DOCUMENT_OPTIONS}
+              />
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="label">Optional document name</label>
+              <input
+                className="input"
+                value={secondaryDocumentName}
+                onChange={(event) => {
+                  setSecondaryDocumentName(event.target.value);
+                  setUploadError('');
+                }}
+                placeholder="Enter document name"
+              />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="label">Choose file</label>
+            <input
+              type="file"
+              className="input file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700"
+              onChange={handleFileSelected}
+            />
+            {selectedUploadFile ? (
+              <p className="text-xs text-ink-500">
+                Selected: {selectedUploadFile.name} · {formatUploadedSize(selectedUploadFile.size)}
+              </p>
+            ) : null}
+          </div>
+
+          {uploadError ? <p className="text-sm font-medium text-rose-600">{uploadError}</p> : null}
+        </div>
+      </Modal>
     </Card>
   );
 }
@@ -933,11 +1275,17 @@ function TimeOffTab() {
 // ---------------------------------------------------------------------------
 type DetailTab = 'overview' | 'team' | 'compensation' | 'documents' | 'timeoff';
 
-export function EmployeeDetailPage() {
-  const { id } = useParams<{ id: string }>();
+function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { employeeId: string; embeddedSelfView?: boolean }) {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const currentEmployee = getCurrentEmployee(profile);
+  const loggedInRole = resolveAppRole(profile);
+  const isEmployee = loggedInRole === 'Employee';
+
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
-  const [profileOverrides, setProfileOverrides] = useState<Record<string, Partial<Employee>>>({});
+  const profilePictureInputRef = useRef<HTMLInputElement | null>(null);
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [profilePictureError, setProfilePictureError] = useState('');
 
   const [messageOpen, setMessageOpen] = useState(false);
   const [messageSubject, setMessageSubject] = useState('');
@@ -955,20 +1303,13 @@ export function EmployeeDetailPage() {
   const [editDesignation, setEditDesignation] = useState('');
   const [editDepartment, setEditDepartment] = useState<Employee['department']>(departments[0] as Employee['department']);
   const [editLocation, setEditLocation] = useState(locations[0] ?? 'Bengaluru');
+  const [editGender, setEditGender] = useState<Gender>('Male');
   const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>('Full-time');
   const [editStatus, setEditStatus] = useState<EmployeeStatus>('Active');
   const [editError, setEditError] = useState('');
 
-  const baseEmp = id ? getEmployee(id) : undefined;
-  const emp = useMemo(() => {
-    if (!baseEmp) return undefined;
-    const override = profileOverrides[baseEmp.id];
-    if (!override) return baseEmp;
-
-    const merged = { ...baseEmp, ...override } as Employee;
-    merged.fullName = `${merged.firstName} ${merged.lastName}`.trim();
-    return merged;
-  }, [baseEmp, profileOverrides]);
+  const emp = getEmployee(employeeId);
+  const isSelfView = emp ? emp.id === currentEmployee?.id : false;
 
   useEffect(() => {
     if (!emp) return;
@@ -976,7 +1317,42 @@ export function EmployeeDetailPage() {
     setMessageBody('');
     setMessageError('');
     setEditError('');
+    setProfilePicture(getEmployeeProfilePicture(emp.id));
+    setProfilePictureError('');
   }, [emp?.id]);
+
+  function openProfilePicturePicker() {
+    profilePictureInputRef.current?.click();
+  }
+
+  function handleProfilePictureChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!emp || !file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setProfilePictureError('Please choose an image file.');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) {
+        setProfilePictureError('Unable to upload profile picture. Please try again.');
+        return;
+      }
+
+      writeEmployeeProfilePicture(emp.id, result);
+      setProfilePicture(result);
+      setProfilePictureError('');
+    };
+    reader.onerror = () => {
+      setProfilePictureError('Unable to upload profile picture. Please try again.');
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  }
 
   function openMessageModal() {
     if (!emp) return;
@@ -1011,7 +1387,7 @@ export function EmployeeDetailPage() {
     if (!emp) return;
     deleteEmployeeFromDirectory(emp.id);
     setDeleteOpen(false);
-    navigate('/employees');
+    navigate(embeddedSelfView ? '/' : '/employees');
   }
 
   function openEditProfile() {
@@ -1023,6 +1399,7 @@ export function EmployeeDetailPage() {
     setEditDesignation(emp.designation);
     setEditDepartment(emp.department);
     setEditLocation(emp.location);
+    setEditGender(emp.gender);
     setEditEmploymentType(emp.employmentType);
     setEditStatus(emp.status);
     setEditError('');
@@ -1050,22 +1427,20 @@ export function EmployeeDetailPage() {
       return;
     }
 
-    setProfileOverrides((prev) => ({
-      ...prev,
-      [emp.id]: {
-        ...prev[emp.id],
-        firstName,
-        lastName,
-        fullName: `${firstName} ${lastName}`.trim(),
-        email,
-        phone: editPhone.trim(),
-        designation,
-        department: editDepartment,
-        location: editLocation,
-        employmentType: editEmploymentType,
-        status: editStatus,
-      },
-    }));
+    updateEmployeeInDirectory({
+      ...emp,
+      firstName,
+      lastName,
+      fullName: `${firstName} ${lastName}`.trim(),
+      email,
+      phone: editPhone.trim(),
+      designation,
+      department: editDepartment,
+      location: editLocation,
+      gender: editGender,
+      employmentType: editEmploymentType,
+      status: editStatus,
+    });
 
     setEditOpen(false);
   }
@@ -1087,39 +1462,53 @@ export function EmployeeDetailPage() {
 
   const directReports = employees.filter((e) => e.reportingManagerId === emp.id);
   const tenure = computeTenureFull(emp.dateOfJoining);
-
+  const showSalaryAndDocs = !isEmployee || isSelfView;
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'team', label: 'Team', count: directReports.length },
-    { id: 'compensation', label: 'Compensation' },
-    { id: 'documents', label: 'Documents' },
+    ...(showSalaryAndDocs
+      ? [
+          { id: 'compensation', label: 'Compensation' },
+          { id: 'documents', label: 'Documents' },
+        ]
+      : []),
     { id: 'timeoff', label: 'Time Off' },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Back nav */}
-      <button
-        onClick={() => navigate('/employees')}
-        className="inline-flex items-center gap-2 text-sm text-ink-500 hover:text-ink-900 font-medium transition-colors"
-      >
-        <ArrowLeft size={16} />
-        Back to Employees
-      </button>
+      {!embeddedSelfView && (
+        <button
+          onClick={() => navigate('/employees')}
+          className="inline-flex items-center gap-2 text-sm text-ink-500 hover:text-ink-900 font-medium transition-colors"
+        >
+          <ArrowLeft size={16} />
+          Back to Employees
+        </button>
+      )}
 
-      {/* Profile Header */}
       <Card>
         <div className="flex flex-col md:flex-row gap-6">
-          {/* Avatar + basic info */}
           <div className="flex items-start gap-5">
-            <div className="relative">
-              <Avatar name={emp.fullName} size="xl" />
-              <span
-                className={cn(
-                  'absolute -bottom-1 -right-1 h-4 w-4 rounded-full ring-2 ring-white',
-                  emp.status === 'Active' ? 'bg-emerald-400' : emp.status === 'On Leave' ? 'bg-violet-400' : 'bg-amber-400'
-                )}
+            <div className="flex flex-col items-center gap-2 shrink-0">
+              <div className="relative">
+                <Avatar name={emp.fullName} size="xl" imageSrc={profilePicture} />
+                <span
+                  className={cn(
+                    'absolute -bottom-1 -right-1 h-4 w-4 rounded-full ring-2 ring-white',
+                    emp.status === 'Active' ? 'bg-emerald-400' : emp.status === 'On Leave' ? 'bg-violet-400' : 'bg-amber-400'
+                  )}
+                />
+              </div>
+              <Button variant="ghost" size="sm" onClick={openProfilePicturePicker}>Upload Profile Pic</Button>
+              <input
+                ref={profilePictureInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleProfilePictureChange}
               />
+              {profilePictureError ? <p className="text-center text-xs font-medium text-rose-600">{profilePictureError}</p> : null}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -1147,16 +1536,26 @@ export function EmployeeDetailPage() {
             </div>
           </div>
 
-          {/* Action buttons */}
           <div className="flex md:flex-col items-start gap-2 md:ml-auto shrink-0">
-            <Button variant="secondary" size="sm" icon={<MessageSquare size={14} />} onClick={openMessageModal}>Message</Button>
-            <Button variant="secondary" size="sm" icon={<Edit2 size={14} />} onClick={openEditProfile}>Edit Profile</Button>
-            <Button variant="secondary" size="sm" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={openDeleteProfile}>Delete</Button>
+            {!isSelfView && (
+              <Button variant="secondary" size="sm" icon={<MessageSquare size={14} />} onClick={openMessageModal}>
+                Message
+              </Button>
+            )}
+            {(isSelfView || !isEmployee) && (
+              <Button variant="secondary" size="sm" icon={<Edit2 size={14} />} onClick={openEditProfile}>
+                Edit Profile
+              </Button>
+            )}
+            {!isSelfView && !isEmployee && (
+              <Button variant="secondary" size="sm" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={openDeleteProfile}>
+                Delete
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Quick stat chips */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-ink-100">
+        <div className={`grid gap-3 mt-6 pt-5 border-t border-ink-100 ${embeddedSelfView ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-4'}`}>
           <div className="flex flex-col gap-1">
             <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Tenure</span>
             <span className="text-sm font-semibold text-ink-800">{tenure}</span>
@@ -1165,36 +1564,67 @@ export function EmployeeDetailPage() {
             <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Employment Type</span>
             <span className="text-sm font-semibold text-ink-800">{emp.employmentType}</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Reports To</span>
-            {emp.reportingManagerId ? (
-              <Link
-                to={`/employees/${emp.reportingManagerId}`}
-                className="text-sm font-semibold text-brand-700 hover:text-brand-900 transition-colors truncate"
-              >
-                {emp.reportingManagerName}
-              </Link>
-            ) : (
-              <span className="text-sm font-semibold text-ink-800">—</span>
-            )}
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Team Size</span>
-            <span className="text-sm font-semibold text-ink-800">
-              {directReports.length} direct report{directReports.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+          {embeddedSelfView ? (
+            <>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Reports To</span>
+                {emp.reportingManagerId ? (
+                  <Link
+                    to={`/employees/${emp.reportingManagerId}`}
+                    className="text-sm font-semibold text-brand-700 hover:text-brand-900 transition-colors truncate"
+                  >
+                    {emp.reportingManagerName}
+                  </Link>
+                ) : (
+                  <span className="text-sm font-semibold text-ink-800">—</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Team Size</span>
+                <span className="text-sm font-semibold text-ink-800">
+                  {directReports.length} direct report{directReports.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Reports To</span>
+                {emp.reportingManagerId ? (
+                  <Link
+                    to={`/employees/${emp.reportingManagerId}`}
+                    className="text-sm font-semibold text-brand-700 hover:text-brand-900 transition-colors truncate"
+                  >
+                    {emp.reportingManagerName}
+                  </Link>
+                ) : (
+                  <span className="text-sm font-semibold text-ink-800">—</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Team Size</span>
+                <span className="text-sm font-semibold text-ink-800">
+                  {directReports.length} direct report{directReports.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </Card>
 
-      {/* Tabs */}
       <Tabs tabs={tabs} active={activeTab} onChange={(id) => setActiveTab(id as DetailTab)} />
 
-      {/* Tab Content */}
-      {activeTab === 'overview' && <OverviewTab emp={emp} />}
-      {activeTab === 'team' && <TeamTab emp={emp} />}
+      {activeTab === 'overview' && (
+        <OverviewTab
+          emp={emp}
+          profilePicture={profilePicture}
+          onUploadProfilePicture={openProfilePicturePicker}
+          profilePictureError={profilePictureError}
+        />
+      )}
+      {activeTab === 'team' && <TeamTab emp={emp} embeddedSelfView={embeddedSelfView} />}
       {activeTab === 'compensation' && <CompensationTab emp={emp} />}
-      {activeTab === 'documents' && <DocumentsTab />}
+      {activeTab === 'documents' && <DocumentsTab employeeId={emp.id} />}
       {activeTab === 'timeoff' && <TimeOffTab />}
 
       <Modal
@@ -1298,7 +1728,8 @@ export function EmployeeDetailPage() {
               type="text"
               value={editDesignation}
               onChange={(event) => setEditDesignation(event.target.value)}
-              className="input w-full"
+              className="input w-full disabled:bg-ink-50 disabled:text-ink-400"
+              disabled={isEmployee}
             />
           </div>
           <div>
@@ -1307,6 +1738,7 @@ export function EmployeeDetailPage() {
               value={editDepartment}
               onChange={(value) => setEditDepartment(value as Employee['department'])}
               options={departments.map((department) => ({ label: department, value: department }))}
+              disabled={isEmployee}
             />
           </div>
           <div>
@@ -1315,6 +1747,15 @@ export function EmployeeDetailPage() {
               value={editLocation}
               onChange={setEditLocation}
               options={locations.map((location) => ({ label: location, value: location }))}
+              disabled={isEmployee}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Gender</label>
+            <Select
+              value={editGender}
+              onChange={(value) => setEditGender(value as Gender)}
+              options={(['Male', 'Female', 'Other'] as Gender[]).map((genderOption) => ({ label: genderOption, value: genderOption }))}
             />
           </div>
           <div>
@@ -1323,6 +1764,7 @@ export function EmployeeDetailPage() {
               value={editEmploymentType}
               onChange={(value) => setEditEmploymentType(value as EmploymentType)}
               options={(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((type) => ({ label: type, value: type }))}
+              disabled={isEmployee}
             />
           </div>
           <div className="md:col-span-2">
@@ -1331,6 +1773,7 @@ export function EmployeeDetailPage() {
               value={editStatus}
               onChange={(value) => setEditStatus(value as EmployeeStatus)}
               options={(['Active', 'On Leave', 'Probation', 'Notice Period', 'Resigned'] as EmployeeStatus[]).map((status) => ({ label: status, value: status }))}
+              disabled={isEmployee}
             />
           </div>
           {editError && <p className="md:col-span-2 text-sm text-rose-600">{editError}</p>}
@@ -1370,4 +1813,21 @@ export function EmployeeDetailPage() {
       </Modal>
     </div>
   );
+}
+
+export function EmployeeDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const { profile } = useAuth();
+
+  const currentEmployee = getCurrentEmployee(profile);
+  const role = resolveAppRole(profile);
+  const isEmployee = role === 'Employee';
+  const resolvedEmployeeId = id || (isEmployee ? currentEmployee?.id : undefined);
+
+  return resolvedEmployeeId ? (
+    <EmployeeProfileExperience
+      employeeId={resolvedEmployeeId}
+      embeddedSelfView={resolvedEmployeeId === currentEmployee?.id}
+    />
+  ) : null;
 }

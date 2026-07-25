@@ -4,6 +4,7 @@
 // ===========================================================================
 
 import { employees } from './employees';
+import { getDepartmentDirectory } from './departments';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,12 +21,8 @@ function yearsFromDOJ(doj: string): number {
 // Headcount by department
 // ---------------------------------------------------------------------------
 export function headcountByDepartment(): { department: string; count: number }[] {
-  const map: Record<string, number> = {};
-  employees.forEach((e) => {
-    map[e.department] = (map[e.department] ?? 0) + 1;
-  });
-  return Object.entries(map)
-    .map(([department, count]) => ({ department, count }))
+  return getDepartmentDirectory()
+    .map((department) => ({ department: department.name, count: department.headcount }))
     .sort((a, b) => b.count - a.count);
 }
 
@@ -76,32 +73,35 @@ export const attritionTrend: { month: string; attrition: number }[] = [
 // ---------------------------------------------------------------------------
 // 12-month headcount growth (mock, seeded from real count)
 // ---------------------------------------------------------------------------
-const currentCount = employees.length;
-export const headcountGrowth: { month: string; headcount: number }[] = [
-  { month: 'Jul 25', headcount: currentCount - 11 },
-  { month: 'Aug 25', headcount: currentCount - 9 },
-  { month: 'Sep 25', headcount: currentCount - 8 },
-  { month: 'Oct 25', headcount: currentCount - 7 },
-  { month: 'Nov 25', headcount: currentCount - 6 },
-  { month: 'Dec 25', headcount: currentCount - 5 },
-  { month: 'Jan 26', headcount: currentCount - 4 },
-  { month: 'Feb 26', headcount: currentCount - 3 },
-  { month: 'Mar 26', headcount: currentCount - 3 },
-  { month: 'Apr 26', headcount: currentCount - 2 },
-  { month: 'May 26', headcount: currentCount - 1 },
-  { month: 'Jun 26', headcount: currentCount },
-];
+export function headcountGrowth(): { month: string; headcount: number }[] {
+  const currentCount = employees.length;
+  return [
+    { month: 'Jul 25', headcount: currentCount - 11 },
+    { month: 'Aug 25', headcount: currentCount - 9 },
+    { month: 'Sep 25', headcount: currentCount - 8 },
+    { month: 'Oct 25', headcount: currentCount - 7 },
+    { month: 'Nov 25', headcount: currentCount - 6 },
+    { month: 'Dec 25', headcount: currentCount - 5 },
+    { month: 'Jan 26', headcount: currentCount - 4 },
+    { month: 'Feb 26', headcount: currentCount - 3 },
+    { month: 'Mar 26', headcount: currentCount - 3 },
+    { month: 'Apr 26', headcount: currentCount - 2 },
+    { month: 'May 26', headcount: currentCount - 1 },
+    { month: 'Jun 26', headcount: currentCount },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Salary cost by department (monthly)
 // ---------------------------------------------------------------------------
 export function salaryByDepartment(): { department: string; cost: number }[] {
-  const map: Record<string, number> = {};
-  employees.forEach((e) => {
-    map[e.department] = (map[e.department] ?? 0) + Math.round(e.ctc / 12);
-  });
-  return Object.entries(map)
-    .map(([department, cost]) => ({ department, cost }))
+  return getDepartmentDirectory()
+    .map((department) => ({
+      department: department.name,
+      cost: employees
+        .filter((employee) => employee.department === department.name)
+        .reduce((sum, employee) => sum + Math.round(employee.ctc / 12), 0),
+    }))
     .sort((a, b) => b.cost - a.cost);
 }
 

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { holidays } from '@/data/common';
+import { getHolidayDirectory } from '@/data/holidays';
+import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { formatDate } from '@/lib/utils';
 
 function holidayTone(type: string) {
@@ -13,6 +14,9 @@ function holidayTone(type: string) {
 }
 
 export function HolidayCalendarPage() {
+    const holidayRevision = useHolidayDirectoryRevision();
+    const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
+
     const byMonth = useMemo(() => {
         const sorted = [...holidays].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const groups: Record<string, typeof holidays> = {};
@@ -24,7 +28,7 @@ export function HolidayCalendarPage() {
         });
 
         return Object.entries(groups);
-    }, []);
+    }, [holidays]);
 
     return (
         <div className="space-y-6 animate-fade-in">

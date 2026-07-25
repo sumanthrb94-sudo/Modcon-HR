@@ -31,13 +31,19 @@ import {
   updateLeaveRequestStatus,
   LEAVE_REQUESTS_CHANGED_EVENT,
 } from '@/data/leave';
-import { holidays } from '@/data/common';
+import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies';
+import { getHolidayDirectory } from '@/data/holidays';
 import { employees, getEmployee, getEmployeeName } from '@/data/employees';
+import { useAuth } from '@/lib/auth';
+import { resolveAppRole } from '@/lib/accessControl';
+import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
+import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import type { LeaveRequest, LeaveType, LeaveStatus } from '@/types';
 import { formatDate, formatDateShort, pct } from '@/lib/utils';
 
 const TODAY = '2026-06-10';
-const LEAVE_TYPES: LeaveType[] = ['Casual', 'Sick', 'Earned', 'Unpaid', 'Maternity', 'Paternity', 'Comp Off'];
 
 const leaveTypeTone = (type: LeaveType) => {
   if (type === 'Sick') return 'red' as const;
@@ -56,8 +62,20 @@ const holidayTypeTone = (type: string) => {
 };
 
 export function LeavePage() {
+  const { profile } = useAuth();
+  const role = resolveAppRole(profile);
+  const isEmployee = role === 'Employee';
+  const currentEmployee = getCurrentEmployee(profile);
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const leavePoliciesRevision = useLeavePoliciesRevision();
+  const holidayRevision = useHolidayDirectoryRevision();
   const [activeTab, setActiveTab] = useState('requests');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => getLeaveRequests());
+  const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
+  const leaveTypeOptions = useMemo(() => {
+    const types = getLeavePolicies().map((policy) => normalizeLeaveTypeValue(policy.type));
+    return Array.from(new Set(types));
+  }, [leavePoliciesRevision]);
 
   // Request filters
   const [search, setSearch] = useState('');
@@ -66,24 +84,37 @@ export function LeavePage() {
   // Apply Leave Modal
   const [applyOpen, setApplyOpen] = useState(false);
   const [formEmpId, setFormEmpId] = useState('');
-  const [formType, setFormType] = useState<LeaveType>('Casual');
+  const [formType, setFormType] = useState<LeaveType>(() => getLeavePolicies().length > 0
+    ? normalizeLeaveTypeValue(getLeavePolicies()[0].type)
+    : 'Casual');
   const [formStart, setFormStart] = useState('');
   const [formEnd, setFormEnd] = useState('');
   const [formReason, setFormReason] = useState('');
   const [formError, setFormError] = useState('');
 
+  useEffect(() => {
+    if (isEmployee && currentEmployee) {
+      setFormEmpId(currentEmployee.id);
+    }
+  }, [isEmployee, currentEmployee]);
+
+  const scopedRequests = useMemo(
+    () => (isEmployee && currentEmployee ? leaveRequests.filter((request) => request.employeeId === currentEmployee.id) : leaveRequests),
+    [leaveRequests, isEmployee, currentEmployee],
+  );
+
   // Stats
-  const pending = useMemo(() => leaveRequests.filter((r) => r.status === 'Pending').length, [leaveRequests]);
+  const pending = useMemo(() => scopedRequests.filter((r) => r.status === 'Pending').length, [scopedRequests]);
   const approvedThisMonth = useMemo(
-    () => leaveRequests.filter((r) => r.status === 'Approved' && r.appliedOn.startsWith('2026-06')).length,
-    [leaveRequests],
+    () => scopedRequests.filter((r) => r.status === 'Approved' && r.appliedOn.startsWith('2026-06')).length,
+    [scopedRequests],
   );
   const onLeaveToday = useMemo(
     () =>
-      leaveRequests.filter(
+      scopedRequests.filter(
         (r) => r.status === 'Approved' && r.startDate <= TODAY && r.endDate >= TODAY,
       ).length,
-    [leaveRequests],
+    [scopedRequests],
   );
   const upcomingHolidays = useMemo(
     () => holidays.filter((h) => h.date >= TODAY).length,
@@ -99,18 +130,25 @@ export function LeavePage() {
     return () => window.removeEventListener(LEAVE_REQUESTS_CHANGED_EVENT, handleLeaveRequestsChanged);
   }, []);
 
+  useEffect(() => {
+    if (!leaveTypeOptions.includes(formType)) {
+      setFormType(leaveTypeOptions[0] ?? 'Casual');
+    }
+  }, [leaveTypeOptions, formType]);
+
   // Filtered requests
   const filteredRequests = useMemo(() => {
-    return leaveRequests.filter((r) => {
+    return scopedRequests.filter((r) => {
       const empName = getEmployeeName(r.employeeId).toLowerCase();
       const matchSearch = !search || empName.includes(search.toLowerCase());
       const matchStatus = !statusFilter || r.status === statusFilter;
       return matchSearch && matchStatus;
     });
-  }, [leaveRequests, search, statusFilter]);
+  }, [scopedRequests, search, statusFilter, directoryRevision]);
 
   // Approve / Reject handlers
   function approveLeave(id: string) {
+    if (isEmployee) return;
     const updated = updateLeaveRequestStatus(id, 'Approved', {
       approverId: 'emp-004',
       approverName: 'Ananya Reddy',
@@ -118,6 +156,7 @@ export function LeavePage() {
     setLeaveRequests(updated);
   }
   function rejectLeave(id: string) {
+    if (isEmployee) return;
     const updated = updateLeaveRequestStatus(id, 'Rejected');
     setLeaveRequests(updated);
   }
@@ -154,7 +193,7 @@ export function LeavePage() {
     setLeaveRequests(updatedRequests);
     setApplyOpen(false);
     setFormEmpId('');
-    setFormType('Casual');
+    setFormType(leaveTypeOptions[0] ?? 'Casual');
     setFormStart('');
     setFormEnd('');
     setFormReason('');
@@ -224,7 +263,7 @@ export function LeavePage() {
       key: 'actions',
       header: 'Actions',
       render: (row) =>
-        row.status === 'Pending' ? (
+        !isEmployee && row.status === 'Pending' ? (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -258,17 +297,22 @@ export function LeavePage() {
   // ---- Balances Tab ----
   type BalanceViewItem = { emp: NonNullable<ReturnType<typeof getEmployee>>; balances: ReturnType<typeof getEmployeeBalances> };
   const balancesView = useMemo((): BalanceViewItem[] => {
+    if (isEmployee) {
+      if (!currentEmployee) return [];
+      return [{ emp: currentEmployee, balances: getEmployeeBalances(currentEmployee.id, scopedRequests) }];
+    }
+
     return balanceEmployeeIds
-      .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId, leaveRequests) }))
+      .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId, scopedRequests) }))
       .filter((b): b is BalanceViewItem => b.emp !== undefined);
-  }, [leaveRequests]);
+  }, [scopedRequests, isEmployee, currentEmployee]);
 
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {
-    return leaveRequests
+    return scopedRequests
       .filter((r) => r.status === 'Approved' && r.endDate >= TODAY)
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
-  }, [leaveRequests]);
+  }, [scopedRequests]);
 
   // ---- Holidays sorted by upcoming first ----
   const sortedHolidays = useMemo(
@@ -286,8 +330,8 @@ export function LeavePage() {
 
   const tabs = [
     { id: 'requests', label: 'Requests', count: pending },
-    { id: 'balances', label: 'Leave Balances' },
-    { id: 'whos-off', label: "Who's Off" },
+    { id: 'balances', label: isEmployee ? 'My Leave Balance' : 'Leave Balances' },
+    { id: 'whos-off', label: isEmployee ? 'My Time Off' : "Who's Off" },
     { id: 'holidays', label: 'Holidays' },
   ];
 
@@ -296,11 +340,7 @@ export function LeavePage() {
       <PageHeader
         title="Leave Management"
         subtitle="Manage leave requests, balances, and upcoming holidays"
-        actions={
-          <Button variant="primary" icon={<Plus size={16} />} onClick={() => setApplyOpen(true)}>
-            Apply Leave
-          </Button>
-        }
+        actions={<Button variant="primary" icon={<Plus size={16} />} onClick={() => setApplyOpen(true)}>Apply Leave</Button>}
       />
 
       {/* Stat Cards */}
@@ -542,18 +582,22 @@ export function LeavePage() {
             <label className="block text-sm font-medium text-ink-700 mb-1">
               Employee <span className="text-rose-500">*</span>
             </label>
-            <select
-              className="input w-full"
-              value={formEmpId}
-              onChange={(e) => setFormEmpId(e.target.value)}
-            >
-              <option value="">Select employee…</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.fullName} ({e.employeeCode})
-                </option>
-              ))}
-            </select>
+            {isEmployee && currentEmployee ? (
+              <input className="input w-full" value={`${currentEmployee.fullName} (${currentEmployee.employeeCode})`} readOnly />
+            ) : (
+              <select
+                className="input w-full"
+                value={formEmpId}
+                onChange={(e) => setFormEmpId(e.target.value)}
+              >
+                <option value="">Select employee…</option>
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.fullName} ({e.employeeCode})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-ink-700 mb-1">
@@ -564,7 +608,7 @@ export function LeavePage() {
               value={formType}
               onChange={(e) => setFormType(e.target.value as LeaveType)}
             >
-              {LEAVE_TYPES.map((t) => (
+              {leaveTypeOptions.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>

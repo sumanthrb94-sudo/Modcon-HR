@@ -1,8 +1,13 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { navGroups, navItems } from '@/lib/nav';
+import { navGroups, getVisibleNavItems } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { resolveAppRole } from '@/lib/accessControl';
+import { appendBillingInvoice, getBillingPreferences, saveBillingPreferences } from '@/data/billing';
+import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
+import { Button, Modal } from '@/components/ui';
 
 interface SidebarProps {
   open: boolean;
@@ -10,12 +15,55 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { isAdmin } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+  const billingRevision = useBillingPreferencesRevision();
+  const billingPreferences = getBillingPreferences();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  void billingRevision;
+  const role = profile ? resolveAppRole(profile) : 'Employee';
+  const visibleItems = getVisibleNavItems(role);
+  const planLabel = billingPreferences.planTier;
+  const seatLabel = billingPreferences.planTier === 'Enterprise'
+    ? 'Unlimited seats'
+    : `${billingPreferences.totalSeats} seats`;
+  const renewalLabel = billingPreferences.autoRenew ? 'Auto-renew on' : 'Auto-renew off';
+  const pricePerSeat = 4999;
 
   function handleUpgradePlan() {
-    navigate('/settings?tab=billing&action=upgrade-plan');
+    if (billingPreferences.planTier === 'Enterprise') {
+      navigate('/settings?tab=billing');
+      onClose();
+      return;
+    }
+
+    setUpgradeOpen(true);
+  }
+
+  function confirmUpgradePlan() {
+    const nextSeats = Math.max(billingPreferences.totalSeats, 500);
+
+    saveBillingPreferences({
+      planTier: 'Enterprise',
+      totalSeats: nextSeats,
+      billingEmail: billingPreferences.billingEmail,
+      autoRenew: billingPreferences.autoRenew,
+    });
+
+    appendBillingInvoice({
+      date: new Date().toISOString().slice(0, 10),
+      amount: nextSeats * pricePerSeat,
+      status: 'Paid',
+      title: 'Enterprise Upgrade',
+      description: 'Enterprise plan activated from the sidebar.',
+      planTier: 'Enterprise',
+      totalSeats: nextSeats,
+      billingEmail: billingPreferences.billingEmail,
+      autoRenew: billingPreferences.autoRenew,
+    });
+
+    setUpgradeOpen(false);
+    navigate('/settings?tab=billing');
     onClose();
   }
 
@@ -79,19 +127,45 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </nav>
 
         {/* Upgrade card */}
-        <div className="p-3">
+        {isAdmin ? (
+          <div className="p-3">
           <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 p-4 text-white">
-            <p className="text-sm font-semibold">ModCon HR Pro</p>
+            <p className="text-sm font-semibold">ModCon HR {planLabel}</p>
             <p className="text-xs text-brand-100 mt-0.5">Unlock advanced analytics & automations.</p>
             <button
               type="button"
               onClick={handleUpgradePlan}
               className="mt-3 w-full rounded-lg bg-white/15 hover:bg-white/25 py-1.5 text-xs font-semibold transition-colors"
             >
-              Upgrade plan
+              {billingPreferences.planTier === 'Enterprise' ? 'Enterprise Active' : 'Upgrade to Enterprise'}
             </button>
           </div>
-        </div>
+          <div className="mt-2 space-y-0.5 px-1 text-[11px] text-ink-400">
+            <p>{seatLabel}</p>
+            <p className="truncate">Billing: {billingPreferences.billingEmail}</p>
+            <p>{renewalLabel}</p>
+          </div>
+          </div>
+        ) : null}
+
+        <Modal
+          open={upgradeOpen}
+          onClose={() => setUpgradeOpen(false)}
+          title="Upgrade to Enterprise"
+          subtitle="Confirm the upgrade to unlock the Enterprise plan from the sidebar."
+          size="sm"
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => setUpgradeOpen(false)}>Cancel</Button>
+              <Button variant="primary" onClick={confirmUpgradePlan}>Confirm Upgrade</Button>
+            </>
+          )}
+        >
+          <div className="space-y-2 text-sm text-ink-600">
+            <p>This will switch your workspace to Enterprise and update billing details everywhere.</p>
+            <p>Current billing contact: {billingPreferences.billingEmail}</p>
+          </div>
+        </Modal>
       </aside>
     </>
   );

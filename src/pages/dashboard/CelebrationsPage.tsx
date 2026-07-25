@@ -50,7 +50,7 @@ export function CelebrationsPage() {
         }
 
         return grouped;
-    }, []);
+    }, [employees.length]);
 
     const monthItems = groupedCelebrations[selectedMonth] ?? [];
 

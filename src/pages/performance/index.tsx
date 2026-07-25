@@ -26,6 +26,7 @@ import {
 } from '@/components/ui';
 import { goals, reviews, ratingDistribution, getGoals, getReviews, GOALS_CHANGED_EVENT, REVIEWS_CHANGED_EVENT, saveGoals, updateGoalProgress, updateGoalStatus, updateReviewCycleByEmployee, updateReviewerByEmployee, updateReviewStatus, updateReviewRating } from '@/data/performance';
 import { getEmployeeName, employees } from '@/data/employees';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { Goal, PerformanceReview, GoalStatus, ReviewStatus } from '@/types';
 import { formatDate } from '@/lib/utils';
 import {
@@ -358,6 +359,7 @@ const reviewColumnsWithEdit = (
 // ---------------------------------------------------------------------------
 export function PerformancePage() {
   const [tab, setTab] = useState('goals');
+  const directoryRevision = useEmployeeDirectoryRevision();
   const [goalList, setGoalList] = useState<typeof goals>(() => getGoals());
   const [reviewList, setReviewList] = useState<typeof reviews>(() => getReviews());
   const [goalSearch, setGoalSearch] = useState('');
@@ -491,12 +493,12 @@ export function PerformancePage() {
       const matchStatus = !goalStatusFilter || g.status === goalStatusFilter;
       return matchSearch && matchStatus;
     });
-  }, [goalList, goalSearch, goalStatusFilter]);
+  }, [goalList, goalSearch, goalStatusFilter, directoryRevision]);
 
   // Filtered reviews
   const filteredReviews = useMemo(() => {
     return reviewList.filter((r) => !reviewStatusFilter || r.status === reviewStatusFilter);
-  }, [reviewList, reviewStatusFilter]);
+  }, [reviewList, reviewStatusFilter, directoryRevision]);
 
   // Insights data
   const ratingDist = useMemo(() => ratingDistribution(reviewList), [reviewList]);

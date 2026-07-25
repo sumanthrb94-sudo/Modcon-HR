@@ -1,12 +1,17 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
+import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
+import { canAccessModule, resolveAppRole, type AppModule } from '@/lib/accessControl';
+import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 
 import { DashboardPage } from '@/pages/dashboard';
 import { EmployeesPage, EmployeeDetailPage } from '@/pages/employees';
 import { AttendancePage } from '@/pages/attendance';
 import { LeavePage } from '@/pages/leave';
+import { FinancePage } from '@/pages/finance';
 import { PayrollPage } from '@/pages/payroll';
 import { RecruitmentPage } from '@/pages/recruitment';
 import { OnboardingPage } from '@/pages/onboarding';
@@ -29,6 +34,7 @@ import { HolidayCalendarPage } from '@/pages/dashboard/HolidayCalendarPage';
 import { RecentActivityPage } from '@/pages/dashboard/RecentActivityPage';
 import { NotFoundPage } from '@/pages/NotFound';
 import { LoginPage } from '@/pages/login';
+import { Card } from '@/components/ui';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -55,6 +61,41 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
   return isAdmin ? children : <Navigate to="/" replace />;
 }
 
+function AccessDeniedPage({ module }: { module: AppModule }) {
+  return (
+    <div className="py-10">
+      <Card>
+        <div className="p-6 sm:p-8">
+          <h1 className="text-xl font-semibold text-ink-900">Access Restricted</h1>
+          <p className="mt-2 text-sm text-ink-500">
+            You do not have permission to access {module}. Contact an administrator to update Roles and Permissions.
+          </p>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RequireModuleAccess({ module, children }: { module: AppModule; children: JSX.Element }) {
+  const { profile, loading } = useAuth();
+  useAccessControlRevision();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+        <Loader2 className="animate-spin text-brand-600" size={28} />
+      </div>
+    );
+  }
+
+  const role = resolveAppRole(profile);
+  if (!canAccessModule(module, role)) {
+    return <AccessDeniedPage module={module} />;
+  }
+
+  return children;
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth();
 
@@ -65,21 +106,22 @@ function AppRoutes() {
         element={!loading && user ? <Navigate to="/" replace /> : <LoginPage />}
       />
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route index element={<DashboardPage />} />
-        <Route path="employees" element={<EmployeesPage />} />
-        <Route path="employees/:id" element={<EmployeeDetailPage />} />
-        <Route path="attendance" element={<AttendancePage />} />
-        <Route path="leave" element={<LeavePage />} />
-        <Route path="payroll" element={<PayrollPage />} />
-        <Route path="recruitment" element={<RecruitmentPage />} />
-        <Route path="onboarding" element={<OnboardingPage />} />
-        <Route path="performance" element={<PerformancePage />} />
-        <Route path="expenses" element={<ExpensesPage />} />
-        <Route path="assets" element={<AssetsPage />} />
-        <Route path="helpdesk" element={<HelpdeskPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="admin" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
+        <Route path="/" element={<RequireModuleAccess module="Dashboard"><DashboardPage /></RequireModuleAccess>} />
+        <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
+        <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
+        <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />
+        <Route path="leave" element={<RequireModuleAccess module="Leave Management"><LeavePage /></RequireModuleAccess>} />
+        <Route path="finance" element={<RequireModuleAccess module="Finance"><FinancePage /></RequireModuleAccess>} />
+        <Route path="payroll" element={<RequireModuleAccess module="Payroll"><PayrollPage /></RequireModuleAccess>} />
+        <Route path="recruitment" element={<RequireModuleAccess module="Recruitment"><RecruitmentPage /></RequireModuleAccess>} />
+        <Route path="onboarding" element={<RequireModuleAccess module="Onboarding"><OnboardingPage /></RequireModuleAccess>} />
+        <Route path="performance" element={<RequireModuleAccess module="Performance"><PerformancePage /></RequireModuleAccess>} />
+        <Route path="expenses" element={<RequireModuleAccess module="Expenses"><ExpensesPage /></RequireModuleAccess>} />
+        <Route path="assets" element={<RequireModuleAccess module="Assets"><AssetsPage /></RequireModuleAccess>} />
+        <Route path="helpdesk" element={<RequireModuleAccess module="Helpdesk"><HelpdeskPage /></RequireModuleAccess>} />
+        <Route path="reports" element={<RequireModuleAccess module="Reports & Analytics"><ReportsPage /></RequireModuleAccess>} />
+        <Route path="settings" element={<RequireModuleAccess module="Settings"><SettingsPage /></RequireModuleAccess>} />
+        <Route path="admin" element={<RequireModuleAccess module="Admin"><RequireAdmin><AdminDashboardPage /></RequireAdmin></RequireModuleAccess>} />
         <Route path="dashboard/pending-approvals" element={<PendingApprovalsPage />} />
         <Route path="dashboard/pending-approvals/leave-requests" element={<LeaveRequestsApprovalsPage />} />
         <Route path="dashboard/pending-approvals/expense-claims" element={<ExpenseClaimsApprovalsPage />} />
@@ -97,6 +139,16 @@ function AppRoutes() {
 }
 
 export default function App() {
+  const [, setDirectoryRevision] = useState(0);
+
+  useEffect(() => {
+    const bumpRevision = () => setDirectoryRevision((prev) => prev + 1);
+    window.addEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, bumpRevision);
+    return () => {
+      window.removeEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, bumpRevision);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthProvider>

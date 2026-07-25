@@ -5,6 +5,7 @@ import { ArrowLeft, Briefcase, CalendarCheck, CalendarOff, Clock, TrendingUp, Us
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { employees } from '@/data/employees';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 
 const TODAY = '2026-06-10';
 
@@ -36,6 +37,7 @@ function getPreviousValue(current: number, delta: number, unit: KpiMetric['unit'
 }
 
 export function KpiGraphsPage() {
+    const directoryRevision = useEmployeeDirectoryRevision();
     const stats = useMemo(() => {
         const total = employees.length;
         const active = employees.filter((e) => e.status === 'Active').length;
@@ -62,7 +64,7 @@ export function KpiGraphsPage() {
             attritionRate,
             avgTenure,
         };
-    }, []);
+    }, [directoryRevision]);
 
     const metrics = useMemo<KpiMetric[]>(
         () => [

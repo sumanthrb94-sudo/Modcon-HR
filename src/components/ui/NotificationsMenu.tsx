@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CalendarOff, CheckSquare, Megaphone, Receipt, Settings } from 'lucide-react';
 import { Button } from './Button';
+import { getNotificationPreferences } from '@/data/notificationPreferences';
+import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
+import { getIntegrationPreferences } from '@/data/integrations';
+import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
+import { useAuth } from '@/lib/auth';
+import { resolveAppRole } from '@/lib/accessControl';
 
 interface NotificationsMenuProps {
     compact?: boolean;
@@ -41,9 +47,31 @@ const notifications = [
 
 export function NotificationsMenu({ compact = false, className }: NotificationsMenuProps) {
     const navigate = useNavigate();
+    const { profile } = useAuth();
+    const role = resolveAppRole(profile);
+    const isEmployee = role === 'Employee';
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
-    const totalCount = 19;
+    const notificationRevision = useNotificationPreferencesRevision();
+    const integrationRevision = useIntegrationPreferencesRevision();
+    const preferences = getNotificationPreferences();
+    const integrations = getIntegrationPreferences();
+    const enabledNotificationIds = new Set(preferences.filter((pref) => pref.inApp).map((pref) => pref.id));
+    const integrationById = new Map(integrations.map((integration) => [integration.id, integration]));
+    const slackConnected = integrationById.get('slack')?.connected ?? false;
+    const visibleNotifications = notifications.filter((item) => {
+        if (item.id === 'n3' && !slackConnected) return false;
+        return enabledNotificationIds.has(item.id);
+    });
+    const totalCount = visibleNotifications.length;
+    const connectedIntegrations = integrations.filter((integration) => integration.connected).length;
+    const totalIntegrations = integrations.length;
+
+    useEffect(() => {
+        if (open && visibleNotifications.length === 0) {
+            setOpen(false);
+        }
+    }, [open, visibleNotifications.length, notificationRevision, integrationRevision]);
 
     useEffect(() => {
         function handleOutsideClick(event: MouseEvent) {
@@ -103,7 +131,7 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                         <span className="text-xs text-ink-500">{totalCount} unread</span>
                     </div>
                     <div className="max-h-80 overflow-auto">
-                        {notifications.map((item) => {
+                        {visibleNotifications.map((item) => {
                             const Icon = item.icon;
                             return (
                                 <button
@@ -124,19 +152,29 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                                 </button>
                             );
                         })}
+                        {visibleNotifications.length === 0 ? (
+                            <div className="px-2.5 py-4 text-center text-sm text-ink-500">
+                                No in-app notifications are enabled.
+                            </div>
+                        ) : null}
                     </div>
-                    <div className="mt-1 border-t border-ink-100 pt-1.5">
-                        <button
-                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-700 hover:bg-ink-50"
-                            onClick={() => {
-                                setOpen(false);
-                                navigate('/settings');
-                            }}
-                        >
-                            <Settings size={14} />
-                            Notification preferences
-                        </button>
-                    </div>
+                    {!isEmployee ? (
+                        <div className="mt-1 border-t border-ink-100 pt-1.5">
+                            <div className="px-2.5 pb-2 text-[11px] text-ink-500">
+                                {connectedIntegrations}/{totalIntegrations} integrations connected
+                            </div>
+                            <button
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-700 hover:bg-ink-50"
+                                onClick={() => {
+                                    setOpen(false);
+                                    navigate('/settings');
+                                }}
+                            >
+                                <Settings size={14} />
+                                Notification preferences
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             ) : null}
         </div>

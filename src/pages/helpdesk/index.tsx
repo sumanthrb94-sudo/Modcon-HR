@@ -23,7 +23,11 @@ import {
   Select,
 } from '@/components/ui';
 import { tickets as initialTickets, ticketCategories } from '@/data/helpdesk';
-import { getEmployeeName } from '@/data/employees';
+import { employees, getEmployeeName } from '@/data/employees';
+import { useAuth } from '@/lib/auth';
+import { resolveAppRole } from '@/lib/accessControl';
+import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { timeAgo, formatDate } from '@/lib/utils';
 
@@ -87,9 +91,10 @@ interface TicketDetailProps {
   ticket: Ticket;
   onClose: () => void;
   onStatusChange: (id: string, status: TicketStatus) => void;
+  canManage?: boolean;
 }
 
-function TicketDetailModal({ ticket, onClose, onStatusChange }: TicketDetailProps) {
+function TicketDetailModal({ ticket, onClose, onStatusChange, canManage = true }: TicketDetailProps) {
   const [newStatus, setNewStatus] = useState<TicketStatus>(ticket.status);
   const convo = useMemo(() => mockConvo(ticket), [ticket]);
   const raiserName = getEmployeeName(ticket.raisedById);
@@ -118,7 +123,7 @@ function TicketDetailModal({ ticket, onClose, onStatusChange }: TicketDetailProp
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>
-          <Button onClick={handleSave}>Save Status</Button>
+          {canManage ? <Button onClick={handleSave}>Save Status</Button> : null}
         </>
       }
     >
@@ -179,15 +184,17 @@ function TicketDetailModal({ ticket, onClose, onStatusChange }: TicketDetailProp
         </div>
 
         {/* Status change */}
-        <div className="border-t border-ink-100 pt-4">
-          <p className="text-sm font-semibold text-ink-700 mb-2">Update Status</p>
-          <Select
-            value={newStatus}
-            onChange={(v) => setNewStatus(v as TicketStatus)}
-            options={statusOptions}
-            className="w-48"
-          />
-        </div>
+        {canManage ? (
+          <div className="border-t border-ink-100 pt-4">
+            <p className="text-sm font-semibold text-ink-700 mb-2">Update Status</p>
+            <Select
+              value={newStatus}
+              onChange={(v) => setNewStatus(v as TicketStatus)}
+              options={statusOptions}
+              className="w-48"
+            />
+          </div>
+        ) : null}
       </div>
     </Modal>
   );
@@ -200,6 +207,8 @@ function TicketDetailModal({ ticket, onClose, onStatusChange }: TicketDetailProp
 interface RaiseTicketProps {
   onClose: () => void;
   onSubmit: (ticket: Omit<Ticket, 'id' | 'ticketCode'>) => void;
+  employeeOptions?: { label: string; value: string }[];
+  defaultRaisedById?: string;
 }
 
 const CATEGORY_OPTIONS_LIST = ticketCategories.map((c) => ({ label: c, value: c }));
@@ -210,21 +219,36 @@ const PRIORITY_OPTIONS_LIST: { label: string; value: string }[] = [
   { label: 'Urgent', value: 'Urgent' },
 ];
 
-function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
+function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedById }: RaiseTicketProps) {
   const [subject, setSubject] = useState('');
+  const [raisedById, setRaisedById] = useState(defaultRaisedById ?? employees[0]?.id ?? 'emp-001');
+  const [assignedTo, setAssignedTo] = useState('Rahul Deshpande');
   const [category, setCategory] = useState('IT');
   const [priority, setPriority] = useState('Medium');
+
+  const employeeSelectOptions = employeeOptions ?? employees.map((employee) => ({
+    label: employee.fullName,
+    value: employee.id,
+  }));
+
+  const assigneeOptions = Array.from(new Set([
+    ...initialTickets.map((ticket) => ticket.assignedTo),
+    ...employees.map((employee) => employee.fullName),
+  ])).map((name) => ({
+    label: name,
+    value: name,
+  }));
 
   const handleSubmit = () => {
     if (!subject.trim()) return;
     onSubmit({
       subject: subject.trim(),
       category,
-      raisedById: 'emp-001', // default to first employee for demo
+      raisedById,
       status: 'Open',
       priority: priority as TicketPriority,
       createdOn: new Date().toISOString(),
-      assignedTo: 'Rahul Deshpande',
+      assignedTo,
     });
     onClose();
   };
@@ -249,6 +273,17 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
       }
     >
       <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium text-ink-700 block mb-1">
+            Name <span className="text-rose-500">*</span>
+          </label>
+          <Select
+            value={raisedById}
+            onChange={setRaisedById}
+            options={employeeSelectOptions}
+            className="w-full"
+          />
+        </div>
         <div>
           <label className="text-sm font-medium text-ink-700 block mb-1">
             Subject <span className="text-rose-500">*</span>
@@ -278,6 +313,15 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
             className="w-full"
           />
         </div>
+        <div>
+          <label className="text-sm font-medium text-ink-700 block mb-1">Assigned To</label>
+          <Select
+            value={assignedTo}
+            onChange={setAssignedTo}
+            options={assigneeOptions}
+            className="w-full"
+          />
+        </div>
       </div>
     </Modal>
   );
@@ -288,6 +332,11 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
 // ---------------------------------------------------------------------------
 
 export function HelpdeskPage() {
+  const { profile } = useAuth();
+  const role = resolveAppRole(profile);
+  const isEmployee = role === 'Employee';
+  const currentEmployee = getCurrentEmployee(profile);
+  const directoryRevision = useEmployeeDirectoryRevision();
   const [ticketList, setTicketList] = useState<Ticket[]>(initialTickets);
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -295,14 +344,19 @@ export function HelpdeskPage() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [ticketCounter, setTicketCounter] = useState(57); // next ticket number
 
+  const visibleTickets = useMemo(
+    () => (isEmployee && currentEmployee ? ticketList.filter((ticket) => ticket.raisedById === currentEmployee.id) : ticketList),
+    [ticketList, isEmployee, currentEmployee],
+  );
+
   // Stat card aggregates
   const stats = useMemo(() => {
-    const open = ticketList.filter((t) => t.status === 'Open').length;
-    const inProgress = ticketList.filter((t) => t.status === 'In Progress').length;
-    const resolved = ticketList.filter((t) => t.status === 'Resolved').length;
-    const urgent = ticketList.filter((t) => t.priority === 'Urgent').length;
+    const open = visibleTickets.filter((t) => t.status === 'Open').length;
+    const inProgress = visibleTickets.filter((t) => t.status === 'In Progress').length;
+    const resolved = visibleTickets.filter((t) => t.status === 'Resolved').length;
+    const urgent = visibleTickets.filter((t) => t.priority === 'Urgent').length;
     return { open, inProgress, resolved, urgent };
-  }, [ticketList]);
+  }, [visibleTickets, directoryRevision]);
 
   // Tab-filtered tickets
   const tabFilteredTickets = useMemo(() => {
@@ -314,7 +368,7 @@ export function HelpdeskPage() {
     };
     const statusFilter = statusMap[tab];
     const q = search.toLowerCase();
-    return ticketList.filter((t) => {
+    return visibleTickets.filter((t) => {
       const matchTab = !statusFilter || t.status === statusFilter;
       const matchSearch =
         !q ||
@@ -324,7 +378,7 @@ export function HelpdeskPage() {
         getEmployeeName(t.raisedById).toLowerCase().includes(q);
       return matchTab && matchSearch;
     });
-  }, [ticketList, tab, search]);
+  }, [visibleTickets, tab, search, directoryRevision]);
 
   const handleRaise = (partial: Omit<Ticket, 'id' | 'ticketCode'>) => {
     const id = `tkt-new-${ticketCounter}`;
@@ -332,15 +386,19 @@ export function HelpdeskPage() {
     setTicketCounter((n) => n + 1);
     const newTicket: Ticket = { id, ticketCode: code, ...partial };
     setTicketList((prev) => [newTicket, ...prev]);
+    setTab('open');
+    setSearch('');
+    setSelectedTicket(newTicket);
   };
 
   const handleStatusChange = (id: string, status: TicketStatus) => {
+    if (isEmployee) return;
     setTicketList((prev) => prev.map((t) => (t.id === id ? { ...t, status } : t)));
     setSelectedTicket((prev) => (prev?.id === id ? { ...prev, status } : prev));
   };
 
   const tabList = [
-    { id: 'all', label: 'All', count: ticketList.length },
+    { id: 'all', label: 'All', count: visibleTickets.length },
     { id: 'open', label: 'Open', count: stats.open },
     { id: 'inprogress', label: 'In Progress', count: stats.inProgress },
     { id: 'resolved', label: 'Resolved', count: stats.resolved },
@@ -475,13 +533,19 @@ export function HelpdeskPage() {
 
       {/* Modals */}
       {showRaise && (
-        <RaiseTicketModal onClose={() => setShowRaise(false)} onSubmit={handleRaise} />
+        <RaiseTicketModal
+          onClose={() => setShowRaise(false)}
+          onSubmit={handleRaise}
+          employeeOptions={currentEmployee ? [{ label: currentEmployee.fullName, value: currentEmployee.id }] : undefined}
+          defaultRaisedById={currentEmployee?.id}
+        />
       )}
       {selectedTicket && (
         <TicketDetailModal
           ticket={selectedTicket}
           onClose={() => setSelectedTicket(null)}
           onStatusChange={handleStatusChange}
+          canManage={!isEmployee}
         />
       )}
     </div>

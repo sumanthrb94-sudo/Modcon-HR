@@ -7,7 +7,7 @@ import {
   Briefcase,
   UserPlus,
   Target,
-  Receipt,
+  IndianRupee,
   Laptop,
   LifeBuoy,
   BarChart3,
@@ -15,30 +15,36 @@ import {
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
+import { canAccessModule, type AppModule, type AppRole } from '@/lib/accessControl';
 
 export interface NavItem {
   label: string;
   path: string;
   icon: LucideIcon;
-  group: 'Main' | 'People' | 'Operations' | 'Insights';
+  group: 'Main' | 'People' | 'Operations';
+  module: AppModule;
   adminOnly?: boolean;
 }
 
 export const navItems: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main' },
-  { label: 'Employees', path: '/employees', icon: Users, group: 'People' },
-  { label: 'Attendance', path: '/attendance', icon: CalendarCheck, group: 'People' },
-  { label: 'Leave', path: '/leave', icon: CalendarOff, group: 'People' },
-  { label: 'Payroll', path: '/payroll', icon: Wallet, group: 'Operations' },
-  { label: 'Recruitment', path: '/recruitment', icon: Briefcase, group: 'Operations' },
-  { label: 'Onboarding', path: '/onboarding', icon: UserPlus, group: 'Operations' },
-  { label: 'Performance', path: '/performance', icon: Target, group: 'Operations' },
-  { label: 'Expenses', path: '/expenses', icon: Receipt, group: 'Operations' },
-  { label: 'Assets', path: '/assets', icon: Laptop, group: 'Operations' },
-  { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'Operations' },
-  { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Insights' },
-  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Insights', adminOnly: true },
-  { label: 'Settings', path: '/settings', icon: Settings, group: 'Insights' },
+  { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main', module: 'Dashboard' },
+  { label: 'Employees', path: '/employees', icon: Users, group: 'People', module: 'Employee Directory' },
+  { label: 'Attendance', path: '/attendance', icon: CalendarCheck, group: 'People', module: 'Attendance' },
+  { label: 'Leave', path: '/leave', icon: CalendarOff, group: 'People', module: 'Leave Management' },
+  { label: 'Payroll', path: '/payroll', icon: Wallet, group: 'Operations', module: 'Payroll' },
+  { label: 'Recruitment', path: '/recruitment', icon: Briefcase, group: 'Operations', module: 'Recruitment' },
+  { label: 'Onboarding', path: '/onboarding', icon: UserPlus, group: 'Operations', module: 'Onboarding' },
+  { label: 'Performance', path: '/performance', icon: Target, group: 'Operations', module: 'Performance' },
+  { label: 'Expenses', path: '/expenses', icon: IndianRupee, group: 'Operations', module: 'Expenses' },
+  { label: 'Assets', path: '/assets', icon: Laptop, group: 'Operations', module: 'Assets' },
+  { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'Operations', module: 'Helpdesk' },
+  { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Operations', module: 'Reports & Analytics' },
+  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Operations', module: 'Admin', adminOnly: true },
+  { label: 'Settings', path: '/settings', icon: Settings, group: 'Operations', module: 'Settings' },
 ];
 
-export const navGroups: NavItem['group'][] = ['Main', 'People', 'Operations', 'Insights'];
+export const navGroups: NavItem['group'][] = ['Main', 'People', 'Operations'];
+
+export function getVisibleNavItems(role: AppRole): NavItem[] {
+  return navItems.filter((item) => canAccessModule(item.module, role) && (!item.adminOnly || role === 'Admin'));
+}

@@ -30,7 +30,9 @@ import {
   diversityRatio,
   currentAttritionRate,
 } from '@/data/reports';
-import { departments } from '@/data/employees';
+import { departments } from '@/data/departments';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 
 // ---------------------------------------------------------------------------
 // Color palette
@@ -115,16 +117,19 @@ export function ReportsPage() {
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState('ytd');
   const [deptFilter, setDeptFilter] = useState('all');
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const departmentRevision = useDepartmentDirectoryRevision();
 
   // Compute derived data
-  const hcByDept = useMemo(() => headcountByDepartment(), []);
-  const genderData = useMemo(() => genderDiversity(), []);
-  const tenureData = useMemo(() => tenureDistribution().map((d) => ({ name: d.bucket, count: d.count })), []);
+  const hcByDept = useMemo(() => headcountByDepartment(), [directoryRevision, departmentRevision]);
+  const genderData = useMemo(() => genderDiversity(), [directoryRevision]);
+  const tenureData = useMemo(() => tenureDistribution().map((d) => ({ name: d.bucket, count: d.count })), [directoryRevision]);
   const salaryData = useMemo(() => salaryByDepartment().map((d) => ({
     dept: d.department.length > 10 ? d.department.slice(0, 10) + '…' : d.department,
     cost: d.cost,
-  })), []);
-  const empTypeSplit = useMemo(() => employmentTypeSplit(), []);
+  })), [directoryRevision, departmentRevision]);
+  const empTypeSplit = useMemo(() => employmentTypeSplit(), [directoryRevision]);
+  const headcountSeries = useMemo(() => headcountGrowth(), [directoryRevision]);
 
   const headcount = totalHeadcount();
   const attrition = currentAttritionRate();
@@ -283,7 +288,7 @@ export function ReportsPage() {
         {/* Headcount Growth */}
         <ChartCard title="Headcount Growth" subtitle="12-month trajectory">
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={headcountGrowth} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={headcountSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={PALETTE.brand} stopOpacity={0.2} />

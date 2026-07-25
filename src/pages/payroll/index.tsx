@@ -33,7 +33,10 @@ import {
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
 import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment } from '@/data/payroll';
-import { employees, departments, getEmployee } from '@/data/employees';
+import { employees, getEmployee } from '@/data/employees';
+import { departments } from '@/data/departments';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import type { Payslip, PayrollRun } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -146,14 +149,11 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
 // Main Page
 // ---------------------------------------------------------------------------
 
-const DEPT_OPTIONS = [
-  { label: 'All Departments', value: '' },
-  ...departments.map((d) => ({ label: d, value: d })),
-];
-
 const CURRENT_PAYROLL_MONTH = '2026-06';
 
 export function PayrollPage() {
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const departmentRevision = useDepartmentDirectoryRevision();
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [search, setSearch] = useState('');
@@ -166,7 +166,7 @@ export function PayrollPage() {
   const avgCTC = useMemo(() => {
     const total = employees.reduce((s, e) => s + e.ctc, 0);
     return Math.round(total / employees.length);
-  }, []);
+  }, [directoryRevision]);
 
   // ----- Chart data -----
   const chartData = useMemo(
@@ -176,7 +176,23 @@ export function PayrollPage() {
         display: d.department.length > 10 ? d.department.slice(0, 8) + '…' : d.department,
         totalLakh: parseFloat((d.total / 100000).toFixed(2)),
       })),
-    [],
+    [directoryRevision, departmentRevision],
+  );
+
+  const deptOptions = useMemo(
+    () => [
+      { label: 'All Departments', value: '' },
+      ...departments.map((d) => ({ label: d, value: d })),
+    ],
+    [departmentRevision],
+  );
+
+  const sortedPayrollRuns = useMemo(
+    () =>
+      payrollRunList
+        .slice()
+        .sort((left, right) => right.month.localeCompare(left.month)),
+    [payrollRunList],
   );
 
   // ----- Filtered payslips -----
@@ -193,7 +209,7 @@ export function PayrollPage() {
       const matchesDept = !deptFilter || emp.department === deptFilter;
       return matchesSearch && matchesDept;
     });
-  }, [payslipList, search, deptFilter]);
+  }, [payslipList, search, deptFilter, directoryRevision]);
 
   function handleRunPayroll() {
     const alreadyExists = payrollRunList.some((run) => run.month === CURRENT_PAYROLL_MONTH);
@@ -417,7 +433,7 @@ export function PayrollPage() {
           <div className="p-5">
             <Table<PayrollRun>
               columns={runColumns}
-              data={payrollRunList}
+              data={sortedPayrollRuns}
               keyExtractor={(r) => r.id}
             />
           </div>
@@ -436,7 +452,7 @@ export function PayrollPage() {
               <Select
                 value={deptFilter}
                 onChange={setDeptFilter}
-                options={DEPT_OPTIONS}
+                options={deptOptions}
                 placeholder="All Departments"
                 className="w-52"
               />

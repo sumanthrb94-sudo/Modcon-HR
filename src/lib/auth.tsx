@@ -37,6 +37,7 @@ import { auth, db } from './firebase';
 export const ADMIN_EMAILS = [
     'sumanthbolla97@gmail.com',
     'saikrishnakoppaka@gmail.com',
+    'info@modconbuilders.com',
 ].map((e) => e.toLowerCase());
 
 export type UserRole = 'admin' | 'employee';
