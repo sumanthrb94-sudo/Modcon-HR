@@ -53,6 +53,13 @@ export const MANAGER_EMAILS = [
     ...E2E_MANAGER_EMAILS,
 ].map((e) => e.toLowerCase());
 
+// Super-admins are always `admin` role (see ADMIN_EMAILS above) plus this
+// marker flag. Not yet enforced anywhere — reserved for future cross-org
+// scoping if ModCon HR ever supports more than one organization.
+export const SUPER_ADMIN_EMAILS = [
+    'saikrishnakoppaka@gmail.com',
+].map((e) => e.toLowerCase());
+
 export type UserRole = 'admin' | 'manager' | 'employee';
 
 export interface UserProfile {
@@ -61,6 +68,7 @@ export interface UserProfile {
     displayName: string;
     photoURL: string | null;
     role: UserRole;
+    superAdmin?: boolean;
     createdAt?: unknown;
     lastLoginAt?: unknown;
 }
@@ -87,6 +95,7 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
         displayName: user.displayName || email.split('@')[0],
         photoURL: user.photoURL,
         role,
+        superAdmin: SUPER_ADMIN_EMAILS.includes(email),
     };
 
     await setDoc(
@@ -112,6 +121,8 @@ interface AuthContextValue {
     isAdmin: boolean;
     /** True for managers and admins (admins have all manager privileges). */
     isManager: boolean;
+    /** Reserved for future cross-org scoping; not yet enforced anywhere. */
+    isSuperAdmin: boolean;
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
@@ -191,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const isAdmin = profile?.role === 'admin';
     const isManager = profile?.role === 'manager' || isAdmin;
+    const isSuperAdmin = profile?.superAdmin === true;
 
     return (
         <AuthContext.Provider
@@ -200,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 loading,
                 isAdmin,
                 isManager,
+                isSuperAdmin,
                 error,
                 clearError,
                 signInEmail,
