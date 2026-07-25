@@ -51,6 +51,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Salary data lives in its own admin-only collection, split out of the
+    // broadly-readable `employees` directory (see src/lib/seed.ts).
+    match /employee_compensation/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     match /attendance/{docId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();

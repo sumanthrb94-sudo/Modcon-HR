@@ -18,7 +18,7 @@
  *   seedFirestore().then(() => console.log('done'));
  */
 
-import { writeBatch, doc } from 'firebase/firestore';
+import { writeBatch, doc, collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
 // Static data imports
@@ -55,6 +55,65 @@ async function batchWrite<T extends { id?: string }>(
         }
         await batch.commit();
     }
+}
+
+// Every collection `seedFirestore` writes to — kept as its own list so
+// `purgeSeededFirestoreData` can delete the same set without needing the
+// static mock data imports above.
+const SEEDED_COLLECTION_NAMES = [
+    'employees',
+    'employee_compensation',
+    'attendance',
+    'leave_requests',
+    'leave_balances',
+    'payslips',
+    'payroll_runs',
+    'jobs',
+    'candidates',
+    'onboarding',
+    'goals',
+    'performance_reviews',
+    'expenses',
+    'assets',
+    'helpdesk_tickets',
+    'regularizations',
+];
+
+async function batchDeleteCollection(collectionPath: string): Promise<number> {
+    const snap = await getDocs(collection(db, collectionPath));
+    const refs = snap.docs.map((d) => d.ref);
+    for (let i = 0; i < refs.length; i += BATCH_SIZE) {
+        const chunk = refs.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach((ref) => batch.delete(ref));
+        await batch.commit();
+    }
+    return refs.length;
+}
+
+/**
+ * Deletes every document in the collections `seedFirestore` populates.
+ * Requires an admin-signed-in user — enforced by firestore.rules, not here.
+ */
+export async function purgeSeededFirestoreData(
+    onProgress?: (msg: string) => void,
+): Promise<void> {
+    const log = (msg: string) => {
+        console.log(`[purge] ${msg}`);
+        onProgress?.(msg);
+    };
+
+    for (const name of SEEDED_COLLECTION_NAMES) {
+        try {
+            log(`Deleting ${name}…`);
+            const count = await batchDeleteCollection(name);
+            log(`Deleted ${count} document(s) from ${name}.`);
+        } catch (err) {
+            log(`⚠️  Skipped ${name}: ${String(err)}`);
+        }
+    }
+
+    log('✅ Firestore purge complete.');
 }
 
 export async function seedFirestore(

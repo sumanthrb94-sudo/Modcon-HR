@@ -48,7 +48,7 @@ import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevisi
 import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
 import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
-import { seedFirestore } from '@/lib/seed';
+import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import type { Holiday } from '@/types';
 
 const COMPANY_LOGO_STORAGE_KEY = 'modcon.hr.companyLogo';
@@ -2128,7 +2128,8 @@ function DatabaseSection() {
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
   const [resetOpen, setResetOpen] = useState(false);
-  const [resetDone, setResetDone] = useState(false);
+  const [resetStatus, setResetStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [resetLogs, setResetLogs] = useState<string[]>([]);
 
   async function handleSeed() {
     setStatus('running');
@@ -2142,12 +2143,19 @@ function DatabaseSection() {
     }
   }
 
-  function handleResetMockData() {
-    const keysToRemove = Object.keys(window.localStorage).filter((key) => key.startsWith('modcon.hr.'));
-    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
-    setResetDone(true);
-    setResetOpen(false);
-    window.location.reload();
+  async function handleResetMockData() {
+    setResetStatus('running');
+    setResetLogs([]);
+    try {
+      await purgeSeededFirestoreData((msg) => setResetLogs((prev) => [...prev, msg]));
+      const keysToRemove = Object.keys(window.localStorage).filter((key) => key.startsWith('modcon.hr.'));
+      keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+      setResetStatus('done');
+      window.location.reload();
+    } catch (err) {
+      setResetLogs((prev) => [...prev, `Error: ${String(err)}`]);
+      setResetStatus('error');
+    }
   }
 
   return (
@@ -2192,26 +2200,35 @@ function DatabaseSection() {
       </Card>
 
       <Card className="border-rose-200">
-        <CardHeader title="Danger Zone" subtitle="Clear locally stored mock data to test against live Firestore data only" />
+        <CardHeader title="Danger Zone" subtitle="Delete all seeded mock data — Firestore and this browser's local overlay" />
         <div className="space-y-4">
           <p className="text-sm text-ink-500">
-            Wipes every browser-local mock overlay — employees, leave, payroll goals, recruitment, holidays,
-            billing, access control, and more (all <span className="font-mono text-xs text-ink-600">modcon.hr.*</span> keys
-            in this browser's localStorage) — and reloads the app. The seed data in <span className="font-mono text-xs text-ink-600">src/data</span> is
-            unaffected; this only removes local overrides so the app falls back to defaults / live Firestore data.
-            This does not touch Firestore itself.
+            Deletes every document in the Firestore collections Seed Firestore populates (employees, attendance,
+            leave, payroll, recruitment, onboarding, performance, expenses, assets, helpdesk, regularizations),
+            then clears every browser-local mock overlay (all <span className="font-mono text-xs text-ink-600">modcon.hr.*</span> localStorage
+            keys) and reloads. Requires an admin-signed-in account — enforced by firestore.rules. The static seed
+            source in <span className="font-mono text-xs text-ink-600">src/data</span> is unaffected; re-run
+            Seed Firestore above to repopulate.
           </p>
           <Button
             variant="danger"
             icon={<Trash2 size={15} />}
             onClick={() => setResetOpen(true)}
+            disabled={resetStatus === 'running'}
           >
-            Delete Mock Data
+            {resetStatus === 'running' ? 'Deleting…' : 'Delete Mock Data'}
           </Button>
-          {resetDone && (
-            <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-              <CheckCircle2 size={16} />
-              Mock data cleared.
+          {resetLogs.length > 0 && (
+            <div className="rounded-lg bg-ink-950 text-emerald-400 font-mono text-xs p-4 space-y-1 max-h-64 overflow-y-auto">
+              {resetLogs.map((log, i) => (
+                <p key={i}>{log}</p>
+              ))}
+            </div>
+          )}
+          {resetStatus === 'error' && (
+            <div className="flex items-center gap-2 text-sm text-rose-600 font-medium">
+              <AlertCircle size={16} />
+              Delete failed partway through. Check the log above — this is usually a permissions error if you're not signed in as an admin.
             </div>
           )}
         </div>
@@ -2221,19 +2238,27 @@ function DatabaseSection() {
         open={resetOpen}
         onClose={() => setResetOpen(false)}
         title="Delete all mock data?"
-        subtitle="This clears local overrides in this browser only and cannot be undone"
+        subtitle="This deletes Firestore documents and local overrides — it cannot be undone"
         size="sm"
         footer={(
           <>
             <Button variant="secondary" onClick={() => setResetOpen(false)}>Cancel</Button>
-            <Button variant="danger" onClick={handleResetMockData}>Delete & Reload</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setResetOpen(false);
+                void handleResetMockData();
+              }}
+            >
+              Delete & Reload
+            </Button>
           </>
         )}
       >
         <p className="text-sm text-ink-600">
-          This removes every locally added/edited/deleted record across employees, leave, payroll, recruitment,
-          holidays, billing, notifications, and access control in this browser, then reloads the page. Firestore
-          data is not affected.
+          This permanently deletes every document in the Firestore collections listed above, then removes every
+          locally added/edited/deleted record in this browser's localStorage, then reloads the page. Anyone else
+          viewing this app against the same Firestore project will also lose that data.
         </p>
       </Modal>
     </SettingsSection>
