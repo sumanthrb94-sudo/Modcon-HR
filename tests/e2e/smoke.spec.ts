@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { TEST_EMAIL, TEST_PASSWORD } from './config';
+import { PERSONAS } from './config';
 
 /**
  * End-to-end smoke test.
@@ -7,13 +7,20 @@ import { TEST_EMAIL, TEST_PASSWORD } from './config';
  * Signs in through the real UI against Firebase Auth, then walks every module
  * in the sidebar asserting the page renders (heading visible, no crash) and no
  * uncaught runtime errors are thrown.
+ *
+ * Runs as the admin persona: module visibility is governed by the permission
+ * matrix in src/lib/accessControl.ts, and only an admin has every module, so
+ * any lesser role would leave most of the walk below unreachable.
  */
+const SMOKE_PERSONA = PERSONAS.admin;
 
 const MODULES: { label: string; path: string; heading: RegExp }[] = [
   { label: 'Dashboard', path: '/', heading: /dashboard|welcome|overview/i },
   { label: 'Employees', path: '/employees', heading: /employee/i },
   { label: 'Attendance', path: '/attendance', heading: /attendance/i },
+  { label: 'My Attendance', path: '/my-attendance', heading: /attendance/i },
   { label: 'Leave', path: '/leave', heading: /leave/i },
+  { label: 'Finance', path: '/finance', heading: /finance|salary/i },
   { label: 'Payroll', path: '/payroll', heading: /payroll/i },
   { label: 'Recruitment', path: '/recruitment', heading: /recruit/i },
   { label: 'Onboarding', path: '/onboarding', heading: /onboard/i },
@@ -42,8 +49,8 @@ function trackErrors(page: Page) {
 
 async function login(page: Page) {
   await page.goto('/login');
-  await page.locator('#username').fill(TEST_EMAIL);
-  await page.locator('#password').fill(TEST_PASSWORD);
+  await page.locator('#username').fill(SMOKE_PERSONA.email);
+  await page.locator('#password').fill(SMOKE_PERSONA.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
   // Successful auth redirects to the dashboard shell (sidebar visible).
   await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });

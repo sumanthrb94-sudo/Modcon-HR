@@ -138,7 +138,7 @@ function AppRoutes() {
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
         <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />
-        <Route path="my-attendance" element={<RequireModuleAccess module="Attendance"><MyAttendancePage /></RequireModuleAccess>} />
+        <Route path="my-attendance" element={<RequireModuleAccess module="My Attendance"><MyAttendancePage /></RequireModuleAccess>} />
         <Route path="leave" element={<RequireModuleAccess module="Leave Management"><LeavePage /></RequireModuleAccess>} />
         <Route path="finance" element={<RequireModuleAccess module="Finance"><FinancePage /></RequireModuleAccess>} />
         <Route path="payroll" element={<RequireModuleAccess module="Payroll"><PayrollPage /></RequireModuleAccess>} />
@@ -150,7 +150,10 @@ function AppRoutes() {
         <Route path="helpdesk" element={<RequireModuleAccess module="Helpdesk"><HelpdeskPage /></RequireModuleAccess>} />
         <Route path="reports" element={<RequireModuleAccess module="Reports & Analytics"><ReportsPage /></RequireModuleAccess>} />
         <Route path="settings" element={<RequireModuleAccess module="Settings"><SettingsPage /></RequireModuleAccess>} />
-        <Route path="admin" element={<RequireModuleAccess module="Admin"><RequireAdmin><AdminDashboardPage /></RequireAdmin></RequireModuleAccess>} />
+        {/* RequireAdmin is outermost so a non-admin is redirected away rather
+            than shown the in-place "Access Restricted" card, keeping privileged
+            routes consistent with /approvals. */}
+        <Route path="admin" element={<RequireAdmin><RequireModuleAccess module="Admin"><AdminDashboardPage /></RequireModuleAccess></RequireAdmin>} />
         <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals/leave-requests" element={<RequireManager><LeaveRequestsApprovalsPage /></RequireManager>} />

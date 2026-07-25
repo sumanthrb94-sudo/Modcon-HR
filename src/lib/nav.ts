@@ -35,7 +35,7 @@ export const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main', module: 'Dashboard' },
   { label: 'Employees', path: '/employees', icon: Users, group: 'People', module: 'Employee Directory' },
   { label: 'Attendance', path: '/attendance', icon: CalendarCheck, group: 'People', module: 'Attendance' },
-  { label: 'My Attendance', path: '/my-attendance', icon: CalendarClock, group: 'People', module: 'Attendance' },
+  { label: 'My Attendance', path: '/my-attendance', icon: CalendarClock, group: 'People', module: 'My Attendance' },
   { label: 'Leave', path: '/leave', icon: CalendarOff, group: 'People', module: 'Leave Management' },
   { label: 'Finance', path: '/finance', icon: Banknote, group: 'People', module: 'Finance' },
   { label: 'Payroll', path: '/payroll', icon: Wallet, group: 'Operations', module: 'Payroll' },

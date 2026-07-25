@@ -42,7 +42,15 @@ test.describe.serial('role-based access', () => {
   });
 
   test('base modules are always reachable', async () => {
-    for (const label of ['Employees', 'Attendance', 'Leave', 'Reports']) {
+    // Visibility follows the permission matrix in src/lib/accessControl.ts:
+    // employees get the self-service modules, while the company-wide Attendance
+    // and Reports views are restricted to managers and admins.
+    const labels =
+      persona().role === 'employee'
+        ? ['Employees', 'My Attendance', 'Leave', 'Finance']
+        : ['Employees', 'Attendance', 'Leave', 'Reports'];
+
+    for (const label of labels) {
       await page.getByRole('link', { name: label, exact: true }).first().click();
       await expect(page.getByRole('heading').first()).toBeVisible();
     }

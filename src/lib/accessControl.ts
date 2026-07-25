@@ -7,6 +7,7 @@ export const APP_MODULES = [
   'Dashboard',
   'Employee Directory',
   'Attendance',
+  'My Attendance',
   'Leave Management',
   'Finance',
   'Payroll',
@@ -32,6 +33,8 @@ export const defaultPermissions: PermissionMatrix = {
   Dashboard: { Admin: 'full', 'HR Manager': 'view', Manager: 'view', Employee: 'view' },
   'Employee Directory': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Attendance: { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'none' },
+  // Self-service view of your own attendance — everyone sees their own record.
+  'My Attendance': { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
   'Leave Management': { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
   Finance: { Admin: 'full', 'HR Manager': 'view', Manager: 'none', Employee: 'full' },
   Payroll: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
@@ -118,6 +121,7 @@ export function canAccessModule(module: AppModule, role: AppRole): boolean {
 export function resolveAppRole(profile: UserProfile | null): AppRole {
   if (!profile) return 'Employee';
   if (profile.role === 'admin') return 'Admin';
+  if (profile.role === 'manager') return 'Manager';
   return 'Employee';
 }
 
