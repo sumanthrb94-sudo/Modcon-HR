@@ -1,40 +1,54 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { canAccessModule, resolveAppRole, type AppModule } from '@/lib/accessControl';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 
-import { DashboardPage } from '@/pages/dashboard';
-import { EmployeesPage, EmployeeDetailPage } from '@/pages/employees';
-import { AttendancePage } from '@/pages/attendance';
-import { LeavePage } from '@/pages/leave';
-import { FinancePage } from '@/pages/finance';
-import { PayrollPage } from '@/pages/payroll';
-import { RecruitmentPage } from '@/pages/recruitment';
-import { OnboardingPage } from '@/pages/onboarding';
-import { PerformancePage } from '@/pages/performance';
-import { ExpensesPage } from '@/pages/expenses';
-import { AssetsPage } from '@/pages/assets';
-import { HelpdeskPage } from '@/pages/helpdesk';
-import { ReportsPage } from '@/pages/reports';
-import { SettingsPage } from '@/pages/settings';
-import { AdminDashboardPage } from '@/pages/admin';
-import { PendingApprovalsPage } from '@/pages/dashboard/PendingApprovalsPage';
-import { LeaveRequestsApprovalsPage } from '@/pages/dashboard/LeaveRequestsApprovalsPage';
-import { ExpenseClaimsApprovalsPage } from '@/pages/dashboard/ExpenseClaimsApprovalsPage';
-import { RegularizationsApprovalsPage } from '@/pages/dashboard/RegularizationsApprovalsPage';
-import { OnboardingTasksApprovalsPage } from '@/pages/dashboard/OnboardingTasksApprovalsPage';
-import { AnnouncementsPage } from '@/pages/dashboard/AnnouncementsPage';
-import { CelebrationsPage } from '@/pages/dashboard/CelebrationsPage';
-import { KpiGraphsPage } from '@/pages/dashboard/KpiGraphsPage';
-import { HolidayCalendarPage } from '@/pages/dashboard/HolidayCalendarPage';
-import { RecentActivityPage } from '@/pages/dashboard/RecentActivityPage';
-import { NotFoundPage } from '@/pages/NotFound';
-import { LoginPage } from '@/pages/login';
 import { Card } from '@/components/ui';
+
+// Route-level code splitting: each feature module ships in its own chunk so the
+// initial bundle stays small and heavy pages (charts, tables) load on demand.
+const DashboardPage = lazy(() => import('@/pages/dashboard').then((m) => ({ default: m.DashboardPage })));
+const EmployeesPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeesPage })));
+const EmployeeDetailPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeeDetailPage })));
+const AttendancePage = lazy(() => import('@/pages/attendance').then((m) => ({ default: m.AttendancePage })));
+const MyAttendancePage = lazy(() => import('@/pages/my-attendance').then((m) => ({ default: m.MyAttendancePage })));
+const LeavePage = lazy(() => import('@/pages/leave').then((m) => ({ default: m.LeavePage })));
+const FinancePage = lazy(() => import('@/pages/finance').then((m) => ({ default: m.FinancePage })));
+const PayrollPage = lazy(() => import('@/pages/payroll').then((m) => ({ default: m.PayrollPage })));
+const RecruitmentPage = lazy(() => import('@/pages/recruitment').then((m) => ({ default: m.RecruitmentPage })));
+const OnboardingPage = lazy(() => import('@/pages/onboarding').then((m) => ({ default: m.OnboardingPage })));
+const PerformancePage = lazy(() => import('@/pages/performance').then((m) => ({ default: m.PerformancePage })));
+const ExpensesPage = lazy(() => import('@/pages/expenses').then((m) => ({ default: m.ExpensesPage })));
+const AssetsPage = lazy(() => import('@/pages/assets').then((m) => ({ default: m.AssetsPage })));
+const HelpdeskPage = lazy(() => import('@/pages/helpdesk').then((m) => ({ default: m.HelpdeskPage })));
+const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })));
+const SettingsPage = lazy(() => import('@/pages/settings').then((m) => ({ default: m.SettingsPage })));
+const AdminDashboardPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminDashboardPage })));
+const PendingApprovalsPage = lazy(() => import('@/pages/dashboard/PendingApprovalsPage').then((m) => ({ default: m.PendingApprovalsPage })));
+const LeaveRequestsApprovalsPage = lazy(() => import('@/pages/dashboard/LeaveRequestsApprovalsPage').then((m) => ({ default: m.LeaveRequestsApprovalsPage })));
+const ExpenseClaimsApprovalsPage = lazy(() => import('@/pages/dashboard/ExpenseClaimsApprovalsPage').then((m) => ({ default: m.ExpenseClaimsApprovalsPage })));
+const RegularizationsApprovalsPage = lazy(() => import('@/pages/dashboard/RegularizationsApprovalsPage').then((m) => ({ default: m.RegularizationsApprovalsPage })));
+const OnboardingTasksApprovalsPage = lazy(() => import('@/pages/dashboard/OnboardingTasksApprovalsPage').then((m) => ({ default: m.OnboardingTasksApprovalsPage })));
+const AnnouncementsPage = lazy(() => import('@/pages/dashboard/AnnouncementsPage').then((m) => ({ default: m.AnnouncementsPage })));
+const CelebrationsPage = lazy(() => import('@/pages/dashboard/CelebrationsPage').then((m) => ({ default: m.CelebrationsPage })));
+const KpiGraphsPage = lazy(() => import('@/pages/dashboard/KpiGraphsPage').then((m) => ({ default: m.KpiGraphsPage })));
+const HolidayCalendarPage = lazy(() => import('@/pages/dashboard/HolidayCalendarPage').then((m) => ({ default: m.HolidayCalendarPage })));
+const RecentActivityPage = lazy(() => import('@/pages/dashboard/RecentActivityPage').then((m) => ({ default: m.RecentActivityPage })));
+const NotFoundPage = lazy(() => import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })));
+const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.LoginPage })));
+
+function PageLoader() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <Loader2 className="animate-spin text-brand-600" size={28} />
+    </div>
+  );
+}
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -59,6 +73,19 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   return isAdmin ? children : <Navigate to="/" replace />;
+}
+
+function RequireManager({ children }: { children: JSX.Element }) {
+  const { user, isManager, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+        <Loader2 className="animate-spin text-brand-600" size={28} />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  return isManager ? children : <Navigate to="/" replace />;
 }
 
 function AccessDeniedPage({ module }: { module: AppModule }) {
@@ -100,16 +127,18 @@ function AppRoutes() {
   const { user, loading } = useAuth();
 
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       <Route
         path="login"
         element={!loading && user ? <Navigate to="/" replace /> : <LoginPage />}
       />
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route path="/" element={<RequireModuleAccess module="Dashboard"><DashboardPage /></RequireModuleAccess>} />
+        <Route index element={<RequireModuleAccess module="Dashboard"><DashboardPage /></RequireModuleAccess>} />
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
         <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />
+        <Route path="my-attendance" element={<RequireModuleAccess module="Attendance"><MyAttendancePage /></RequireModuleAccess>} />
         <Route path="leave" element={<RequireModuleAccess module="Leave Management"><LeavePage /></RequireModuleAccess>} />
         <Route path="finance" element={<RequireModuleAccess module="Finance"><FinancePage /></RequireModuleAccess>} />
         <Route path="payroll" element={<RequireModuleAccess module="Payroll"><PayrollPage /></RequireModuleAccess>} />
@@ -122,11 +151,12 @@ function AppRoutes() {
         <Route path="reports" element={<RequireModuleAccess module="Reports & Analytics"><ReportsPage /></RequireModuleAccess>} />
         <Route path="settings" element={<RequireModuleAccess module="Settings"><SettingsPage /></RequireModuleAccess>} />
         <Route path="admin" element={<RequireModuleAccess module="Admin"><RequireAdmin><AdminDashboardPage /></RequireAdmin></RequireModuleAccess>} />
-        <Route path="dashboard/pending-approvals" element={<PendingApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/leave-requests" element={<LeaveRequestsApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/expense-claims" element={<ExpenseClaimsApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/regularizations" element={<RegularizationsApprovalsPage />} />
-        <Route path="dashboard/pending-approvals/onboarding-tasks" element={<OnboardingTasksApprovalsPage />} />
+        <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/leave-requests" element={<RequireManager><LeaveRequestsApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/expense-claims" element={<RequireManager><ExpenseClaimsApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/regularizations" element={<RequireManager><RegularizationsApprovalsPage /></RequireManager>} />
+        <Route path="dashboard/pending-approvals/onboarding-tasks" element={<RequireManager><OnboardingTasksApprovalsPage /></RequireManager>} />
         <Route path="dashboard/announcements" element={<AnnouncementsPage />} />
         <Route path="dashboard/celebrations" element={<CelebrationsPage />} />
         <Route path="dashboard/kpi-graphs" element={<KpiGraphsPage />} />
@@ -135,6 +165,7 @@ function AppRoutes() {
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 
@@ -150,10 +181,12 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

@@ -20,6 +20,18 @@ service cloud.firestore {
         myProfile().role == 'admin';
     }
 
+    // Managers and admins can act on approval workflows.
+    function isManager() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (myProfile().role == 'manager' || myProfile().role == 'admin');
+    }
+
+    // Employee record linked to the signed-in user (matched by email).
+    function myEmployeeDoc() {
+      return get(/databases/$(database)/documents/employees/$(request.auth.uid));
+    }
+
     // -------------------------------------------------------------------
     // Users directory (roles, profile info)
     // -------------------------------------------------------------------
@@ -54,7 +66,7 @@ service cloud.firestore {
       // Employees can create/update their own leave requests; admins can
       // manage all of them (e.g. approve/reject).
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
       allow delete: if isAdmin();
     }
 
@@ -102,7 +114,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // Employees can submit/edit their own expense claims; admins manage all.
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
       allow delete: if isAdmin();
     }
 
@@ -132,7 +144,7 @@ service cloud.firestore {
     match /regularizations/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
       allow delete: if isAdmin();
     }
 

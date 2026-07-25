@@ -1,0 +1,54 @@
+name: Deploy to Firebase Hosting
+
+# Builds the app and deploys it to Firebase Hosting (modcon-hr.web.app) on
+# every push to main. Also runnable on demand from the Actions tab.
+#
+# Requires a repository secret named FIREBASE_TOKEN — a Firebase CI token
+# generated with `firebase login:ci`. See the README (Deployment) for setup.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two hosting deploys at once; a newer push supersedes an older run.
+concurrency:
+  group: firebase-hosting
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify FIREBASE_TOKEN is configured
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::error::Missing FIREBASE_TOKEN secret. Generate one with 'firebase login:ci' and add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Deploy to Firebase Hosting
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: npx --yes firebase-tools@13 deploy --only hosting --non-interactive

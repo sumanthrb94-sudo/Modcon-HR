@@ -27,11 +27,25 @@ interface BadgeProps {
   tone?: BadgeTone;
   className?: string;
   dot?: boolean;
+  onClick?: () => void;
 }
 
-export function Badge({ children, tone = 'gray', className, dot }: BadgeProps) {
+export function Badge({ children, tone = 'gray', className, dot, onClick }: BadgeProps) {
   return (
     <span
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
         tones[tone],

@@ -13,3 +13,12 @@ coverage
 .idea
 .vscode/*
 !.vscode/extensions.json
+
+# Build info
+*.tsbuildinfo
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/

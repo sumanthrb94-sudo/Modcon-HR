@@ -4,10 +4,18 @@ A modern, full-featured **HRMS (Human Resource Management System)** built as an
 investor-ready product demo. ModCon HR covers the complete employee lifecycle —
 from hire to retire — in a single, polished web application.
 
-> **Demo mode:** the app ships with realistic mock data generated in-app, and a
+> **Access & roles:** the app is protected by Firebase email/password
+> authentication with three roles — **employee**, **manager**, and **admin**.
+> Employees get the core modules; managers additionally get the **Approvals**
+> workspace; admins get everything including the Admin dashboard. Roles come
+> from the allow-lists in `src/lib/auth.tsx` (or are assigned by an admin), and
+> per-module visibility is further governed by the permission matrix in
+> `src/lib/accessControl.ts`.
+>
+> **Demo mode:** the app ships with realistic mock data generated in-app, plus a
 > one-click "Employee Profile" demo login on the sign-in screen. Sign-in itself
-> is a real, required step (email/password via Firebase Auth) with role-based
-> route and module access — it is not disabled.
+> is a real, required step — it is not disabled. Live Firestore backs the admin
+> views and seeding.
 
 ![Stack](https://img.shields.io/badge/React-18-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Vite](https://img.shields.io/badge/Vite-5-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 
@@ -45,7 +53,65 @@ npm install      # install dependencies
 npm run dev      # start dev server → http://localhost:5173
 npm run build    # type-check + production build
 npm run preview  # preview the production build
+npm run test:e2e # end-to-end tests (Playwright, drives the production build)
 ```
+
+### End-to-end tests
+
+`npm run test:e2e` builds/serves the app and drives it in a real Chromium
+browser (Playwright), signing in through Firebase Auth. Coverage:
+
+- **All modules** (Dashboard → Settings), employee detail, modals, 404,
+  sign-out, and a zero-runtime-errors assertion across the walkthrough.
+- **Per-role flows run in parallel** — separate Playwright projects for
+  `role-employee`, `role-manager`, and `role-admin` assert role-appropriate
+  navigation and access control (Approvals/Admin gating and route redirects).
+
+Dedicated test accounts are provisioned automatically; the manager/admin
+accounts are only privileged when the app is built with
+`VITE_ENABLE_E2E_ACCOUNTS=true` (the test harness does this), so production
+builds never trust them. Override credentials or the browser binary via
+`E2E_EMAIL` / `E2E_MANAGER_EMAIL` / `E2E_ADMIN_EMAIL` / `E2E_PASSWORD` /
+`PW_CHROMIUM_PATH`. Behind an HTTPS-intercepting proxy the browser is
+configured automatically (TLS 1.2, proxy tunnelling) so Firebase calls
+succeed.
+
+## 🚢 Deployment
+
+The app is hosted on **Firebase Hosting** at
+[modcon-hr.web.app](https://modcon-hr.web.app) (project `modcon-hr`, see
+`.firebaserc` / `firebase.json`).
+
+### Automated (GitHub Actions)
+
+Every push to `main` builds and deploys via
+`.github/workflows/firebase-hosting.yml`. It needs one repository secret:
+
+1. Generate a Firebase CI token on a machine logged into the project:
+   ```bash
+   npm i -g firebase-tools
+   firebase login:ci        # opens a browser, prints a token
+   ```
+2. In GitHub: **Settings → Secrets and variables → Actions → New repository
+   secret**, name it `FIREBASE_TOKEN`, and paste the token.
+
+Pushes to `main` then deploy automatically; you can also trigger a deploy
+from the **Actions** tab (workflow_dispatch).
+
+> `firebase login:ci` tokens are being phased out in favour of service
+> accounts. To use one instead, store the service-account JSON as a secret
+> and swap the deploy step for
+> [`FirebaseExtended/action-hosting-deploy`](https://github.com/FirebaseExtended/action-hosting-deploy).
+
+### Manual
+
+```bash
+npm run build
+npm run firebase:deploy   # firebase deploy --only hosting  (after: firebase login)
+```
+
+Firestore security rules (`firestore.rules`) are deployed separately with
+`firebase deploy --only firestore:rules`.
 
 ## 🧱 Architecture
 
