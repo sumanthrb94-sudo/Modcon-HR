@@ -1,6 +1,7 @@
 import type { Payslip, PayrollRun, PayrollRunStatus } from '@/types';
 import type { Employee } from '@/types';
 import { employees } from '@/data/employees';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Salary component builder
@@ -74,7 +75,7 @@ export function buildPayslip(employee: Employee, month = '2026-05', status: Payr
 // Current month payslips — all employees, May 2026
 // ---------------------------------------------------------------------------
 
-export const payslips: Payslip[] = employees.map((e) => buildPayslip(e, '2026-05', 'Paid'));
+export const payslips: Payslip[] = isMockDataCleared() ? [] : employees.map((e) => buildPayslip(e, '2026-05', 'Paid'));
 
 // ---------------------------------------------------------------------------
 // Payroll runs — last 6 months
@@ -89,7 +90,10 @@ const runMonths: Array<{ month: string; status: PayrollRunStatus; processedOn: s
   { month: '2026-05', status: 'Paid',       processedOn: '2026-05-31' },
 ];
 
-export const payrollRuns: PayrollRun[] = runMonths.map((rm, i) => {
+// runMonths is a fixed list independent of `employees`/`payslips`, so it
+// must be explicitly gated too — otherwise a cleared/empty org would still
+// see 6 hardcoded payroll run rows (just with zeroed-out totals).
+export const payrollRuns: PayrollRun[] = isMockDataCleared() ? [] : runMonths.map((rm, i) => {
   const grossTotal = payslips.reduce((s, p) => s + p.grossEarnings, 0);
   const netTotal = payslips.reduce((s, p) => s + p.netPay, 0);
   // Slight variation per month for realism

@@ -25,6 +25,7 @@ import { getDepartmentDirectory } from '@/data/departments';
 import { announcements } from '@/data/common';
 import { getHolidayDirectory } from '@/data/holidays';
 import { formatDate, formatDateShort, timeAgo, pct } from '@/lib/utils';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -446,6 +447,10 @@ function AdminDashboard() {
   const holidayRevision = useHolidayDirectoryRevision();
   const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
   const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
+  // These period-over-period deltas are mock trend data, not derived from
+  // any real record — hide them for an org with no seed data instead of
+  // showing a fabricated trend against numbers that don't exist.
+  const showTrends = !isMockDataCleared();
   const greetingPeriod = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'morning';
@@ -468,10 +473,10 @@ function AdminDashboard() {
     const openPositions = 8;
 
     // Attrition rate (resigned + notice period / total * 12 for annualized)
-    const attritionRate = parseFloat(((notice / total) * 100 * 4).toFixed(1));
+    const attritionRate = total === 0 ? 0 : parseFloat(((notice / total) * 100 * 4).toFixed(1));
 
     // Average tenure in years
-    const avgTenure = parseFloat(
+    const avgTenure = total === 0 ? 0 : parseFloat(
       (
         employees.reduce((acc, e) => {
           const ms = TODAY_DATE.getTime() - new Date(e.dateOfJoining).getTime();
@@ -580,48 +585,42 @@ function AdminDashboard() {
           value={stats.total}
           icon={<Users size={20} />}
           iconClass="bg-brand-50 text-brand-600"
-          delta={5.3}
-          deltaLabel="vs last quarter"
+          {...(showTrends ? { delta: 5.3, deltaLabel: 'vs last quarter' } : {})}
         />
         <StatCard
           label="Present Today"
           value={stats.presentToday}
           icon={<CalendarCheck size={20} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          delta={2.1}
-          deltaLabel="vs yesterday"
+          {...(showTrends ? { delta: 2.1, deltaLabel: 'vs yesterday' } : {})}
         />
         <StatCard
           label="On Leave"
           value={stats.onLeave + 2}
           icon={<CalendarOff size={20} />}
           iconClass="bg-violet-50 text-violet-600"
-          delta={-1}
-          deltaLabel="vs last week"
+          {...(showTrends ? { delta: -1, deltaLabel: 'vs last week' } : {})}
         />
         <StatCard
           label="Open Positions"
           value={stats.openPositions}
           icon={<Briefcase size={20} />}
           iconClass="bg-amber-50 text-amber-600"
-          delta={14.3}
-          deltaLabel="vs last month"
+          {...(showTrends ? { delta: 14.3, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="Attrition Rate"
           value={`${stats.attritionRate}%`}
           icon={<TrendingUp size={20} />}
           iconClass="bg-rose-50 text-rose-600"
-          delta={-0.8}
-          deltaLabel="vs last quarter"
+          {...(showTrends ? { delta: -0.8, deltaLabel: 'vs last quarter' } : {})}
         />
         <StatCard
           label="Avg. Tenure"
           value={`${stats.avgTenure} yrs`}
           icon={<Clock size={20} />}
           iconClass="bg-cyan-50 text-cyan-600"
-          delta={3.2}
-          deltaLabel="vs last year"
+          {...(showTrends ? { delta: 3.2, deltaLabel: 'vs last year' } : {})}
         />
       </div>
 

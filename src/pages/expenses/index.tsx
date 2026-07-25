@@ -54,6 +54,7 @@ import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { Collections, patch, upsert } from '@/lib/db';
 import { useExpenses } from '@/lib/useFirestore';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -719,6 +720,9 @@ export function ExpensesPage() {
   const [search, setSearch] = useState('');
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<ExpenseClaim | null>(null);
+  // Mock trend data, not derived from any real record — hide it for an org
+  // with no seed data instead of showing a fabricated trend.
+  const showTrends = !isMockDataCleared();
 
   const visibleClaims = useMemo(
     () => (isEmployee && currentEmployee ? claims.filter((claim) => claim.employeeId === currentEmployee.id) : claims),
@@ -1052,8 +1056,7 @@ export function ExpensesPage() {
           iconClass="bg-emerald-50 text-emerald-600"
           onClick={() => setActiveTab('Approved')}
           active={activeTab === 'Approved'}
-          delta={8}
-          deltaLabel="vs last month"
+          {...(showTrends ? { delta: 8, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="Reimbursed (Total)"

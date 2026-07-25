@@ -6,6 +6,7 @@ import { ArrowLeft, Briefcase, CalendarCheck, CalendarOff, Clock, TrendingUp, Us
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { employees } from '@/data/employees';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 const TODAY = '2026-06-10';
 
@@ -38,6 +39,10 @@ function getPreviousValue(current: number, delta: number, unit: KpiMetric['unit'
 
 export function KpiGraphsPage() {
     const directoryRevision = useEmployeeDirectoryRevision();
+    // These period-over-period deltas are mock trend data, not derived from
+    // any real record — an org with no seed data gets a flat (no) trend
+    // instead of a fabricated one.
+    const showTrends = !isMockDataCleared();
     const stats = useMemo(() => {
         const total = employees.length;
         const active = employees.filter((e) => e.status === 'Active').length;
@@ -46,8 +51,8 @@ export function KpiGraphsPage() {
 
         const presentToday = Math.round(active * 0.87);
         const openPositions = 8;
-        const attritionRate = parseFloat(((notice / total) * 100 * 4).toFixed(1));
-        const avgTenure = parseFloat(
+        const attritionRate = total === 0 ? 0 : parseFloat(((notice / total) * 100 * 4).toFixed(1));
+        const avgTenure = total === 0 ? 0 : parseFloat(
             (
                 employees.reduce((acc, e) => {
                     const ms = new Date(TODAY).getTime() - new Date(e.dateOfJoining).getTime();
@@ -71,7 +76,7 @@ export function KpiGraphsPage() {
             {
                 label: 'Total Employees',
                 value: stats.total,
-                delta: 5.3,
+                delta: showTrends ? 5.3 : 0,
                 color: '#3366ff',
                 icon: <Users size={16} />,
                 unit: 'count',
@@ -80,7 +85,7 @@ export function KpiGraphsPage() {
             {
                 label: 'Present Today',
                 value: stats.presentToday,
-                delta: 2.1,
+                delta: showTrends ? 2.1 : 0,
                 color: '#10b981',
                 icon: <CalendarCheck size={16} />,
                 unit: 'count',
@@ -89,7 +94,7 @@ export function KpiGraphsPage() {
             {
                 label: 'On Leave',
                 value: stats.onLeaveCardValue,
-                delta: -1,
+                delta: showTrends ? -1 : 0,
                 color: '#8b5cf6',
                 icon: <CalendarOff size={16} />,
                 unit: 'count',
@@ -98,7 +103,7 @@ export function KpiGraphsPage() {
             {
                 label: 'Open Positions',
                 value: stats.openPositions,
-                delta: 14.3,
+                delta: showTrends ? 14.3 : 0,
                 color: '#f59e0b',
                 icon: <Briefcase size={16} />,
                 unit: 'count',
@@ -107,7 +112,7 @@ export function KpiGraphsPage() {
             {
                 label: 'Attrition Rate',
                 value: stats.attritionRate,
-                delta: -0.8,
+                delta: showTrends ? -0.8 : 0,
                 color: '#f43f5e',
                 icon: <TrendingUp size={16} />,
                 unit: 'percent',
@@ -116,7 +121,7 @@ export function KpiGraphsPage() {
             {
                 label: 'Avg. Tenure',
                 value: stats.avgTenure,
-                delta: 3.2,
+                delta: showTrends ? 3.2 : 0,
                 color: '#06b6d4',
                 icon: <Clock size={16} />,
                 unit: 'years',
@@ -153,8 +158,10 @@ export function KpiGraphsPage() {
                         <Card key={metric.label}>
                             <CardHeader
                                 title={metric.label}
-                                subtitle={`Current: ${formatValue(current, metric.unit)} · ${metric.deltaLabel}`}
-                                action={<Badge tone={metric.delta >= 0 ? 'green' : 'red'}>{metric.delta > 0 ? '+' : ''}{metric.delta}%</Badge>}
+                                subtitle={showTrends ? `Current: ${formatValue(current, metric.unit)} · ${metric.deltaLabel}` : `Current: ${formatValue(current, metric.unit)}`}
+                                action={showTrends ? (
+                                    <Badge tone={metric.delta >= 0 ? 'green' : 'red'}>{metric.delta > 0 ? '+' : ''}{metric.delta}%</Badge>
+                                ) : undefined}
                             />
 
                             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-ink-600">

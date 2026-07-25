@@ -37,6 +37,7 @@ import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 import type { Payslip, PayrollRun } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -160,6 +161,9 @@ export function PayrollPage() {
   const [deptFilter, setDeptFilter] = useState('');
   const [payrollRunList, setPayrollRunList] = useState<PayrollRun[]>(initialPayrollRuns);
   const [payslipList, setPayslipList] = useState<Payslip[]>(initialPayslips);
+  // Mock trend data, not derived from any real record — hide it for an org
+  // with no seed data instead of showing a fabricated trend.
+  const showTrends = !isMockDataCleared();
 
   // ----- Aggregates -----
   const totalNetPay = useMemo(() => payslipList.reduce((s, p) => s + p.netPay, 0), [payslipList]);
@@ -357,8 +361,7 @@ export function PayrollPage() {
           value={formatINR(totalNetPay, { compact: true })}
           icon={<IndianRupee size={22} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          delta={2.4}
-          deltaLabel="vs last month"
+          {...(showTrends ? { delta: 2.4, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="Employees on Payroll"
@@ -371,8 +374,7 @@ export function PayrollPage() {
           value={formatINR(avgCTC, { compact: true })}
           icon={<TrendingUp size={22} />}
           iconClass="bg-violet-50 text-violet-600"
-          delta={5.1}
-          deltaLabel="year on year"
+          {...(showTrends ? { delta: 5.1, deltaLabel: 'year on year' } : {})}
         />
         <StatCard
           label="Next Pay Date"

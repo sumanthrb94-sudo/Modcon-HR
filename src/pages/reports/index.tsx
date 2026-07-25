@@ -33,6 +33,7 @@ import {
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Color palette
@@ -119,6 +120,9 @@ export function ReportsPage() {
   const [deptFilter, setDeptFilter] = useState('all');
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
+  // Mock trend data, not derived from any real record — hide it for an org
+  // with no seed data instead of showing a fabricated trend.
+  const showTrends = !isMockDataCleared();
 
   // Compute derived data
   const hcByDept = useMemo(() => headcountByDepartment(), [directoryRevision, departmentRevision]);
@@ -246,40 +250,35 @@ export function ReportsPage() {
           value={headcount}
           icon={<Users size={20} />}
           iconClass="bg-brand-50 text-brand-600"
-          delta={4.5}
-          deltaLabel="vs last quarter"
+          {...(showTrends ? { delta: 4.5, deltaLabel: 'vs last quarter' } : {})}
         />
         <StatCard
           label="Attrition Rate"
           value={`${attrition}%`}
           icon={<TrendingDown size={20} />}
           iconClass="bg-rose-50 text-rose-600"
-          delta={-0.3}
-          deltaLabel="vs last month"
+          {...(showTrends ? { delta: -0.3, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="Avg Tenure"
           value={`${tenure} yrs`}
           icon={<Clock size={20} />}
           iconClass="bg-amber-50 text-amber-600"
-          delta={2.1}
-          deltaLabel="year on year"
+          {...(showTrends ? { delta: 2.1, deltaLabel: 'year on year' } : {})}
         />
         <StatCard
           label="Annual Payroll"
           value={formatINR(payroll, { compact: true })}
           icon={<IndianRupee size={20} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          delta={8.2}
-          deltaLabel="vs last year"
+          {...(showTrends ? { delta: 8.2, deltaLabel: 'vs last year' } : {})}
         />
         <StatCard
           label="Diversity Ratio"
           value={`${diversity}% F`}
           icon={<UserCheck size={20} />}
           iconClass="bg-violet-50 text-violet-600"
-          delta={2.0}
-          deltaLabel="year on year"
+          {...(showTrends ? { delta: 2.0, deltaLabel: 'year on year' } : {})}
         />
       </div>
 
