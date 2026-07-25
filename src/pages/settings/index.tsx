@@ -2127,6 +2127,8 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
 function DatabaseSection() {
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
 
   async function handleSeed() {
     setStatus('running');
@@ -2138,6 +2140,14 @@ function DatabaseSection() {
       setLogs((prev) => [...prev, `Error: ${String(err)}`]);
       setStatus('error');
     }
+  }
+
+  function handleResetMockData() {
+    const keysToRemove = Object.keys(window.localStorage).filter((key) => key.startsWith('modcon.hr.'));
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+    setResetDone(true);
+    setResetOpen(false);
+    window.location.reload();
   }
 
   return (
@@ -2180,6 +2190,52 @@ function DatabaseSection() {
           )}
         </div>
       </Card>
+
+      <Card className="border-rose-200">
+        <CardHeader title="Danger Zone" subtitle="Clear locally stored mock data to test against live Firestore data only" />
+        <div className="space-y-4">
+          <p className="text-sm text-ink-500">
+            Wipes every browser-local mock overlay — employees, leave, payroll goals, recruitment, holidays,
+            billing, access control, and more (all <span className="font-mono text-xs text-ink-600">modcon.hr.*</span> keys
+            in this browser's localStorage) — and reloads the app. The seed data in <span className="font-mono text-xs text-ink-600">src/data</span> is
+            unaffected; this only removes local overrides so the app falls back to defaults / live Firestore data.
+            This does not touch Firestore itself.
+          </p>
+          <Button
+            variant="danger"
+            icon={<Trash2 size={15} />}
+            onClick={() => setResetOpen(true)}
+          >
+            Delete Mock Data
+          </Button>
+          {resetDone && (
+            <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+              <CheckCircle2 size={16} />
+              Mock data cleared.
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Modal
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        title="Delete all mock data?"
+        subtitle="This clears local overrides in this browser only and cannot be undone"
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setResetOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleResetMockData}>Delete & Reload</Button>
+          </>
+        )}
+      >
+        <p className="text-sm text-ink-600">
+          This removes every locally added/edited/deleted record across employees, leave, payroll, recruitment,
+          holidays, billing, notifications, and access control in this browser, then reloads the page. Firestore
+          data is not affected.
+        </p>
+      </Modal>
     </SettingsSection>
   );
 }
