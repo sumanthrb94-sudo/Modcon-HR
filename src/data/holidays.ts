@@ -1,4 +1,6 @@
 import type { Holiday } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 const HOLIDAYS_STORAGE_KEY = 'modcon.hr.holidays';
 export const HOLIDAYS_CHANGED_EVENT = 'modcon-hr-holidays-changed';
@@ -24,7 +26,7 @@ function notifyHolidaysChanged() {
 function readStoredHolidays(): Holiday[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(HOLIDAYS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(HOLIDAYS_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Holiday[];
     return Array.isArray(parsed) ? parsed : null;
@@ -35,18 +37,21 @@ function readStoredHolidays(): Holiday[] | null {
 
 export function getHolidayDirectory(): Holiday[] {
   const stored = readStoredHolidays();
-  return stored ? stored : defaultHolidays;
+  if (stored) return stored;
+  // A freshly-created org has no relationship to this fixed India holiday
+  // calendar — it starts empty until its own admin adds holidays.
+  return isMockDataCleared() ? [] : defaultHolidays;
 }
 
 export function saveHolidayDirectory(holidays: Holiday[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(HOLIDAYS_STORAGE_KEY, JSON.stringify(holidays));
+  window.localStorage.setItem(orgScopedKey(HOLIDAYS_STORAGE_KEY), JSON.stringify(holidays));
   notifyHolidaysChanged();
 }
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === HOLIDAYS_STORAGE_KEY) {
+    if (event.key === orgScopedKey(HOLIDAYS_STORAGE_KEY)) {
       notifyHolidaysChanged();
     }
   });

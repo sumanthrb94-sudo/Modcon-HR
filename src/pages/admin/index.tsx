@@ -57,13 +57,28 @@ function useUserDirectory() {
 }
 
 export function AdminDashboardPage() {
-    const { profile } = useAuth();
+    const { profile, isSuperAdmin } = useAuth();
     const directoryRevision = useEmployeeDirectoryRevision();
-    const { users, loading: usersLoading } = useUserDirectory();
-    const { data: employees, loading: empLoading } = useEmployees();
-    const { data: jobs } = useJobOpenings();
-    const { data: payrollRuns } = usePayrollRuns();
-    const { data: expenses } = useExpenses();
+    const { users: allUsers, loading: usersLoading } = useUserDirectory();
+    const { data: allEmployees, loading: empLoading } = useEmployees();
+    const { data: allJobs } = useJobOpenings();
+    const { data: allPayrollRuns } = usePayrollRuns();
+    const { data: allExpenses } = useExpenses();
+
+    // These Firestore collections (users aside) have no orgId field at all —
+    // they structurally belong to the default/legacy org only. A non-default
+    // org's admin doesn't own that data, so it renders empty for them rather
+    // than showing the default org's real numbers. Super admins and the
+    // default org's own admins see everything, unchanged.
+    const isDefaultOrgViewer = isSuperAdmin || !profile?.orgId;
+    const employees = isDefaultOrgViewer ? allEmployees : [];
+    const jobs = isDefaultOrgViewer ? allJobs : [];
+    const payrollRuns = isDefaultOrgViewer ? allPayrollRuns : [];
+    const expenses = isDefaultOrgViewer ? allExpenses : [];
+    const users = useMemo(
+        () => (isSuperAdmin ? allUsers : allUsers.filter((u) => (u.orgId ?? undefined) === profile?.orgId)),
+        [allUsers, isSuperAdmin, profile?.orgId],
+    );
 
     const [search, setSearch] = useState('');
     const [docSearch, setDocSearch] = useState('');

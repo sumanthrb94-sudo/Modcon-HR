@@ -50,6 +50,7 @@ import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
+import { belongsToActiveOrg, getActiveOrgKey, orgScopedKey, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import type { Holiday } from '@/types';
 
 const COMPANY_LOGO_STORAGE_KEY = 'modcon.hr.companyLogo';
@@ -166,7 +167,7 @@ function CompanyProfile() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const storedLogo = window.localStorage.getItem(COMPANY_LOGO_STORAGE_KEY);
+      const storedLogo = window.localStorage.getItem(orgScopedKey(COMPANY_LOGO_STORAGE_KEY));
       if (storedLogo) setLogoDataUrl(storedLogo);
     } catch {
       // Ignore storage errors and fall back to the default logo.
@@ -200,7 +201,7 @@ function CompanyProfile() {
       const nextLogo = typeof reader.result === 'string' ? reader.result : '';
       setLogoDataUrl(nextLogo);
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(COMPANY_LOGO_STORAGE_KEY, nextLogo);
+        window.localStorage.setItem(orgScopedKey(COMPANY_LOGO_STORAGE_KEY), nextLogo);
       }
     };
     reader.readAsDataURL(file);
@@ -210,7 +211,7 @@ function CompanyProfile() {
   function handleRemoveLogo() {
     setLogoDataUrl('');
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(COMPANY_LOGO_STORAGE_KEY);
+      window.localStorage.removeItem(orgScopedKey(COMPANY_LOGO_STORAGE_KEY));
     }
   }
 
@@ -2152,8 +2153,20 @@ function DatabaseSection() {
     setResetStatus('running');
     setResetLogs([]);
     try {
-      await purgeSeededFirestoreData((msg) => setResetLogs((prev) => [...prev, msg]));
-      const keysToRemove = Object.keys(window.localStorage).filter((key) => key.startsWith('modcon.hr.'));
+      // Firestore's employees/jobs/payroll/expenses collections aren't
+      // org-scoped — they still belong solely to the default/legacy org.
+      // A non-default org (created via super-admin Organizations) doesn't
+      // own that data, so purging it here would destroy someone else's real
+      // records. Only the default org's admin can trigger the Firestore purge;
+      // every org still gets its own local-overlay reset.
+      if (getActiveOrgKey() === DEFAULT_ORG_KEY) {
+        await purgeSeededFirestoreData((msg) => setResetLogs((prev) => [...prev, msg]));
+      } else {
+        setResetLogs((prev) => [...prev, 'Skipped Firestore purge — this organization does not own the shared Firestore collections.']);
+      }
+      const keysToRemove = Object.keys(window.localStorage).filter(
+        (key) => key.startsWith('modcon.hr.') && belongsToActiveOrg(key),
+      );
       keysToRemove.forEach((key) => window.localStorage.removeItem(key));
       // Set after the sweep above so it isn't immediately deleted by it —
       // this is what makes the static seed layer (Employees, Attendance,

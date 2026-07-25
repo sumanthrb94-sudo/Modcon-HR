@@ -3,6 +3,8 @@
 // All mock/generated arrays live here; index.tsx stays presentation-only.
 // ===========================================================================
 
+import { isMockDataCleared } from '@/lib/mockDataFlag';
+
 export interface MonthlyHeadcount {
   month: string;  // "Jun '25"
   count: number;
@@ -40,7 +42,7 @@ export interface DeptChartEntry {
 // ---------------------------------------------------------------------------
 // 1. Headcount growth — last 12 months ending Jun 2026
 // ---------------------------------------------------------------------------
-export const headcountSeries: MonthlyHeadcount[] = [
+export const headcountSeries: MonthlyHeadcount[] = isMockDataCleared() ? [] : [
   { month: "Jul '25", count: 28 },
   { month: "Aug '25", count: 29 },
   { month: "Sep '25", count: 31 },
@@ -58,7 +60,7 @@ export const headcountSeries: MonthlyHeadcount[] = [
 // ---------------------------------------------------------------------------
 // 2. Weekly attendance (Mon – Fri, current week)
 // ---------------------------------------------------------------------------
-export const weeklyAttendance: WeeklyAttendance[] = [
+export const weeklyAttendance: WeeklyAttendance[] = isMockDataCleared() ? [] : [
   { day: 'Mon', Present: 32, WFH: 5, Leave: 2, Absent: 1 },
   { day: 'Tue', Present: 30, WFH: 6, Leave: 3, Absent: 1 },
   { day: 'Wed', Present: 33, WFH: 4, Leave: 2, Absent: 1 },
@@ -77,7 +79,7 @@ export interface ApprovalItem {
   bgClass: string;
 }
 
-export const pendingApprovals: ApprovalItem[] = [
+export const pendingApprovals: ApprovalItem[] = isMockDataCleared() ? [] : [
   { type: 'Leave Requests',     count: 7,  urgentCount: 2, colorClass: 'text-violet-600', bgClass: 'bg-violet-50' },
   { type: 'Expense Claims',     count: 4,  urgentCount: 1, colorClass: 'text-amber-600',  bgClass: 'bg-amber-50'  },
   { type: 'Regularizations',    count: 3,  urgentCount: 0, colorClass: 'text-blue-600',   bgClass: 'bg-brand-50'  },
@@ -87,7 +89,7 @@ export const pendingApprovals: ApprovalItem[] = [
 // ---------------------------------------------------------------------------
 // 4. Recent activity feed
 // ---------------------------------------------------------------------------
-export const activityFeed: ActivityItem[] = [
+export const activityFeed: ActivityItem[] = isMockDataCleared() ? [] : [
   { id: 'af1', actor: 'Meera Krishnan',   action: 'applied for',    subject: '5-day Earned Leave',        timestamp: '2026-06-10T08:15:00Z' },
   { id: 'af2', actor: 'Arjun Verma',      action: 'submitted',      subject: 'Travel expense ₹12,400',    timestamp: '2026-06-10T07:50:00Z' },
   { id: 'af3', actor: 'Ishaan Gupta',     action: 'joined',         subject: 'Engineering (Intern)',       timestamp: '2026-06-09T10:00:00Z' },

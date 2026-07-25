@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, Menu, Search } from 'lucide-react';
-import { Avatar, Button, NotificationsMenu, QuickAddMenu } from '@/components/ui';
+import { LogOut, Menu, Search, Building2 } from 'lucide-react';
+import { Avatar, Button, NotificationsMenu, QuickAddMenu, Select } from '@/components/ui';
 import { getVisibleNavItems } from '@/lib/nav';
 import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
+import { useOrganizations } from '@/lib/useFirestore';
+import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -14,7 +16,8 @@ interface TopbarProps {
 export function Topbar({ onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, signOutUser } = useAuth();
+  const { profile, signOutUser, isSuperAdmin } = useAuth();
+  const { data: organizations } = useOrganizations(isSuperAdmin);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [directoryRevision, setDirectoryRevision] = useState(0);
@@ -132,6 +135,20 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       ) : null}
 
       <div className="ml-auto flex items-center gap-2">
+        {isSuperAdmin ? (
+          <div className="hidden sm:flex items-center gap-1.5 rounded-lg bg-brand-50 pl-2 pr-1 py-1">
+            <Building2 size={14} className="text-brand-600 shrink-0" />
+            <Select
+              value={getActiveOrgKey()}
+              onChange={switchSuperAdminOrg}
+              options={[
+                { label: 'ModCon Builders (Default)', value: DEFAULT_ORG_KEY },
+                ...organizations.map((o) => ({ label: o.name, value: o.id ?? '' })),
+              ]}
+              className="!py-1 !text-xs !border-0 !bg-transparent !shadow-none w-40 md:w-48"
+            />
+          </div>
+        ) : null}
         {location.pathname !== '/' ? (
           <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
             Dashboard

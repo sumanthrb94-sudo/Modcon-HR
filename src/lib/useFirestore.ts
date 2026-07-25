@@ -131,7 +131,31 @@ export function useRegularizations() {
     return useCollection<RegularizationRequest>(Collections.regularizations);
 }
 
-/** Super-admin only: see Collections.organizations / firestore.rules. */
-export function useOrganizations() {
-    return useCollection<Organization>(Collections.organizations);
+/**
+ * Super-admin only: see Collections.organizations / firestore.rules — an
+ * unconstrained list query against that collection is denied outright for
+ * non-super-admins, so callers outside the Organizations page (e.g. a
+ * topbar org switcher visible to everyone) must pass `enabled: isSuperAdmin`
+ * to skip subscribing entirely rather than eating a permission error.
+ */
+export function useOrganizations(enabled: boolean = true) {
+    const [data, setData] = useState<Organization[]>([]);
+    const [loading, setLoading] = useState(enabled);
+    const [error, setError] = useState<Error | null>(null);
+
+    useEffect(() => {
+        if (!enabled) {
+            setData([]);
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        const unsub = subscribe(Collections.organizations, (docs) => {
+            setData(docs);
+            setLoading(false);
+        });
+        return unsub;
+    }, [enabled]);
+
+    return { data, loading, error };
 }

@@ -1,5 +1,6 @@
 import type { JobOpening, Candidate, CandidateStage } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 // ---------------------------------------------------------------------------
 // Job Openings
@@ -167,7 +168,7 @@ export const CANDIDATES_CHANGED_EVENT = 'modcon-hr-candidates-changed';
 function readStoredJobOpenings(): JobOpening[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(JOB_OPENINGS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(JOB_OPENINGS_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as JobOpening[];
     return Array.isArray(parsed) ? parsed : null;
@@ -178,7 +179,7 @@ function readStoredJobOpenings(): JobOpening[] | null {
 
 function writeStoredJobOpenings(items: JobOpening[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(JOB_OPENINGS_STORAGE_KEY, JSON.stringify(items));
+  window.localStorage.setItem(orgScopedKey(JOB_OPENINGS_STORAGE_KEY), JSON.stringify(items));
 }
 
 function notifyJobOpeningsChanged() {
@@ -214,7 +215,7 @@ export function deleteJobOpening(jobId: string) {
 function readStoredCandidates(): Candidate[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(CANDIDATES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(CANDIDATES_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Candidate[];
     return Array.isArray(parsed) ? parsed : null;
@@ -225,7 +226,7 @@ function readStoredCandidates(): Candidate[] | null {
 
 function writeStoredCandidates(items: Candidate[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(CANDIDATES_STORAGE_KEY, JSON.stringify(items));
+  window.localStorage.setItem(orgScopedKey(CANDIDATES_STORAGE_KEY), JSON.stringify(items));
 }
 
 function notifyCandidatesChanged() {

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 export type DocumentStatus = 'Verified' | 'Pending' | 'Expired';
 
@@ -36,7 +38,7 @@ const SEED_DOCUMENTS: DocumentRecord[] = [
 ];
 
 function libraryKey(employeeId: string) {
-  return `${DOCUMENT_LIBRARY_KEY_PREFIX}${employeeId}`;
+  return orgScopedKey(`${DOCUMENT_LIBRARY_KEY_PREFIX}${employeeId}`);
 }
 
 function normalizeDocuments(documents: unknown): DocumentRecord[] {
@@ -65,10 +67,13 @@ function buildSeedDocuments(employeeId: string): DocumentRecord[] {
 function readKnownEmployeeIds(): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(DOCUMENT_LIBRARY_INDEX_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(DOCUMENT_LIBRARY_INDEX_KEY));
     if (!raw) {
+      // A freshly-created org has no relationship to the seed emp-001..006
+      // IDs — only the default/legacy org bootstraps with them.
+      if (isMockDataCleared()) return [];
       const initialIds = ['emp-001', 'emp-002', 'emp-003', 'emp-004', 'emp-005', 'emp-006'];
-      window.localStorage.setItem(DOCUMENT_LIBRARY_INDEX_KEY, JSON.stringify(initialIds));
+      window.localStorage.setItem(orgScopedKey(DOCUMENT_LIBRARY_INDEX_KEY), JSON.stringify(initialIds));
       return initialIds;
     }
     const parsed = JSON.parse(raw) as unknown;
@@ -82,7 +87,7 @@ function readKnownEmployeeIds(): string[] {
 
 function writeKnownEmployeeIds(employeeIds: string[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(DOCUMENT_LIBRARY_INDEX_KEY, JSON.stringify(Array.from(new Set(employeeIds))));
+  window.localStorage.setItem(orgScopedKey(DOCUMENT_LIBRARY_INDEX_KEY), JSON.stringify(Array.from(new Set(employeeIds))));
 }
 
 function readStoredDocuments(employeeId: string): DocumentRecord[] | null {
@@ -117,6 +122,10 @@ function notifyDocumentLibraryChanged(employeeId: string) {
 function getOrSeedEmployeeDocuments(employeeId: string): DocumentRecord[] {
   const stored = readStoredDocuments(employeeId);
   if (stored && stored.length > 0) return stored;
+  // A freshly-created org's employees have no relationship to this fixed
+  // demo document set — leave their library empty until documents are
+  // actually uploaded.
+  if (isMockDataCleared()) return stored ?? [];
 
   const seeded = buildSeedDocuments(employeeId);
   writeStoredDocuments(employeeId, seeded);

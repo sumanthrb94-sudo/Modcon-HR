@@ -1,4 +1,6 @@
 import { employees, departments as employeeDepartments, EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 export interface DepartmentRecord {
   name: string;
@@ -33,7 +35,7 @@ export const departments: string[] = [];
 function readCustomDepartments(): DepartmentRecord[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(CUSTOM_DEPARTMENTS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as DepartmentRecord[];
     return Array.isArray(parsed)
@@ -46,7 +48,7 @@ function readCustomDepartments(): DepartmentRecord[] {
 
 function writeCustomDepartments(records: DepartmentRecord[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(CUSTOM_DEPARTMENTS_STORAGE_KEY, JSON.stringify(records));
+  window.localStorage.setItem(orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY), JSON.stringify(records));
 }
 
 function notifyDepartmentDirectoryChanged() {
@@ -55,6 +57,11 @@ function notifyDepartmentDirectoryChanged() {
 }
 
 function getBaseDepartmentRows(): DepartmentRecord[] {
+  // A freshly-created org has no relationship to ModCon Builders' 10 fixed
+  // department rows/heads — only its own custom-added departments should
+  // show until its admin defines their own structure.
+  if (isMockDataCleared()) return [];
+
   const employeeCountByDepartment = employees.reduce<Record<string, number>>((acc, employee) => {
     acc[employee.department] = (acc[employee.department] ?? 0) + 1;
     return acc;
@@ -117,7 +124,7 @@ if (typeof window !== 'undefined') {
     notifyDepartmentDirectoryChanged();
   });
   window.addEventListener('storage', (event) => {
-    if (event.key === CUSTOM_DEPARTMENTS_STORAGE_KEY) {
+    if (event.key === orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY)) {
       syncDepartmentSnapshots();
       notifyDepartmentDirectoryChanged();
     }

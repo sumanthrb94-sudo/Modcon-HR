@@ -1,5 +1,6 @@
 import type { Goal, GoalStatus, PerformanceReview, ReviewStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 const GOALS_STORAGE_KEY = 'modcon.hr.goals';
 export const GOALS_CHANGED_EVENT = 'modcon-hr-goals-changed';
@@ -381,7 +382,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
 function readStoredGoals(): Goal[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(GOALS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(GOALS_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Goal[];
     return Array.isArray(parsed) ? parsed : null;
@@ -392,7 +393,7 @@ function readStoredGoals(): Goal[] | null {
 
 function writeStoredGoals(items: Goal[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(items));
+  window.localStorage.setItem(orgScopedKey(GOALS_STORAGE_KEY), JSON.stringify(items));
 }
 
 function notifyGoalsChanged() {
@@ -403,7 +404,7 @@ function notifyGoalsChanged() {
 function readStoredReviews(): PerformanceReview[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(REVIEWS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(REVIEWS_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PerformanceReview[];
     return Array.isArray(parsed) ? parsed : null;
@@ -414,7 +415,7 @@ function readStoredReviews(): PerformanceReview[] | null {
 
 function writeStoredReviews(items: PerformanceReview[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(items));
+  window.localStorage.setItem(orgScopedKey(REVIEWS_STORAGE_KEY), JSON.stringify(items));
 }
 
 function notifyReviewsChanged() {

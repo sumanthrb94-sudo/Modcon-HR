@@ -1,4 +1,5 @@
 import type { Announcement, Holiday } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 export const holidays: Holiday[] = [
   { id: 'h1', name: 'Republic Day', date: '2026-01-26', type: 'National' },
@@ -13,7 +14,7 @@ export const holidays: Holiday[] = [
   { id: 'h10', name: 'Christmas', date: '2026-12-25', type: 'National' },
 ];
 
-export const announcements: Announcement[] = [
+export const announcements: Announcement[] = isMockDataCleared() ? [] : [
   {
     id: 'a1',
     title: 'Q2 All-Hands Meeting — June 18',

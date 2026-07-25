@@ -24,6 +24,7 @@ import {
 } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
 import { onboardings as initialOnboardings } from '@/data/onboarding';
+import { orgScopedKey } from '@/lib/orgScope';
 import type { Onboarding, OnboardingTask, TaskStatus } from '@/types';
 
 const ONBOARDING_STATE_STORAGE_KEY = 'modcon.hr.onboarding.state';
@@ -32,7 +33,7 @@ function readStoredOnboardings(): Onboarding[] | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(ONBOARDING_STATE_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(ONBOARDING_STATE_STORAGE_KEY));
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as unknown;
@@ -46,7 +47,7 @@ function readStoredOnboardings(): Onboarding[] | null {
 
 function writeStoredOnboardings(onboardings: Onboarding[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(ONBOARDING_STATE_STORAGE_KEY, JSON.stringify(onboardings));
+  window.localStorage.setItem(orgScopedKey(ONBOARDING_STATE_STORAGE_KEY), JSON.stringify(onboardings));
 }
 
 // ---------------------------------------------------------------------------

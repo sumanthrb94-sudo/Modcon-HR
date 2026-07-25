@@ -1,5 +1,6 @@
 import type { Employee, Department, EmploymentType, EmployeeStatus, Gender } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 // ---------------------------------------------------------------------------
 // Master employee directory — the single source of truth for people data.
@@ -128,7 +129,7 @@ export const locations: string[] = [];
 function readCustomEmployees(): Employee[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(CUSTOM_EMPLOYEE_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Employee[];
     return Array.isArray(parsed) ? parsed : [];
@@ -139,13 +140,13 @@ function readCustomEmployees(): Employee[] {
 
 function writeCustomEmployees(items: Employee[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(CUSTOM_EMPLOYEE_STORAGE_KEY, JSON.stringify(items));
+  window.localStorage.setItem(orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY), JSON.stringify(items));
 }
 
 function readDeletedEmployeeIds(): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(DELETED_EMPLOYEE_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as string[];
     return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
@@ -156,7 +157,7 @@ function readDeletedEmployeeIds(): string[] {
 
 function writeDeletedEmployeeIds(ids: string[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(DELETED_EMPLOYEE_STORAGE_KEY, JSON.stringify(ids));
+  window.localStorage.setItem(orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY), JSON.stringify(ids));
 }
 
 function notifyEmployeeDirectoryChanged() {
@@ -252,7 +253,7 @@ syncDirectorySnapshots();
 if (typeof window !== 'undefined') {
   window.addEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, syncDirectorySnapshots);
   window.addEventListener('storage', (event) => {
-    if (event.key === CUSTOM_EMPLOYEE_STORAGE_KEY || event.key === DELETED_EMPLOYEE_STORAGE_KEY) {
+    if (event.key === orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY) || event.key === orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY)) {
       syncDirectorySnapshots();
     }
   });

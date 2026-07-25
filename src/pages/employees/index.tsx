@@ -53,6 +53,7 @@ import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevi
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { resolveAppRole } from '@/lib/accessControl';
+import { orgScopedKey } from '@/lib/orgScope';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -60,7 +61,7 @@ function readEmployeeProfilePictures(): Record<string, string> {
   if (typeof window === 'undefined') return {};
 
   try {
-    const raw = window.localStorage.getItem(EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
@@ -77,7 +78,7 @@ function writeEmployeeProfilePicture(employeeId: string, imageSrc: string) {
   if (typeof window === 'undefined') return;
   const pictures = readEmployeeProfilePictures();
   window.localStorage.setItem(
-    EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY,
+    orgScopedKey(EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY),
     JSON.stringify({
       ...pictures,
       [employeeId]: imageSrc,

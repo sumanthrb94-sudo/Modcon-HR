@@ -1,5 +1,6 @@
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { orgScopedKey } from '@/lib/orgScope';
 
 const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
 export const LEAVE_REQUESTS_CHANGED_EVENT = 'modcon-hr-leave-requests-changed';
@@ -225,7 +226,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
 function readStoredLeaveRequests(): LeaveRequest[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(LEAVE_REQUESTS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(LEAVE_REQUESTS_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as LeaveRequest[];
     return Array.isArray(parsed) ? parsed : null;
@@ -236,7 +237,7 @@ function readStoredLeaveRequests(): LeaveRequest[] | null {
 
 function writeStoredLeaveRequests(requests: LeaveRequest[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LEAVE_REQUESTS_STORAGE_KEY, JSON.stringify(requests));
+  window.localStorage.setItem(orgScopedKey(LEAVE_REQUESTS_STORAGE_KEY), JSON.stringify(requests));
 }
 
 function notifyLeaveRequestsChanged() {

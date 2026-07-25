@@ -30,6 +30,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
 
 // ---------------------------------------------------------------------------
 // Admin allow-list
@@ -169,6 +170,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 try {
                     const p = await upsertUserProfile(firebaseUser);
                     setProfile(p);
+                    // The src/data/*.ts local-overlay layer reads its org
+                    // namespace at plain module-load time (see orgScope.ts),
+                    // so if this sign-in belongs to a different org than
+                    // whatever was last active on this browser, reload once
+                    // to re-evaluate every module under the correct org —
+                    // otherwise a different org's admin could briefly see
+                    // (or worse, edit) the previous org's local data. Super
+                    // admins have no orgId of their own — resolveOrgKeyForProfile
+                    // uses whichever org they last switched to instead.
+                    if (setActiveOrgKey(resolveOrgKeyForProfile(p))) {
+                        window.location.reload();
+                        return;
+                    }
                 } catch {
                     setProfile(null);
                 }

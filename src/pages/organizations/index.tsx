@@ -3,6 +3,7 @@ import { Building2, Loader2, Plus, ShieldCheck, Copy, Check } from 'lucide-react
 import { useAuth } from '@/lib/auth';
 import { useOrganizations } from '@/lib/useFirestore';
 import { createOrganization, friendlyOrgError, type CreateOrganizationResult } from '@/lib/organizations';
+import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import {
     PageHeader,
     StatCard,
@@ -40,6 +41,9 @@ export function OrganizationsPage() {
     const [adminEmail, setAdminEmail] = useState('');
     const [result, setResult] = useState<CreateOrganizationResult | null>(null);
     const [copied, setCopied] = useState(false);
+
+    const activeOrgKey = getActiveOrgKey();
+    const activeOrgName = organizations.find((o) => o.id === activeOrgKey)?.name;
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -118,6 +122,23 @@ export function OrganizationsPage() {
             header: 'Created',
             render: (o) => <span className="text-sm text-ink-600">{formatCreatedAt(o.createdAt)}</span>,
         },
+        {
+            key: 'actions',
+            header: 'Actions',
+            render: (o) => {
+                const isActive = o.id === getActiveOrgKey();
+                return (
+                    <Button
+                        variant={isActive ? 'secondary' : 'primary'}
+                        size="sm"
+                        disabled={isActive}
+                        onClick={() => o.id && switchSuperAdminOrg(o.id)}
+                    >
+                        {isActive ? 'Currently managing' : 'Manage this org'}
+                    </Button>
+                );
+            },
+        },
     ];
 
     return (
@@ -132,9 +153,25 @@ export function OrganizationsPage() {
                 }
             />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <StatCard label="Organizations" value={String(organizations.length)} icon={<Building2 size={18} />} />
                 <StatCard label="Signed in as" value={profile?.email ?? '—'} icon={<ShieldCheck size={18} />} />
+                <StatCard
+                    label="Currently managing"
+                    value={activeOrgKey === DEFAULT_ORG_KEY ? 'ModCon Builders (Default)' : (activeOrgName ?? activeOrgKey)}
+                    icon={<Building2 size={18} />}
+                    footer={
+                        activeOrgKey !== DEFAULT_ORG_KEY ? (
+                            <button
+                                type="button"
+                                onClick={() => switchSuperAdminOrg(DEFAULT_ORG_KEY)}
+                                className="text-xs font-semibold text-brand-700 hover:underline"
+                            >
+                                Switch back to Default
+                            </button>
+                        ) : null
+                    }
+                />
             </div>
 
             <Card>

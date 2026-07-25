@@ -5,6 +5,7 @@
 
 import { employees } from './employees';
 import { getDepartmentDirectory } from './departments';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,7 +56,7 @@ export function tenureDistribution(): { bucket: string; count: number }[] {
 // ---------------------------------------------------------------------------
 // 12-month attrition trend (mock)
 // ---------------------------------------------------------------------------
-export const attritionTrend: { month: string; attrition: number }[] = [
+export const attritionTrend: { month: string; attrition: number }[] = isMockDataCleared() ? [] : [
   { month: 'Jul 25', attrition: 2.1 },
   { month: 'Aug 25', attrition: 1.8 },
   { month: 'Sep 25', attrition: 3.2 },
@@ -108,7 +109,7 @@ export function salaryByDepartment(): { department: string; cost: number }[] {
 // ---------------------------------------------------------------------------
 // Hiring funnel (mock)
 // ---------------------------------------------------------------------------
-export const hiringFunnel: { stage: string; count: number }[] = [
+export const hiringFunnel: { stage: string; count: number }[] = isMockDataCleared() ? [] : [
   { stage: 'Applied', count: 312 },
   { stage: 'Screening', count: 124 },
   { stage: 'Interview', count: 68 },
@@ -119,7 +120,7 @@ export const hiringFunnel: { stage: string; count: number }[] = [
 // ---------------------------------------------------------------------------
 // Attendance rate — weekly mock
 // ---------------------------------------------------------------------------
-export const attendanceTrend: { period: string; rate: number }[] = [
+export const attendanceTrend: { period: string; rate: number }[] = isMockDataCleared() ? [] : [
   { period: 'W1 May', rate: 92.4 },
   { period: 'W2 May', rate: 89.7 },
   { period: 'W3 May', rate: 94.1 },
@@ -151,6 +152,7 @@ export function activeHeadcount(): number {
 }
 
 export function avgTenureYears(): number {
+  if (!employees.length) return 0;
   const sum = employees.reduce((acc, e) => acc + yearsFromDOJ(e.dateOfJoining), 0);
   return Math.round((sum / employees.length) * 10) / 10;
 }
@@ -160,10 +162,11 @@ export function totalAnnualPayroll(): number {
 }
 
 export function diversityRatio(): number {
+  if (!employees.length) return 0;
   const female = employees.filter((e) => e.gender === 'Female').length;
   return Math.round((female / employees.length) * 100);
 }
 
 export function currentAttritionRate(): number {
-  return attritionTrend[attritionTrend.length - 1].attrition;
+  return attritionTrend.length ? attritionTrend[attritionTrend.length - 1].attrition : 0;
 }
