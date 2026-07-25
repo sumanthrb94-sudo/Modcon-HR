@@ -29,6 +29,7 @@ import type {
     AttendanceRecord,
     LeaveBalance,
     RegularizationRequest,
+    Organization,
 } from '@/types';
 
 interface UseCollectionResult<T> {
@@ -128,4 +129,9 @@ export function useLeaveBalances() {
 
 export function useRegularizations() {
     return useCollection<RegularizationRequest>(Collections.regularizations);
+}
+
+/** Super-admin only: see Collections.organizations / firestore.rules. */
+export function useOrganizations() {
+    return useCollection<Organization>(Collections.organizations);
 }

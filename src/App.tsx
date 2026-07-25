@@ -29,6 +29,7 @@ const HelpdeskPage = lazy(() => import('@/pages/helpdesk').then((m) => ({ defaul
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })));
 const SettingsPage = lazy(() => import('@/pages/settings').then((m) => ({ default: m.SettingsPage })));
 const AdminDashboardPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminDashboardPage })));
+const OrganizationsPage = lazy(() => import('@/pages/organizations').then((m) => ({ default: m.OrganizationsPage })));
 const PendingApprovalsPage = lazy(() => import('@/pages/dashboard/PendingApprovalsPage').then((m) => ({ default: m.PendingApprovalsPage })));
 const LeaveRequestsApprovalsPage = lazy(() => import('@/pages/dashboard/LeaveRequestsApprovalsPage').then((m) => ({ default: m.LeaveRequestsApprovalsPage })));
 const ExpenseClaimsApprovalsPage = lazy(() => import('@/pages/dashboard/ExpenseClaimsApprovalsPage').then((m) => ({ default: m.ExpenseClaimsApprovalsPage })));
@@ -73,6 +74,19 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   return isAdmin ? children : <Navigate to="/" replace />;
+}
+
+function RequireSuperAdmin({ children }: { children: JSX.Element }) {
+  const { user, isSuperAdmin, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+        <Loader2 className="animate-spin text-brand-600" size={28} />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  return isSuperAdmin ? children : <Navigate to="/" replace />;
 }
 
 function RequireManager({ children }: { children: JSX.Element }) {
@@ -154,6 +168,7 @@ function AppRoutes() {
             than shown the in-place "Access Restricted" card, keeping privileged
             routes consistent with /approvals. */}
         <Route path="admin" element={<RequireAdmin><RequireModuleAccess module="Admin"><AdminDashboardPage /></RequireModuleAccess></RequireAdmin>} />
+        <Route path="organizations" element={<RequireSuperAdmin><OrganizationsPage /></RequireSuperAdmin>} />
         <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals/leave-requests" element={<RequireManager><LeaveRequestsApprovalsPage /></RequireManager>} />

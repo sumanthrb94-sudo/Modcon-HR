@@ -15,14 +15,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const billingRevision = useBillingPreferencesRevision();
   const billingPreferences = getBillingPreferences();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   void billingRevision;
   const role = profile ? resolveAppRole(profile) : 'Employee';
-  const visibleItems = getVisibleNavItems(role);
+  const visibleItems = getVisibleNavItems(role, isSuperAdmin);
   const planLabel = billingPreferences.planTier;
   const seatLabel = billingPreferences.planTier === 'Enterprise'
     ? 'Unlimited seats'

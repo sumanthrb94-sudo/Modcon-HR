@@ -20,6 +20,14 @@ service cloud.firestore {
         myProfile().role == 'admin';
     }
 
+    // Super admins can see/create organizations and are not scoped to any
+    // single org (see src/lib/auth.tsx SUPER_ADMIN_EMAILS).
+    function isSuperAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        myProfile().superAdmin == true;
+    }
+
     // Managers and admins can act on approval workflows.
     function isManager() {
       return isSignedIn() &&
@@ -27,18 +35,87 @@ service cloud.firestore {
         (myProfile().role == 'manager' || myProfile().role == 'admin');
     }
 
+    // Mirrors src/lib/auth.tsx ADMIN_EMAILS / SUPER_ADMIN_EMAILS (prod emails
+    // only — E2E test emails are a client-side-only gate and are never
+    // trusted here). Used so a self-write can never grant elevated access:
+    // see selfCreateRoleIsValid / selfUpdateRoleIsValid below.
+    function fixedAdminEmails() {
+      return ['sumanthbolla97@gmail.com', 'saikrishnakoppaka@gmail.com', 'info@modconbuilders.com'];
+    }
+    function fixedSuperAdminEmails() {
+      return ['saikrishnakoppaka@gmail.com'];
+    }
+    function fixedRoleForEmail(email) {
+      return email in fixedAdminEmails() ? 'admin' : 'employee';
+    }
+
+    // First-ever profile doc for an account: role/superAdmin must be the
+    // safe default unless the caller's own email is hard-coded — a brand
+    // new sign-up can never self-register as admin/super-admin.
+    function selfCreateRoleIsValid(data) {
+      let email = request.auth.token.email.lower();
+      return data.role == fixedRoleForEmail(email) &&
+        data.get('superAdmin', false) == (email in fixedSuperAdminEmails());
+    }
+
+    // Resyncing an existing profile on a later sign-in: role/superAdmin may
+    // only be what the fixed lists dictate, or left exactly as it already
+    // was. A self-write can therefore never escalate past either baseline —
+    // any actual promotion (e.g. Admin Dashboard granting `manager`) has to
+    // land in the doc via an isAdmin() write first, and self-writes only
+    // ever re-affirm it afterwards.
+    function selfUpdateRoleIsValid(data) {
+      let email = request.auth.token.email.lower();
+      return (data.role == fixedRoleForEmail(email) || data.role == resource.data.role) &&
+        (data.get('superAdmin', false) == (email in fixedSuperAdminEmails()) ||
+          data.get('superAdmin', false) == resource.data.get('superAdmin', false));
+    }
+
     // -------------------------------------------------------------------
     // Users directory (roles, profile info)
     // -------------------------------------------------------------------
     match /users/{uid} {
       allow read: if isSignedIn();
-      // Users may create/update their own profile (first login upsert),
-      // admins may update anyone (e.g. to change roles).
-      allow create: if isSignedIn() && request.auth.uid == uid;
-      allow update: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      // Users may create/update their own profile (first login upsert), but
+      // never with a self-granted role/superAdmin, and never a self-assigned
+      // orgId (orgId is only ever set by an admin, e.g. org provisioning —
+      // letting a user pick their own orgId would let them read any org's
+      // record via the /organizations rule below).
+      // Admins may create/update anyone else's profile — e.g. to change
+      // roles, or when a super admin provisions a new org's admin — but
+      // granting/revoking superAdmin itself is reserved to super admins.
+      allow create: if isSignedIn() && (
+        (request.auth.uid == uid &&
+          selfCreateRoleIsValid(request.resource.data) &&
+          !('orgId' in request.resource.data)) ||
+        (isAdmin() && (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()))
+      );
+      allow update: if isSignedIn() && (
+        (request.auth.uid == uid &&
+          selfUpdateRoleIsValid(request.resource.data) &&
+          request.resource.data.get('orgId', null) == resource.data.get('orgId', null)) ||
+        (isAdmin() && (
+          request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
+          isSuperAdmin()
+        ))
+      );
       // Only admins can delete a user from the directory, and never a
       // profile whose email is a fixed admin (enforced in-app too).
       allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------
+    // Organizations — super-admin managed. Each org's own admin can read
+    // (but not modify) their org's record.
+    // -------------------------------------------------------------------
+    match /organizations/{orgId} {
+      allow read: if isSignedIn() && (isSuperAdmin() || myProfile().orgId == orgId);
+      allow create: if isSuperAdmin() &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200 &&
+        request.resource.data.adminEmail is string &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isSuperAdmin();
     }
 
     // -------------------------------------------------------------------

@@ -37,6 +37,7 @@ import type {
     ExpenseClaim,
     Asset,
     Ticket,
+    Organization,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -71,6 +72,7 @@ export const Collections = {
     assets: col<Asset>('assets'),
     helpdeskTickets: col<Ticket>('helpdesk_tickets'),
     regularizations: col<RegularizationRequest>('regularizations'),
+    organizations: col<Organization>('organizations'),
 } as const;
 
 // ---------------------------------------------------------------------------

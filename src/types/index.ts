@@ -311,3 +311,13 @@ export interface RegularizationRequest {
   requestedStatus: AttendanceStatus;
   status: 'Pending' | 'Approved' | 'Rejected';
 }
+
+// ---- Organizations (multi-tenant, super-admin managed) --------------------------
+export interface Organization {
+  id?: ID; // Firestore-assigned on create; always present once fetched
+  name: string;
+  adminEmail: string;
+  adminUid?: string;
+  createdBy: ID; // super admin uid
+  createdAt?: unknown;
+}

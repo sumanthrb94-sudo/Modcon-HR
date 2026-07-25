@@ -54,8 +54,8 @@ export const MANAGER_EMAILS = [
 ].map((e) => e.toLowerCase());
 
 // Super-admins are always `admin` role (see ADMIN_EMAILS above) plus this
-// marker flag. Not yet enforced anywhere — reserved for future cross-org
-// scoping if ModCon HR ever supports more than one organization.
+// marker flag. Super admins can see/create organizations (see
+// src/pages/organizations) and are not scoped to any single `orgId`.
 export const SUPER_ADMIN_EMAILS = [
     'saikrishnakoppaka@gmail.com',
 ].map((e) => e.toLowerCase());
@@ -69,6 +69,9 @@ export interface UserProfile {
     photoURL: string | null;
     role: UserRole;
     superAdmin?: boolean;
+    /** Organization this profile belongs to. Unset for super admins and for
+     * legacy/hard-coded accounts that predate multi-org support. */
+    orgId?: string;
     createdAt?: unknown;
     lastLoginAt?: unknown;
 }
@@ -89,6 +92,11 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
             ? 'manager'
             : (existing.exists() ? (existing.data().role as UserRole) : 'employee') ?? 'employee';
 
+    // orgId is assigned once at org-creation time (see src/lib/organizations.ts)
+    // and never set here, but must be carried forward so it isn't dropped from
+    // the in-memory profile on every subsequent sign-in.
+    const existingOrgId = existing.exists() ? (existing.data().orgId as string | undefined) : undefined;
+
     const profile: UserProfile = {
         uid: user.uid,
         email,
@@ -96,6 +104,7 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
         photoURL: user.photoURL,
         role,
         superAdmin: SUPER_ADMIN_EMAILS.includes(email),
+        ...(existingOrgId ? { orgId: existingOrgId } : {}),
     };
 
     await setDoc(

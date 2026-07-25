@@ -3,7 +3,7 @@ import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
-const firebaseConfig = {
+export const firebaseConfig = {
     apiKey: 'AIzaSyCDTZ1Sc3ajyKE7fKnzDguzoIphn9tDRQU',
     authDomain: 'modcon-hr.firebaseapp.com',
     projectId: 'modcon-hr',

@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ClipboardCheck,
   CalendarClock,
+  Building2,
   type LucideIcon,
 } from 'lucide-react';
 import { canAccessModule, type AppModule, type AppRole } from '@/lib/accessControl';
@@ -29,6 +30,8 @@ export interface NavItem {
   adminOnly?: boolean;
   /** Visible to managers and admins only. */
   managerOnly?: boolean;
+  /** Visible to super admins only (see useAuth().isSuperAdmin). */
+  superAdminOnly?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -48,18 +51,20 @@ export const navItems: NavItem[] = [
   { label: 'Approvals', path: '/approvals', icon: ClipboardCheck, group: 'Operations', module: 'Dashboard', managerOnly: true },
   { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Operations', module: 'Reports & Analytics' },
   { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Operations', module: 'Admin', adminOnly: true },
+  { label: 'Organizations', path: '/organizations', icon: Building2, group: 'Operations', module: 'Admin', adminOnly: true, superAdminOnly: true },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Operations', module: 'Settings' },
 ];
 
 export const navGroups: NavItem['group'][] = ['Main', 'People', 'Operations'];
 
-export function getVisibleNavItems(role: AppRole): NavItem[] {
+export function getVisibleNavItems(role: AppRole, isSuperAdmin = false): NavItem[] {
   const canManage = role === 'Admin' || role === 'HR Manager' || role === 'Manager';
 
   return navItems.filter(
     (item) =>
       canAccessModule(item.module, role) &&
       (!item.adminOnly || role === 'Admin') &&
-      (!item.managerOnly || canManage),
+      (!item.managerOnly || canManage) &&
+      (!item.superAdminOnly || isSuperAdmin),
   );
 }
