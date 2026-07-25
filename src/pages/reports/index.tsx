@@ -25,6 +25,7 @@ import {
   attendanceTrend,
   employmentTypeSplit,
   totalHeadcount,
+  activeHeadcount,
   avgTenureYears,
   totalAnnualPayroll,
   diversityRatio,
@@ -136,6 +137,7 @@ export function ReportsPage() {
   const headcountSeries = useMemo(() => headcountGrowth(), [directoryRevision]);
 
   const headcount = totalHeadcount();
+  const active = activeHeadcount();
   const attrition = currentAttritionRate();
   const tenure = avgTenureYears();
   const payroll = totalAnnualPayroll();
@@ -157,7 +159,7 @@ export function ReportsPage() {
       icon: <Users size={20} />,
       title: 'Headcount Report',
       description: 'Workforce composition, department breakdown, and headcount trends over time.',
-      kpis: [{ label: 'Total Employees', value: String(headcount) }, { label: 'Active', value: String(headcount - 2) }],
+      kpis: [{ label: 'Total Employees', value: String(headcount) }, { label: 'Active', value: String(active) }],
       color: 'text-brand-600',
       bg: 'bg-brand-50',
       route: '/employees',
