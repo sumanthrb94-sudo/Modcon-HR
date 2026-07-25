@@ -1,6 +1,7 @@
 import type { Ticket, TicketStatus, TicketPriority } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
-export const tickets: Ticket[] = [
+export const tickets: Ticket[] = isMockDataCleared() ? [] : [
   {
     id: 'tkt-001',
     ticketCode: 'HD-2041',

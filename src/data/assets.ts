@@ -1,6 +1,7 @@
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
-export const assets: Asset[] = [
+export const assets: Asset[] = isMockDataCleared() ? [] : [
   // Laptops
   {
     id: 'ast-001',

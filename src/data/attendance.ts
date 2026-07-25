@@ -1,4 +1,5 @@
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -115,40 +116,42 @@ function getCheckInOut(empIdx: number, dateIdx: number): { checkIn: string; chec
 let recId = 0;
 export const attendanceRecords: AttendanceRecord[] = [];
 
-EMP_IDS.forEach((empId, empIdx) => {
-  WEEK_DATES.forEach((date, dateIdx) => {
-    const ov = OVERRIDES[empId]?.[date];
-    if (ov) {
-      recId++;
-      attendanceRecords.push({
-        id: `att-${String(recId).padStart(4, '0')}`,
-        employeeId: empId,
-        date,
-        status: ov.status,
-        checkIn: ov.checkIn,
-        checkOut: ov.checkOut,
-        workedHours: ov.workedHours,
-        shift: 'General (09:00 – 18:00)',
-        isLate: ov.isLate,
-      });
-    } else {
-      // Default: Present
-      recId++;
-      const { checkIn, checkOut, workedHours } = getCheckInOut(empIdx, dateIdx);
-      attendanceRecords.push({
-        id: `att-${String(recId).padStart(4, '0')}`,
-        employeeId: empId,
-        date,
-        status: 'Present',
-        checkIn,
-        checkOut,
-        workedHours,
-        shift: 'General (09:00 – 18:00)',
-        isLate: false,
-      });
-    }
+if (!isMockDataCleared()) {
+  EMP_IDS.forEach((empId, empIdx) => {
+    WEEK_DATES.forEach((date, dateIdx) => {
+      const ov = OVERRIDES[empId]?.[date];
+      if (ov) {
+        recId++;
+        attendanceRecords.push({
+          id: `att-${String(recId).padStart(4, '0')}`,
+          employeeId: empId,
+          date,
+          status: ov.status,
+          checkIn: ov.checkIn,
+          checkOut: ov.checkOut,
+          workedHours: ov.workedHours,
+          shift: 'General (09:00 – 18:00)',
+          isLate: ov.isLate,
+        });
+      } else {
+        // Default: Present
+        recId++;
+        const { checkIn, checkOut, workedHours } = getCheckInOut(empIdx, dateIdx);
+        attendanceRecords.push({
+          id: `att-${String(recId).padStart(4, '0')}`,
+          employeeId: empId,
+          date,
+          status: 'Present',
+          checkIn,
+          checkOut,
+          workedHours,
+          shift: 'General (09:00 – 18:00)',
+          isLate: false,
+        });
+      }
+    });
   });
-});
+}
 
 // ---- Regularization Requests ------------------------------------------------
 export interface RegularizationRequest {
@@ -160,7 +163,7 @@ export interface RegularizationRequest {
   status: 'Pending' | 'Approved' | 'Rejected';
 }
 
-export const regularizationRequests: RegularizationRequest[] = [
+export const regularizationRequests: RegularizationRequest[] = isMockDataCleared() ? [] : [
   {
     id: 'reg-001',
     employeeId: 'emp-007',

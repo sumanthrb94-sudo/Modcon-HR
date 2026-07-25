@@ -164,6 +164,7 @@ export function PayrollPage() {
   // ----- Aggregates -----
   const totalNetPay = useMemo(() => payslipList.reduce((s, p) => s + p.netPay, 0), [payslipList]);
   const avgCTC = useMemo(() => {
+    if (employees.length === 0) return 0;
     const total = employees.reduce((s, e) => s + e.ctc, 0);
     return Math.round(total / employees.length);
   }, [directoryRevision]);

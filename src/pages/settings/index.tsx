@@ -49,6 +49,7 @@ import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
 import { formatDate, cn } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
+import { setMockDataCleared } from '@/lib/mockDataFlag';
 import type { Holiday } from '@/types';
 
 const COMPANY_LOGO_STORAGE_KEY = 'modcon.hr.companyLogo';
@@ -2136,6 +2137,10 @@ function DatabaseSection() {
     setLogs([]);
     try {
       await seedFirestore((msg) => setLogs((prev) => [...prev, msg]));
+      // Seeding is the natural "undo" for a prior Delete Mock Data — lift the
+      // local suppression flag so the static seed layer renders again too
+      // (takes effect on next reload, same as the flag itself).
+      setMockDataCleared(false);
       setStatus('done');
     } catch (err) {
       setLogs((prev) => [...prev, `Error: ${String(err)}`]);
@@ -2150,6 +2155,10 @@ function DatabaseSection() {
       await purgeSeededFirestoreData((msg) => setResetLogs((prev) => [...prev, msg]));
       const keysToRemove = Object.keys(window.localStorage).filter((key) => key.startsWith('modcon.hr.'));
       keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+      // Set after the sweep above so it isn't immediately deleted by it —
+      // this is what makes the static seed layer (Employees, Attendance,
+      // Leave, etc.) actually render empty after reload, not just Firestore.
+      setMockDataCleared(true);
       setResetStatus('done');
       window.location.reload();
     } catch (err) {
@@ -2200,15 +2209,17 @@ function DatabaseSection() {
       </Card>
 
       <Card className="border-rose-200">
-        <CardHeader title="Danger Zone" subtitle="Delete all seeded mock data — Firestore and this browser's local overlay" />
+        <CardHeader title="Danger Zone" subtitle="Delete all mock data — Firestore, local overrides, and the built-in seed roster" />
         <div className="space-y-4">
           <p className="text-sm text-ink-500">
-            Deletes every document in the Firestore collections Seed Firestore populates (employees, attendance,
-            leave, payroll, recruitment, onboarding, performance, expenses, assets, helpdesk, regularizations),
-            then clears every browser-local mock overlay (all <span className="font-mono text-xs text-ink-600">modcon.hr.*</span> localStorage
-            keys) and reloads. Requires an admin-signed-in account — enforced by firestore.rules. The static seed
-            source in <span className="font-mono text-xs text-ink-600">src/data</span> is unaffected; re-run
-            Seed Firestore above to repopulate.
+            Deletes every document in the Firestore collections Seed Firestore populates, clears every browser-local
+            mock overlay (all <span className="font-mono text-xs text-ink-600">modcon.hr.*</span> localStorage keys),
+            and — unlike a plain overlay reset — also suppresses the hardcoded seed roster itself (employees,
+            attendance, leave, recruitment, onboarding, performance, expenses, assets, helpdesk, regularizations;
+            payroll figures derive from employees and empty out automatically), so Employees, Leave, Payroll, and
+            the other feature pages actually go empty too, not just Firestore. Requires an admin-signed-in account
+            for the Firestore half — enforced by firestore.rules. Click Seed Firestore above to restore everything
+            (reload after seeding to see the seed roster reappear in the app).
           </p>
           <Button
             variant="danger"
@@ -2256,9 +2267,11 @@ function DatabaseSection() {
         )}
       >
         <p className="text-sm text-ink-600">
-          This permanently deletes every document in the Firestore collections listed above, then removes every
-          locally added/edited/deleted record in this browser's localStorage, then reloads the page. Anyone else
-          viewing this app against the same Firestore project will also lose that data.
+          This permanently deletes every document in the seeded Firestore collections, removes every locally
+          added/edited/deleted record in this browser, and suppresses the built-in seed roster so this browser
+          shows an empty Employees, Leave, Payroll, Recruitment, Onboarding, Performance, Expenses, Assets, and
+          Helpdesk — then reloads. Anyone else viewing this app against the same Firestore project also loses
+          that Firestore data. Click Seed Firestore afterward to bring everything back.
         </p>
       </Modal>
     </SettingsSection>

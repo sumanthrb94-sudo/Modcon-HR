@@ -1,10 +1,11 @@
 import type { JobOpening, Candidate, CandidateStage } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Job Openings
 // ---------------------------------------------------------------------------
 
-export const jobOpenings: JobOpening[] = [
+export const jobOpenings: JobOpening[] = isMockDataCleared() ? [] : [
   {
     id: 'job-001',
     title: 'Senior Backend Engineer',
@@ -259,7 +260,7 @@ export function updateCandidateStage(candidateId: string, stage: CandidateStage)
 // Candidates
 // ---------------------------------------------------------------------------
 
-export const candidates: Candidate[] = [
+export const candidates: Candidate[] = isMockDataCleared() ? [] : [
   // job-001 Senior Backend Engineer
   { id: 'cand-001', name: 'Abhishek Tiwari', email: 'abhishek.t@email.com', phone: '+91 9810001001', jobId: 'job-001', jobTitle: 'Senior Backend Engineer', stage: 'Applied', appliedOn: '2026-05-03', rating: 3, source: 'LinkedIn', currentCompany: 'Razorpay', experienceYears: 5 },
   { id: 'cand-002', name: 'Preethi Nair', email: 'preethi.n@email.com', phone: '+91 9810001002', jobId: 'job-001', jobTitle: 'Senior Backend Engineer', stage: 'Screening', appliedOn: '2026-05-05', rating: 4, source: 'Naukri', currentCompany: 'Freshworks', experienceYears: 6 },

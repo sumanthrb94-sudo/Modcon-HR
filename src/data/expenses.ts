@@ -1,4 +1,5 @@
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Seed data — 16 claims spread across employees & categories
@@ -231,7 +232,7 @@ const seeds: Seed[] = [
   },
 ];
 
-export const expenseClaims: ExpenseClaim[] = seeds;
+export const expenseClaims: ExpenseClaim[] = isMockDataCleared() ? [] : seeds;
 
 // ---------------------------------------------------------------------------
 // Chart helper — total amount by category

@@ -1,4 +1,5 @@
 import type { Goal, GoalStatus, PerformanceReview, ReviewStatus } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 const GOALS_STORAGE_KEY = 'modcon.hr.goals';
 export const GOALS_CHANGED_EVENT = 'modcon-hr-goals-changed';
@@ -6,7 +7,7 @@ export const GOALS_CHANGED_EVENT = 'modcon-hr-goals-changed';
 const REVIEWS_STORAGE_KEY = 'modcon.hr.reviews';
 export const REVIEWS_CHANGED_EVENT = 'modcon-hr-reviews-changed';
 
-export const goals: Goal[] = [
+export const goals: Goal[] = isMockDataCleared() ? [] : [
   // Engineering
   {
     id: 'goal-001',
@@ -232,7 +233,7 @@ export const goals: Goal[] = [
   },
 ];
 
-export const reviews: PerformanceReview[] = [
+export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   {
     id: 'rev-001',
     employeeId: 'emp-008',

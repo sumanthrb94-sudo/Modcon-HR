@@ -1,4 +1,5 @@
 import type { Employee, Department, EmploymentType, EmployeeStatus, Gender } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Master employee directory — the single source of truth for people data.
@@ -165,7 +166,8 @@ function notifyEmployeeDirectoryChanged() {
 
 export function getEmployeeDirectory(): Employee[] {
   const deletedIds = new Set(readDeletedEmployeeIds());
-  const combined = [...buildEmployeeDirectory(seeds), ...readCustomEmployees()]
+  const seedEmployees = isMockDataCleared() ? [] : buildEmployeeDirectory(seeds);
+  const combined = [...seedEmployees, ...readCustomEmployees()]
     .filter((employee) => !deletedIds.has(employee.id));
   const byEmployeeId = new Map<string, Employee>();
   combined.forEach((employee) => {

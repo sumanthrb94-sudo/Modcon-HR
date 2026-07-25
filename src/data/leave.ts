@@ -1,10 +1,11 @@
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
 export const LEAVE_REQUESTS_CHANGED_EVENT = 'modcon-hr-leave-requests-changed';
 
 // ---- Leave Requests ---------------------------------------------------------
-export const leaveRequests: LeaveRequest[] = [
+export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
   {
     id: 'lr-001',
     employeeId: 'emp-009',
@@ -282,7 +283,7 @@ interface BalanceSeed {
   earned: [number, number];
 }
 
-const balanceSeeds: BalanceSeed[] = [
+const balanceSeeds: BalanceSeed[] = isMockDataCleared() ? [] : [
   { empId: 'emp-001', casual: [12, 2], sick: [10, 0], earned: [21, 5] },
   { empId: 'emp-002', casual: [12, 3], sick: [10, 1], earned: [21, 7] },
   { empId: 'emp-003', casual: [12, 1], sick: [10, 2], earned: [21, 4] },

@@ -1,4 +1,5 @@
 import type { Onboarding, OnboardingTask } from '@/types';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Helper — compute progress from tasks
@@ -40,7 +41,7 @@ export const standardTaskTemplate: Omit<OnboardingTask, 'id'>[] = [
 // Onboarding records
 // ---------------------------------------------------------------------------
 
-const raw: Omit<Onboarding, 'progress'>[] = [
+const raw: Omit<Onboarding, 'progress'>[] = isMockDataCleared() ? [] : [
   {
     id: 'ob-001',
     employeeId: 'emp-015', // Ishaan Gupta — intern already in employees
