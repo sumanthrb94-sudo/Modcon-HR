@@ -90,21 +90,34 @@ const runMonths: Array<{ month: string; status: PayrollRunStatus; processedOn: s
   { month: '2026-05', status: 'Paid',       processedOn: '2026-05-31' },
 ];
 
+/** Last instant of a "YYYY-MM" month. */
+function endOfMonth(month: string): Date {
+  const [year, m] = month.split('-').map(Number);
+  return new Date(year, m, 0, 23, 59, 59);
+}
+
 // runMonths is a fixed list independent of `employees`/`payslips`, so it
 // must be explicitly gated too — otherwise a cleared/empty org would still
 // see 6 hardcoded payroll run rows (just with zeroed-out totals).
-export const payrollRuns: PayrollRun[] = isMockDataCleared() ? [] : runMonths.map((rm, i) => {
-  const grossTotal = payslips.reduce((s, p) => s + p.grossEarnings, 0);
-  const netTotal = payslips.reduce((s, p) => s + p.netPay, 0);
-  // Slight variation per month for realism
-  const factor = [0.97, 0.98, 0.99, 1.0, 1.0, 1.0][i];
+//
+// Each run is costed from the people actually on roll that month — those who
+// had joined by its month-end — using their real CTC. The month-to-month
+// variation therefore comes from real joining dates. The previous version
+// applied a literal factor of [0.97, 0.98, 0.99, 1, 1, 1] to the *current*
+// payslip total "for realism", and reported today's headcount for every
+// historical month, so December 2025 claimed staff who had not joined yet.
+export const payrollRuns: PayrollRun[] = isMockDataCleared() ? [] : runMonths.map((rm) => {
+  const asOf = endOfMonth(rm.month);
+  const onRoll = employees.filter((employee) => new Date(employee.dateOfJoining) <= asOf);
+  const components = onRoll.map(buildPayslipComponents);
+
   return {
     id: `pr-${rm.month}`,
     month: rm.month,
     status: rm.status,
-    employeeCount: employees.length,
-    grossTotal: Math.round(grossTotal * factor),
-    netTotal: Math.round(netTotal * factor),
+    employeeCount: onRoll.length,
+    grossTotal: components.reduce((sum, c) => sum + c.grossEarnings, 0),
+    netTotal: components.reduce((sum, c) => sum + c.netPay, 0),
     processedOn: rm.processedOn,
   };
 });
