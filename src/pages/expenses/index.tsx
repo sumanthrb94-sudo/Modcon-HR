@@ -55,7 +55,7 @@ import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { Collections, patch, upsert } from '@/lib/db';
 import { useExpenses } from '@/lib/useFirestore';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
-import { todayIso } from '@/lib/today';
+import { currentMonthIso, todayIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -255,7 +255,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
     const now = todayIso();
     const claim: ExpenseClaim = {
       id: `exp-${Date.now()}`,
-      employeeId: form.employeeId || defaultEmployeeId || employees[0]?.id || 'emp-001',
+      employeeId: form.employeeId || defaultEmployeeId || employees[0]?.id || '',
       title: form.title.trim(),
       category: form.category as ExpenseCategory,
       amount: Number(form.amount),
@@ -275,7 +275,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
 
   function buildDraftClaim(): ExpenseClaim {
     const today = todayIso();
-    const fallbackEmployeeId = employees[0]?.id ?? 'emp-001';
+    const fallbackEmployeeId = employees[0]?.id ?? '';
 
     return {
       id: `exp-draft-${Date.now()}`,
@@ -828,7 +828,7 @@ export function ExpensesPage() {
       .filter((c) => c.status === 'Submitted')
       .reduce((s, c) => s + c.amount, 0);
     const approvedThisMonth = visibleClaims.filter(
-      (c) => c.status === 'Approved' && c.submittedOn.startsWith('2026-05'),
+      (c) => c.status === 'Approved' && c.submittedOn.startsWith(currentMonthIso()),
     ).length;
     const reimbursedTotal = visibleClaims
       .filter((c) => c.status === 'Reimbursed')

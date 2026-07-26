@@ -127,6 +127,7 @@ interface NewEmployeePayload {
   location: string;
   employmentType: EmploymentType;
   gender: Gender;
+  dateOfBirth: string;
   dateOfJoining: string;
   ctc: number;
   reportingManagerId: string | null;
@@ -152,6 +153,7 @@ function AddEmployeeModal({
   const [location, setLocation] = useState(locations[0] ?? 'Bengaluru');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('Full-time');
   const [gender, setGender] = useState<Gender>('Male');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [dateOfJoining, setDateOfJoining] = useState('');
   const [ctc, setCtc] = useState('');
   const [reportingManagerId, setReportingManagerId] = useState('');
@@ -170,6 +172,11 @@ function AddEmployeeModal({
       errors.email = 'Enter a valid email address.';
     }
     if (!designation.trim()) errors.designation = 'Designation is required.';
+    if (!dateOfBirth) {
+      errors.dateOfBirth = 'Date of birth is required.';
+    } else if (dateOfBirth > todayIso()) {
+      errors.dateOfBirth = 'Date of birth cannot be in the future.';
+    }
     if (!dateOfJoining) errors.dateOfJoining = 'Date of joining is required.';
     if (!ctc.trim()) {
       errors.ctc = 'Annual CTC is required.';
@@ -178,7 +185,7 @@ function AddEmployeeModal({
     }
 
     return errors;
-  }, [firstName, lastName, email, designation, dateOfJoining, ctc]);
+  }, [firstName, lastName, email, designation, dateOfBirth, dateOfJoining, ctc]);
 
   const hasErrors = Object.keys(validationErrors).length > 0;
 
@@ -192,6 +199,7 @@ function AddEmployeeModal({
     setLocation(locations[0] ?? 'Bengaluru');
     setEmploymentType('Full-time');
     setGender('Male');
+    setDateOfBirth('');
     setDateOfJoining('');
     setCtc('');
     setReportingManagerId('');
@@ -218,6 +226,7 @@ function AddEmployeeModal({
       location,
       employmentType,
       gender,
+      dateOfBirth,
       dateOfJoining,
       ctc: annualCtc,
       reportingManagerId: reportingManagerId || null,
@@ -315,6 +324,11 @@ function AddEmployeeModal({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
+            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Birth</label>
+            <input className="input w-full" type="date" max={todayIso()} value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} />
+            {submitAttempted && validationErrors.dateOfBirth && <p className="mt-1 text-xs text-red-600">{validationErrors.dateOfBirth}</p>}
+          </div>
+          <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Joining</label>
             <input className="input w-full" type="date" value={dateOfJoining} onChange={(event) => setDateOfJoining(event.target.value)} />
             {submitAttempted && validationErrors.dateOfJoining && <p className="mt-1 text-xs text-red-600">{validationErrors.dateOfJoining}</p>}
@@ -411,7 +425,7 @@ export function EmployeesPage() {
       phone: payload.phone || 'N/A',
       avatar: `${payload.firstName} ${payload.lastName}`,
       gender: payload.gender,
-      dateOfBirth: '2000-01-01',
+      dateOfBirth: payload.dateOfBirth,
       designation: payload.designation,
       department: payload.department,
       location: payload.location,
@@ -421,7 +435,9 @@ export function EmployeesPage() {
       reportingManagerId: payload.reportingManagerId,
       reportingManagerName: manager?.fullName,
       ctc: payload.ctc,
-      maritalStatus: 'Single',
+      // maritalStatus and bloodGroup are personal details the form does not
+      // ask for — left unset rather than asserted. Address is the work
+      // location the admin did enter.
       address: `${payload.location}, India`,
       skills: [],
     };

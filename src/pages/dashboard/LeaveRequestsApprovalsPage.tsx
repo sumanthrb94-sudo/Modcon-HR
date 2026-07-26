@@ -5,10 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
 import { employees } from '@/data/employees';
+import { useAuth } from '@/lib/auth';
+import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { formatDate } from '@/lib/utils';
 
 export function LeaveRequestsApprovalsPage() {
     const navigate = useNavigate();
+    const { profile } = useAuth();
+    const currentEmployee = getCurrentEmployee(profile);
     const [leaveRequests, setLeaveRequests] = useState(() => getLeaveRequests());
 
     useEffect(() => {
@@ -24,8 +28,13 @@ export function LeaveRequestsApprovalsPage() {
         const updated = updateLeaveRequestStatus(
             requestId,
             nextStatus,
+            // Record whoever is signed in, not a fixed name. This previously
+            // credited 'Ananya Reddy' with every approval in the system.
             nextStatus === 'Approved'
-                ? { approverId: 'emp-004', approverName: 'Ananya Reddy' }
+                ? {
+                    approverId: currentEmployee?.id ?? null,
+                    approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
+                }
                 : undefined,
         );
         setLeaveRequests(updated);

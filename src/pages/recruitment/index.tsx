@@ -42,7 +42,10 @@ import {
 import { formatDate, timeAgo } from '@/lib/utils';
 import { candidates, hiringFunnel, getJobOpenings, addJobOpening, deleteJobOpening, JOB_OPENINGS_CHANGED_EVENT, getCandidates, removeCandidatesForJob, updateCandidateStage, CANDIDATES_CHANGED_EVENT } from '@/data/recruitment';
 import type { JobOpening, Candidate, CandidateStage, Department, EmploymentType, JobStatus } from '@/types';
-import { locations, getEmployeeName } from '@/data/employees';
+import { locations, getEmployeeName, getEmployeeDirectory } from '@/data/employees';
+import { getDepartmentRecord } from '@/data/departments';
+import { useAuth } from '@/lib/auth';
+import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -726,7 +729,22 @@ const TABS = [
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={14} /> },
 ];
 
+/**
+ * Who owns a newly posted role. Previously every job created through the UI
+ * was stamped with 'emp-004', so each one displayed that one person as hiring
+ * manager whatever the department. Credit the person posting it, falling back
+ * to the department's head.
+ */
+function resolveHiringManagerId(department: string, posterId?: string): string {
+  if (posterId) return posterId;
+  const headName = getDepartmentRecord(department)?.head;
+  if (!headName) return '';
+  return getEmployeeDirectory().find((employee) => employee.fullName === headName)?.id ?? '';
+}
+
 export function RecruitmentPage() {
+  const { profile } = useAuth();
+  const currentEmployee = getCurrentEmployee(profile);
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
   const [jobs, setJobs] = useState<JobOpening[]>(() => getJobOpenings());
@@ -772,7 +790,7 @@ export function RecruitmentPage() {
       openings: parseInt(form.openings, 10) || 1,
       applicants: 0,
       postedOn: todayIso(),
-      hiringManagerId: 'emp-004',
+      hiringManagerId: resolveHiringManagerId(form.department, currentEmployee?.id),
       experience: form.experience || 'Not specified',
       description: '',
     };

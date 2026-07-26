@@ -20,6 +20,7 @@ import { buildPayslip, buildPayslipComponents, payrollRuns } from '@/data/payrol
 import { formatINR, formatDate } from '@/lib/utils';
 import type { Payslip } from '@/types';
 import { PayrollPage } from '@/pages/payroll';
+import { currentMonthIso } from '@/lib/today';
 
 function monthLabel(month: string): string {
   const [year, mon] = month.split('-');
@@ -65,7 +66,7 @@ function EmployeeFinancePage() {
 
   const employeeRecord = employee;
 
-  const currentPayslip = buildPayslip(employee, '2026-06', 'Paid');
+  const currentPayslip = buildPayslip(employee, currentMonthIso(), 'Paid');
   const salary = buildPayslipComponents(employee);
 
   function showDownloadNotice(message: string) {

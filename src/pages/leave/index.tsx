@@ -42,7 +42,7 @@ import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import type { LeaveRequest, LeaveType, LeaveStatus } from '@/types';
 import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatWeekdayLong, pct } from '@/lib/utils';
-import { todayIso } from '@/lib/today';
+import { currentMonthIso, todayIso } from '@/lib/today';
 
 
 
@@ -107,7 +107,7 @@ export function LeavePage() {
   // Stats
   const pending = useMemo(() => scopedRequests.filter((r) => r.status === 'Pending').length, [scopedRequests]);
   const approvedThisMonth = useMemo(
-    () => scopedRequests.filter((r) => r.status === 'Approved' && r.appliedOn.startsWith('2026-06')).length,
+    () => scopedRequests.filter((r) => r.status === 'Approved' && r.appliedOn.startsWith(currentMonthIso())).length,
     [scopedRequests],
   );
   const onLeaveToday = useMemo(
@@ -150,9 +150,12 @@ export function LeavePage() {
   // Approve / Reject handlers
   function approveLeave(id: string) {
     if (isEmployee) return;
+    // Record whoever is actually signed in. This used to stamp a fixed
+    // 'emp-004 / Ananya Reddy' on every approval, so the audit trail named
+    // one person regardless of who clicked Approve.
     const updated = updateLeaveRequestStatus(id, 'Approved', {
-      approverId: 'emp-004',
-      approverName: 'Ananya Reddy',
+      approverId: currentEmployee?.id ?? null,
+      approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
     });
     setLeaveRequests(updated);
   }

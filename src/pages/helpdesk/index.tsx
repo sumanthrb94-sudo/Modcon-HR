@@ -221,8 +221,10 @@ const PRIORITY_OPTIONS_LIST: { label: string; value: string }[] = [
 
 function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedById }: RaiseTicketProps) {
   const [subject, setSubject] = useState('');
-  const [raisedById, setRaisedById] = useState(defaultRaisedById ?? employees[0]?.id ?? 'emp-001');
-  const [assignedTo, setAssignedTo] = useState('Rahul Deshpande');
+  const [raisedById, setRaisedById] = useState(defaultRaisedById ?? employees[0]?.id ?? '');
+  // Default assignee comes from the available options rather than a fixed
+  // name — a fresh org has no 'Rahul Deshpande' to assign tickets to.
+  const [assignedTo, setAssignedTo] = useState('');
   const [category, setCategory] = useState('IT');
   const [priority, setPriority] = useState('Medium');
 
@@ -239,6 +241,8 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
     value: name,
   }));
 
+  const resolvedAssignee = assignedTo || assigneeOptions[0]?.value || '';
+
   const handleSubmit = () => {
     if (!subject.trim()) return;
     onSubmit({
@@ -248,7 +252,7 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
       status: 'Open',
       priority: priority as TicketPriority,
       createdOn: new Date().toISOString(),
-      assignedTo,
+      assignedTo: resolvedAssignee,
     });
     onClose();
   };
@@ -316,7 +320,7 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
         <div>
           <label className="text-sm font-medium text-ink-700 block mb-1">Assigned To</label>
           <Select
-            value={assignedTo}
+            value={resolvedAssignee}
             onChange={setAssignedTo}
             options={assigneeOptions}
             className="w-full"
