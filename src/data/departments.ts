@@ -7,8 +7,21 @@ export interface DepartmentRecord {
   name: string;
   head: string;
   headcount: number;
+  /** Effective figure: the admin's override when one is set, else the live count. */
   openRoles: number;
+  /**
+   * Set only when an admin has deliberately pinned this number. Absent means
+   * the department tracks its real job openings.
+   *
+   * Kept separate from `openRoles` so that editing something else about the
+   * department — its head, or its name — cannot quietly freeze a live count
+   * into a literal, which is what happened when the two were one field.
+   */
+  openRolesOverride?: number;
 }
+
+/** How a row is persisted: no stored `openRoles` unless it is a legacy row. */
+type StoredDepartment = Omit<DepartmentRecord, 'openRoles'> & { openRoles?: number };
 
 const CUSTOM_DEPARTMENTS_STORAGE_KEY = 'modcon.hr.customDepartments';
 const REMOVED_DEPARTMENTS_STORAGE_KEY = 'modcon.hr.removedDepartments';
@@ -53,21 +66,28 @@ function deriveDepartmentOpenRoles(department: string): number {
 
 export const departments: string[] = [];
 
-function readCustomDepartments(): DepartmentRecord[] {
+function readCustomDepartments(): StoredDepartment[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY));
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as DepartmentRecord[];
-    return Array.isArray(parsed)
-      ? parsed.filter((item) => typeof item?.name === 'string')
-      : [];
+    const parsed = JSON.parse(raw) as StoredDepartment[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => typeof item?.name === 'string')
+      .map((item) => (
+        // Rows written before overrides were explicit stored the number
+        // directly; honour it as the override the admin meant it to be.
+        item.openRolesOverride === undefined && typeof item.openRoles === 'number'
+          ? { ...item, openRolesOverride: item.openRoles }
+          : item
+      ));
   } catch {
     return [];
   }
 }
 
-function writeCustomDepartments(records: DepartmentRecord[]) {
+function writeCustomDepartments(records: StoredDepartment[]) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY), JSON.stringify(records));
 }
@@ -130,8 +150,14 @@ export function getDepartmentDirectory(): DepartmentRecord[] {
   const customRows = readCustomDepartments();
   const combined = new Map<string, DepartmentRecord>();
 
-  baseRows.forEach((record) => combined.set(record.name, record));
-  customRows.forEach((record) => combined.set(record.name, record));
+
+  const combine = (record: StoredDepartment) => combined.set(record.name, {
+    ...record,
+    // An override wins; otherwise the department tracks its real openings.
+    openRoles: record.openRolesOverride ?? deriveDepartmentOpenRoles(record.name),
+  });
+  baseRows.forEach(combine);
+  customRows.forEach(combine);
 
   // Headcount is a count of the people actually in the department, for every
   // row. A stored figure on a custom row would go stale the moment somebody
@@ -152,14 +178,14 @@ function syncDepartmentSnapshots() {
   departments.splice(0, departments.length, ...directory.map((record) => record.name));
 }
 
-export function addDepartmentToDirectory(record: DepartmentRecord) {
+export function addDepartmentToDirectory(record: StoredDepartment) {
   const customDepartments = readCustomDepartments().filter((item) => item.name !== record.name);
   writeCustomDepartments([record, ...customDepartments]);
   syncDepartmentSnapshots();
   notifyDepartmentDirectoryChanged();
 }
 
-export function updateDepartmentInDirectory(record: DepartmentRecord) {
+export function updateDepartmentInDirectory(record: StoredDepartment) {
   const customDepartments = readCustomDepartments().filter((item) => item.name !== record.name);
   writeCustomDepartments([record, ...customDepartments]);
   syncDepartmentSnapshots();
@@ -197,7 +223,11 @@ export function renameDepartmentInDirectory(oldName: string, newName: string): n
       name: newName,
       head: existing?.head ?? '—',
       headcount: moved,
-      openRoles: existing?.openRoles ?? 0,
+      // Carried across only if the old name actually had one. A rename is not
+      // an instruction to start overriding the live count.
+      ...(existing?.openRolesOverride !== undefined
+        ? { openRolesOverride: existing.openRolesOverride }
+        : {}),
     },
     ...remaining,
   ]);

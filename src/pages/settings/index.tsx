@@ -290,6 +290,7 @@ interface DeptRow {
   head: string;
   headcount: number;
   openRoles: number;
+  openRolesOverride?: number;
 }
 
 function DepartmentsSection() {
@@ -301,10 +302,12 @@ function DepartmentsSection() {
   const [editingDeptHead, setEditingDeptHead] = useState('');
   const [editingDeptHeadcount, setEditingDeptHeadcount] = useState('0');
   const [editingDeptOpenRoles, setEditingDeptOpenRoles] = useState('0');
+  const [editingDeptTracksOpenRoles, setEditingDeptTracksOpenRoles] = useState(true);
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptHead, setNewDeptHead] = useState('');
   const [newDeptHeadcount, setNewDeptHeadcount] = useState('0');
   const [newDeptOpenRoles, setNewDeptOpenRoles] = useState('0');
+  const [newDeptTracksOpenRoles, setNewDeptTracksOpenRoles] = useState(true);
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
   const [deleteBlocked, setDeleteBlocked] = useState('');
@@ -316,6 +319,7 @@ function DepartmentsSection() {
     setNewDeptHead('');
     setNewDeptHeadcount('0');
     setNewDeptOpenRoles('0');
+    setNewDeptTracksOpenRoles(true);
     setAddError('');
   }
 
@@ -325,6 +329,7 @@ function DepartmentsSection() {
     setEditingDeptHead('');
     setEditingDeptHeadcount('0');
     setEditingDeptOpenRoles('0');
+    setEditingDeptTracksOpenRoles(true);
     setEditError('');
   }
 
@@ -334,6 +339,7 @@ function DepartmentsSection() {
     setEditingDeptHead(row.head === '—' ? '' : row.head);
     setEditingDeptHeadcount(String(row.headcount));
     setEditingDeptOpenRoles(String(row.openRoles));
+    setEditingDeptTracksOpenRoles(row.openRolesOverride === undefined);
     setEditError('');
     setEditOpen(true);
   }
@@ -356,7 +362,7 @@ function DepartmentsSection() {
       setAddError('Headcount must be 0 or more.');
       return;
     }
-    if (Number.isNaN(openRolesValue) || openRolesValue < 0) {
+    if (!newDeptTracksOpenRoles && (Number.isNaN(openRolesValue) || openRolesValue < 0)) {
       setAddError('Open roles must be 0 or more.');
       return;
     }
@@ -365,7 +371,7 @@ function DepartmentsSection() {
       name,
       head: head || '—',
       headcount: headcountValue,
-      openRoles: openRolesValue,
+      ...(newDeptTracksOpenRoles ? {} : { openRolesOverride: openRolesValue }),
     });
     setAddOpen(false);
     resetAddForm();
@@ -381,7 +387,7 @@ function DepartmentsSection() {
       return;
     }
     const headcountValue = Number(editingDeptHeadcount);
-    if (Number.isNaN(openRolesValue) || openRolesValue < 0) {
+    if (!editingDeptTracksOpenRoles && (Number.isNaN(openRolesValue) || openRolesValue < 0)) {
       setEditError('Open roles must be 0 or more.');
       return;
     }
@@ -405,7 +411,7 @@ function DepartmentsSection() {
       name,
       head: head || '—',
       headcount: headcountValue,
-      openRoles: openRolesValue,
+      ...(editingDeptTracksOpenRoles ? {} : { openRolesOverride: openRolesValue }),
     });
     setEditOpen(false);
     resetEditForm();
@@ -452,9 +458,21 @@ function DepartmentsSection() {
       key: 'openRoles',
       header: 'Open Roles',
       align: 'center',
-      render: (r) => r.openRoles > 0
-        ? <Badge tone="amber">{r.openRoles} open</Badge>
-        : <span className="text-ink-400 text-xs">—</span>,
+      render: (r) => (
+        <div className="flex items-center justify-center gap-1.5">
+          {r.openRoles > 0
+            ? <Badge tone="amber">{r.openRoles} open</Badge>
+            : <span className="text-ink-400 text-xs">—</span>}
+          {r.openRolesOverride !== undefined && (
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wide text-ink-400"
+              title="Set manually — not tracking live job openings"
+            >
+              manual
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'actions',
@@ -546,15 +564,32 @@ function DepartmentsSection() {
               setAddError('');
             }}
           />
-          <Field
-            label="Open Roles"
-            type="number"
-            value={newDeptOpenRoles}
-            onChange={(v) => {
-              setNewDeptOpenRoles(v);
-              setAddError('');
-            }}
-          />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide">Open Roles</label>
+            <Select
+              value={newDeptTracksOpenRoles ? 'track' : 'manual'}
+              onChange={(value) => setNewDeptTracksOpenRoles(value === 'track')}
+              options={[
+                { label: 'Track live job openings', value: 'track' },
+                { label: 'Set manually', value: 'manual' },
+              ]}
+            />
+            {newDeptTracksOpenRoles ? (
+              <p className="text-xs text-ink-400">
+                Counts open job openings for this department, so it stays in step with Recruitment.
+              </p>
+            ) : (
+              <Field
+                label=""
+                type="number"
+                value={newDeptOpenRoles}
+                onChange={(v) => {
+                  setNewDeptOpenRoles(v);
+                  setAddError('');
+                }}
+              />
+            )}
+          </div>
           {addError && <p className="text-sm text-rose-600">{addError}</p>}
         </div>
       </Modal>
@@ -607,15 +642,32 @@ function DepartmentsSection() {
               setEditError('');
             }}
           />
-          <Field
-            label="Open Roles"
-            type="number"
-            value={editingDeptOpenRoles}
-            onChange={(v) => {
-              setEditingDeptOpenRoles(v);
-              setEditError('');
-            }}
-          />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide">Open Roles</label>
+            <Select
+              value={editingDeptTracksOpenRoles ? 'track' : 'manual'}
+              onChange={(value) => setEditingDeptTracksOpenRoles(value === 'track')}
+              options={[
+                { label: 'Track live job openings', value: 'track' },
+                { label: 'Set manually', value: 'manual' },
+              ]}
+            />
+            {editingDeptTracksOpenRoles ? (
+              <p className="text-xs text-ink-400">
+                Counts open job openings for this department, so it stays in step with Recruitment.
+              </p>
+            ) : (
+              <Field
+                label=""
+                type="number"
+                value={editingDeptOpenRoles}
+                onChange={(v) => {
+                  setEditingDeptOpenRoles(v);
+                  setEditError('');
+                }}
+              />
+            )}
+          </div>
           {editError && <p className="text-sm text-rose-600">{editError}</p>}
         </div>
       </Modal>
