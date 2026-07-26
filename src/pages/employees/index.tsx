@@ -149,7 +149,10 @@ function AddEmployeeModal({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [designation, setDesignation] = useState('');
-  const [department, setDepartment] = useState<Employee['department']>('Engineering');
+  // Default to whatever the org's first department actually is. Naming one
+  // here would survive that department being renamed or deleted in Settings,
+  // leaving the form defaulted to a department its own dropdown cannot offer.
+  const [department, setDepartment] = useState<Employee['department']>(departments[0] ?? '');
   const [location, setLocation] = useState(locations[0] ?? '');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('Full-time');
   const [gender, setGender] = useState<Gender>('Male');
@@ -195,7 +198,7 @@ function AddEmployeeModal({
     setEmail('');
     setPhone('');
     setDesignation('');
-    setDepartment('Engineering');
+    setDepartment(departments[0] ?? '');
     setLocation(locations[0] ?? '');
     setEmploymentType('Full-time');
     setGender('Male');
