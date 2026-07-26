@@ -153,15 +153,7 @@ interface EmployeeDetails {
   reportingManagerId: string | null;
 }
 
-interface NewEmployeePayload extends EmployeeDetails {
-  /**
-   * A manager to bring into being alongside this hire, with the same details
-   * asked of anyone else. Held as data rather than created when it is typed,
-   * so abandoning the dialog leaves nobody behind — the same rule the
-   * new-department field follows.
-   */
-  newManager: EmployeeDetails | null;
-}
+type NewEmployeePayload = EmployeeDetails;
 
 function emptyDetailsDraft(): EmployeeDetailsDraft {
   return {
@@ -237,9 +229,8 @@ function toEmployeeDetails(draft: EmployeeDetailsDraft): EmployeeDetails {
 /**
  * State and rules for one person's details.
  *
- * This dialog fills in two people — the hire, and a manager who does not
- * exist yet — and both are employees, so both need the same fields and the
- * same rules. One hook used twice is what keeps them from drifting apart.
+ * Kept apart from the dialog so the fields and the rules that govern them sit
+ * together, rather than being spread through the markup that renders them.
  */
 function useEmployeeDetailsForm() {
   const [draft, setDraft] = useState<EmployeeDetailsDraft>(emptyDetailsDraft);
@@ -262,9 +253,9 @@ function useEmployeeDetailsForm() {
 type DetailsForm = ReturnType<typeof useEmployeeDetailsForm>;
 
 /**
- * The employee fields themselves. `managerControl` is a slot because the two
- * uses differ there and only there: a hire can invent a manager, a manager
- * can only be given one who already exists.
+ * The employee fields themselves. The reporting-manager control is passed in
+ * rather than built here, so this stays presentational and knows nothing
+ * about the directory it would have to read to list candidates.
  */
 function EmployeeDetailsFields({
   form,
@@ -274,7 +265,8 @@ function EmployeeDetailsFields({
 }: {
   form: DetailsForm;
   showErrors: boolean;
-  /** Distinguishes the two forms' accessible names while both are mounted. */
+  /** Prefixes each field's accessible name, since the visible labels are not
+   *  associated with their inputs by id. */
   fieldPrefix: string;
   managerControl: ReactNode;
 }) {
@@ -453,79 +445,20 @@ function AddEmployeeModal({
   employeeOptions: Employee[];
 }) {
   const hire = useEmployeeDetailsForm();
-  const manager = useEmployeeDetailsForm();
-  /** 'manager' swaps the dialog over to filling in the new manager. */
-  const [mode, setMode] = useState<'hire' | 'manager'>('hire');
-  const [pendingManager, setPendingManager] = useState<EmployeeDetails | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [managerSubmitAttempted, setManagerSubmitAttempted] = useState(false);
-  const [managerError, setManagerError] = useState('');
 
   function resetForm() {
     hire.reset();
-    manager.reset();
-    setPendingManager(null);
-    setMode('hire');
     setSubmitAttempted(false);
-    setManagerSubmitAttempted(false);
-    setManagerError('');
   }
 
   function handleSave() {
     setSubmitAttempted(true);
     if (hire.hasErrors) return;
 
-    onSave({
-      ...toEmployeeDetails(hire.draft),
-      // PENDING_MANAGER stands in for someone who does not exist yet; the
-      // parent creates them first and links the two together.
-      reportingManagerId: hire.draft.reportingManagerId === PENDING_MANAGER
-        ? null
-        : hire.draft.reportingManagerId || null,
-      newManager: hire.draft.reportingManagerId === PENDING_MANAGER ? pendingManager : null,
-    });
+    onSave(toEmployeeDetails(hire.draft));
     resetForm();
     onClose();
-  }
-
-  /** Accept the manager as this hire's manager, without creating them yet. */
-  function confirmManager() {
-    setManagerSubmitAttempted(true);
-    setManagerError('');
-    if (manager.hasErrors) return;
-
-    const details = toEmployeeDetails(manager.draft);
-    // Two people cannot share a work email: it is how a sign-in is matched to
-    // a record, so a duplicate would attach one account to the wrong person.
-    if (employeeOptions.some((candidate) => candidate.email.toLowerCase() === details.email)) {
-      setManagerError('Someone already has that email address.');
-      return;
-    }
-    if (details.email === hire.draft.email.trim().toLowerCase()) {
-      setManagerError('The manager cannot share an email with the new hire.');
-      return;
-    }
-
-    setPendingManager(details);
-    hire.set('reportingManagerId', PENDING_MANAGER);
-    setMode('hire');
-  }
-
-  function startManager() {
-    manager.reset();
-    // The manager almost always sits with the person they will manage, so
-    // start them there — every field stays editable.
-    manager.set('department', hire.draft.department);
-    manager.set('location', hire.draft.location);
-    setManagerSubmitAttempted(false);
-    setManagerError('');
-    setMode('manager');
-  }
-
-  function cancelManager() {
-    setMode('hire');
-    setManagerError('');
-    setManagerSubmitAttempted(false);
   }
 
   function handleClose() {
@@ -533,101 +466,50 @@ function AddEmployeeModal({
     onClose();
   }
 
-  const hireManagerControl = (
+  /**
+   * Only people already in the directory. A manager is an employee, and
+   * inventing one here would mean creating a second person from a form meant
+   * for one — add them in their own right first, then pick them.
+   */
+  const managerControl = (
     <select
       className="input w-full"
       aria-label="Reporting Manager"
       value={hire.draft.reportingManagerId}
-      onChange={(event) => {
-        if (event.target.value === CREATE_OPTION) {
-          startManager();
-          return;
-        }
-        hire.set('reportingManagerId', event.target.value);
-      }}
+      onChange={(event) => hire.set('reportingManagerId', event.target.value)}
     >
       <option value="">Select reporting manager</option>
       {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
-      {pendingManager && (
-        <option value={PENDING_MANAGER}>
-          {pendingManager.firstName} {pendingManager.lastName} — {pendingManager.designation} (new)
-        </option>
-      )}
-      <option value={CREATE_OPTION}>+ Add new reporting manager…</option>
     </select>
   );
-
-  // No "add new" here: a manager invented for a manager would recurse with
-  // nothing to stop it, and one unrecorded person at a time is enough.
-  const managerManagerControl = (
-    <select
-      className="input w-full"
-      aria-label="Manager's Reporting Manager"
-      value={manager.draft.reportingManagerId}
-      onChange={(event) => manager.set('reportingManagerId', event.target.value)}
-    >
-      <option value="">No manager</option>
-      {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
-    </select>
-  );
-
-  const isManagerMode = mode === 'manager';
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title={isManagerMode ? 'New Reporting Manager' : 'Add New Employee'}
-      subtitle={isManagerMode
-        ? 'The manager is an employee too, so the same details are needed. Nobody is created until you save the hire.'
-        : 'Fill in the details to create a new employee profile'}
+      title="Add New Employee"
+      subtitle="Fill in the details to create a new employee profile"
       size="lg"
-      footer={isManagerMode ? (
-        <>
-          <Button variant="secondary" onClick={cancelManager}>Back</Button>
-          <Button variant="primary" onClick={confirmManager}>Add manager</Button>
-        </>
-      ) : (
+      footer={
         <>
           <Button variant="secondary" onClick={handleClose}>Cancel</Button>
           <Button variant="primary" onClick={handleSave}>Save Employee</Button>
         </>
-      )}
+      }
     >
-      {isManagerMode ? (
-        <div className="space-y-5">
-          {managerSubmitAttempted && manager.hasErrors && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              Please fix the highlighted fields before adding this manager.
-            </div>
-          )}
-          {managerError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {managerError}
-            </div>
-          )}
-          <EmployeeDetailsFields
-            form={manager}
-            showErrors={managerSubmitAttempted}
-            fieldPrefix="Manager"
-            managerControl={managerManagerControl}
-          />
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {submitAttempted && hire.hasErrors && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              Please fix the highlighted fields before saving.
-            </div>
-          )}
-          <EmployeeDetailsFields
-            form={hire}
-            showErrors={submitAttempted}
-            fieldPrefix="Employee"
-            managerControl={hireManagerControl}
-          />
-        </div>
-      )}
+      <div className="space-y-5">
+        {submitAttempted && hire.hasErrors && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            Please fix the highlighted fields before saving.
+          </div>
+        )}
+        <EmployeeDetailsFields
+          form={hire}
+          showErrors={submitAttempted}
+          fieldPrefix="Employee"
+          managerControl={managerControl}
+        />
+      </div>
     </Modal>
   );
 }
@@ -705,55 +587,9 @@ export function EmployeesPage() {
     return name;
   }
 
-  /**
-   * Bring a manager into being from the details the dialog collected.
-   *
-   * They are filled in as completely as any other hire, so nothing here is
-   * invented — every value came from the form.
-   *
-   * Returns the new manager's id.
-   */
-  function createManagerFromDetails(details: EmployeeDetails, directory: Employee[]): string {
-    const index = getNextEmployeeSequence(directory);
-    const id = `emp-${String(index).padStart(3, '0')}`;
-    const fullName = `${details.firstName} ${details.lastName}`;
-
-    addEmployeeToDirectory({
-      id,
-      employeeCode: `MC-${String(index).padStart(3, '0')}`,
-      firstName: details.firstName,
-      lastName: details.lastName,
-      fullName,
-      email: details.email,
-      phone: details.phone,
-      avatar: fullName,
-      gender: details.gender,
-      dateOfBirth: details.dateOfBirth,
-      designation: details.designation,
-      department: ensureDepartment(details.department),
-      location: details.location,
-      employmentType: details.employmentType,
-      status: 'Active',
-      dateOfJoining: details.dateOfJoining,
-      reportingManagerId: details.reportingManagerId,
-      ctc: details.ctc,
-      skills: [],
-    });
-
-    return id;
-  }
-
   function handleAddEmployee(payload: NewEmployeePayload) {
-    let directory = getEmployeeDirectory();
-    // A manager typed into the dialog has to exist before anyone can report to
-    // them, so they are created first and the directory re-read — the id
-    // sequence is derived from it, and the hire below must not reuse the id
-    // the manager just took.
-    const reportingManagerId = payload.newManager
-      ? createManagerFromDetails(payload.newManager, directory)
-      : payload.reportingManagerId;
-    if (payload.newManager) directory = getEmployeeDirectory();
-
+    const directory = getEmployeeDirectory();
+    const reportingManagerId = payload.reportingManagerId;
     const nextIndex = getNextEmployeeSequence(directory);
     const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
     const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
@@ -1152,9 +988,6 @@ function SelectOrCreate({
     />
   );
 }
-
-/** Sentinel manager id standing in for one that has not been created yet. */
-const PENDING_MANAGER = '__new_manager__';
 
 /** Sentinel option value, distinct from any plausible department or location. */
 const CREATE_OPTION = '__create__';

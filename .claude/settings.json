@@ -42,7 +42,8 @@
       "Bash(REPRO_TAG=A1 npx playwright test repro-interactions --project=app --reporter=list --workers=1)",
       "Bash(cd /Users/Dell/Modcon-HR; cp /private/tmp/claude-501/-Users-Dell-Modcon-HR/dea320c8-4149-4ea1-b9c7-8134faea1e6a/scratchpad/dup.spec.ts /dev/null 2>/dev/null; ls test-results/ 2>/dev/null | head)",
       "Bash(cd /Users/Dell/Modcon-HR; *)",
-      "Bash(python3 -c \"print\\(open\\('/tmp/old_block.txt'\\).read\\(\\)[-700:]\\)\")"
+      "Bash(cp src/pages/employees/index.tsx /private/tmp/claude-501/-Users-Dell-Modcon-HR/dea320c8-4149-4ea1-b9c7-8134faea1e6a/scratchpad/employees-worktree-backup.tsx)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "/dev",
