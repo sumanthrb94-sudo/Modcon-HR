@@ -152,7 +152,7 @@ export const jobOpenings: JobOpening[] = isMockDataCleared() ? [] : [
     openings: 1,
     applicants: 44,
     postedOn: '2026-03-01',
-    hiringManagerId: 'emp-070',
+    hiringManagerId: 'emp-032',
     experience: '3–5 yrs',
     description:
       'Manage a portfolio of mid-market accounts, driving adoption, retention, and expansion revenue. Be the voice of the customer internally.',

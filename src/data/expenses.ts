@@ -133,7 +133,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-011',
-    employeeId: 'emp-050',
+    employeeId: 'emp-025',
     title: 'HR Tech Summit Registration',
     category: 'Training',
     amount: 8500,
@@ -155,7 +155,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-013',
-    employeeId: 'emp-070',
+    employeeId: 'emp-032',
     title: 'Client Onboarding Dinner',
     category: 'Meals',
     amount: 5800,
@@ -166,7 +166,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-014',
-    employeeId: 'emp-080',
+    employeeId: 'emp-035',
     title: 'Legal Database Subscription',
     category: 'Software',
     amount: 15000,
@@ -188,7 +188,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-016',
-    employeeId: 'emp-062',
+    employeeId: 'emp-030',
     title: 'Vendor Coordination Cab',
     category: 'Travel',
     amount: 1800,
