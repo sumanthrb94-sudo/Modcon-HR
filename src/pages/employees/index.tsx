@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, Link, Navigate } from 'react-router-dom';
 import {
   LayoutGrid,
@@ -50,6 +50,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { updateEmployeeInDirectory } from '@/data/employees';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -701,6 +702,102 @@ function InfoRow({ label, value }: { label: string; value: string | undefined | 
   );
 }
 
+/**
+ * A single-choice value that can be changed where it is read.
+ *
+ * Department and location are the two details most often corrected after a
+ * profile exists, and routing that through the Edit Profile modal is more
+ * ceremony than the change is worth. Click the value, pick another, done.
+ *
+ * Viewers who cannot edit get the plain value with no affordance — a control
+ * that looks clickable but refuses to act is worse than no control at all.
+ */
+function InlineSelect({
+  label,
+  value,
+  options,
+  onSave,
+  editable,
+  triggerClassName,
+  children,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onSave: (next: string) => void;
+  editable: boolean;
+  triggerClassName?: string;
+  children?: ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (!editable) return <>{children ?? value}</>;
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        aria-label={label}
+        className="input w-auto max-w-[13rem] py-0.5 px-2 text-sm"
+        value={value}
+        onChange={(event) => {
+          if (event.target.value !== value) onSave(event.target.value);
+          setEditing(false);
+        }}
+        onBlur={() => setEditing(false)}
+        onKeyDown={(event) => { if (event.key === 'Escape') setEditing(false); }}
+      >
+        {/* A value the org has since renamed or removed is still this
+            person's value. Without this it would be absent from the list,
+            the select would show the first option instead, and closing the
+            editor untouched would silently reassign them. */}
+        {!options.includes(value) && <option value={value}>{value}</option>}
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      title={`Change ${label.toLowerCase()}`}
+      className={cn(
+        'group -mx-1 inline-flex items-center gap-1 rounded px-1 text-left transition-colors hover:bg-ink-100',
+        triggerClassName,
+      )}
+    >
+      {children ?? value}
+      <Edit2 size={11} className="shrink-0 text-ink-400 opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
+  );
+}
+
+/** InfoRow whose value is editable in place. */
+function EditableInfoRow({
+  label,
+  value,
+  options,
+  onSave,
+  editable,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onSave: (next: string) => void;
+  editable: boolean;
+}) {
+  if (!editable) return <InfoRow label={label} value={value} />;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-0.5">{label}</p>
+      <div className="text-sm text-ink-800">
+        <InlineSelect label={label} value={value} options={options} onSave={onSave} editable />
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Overview Tab
 // ---------------------------------------------------------------------------
@@ -709,11 +806,15 @@ function OverviewTab({
   profilePicture,
   onUploadProfilePicture,
   profilePictureError,
+  canEdit,
+  onSaveField,
 }: {
   emp: Employee;
   profilePicture: string | null;
   onUploadProfilePicture: () => void;
   profilePictureError: string;
+  canEdit: boolean;
+  onSaveField: (patch: Partial<Employee>) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -754,8 +855,20 @@ function OverviewTab({
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
           <InfoRow label="Employee Code" value={emp.employeeCode} />
           <InfoRow label="Designation" value={emp.designation} />
-          <InfoRow label="Department" value={emp.department} />
-          <InfoRow label="Location" value={emp.location} />
+          <EditableInfoRow
+            label="Department"
+            value={emp.department}
+            options={departments}
+            onSave={(department) => onSaveField({ department })}
+            editable={canEdit}
+          />
+          <EditableInfoRow
+            label="Location"
+            value={emp.location}
+            options={locations}
+            onSave={(location) => onSaveField({ location })}
+            editable={canEdit}
+          />
           <InfoRow label="Employment Type" value={emp.employmentType} />
           <InfoRow label="Status" value={emp.status} />
           <InfoRow label="Date of Joining" value={formatDate(emp.dateOfJoining)} />
@@ -1367,8 +1480,22 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editReportingManagerId, setEditReportingManagerId] = useState('');
   const [editError, setEditError] = useState('');
 
+  // Re-read the directory whenever it changes, so an edit made here — or on
+  // another tab — is reflected without a reload. Saving used to repaint only
+  // because closing the modal happened to re-render; editing in place has no
+  // such side effect to lean on.
+  useEmployeeDirectoryRevision();
+
   const emp = getEmployee(employeeId);
   const isSelfView = emp ? emp.id === currentEmployee?.id : false;
+  /** Who may change this person's details — the same rule as Edit Profile. */
+  const canEditProfile = isSelfView || !isEmployee;
+
+  /** Persist a single field without going through the full edit form. */
+  function saveField(patch: Partial<Employee>) {
+    if (!emp) return;
+    updateEmployeeInDirectory({ ...emp, ...patch });
+  }
 
   /**
    * Who this person could report to: anyone in the directory except
@@ -1623,9 +1750,25 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
               </div>
               <p className="text-base text-ink-600 font-medium">{emp.designation}</p>
               <div className="flex flex-wrap items-center gap-3 mt-1.5 text-sm text-ink-500">
-                <span className="flex items-center gap-1"><Building2 size={13} />{emp.department}</span>
+                <InlineSelect
+                  label="Department"
+                  value={emp.department}
+                  options={departments}
+                  onSave={(department) => saveField({ department })}
+                  editable={canEditProfile}
+                >
+                  <span className="flex items-center gap-1"><Building2 size={13} />{emp.department}</span>
+                </InlineSelect>
                 <span className="text-ink-300">·</span>
-                <span className="flex items-center gap-1"><MapPin size={13} />{emp.location}</span>
+                <InlineSelect
+                  label="Location"
+                  value={emp.location}
+                  options={locations}
+                  onSave={(location) => saveField({ location })}
+                  editable={canEditProfile}
+                >
+                  <span className="flex items-center gap-1"><MapPin size={13} />{emp.location}</span>
+                </InlineSelect>
                 <span className="text-ink-300">·</span>
                 <span className="font-mono text-xs bg-ink-100 px-2 py-0.5 rounded">{emp.employeeCode}</span>
               </div>
@@ -1656,7 +1799,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                 Message
               </Button>
             )}
-            {(isSelfView || !isEmployee) && (
+            {canEditProfile && (
               <Button variant="secondary" size="sm" icon={<Edit2 size={14} />} onClick={openEditProfile}>
                 Edit Profile
               </Button>
@@ -1734,6 +1877,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           profilePicture={profilePicture}
           onUploadProfilePicture={openProfilePicturePicker}
           profilePictureError={profilePictureError}
+          canEdit={canEditProfile}
+          onSaveField={saveField}
         />
       )}
       {activeTab === 'team' && <TeamTab emp={emp} embeddedSelfView={embeddedSelfView} />}
