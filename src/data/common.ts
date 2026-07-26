@@ -32,14 +32,6 @@ export const announcements: Announcement[] = isMockDataCleared() ? [] : [
     author: 'Ritu Bansal',
   },
   {
-    id: 'a3',
-    title: 'Welcome our new joiners! 🎉',
-    body: 'Please give a warm welcome to Ishaan Gupta (Engineering) who joined us this month. Say hello on Slack!',
-    category: 'Celebration',
-    date: '2026-06-02',
-    author: 'Sara Khan',
-  },
-  {
     id: 'a4',
     title: 'Health Insurance Renewal',
     body: 'Our group health insurance has been renewed with enhanced coverage including OPD benefits and increased sum insured to ₹7L. Updated cards will be issued by end of June.',

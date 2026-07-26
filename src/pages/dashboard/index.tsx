@@ -10,37 +10,31 @@ import {
 import {
   Users, CalendarCheck, CalendarOff, Briefcase, TrendingUp,
   Clock, Bell, IndianRupee, CheckSquare, ChevronRight,
-  Cake, Star, UserPlus, Zap, Gift, Megaphone, Mail, Phone, MapPin,
+  Cake, Star, UserPlus, Megaphone, MapPin,
 } from 'lucide-react';
 
 import {
   Card, CardHeader, Badge, Button, Avatar,
   StatCard, ProgressBar, PageHeader, QuickAddMenu, NotificationsMenu,
 } from '@/components/ui';
-import { employees } from '@/data/employees';
+import { getEmployeeDirectory } from '@/data/employees';
 import { getLeaveRequests, getEmployeeBalances } from '@/data/leave';
 import { expenseClaims } from '@/data/expenses';
 import { tickets } from '@/data/helpdesk';
-import { getDepartmentDirectory } from '@/data/departments';
 import { announcements } from '@/data/common';
 import { getHolidayDirectory } from '@/data/holidays';
 import { formatDate, formatDateShort, timeAgo, pct } from '@/lib/utils';
-import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
+import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import {
-  headcountSeries, weeklyAttendance, pendingApprovals,
-  activityFeed, DEPT_COLORS, ATTENDANCE_COLORS,
+  TODAY_DATE, attendanceToday, avgTenureYears, departmentDistribution, headcountTrend,
+  hrHealthMetrics, noticePeriodRate, onLeaveToday, openPositionsCount,
+  pendingApprovalsSummary, recentActivity, weeklyAttendanceSeries, ATTENDANCE_COLORS,
 } from '@/data/dashboard';
-
-// ---------------------------------------------------------------------------
-// Fixed "today" for demo purposes
-// ---------------------------------------------------------------------------
-const TODAY = '2026-06-10';
-const TODAY_DATE = new Date(TODAY);
 
 // ---------------------------------------------------------------------------
 // Announcement category → badge tone helper
@@ -90,6 +84,21 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
           <span className="ml-auto font-semibold text-ink-800">{p.value}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared empty state — shown wherever a card has no records to chart yet,
+// instead of rendering an axis-only chart that reads as "zero activity".
+// ---------------------------------------------------------------------------
+function EmptyChart({ message, height = 220 }: { message: string; height?: number }) {
+  return (
+    <div
+      className="flex items-center justify-center rounded-xl border border-dashed border-ink-100 px-4 text-center text-sm text-ink-400"
+      style={{ height }}
+    >
+      {message}
     </div>
   );
 }
@@ -233,7 +242,7 @@ function EmployeeDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Leave Requests" value={String(leaveRequests.length)} icon={<CalendarOff size={18} />} />
         <StatCard label="Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} />
-        <StatCard label="Expense Claims" value={String(expenseRows.length)} icon={<IndianRupee size={18} />} />
+        <StatCard label="Expense Claims" value={String(employeeExpenses.length)} icon={<IndianRupee size={18} />} />
         <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} />
       </div>
 
@@ -445,12 +454,10 @@ function AdminDashboard() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
   const holidayRevision = useHolidayDirectoryRevision();
+  const dataRevision = useDashboardDataRevision();
   const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
   const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
-  // These period-over-period deltas are mock trend data, not derived from
-  // any real record — hide them for an org with no seed data instead of
-  // showing a fabricated trend against numbers that don't exist.
-  const showTrends = !isMockDataCleared();
   const greetingPeriod = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'morning';
@@ -459,53 +466,48 @@ function AdminDashboard() {
   };
 
   // ---- derived stats -------------------------------------------------------
+  // Every figure below comes from a record that exists. Where nothing has been
+  // recorded yet (e.g. no attendance marked), the stat is 0 rather than an
+  // estimate derived from a made-up ratio.
   const stats = useMemo(() => {
-    const total = employees.length;
-    const active = employees.filter((e) => e.status === 'Active').length;
-    const onLeave = employees.filter((e) => e.status === 'On Leave').length;
-    const notice = employees.filter((e) => e.status === 'Notice Period').length;
+    const today = attendanceToday();
+    return {
+      total: directory.length,
+      active: directory.filter((e) => e.status === 'Active').length,
+      presentToday: today.present,
+      wfhToday: today.wfh,
+      attendanceMarked: today.marked,
+      onLeave: onLeaveToday(),
+      openPositions: openPositionsCount(),
+      noticeRate: noticePeriodRate(),
+      avgTenure: avgTenureYears(),
+    };
+  }, [directory, dataRevision]);
 
-    // Present today: active minus on-leave (mock ~87% present)
-    const presentToday = Math.round(active * 0.87);
-    const wfhToday = Math.round(active * 0.13);
-
-    // Open positions (mock)
-    const openPositions = 8;
-
-    // Attrition rate (resigned + notice period / total * 12 for annualized)
-    const attritionRate = total === 0 ? 0 : parseFloat(((notice / total) * 100 * 4).toFixed(1));
-
-    // Average tenure in years
-    const avgTenure = total === 0 ? 0 : parseFloat(
-      (
-        employees.reduce((acc, e) => {
-          const ms = TODAY_DATE.getTime() - new Date(e.dateOfJoining).getTime();
-          return acc + ms / (1000 * 60 * 60 * 24 * 365);
-        }, 0) / total
-      ).toFixed(1),
-    );
-
-    return { total, active, onLeave, presentToday, wfhToday, openPositions, attritionRate, avgTenure };
-  }, [directoryRevision]);
+  const headcountSeries = useMemo(() => headcountTrend(), [directory]);
+  const weeklyAttendance = useMemo(() => weeklyAttendanceSeries(), [directory, dataRevision]);
+  const healthMetrics = useMemo(() => hrHealthMetrics(), [dataRevision]);
+  const healthAverage = useMemo(
+    () => (healthMetrics.length
+      ? Math.round(healthMetrics.reduce((sum, m) => sum + m.value, 0) / healthMetrics.length)
+      : 0),
+    [healthMetrics],
+  );
 
   // ---- dept distribution for pie chart ------------------------------------
-  const deptData = useMemo(() => {
-    return getDepartmentDirectory()
-      .map((dept) => ({ name: dept.name, value: dept.headcount, fill: DEPT_COLORS[dept.name] ?? '#94a3b8' }))
-      .sort((a, b) => b.value - a.value);
-  }, [directoryRevision, departmentRevision]);
+  const deptData = useMemo(() => departmentDistribution(), [directory, departmentRevision]);
+
+  const deptTotal = useMemo(() => deptData.reduce((sum, d) => sum + d.value, 0), [deptData]);
 
   // ---- gender diversity ---------------------------------------------------
   const genderData = useMemo(() => {
-    const m = employees.filter((e) => e.gender === 'Male').length;
-    const f = employees.filter((e) => e.gender === 'Female').length;
-    const o = employees.filter((e) => e.gender === 'Other').length;
+    const countBy = (gender: string) => directory.filter((e) => e.gender === gender).length;
     return [
-      { name: 'Male', value: m, fill: '#3366ff' },
-      { name: 'Female', value: f, fill: '#ec4899' },
-      ...(o > 0 ? [{ name: 'Other', value: o, fill: '#10b981' }] : []),
-    ];
-  }, [directoryRevision]);
+      { name: 'Male', value: countBy('Male'), fill: '#3366ff' },
+      { name: 'Female', value: countBy('Female'), fill: '#ec4899' },
+      { name: 'Other', value: countBy('Other'), fill: '#10b981' },
+    ].filter((entry) => entry.value > 0);
+  }, [directory]);
 
   // ---- upcoming holidays (after today) ------------------------------------
   const upcomingHolidays = useMemo(() =>
@@ -520,14 +522,16 @@ function AdminDashboard() {
     | { type: 'Birthday'; name: string; date: string; dept: string }
     | { type: 'Anniversary'; name: string; date: string; dept: string; years: number };
 
+  const celebrationMonth = TODAY_DATE.getMonth();
+  const celebrationMonthLabel = TODAY_DATE.toLocaleString('en-IN', { month: 'long' });
+
   const celebrations = useMemo((): CelebrationItem[] => {
-    const JUNE = 5; // month index 0-based
-    const birthdays: CelebrationItem[] = employees
-      .filter((e) => new Date(e.dateOfBirth).getMonth() === JUNE)
+    const birthdays: CelebrationItem[] = directory
+      .filter((e) => new Date(e.dateOfBirth).getMonth() === celebrationMonth)
       .map((e) => ({ type: 'Birthday' as const, name: e.fullName, date: e.dateOfBirth, dept: e.department }));
 
-    const anniversaries: CelebrationItem[] = employees
-      .filter((e) => new Date(e.dateOfJoining).getMonth() === JUNE)
+    const anniversaries: CelebrationItem[] = directory
+      .filter((e) => new Date(e.dateOfJoining).getMonth() === celebrationMonth)
       .map((e) => {
         const years = TODAY_DATE.getFullYear() - new Date(e.dateOfJoining).getFullYear();
         return { type: 'Anniversary' as const, name: e.fullName, date: e.dateOfJoining, dept: e.department, years };
@@ -538,7 +542,7 @@ function AdminDashboard() {
       const db = new Date(b.date).getDate();
       return da - db;
     });
-  }, [directoryRevision]);
+  }, [directory, celebrationMonth]);
 
   // ---- today date display -------------------------------------------------
   const todayLabel = TODAY_DATE.toLocaleDateString('en-IN', {
@@ -546,14 +550,16 @@ function AdminDashboard() {
   });
 
   const visiblePendingApprovals = useMemo(
-    () => pendingApprovals.filter((item) => item.count > 0),
-    [],
+    () => pendingApprovalsSummary().filter((item) => item.count > 0),
+    [directory, dataRevision],
   );
 
   const totalVisiblePendingItems = useMemo(
     () => visiblePendingApprovals.reduce((sum, item) => sum + item.count, 0),
     [visiblePendingApprovals],
   );
+
+  const activityFeed = useMemo(() => recentActivity(6), [directory, dataRevision]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -585,42 +591,41 @@ function AdminDashboard() {
           value={stats.total}
           icon={<Users size={20} />}
           iconClass="bg-brand-50 text-brand-600"
-          {...(showTrends ? { delta: 5.3, deltaLabel: 'vs last quarter' } : {})}
         />
         <StatCard
           label="Present Today"
-          value={stats.presentToday}
+          value={stats.attendanceMarked === 0 ? '—' : stats.presentToday}
           icon={<CalendarCheck size={20} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          {...(showTrends ? { delta: 2.1, deltaLabel: 'vs yesterday' } : {})}
+          footer={
+            <span className="text-ink-400">
+              {stats.attendanceMarked === 0 ? 'No attendance marked' : `${stats.wfhToday} working remotely`}
+            </span>
+          }
         />
         <StatCard
           label="On Leave"
-          value={stats.onLeave + 2}
+          value={stats.onLeave}
           icon={<CalendarOff size={20} />}
           iconClass="bg-violet-50 text-violet-600"
-          {...(showTrends ? { delta: -1, deltaLabel: 'vs last week' } : {})}
         />
         <StatCard
           label="Open Positions"
           value={stats.openPositions}
           icon={<Briefcase size={20} />}
           iconClass="bg-amber-50 text-amber-600"
-          {...(showTrends ? { delta: 14.3, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
-          label="Attrition Rate"
-          value={`${stats.attritionRate}%`}
+          label="On Notice"
+          value={`${stats.noticeRate}%`}
           icon={<TrendingUp size={20} />}
           iconClass="bg-rose-50 text-rose-600"
-          {...(showTrends ? { delta: -0.8, deltaLabel: 'vs last quarter' } : {})}
         />
         <StatCard
           label="Avg. Tenure"
           value={`${stats.avgTenure} yrs`}
           icon={<Clock size={20} />}
           iconClass="bg-cyan-50 text-cyan-600"
-          {...(showTrends ? { delta: 3.2, deltaLabel: 'vs last year' } : {})}
         />
       </div>
 
@@ -632,74 +637,87 @@ function AdminDashboard() {
         <Card className="lg:col-span-2">
           <CardHeader
             title="Headcount Growth"
-            subtitle="Last 12 months"
+            subtitle="Last 12 months, by joining date"
             action={
               headcountSeries.length > 0 ? (
-                <Badge tone="blue">+{headcountSeries[headcountSeries.length - 1].count - headcountSeries[0].count} new hires</Badge>
+                <Badge tone="blue">
+                  +{headcountSeries[headcountSeries.length - 1].count - headcountSeries[0].count} in 12 months
+                </Badge>
               ) : null
             }
           />
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={headcountSeries} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3366ff" stopOpacity={0.18} />
-                  <stop offset="95%" stopColor="#3366ff" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} domain={['dataMin - 2', 'dataMax + 2']} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="count"
-                name="Headcount"
-                stroke="#3366ff"
-                strokeWidth={2.5}
-                fill="url(#hcGrad)"
-                dot={{ r: 3, fill: '#3366ff', strokeWidth: 0 }}
-                activeDot={{ r: 5, fill: '#3366ff' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {headcountSeries.length === 0 ? (
+            <EmptyChart message="No employees on record yet — add people to the directory to see headcount over time." />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={headcountSeries} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3366ff" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="#3366ff" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} domain={[0, 'dataMax + 2']} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  name="Headcount"
+                  stroke="#3366ff"
+                  strokeWidth={2.5}
+                  fill="url(#hcGrad)"
+                  dot={{ r: 3, fill: '#3366ff', strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: '#3366ff' }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         {/* Gender diversity */}
         <Card>
-          <CardHeader title="Gender Diversity" subtitle={`${employees.length} employees`} />
-          <div className="flex flex-col items-center">
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie
-                  data={genderData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={48}
-                  outerRadius={70}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {genderData.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value) => [`${value} (${pct(Number(value), employees.length)}%)`, '']}
-                  contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap justify-center gap-3 mt-1">
-              {genderData.map((g) => (
-                <div key={g.name} className="flex items-center gap-1.5 text-xs">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: g.fill }} />
-                  <span className="text-ink-600 font-medium">{g.name}</span>
-                  <span className="text-ink-400">{g.value} ({pct(g.value, employees.length)}%)</span>
-                </div>
-              ))}
+          <CardHeader
+            title="Gender Diversity"
+            subtitle={stats.total === 1 ? '1 employee' : `${stats.total} employees`}
+          />
+          {genderData.length === 0 ? (
+            <EmptyChart message="No employees on record yet." height={200} />
+          ) : (
+            <div className="flex flex-col items-center">
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie
+                    data={genderData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={70}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {genderData.map((entry, i) => (
+                      <Cell key={i} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => [`${value} (${pct(Number(value), stats.total)}%)`, '']}
+                    contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap justify-center gap-3 mt-1">
+                {genderData.map((g) => (
+                  <div key={g.name} className="flex items-center gap-1.5 text-xs">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: g.fill }} />
+                    <span className="text-ink-600 font-medium">{g.name}</span>
+                    <span className="text-ink-400">{g.value} ({pct(g.value, stats.total)}%)</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </Card>
       </div>
 
@@ -723,57 +741,67 @@ function AdminDashboard() {
               </div>
             }
           />
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={weeklyAttendance} margin={{ top: 4, right: 8, left: -20, bottom: 0 }} barGap={2}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="Present" fill={ATTENDANCE_COLORS.Present} radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="WFH" fill={ATTENDANCE_COLORS.WFH} radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="Leave" fill={ATTENDANCE_COLORS.Leave} radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="Absent" fill={ATTENDANCE_COLORS.Absent} radius={[3, 3, 0, 0]} maxBarSize={32} />
-            </BarChart>
-          </ResponsiveContainer>
+          {weeklyAttendance.length === 0 ? (
+            <EmptyChart message="No attendance has been marked for this week yet." />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={weeklyAttendance} margin={{ top: 4, right: 8, left: -20, bottom: 0 }} barGap={2}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="Present" fill={ATTENDANCE_COLORS.Present} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                <Bar dataKey="WFH" fill={ATTENDANCE_COLORS.WFH} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                <Bar dataKey="Leave" fill={ATTENDANCE_COLORS.Leave} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                <Bar dataKey="Absent" fill={ATTENDANCE_COLORS.Absent} radius={[3, 3, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         {/* Department distribution donut */}
         <Card>
           <CardHeader title="By Department" subtitle="Headcount distribution" />
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie
-                data={deptData}
-                cx="50%"
-                cy="50%"
-                innerRadius={45}
-                outerRadius={68}
-                paddingAngle={2}
-                dataKey="value"
-              >
-                {deptData.map((d, i) => (
-                  <Cell key={i} fill={d.fill} />
+          {deptData.length === 0 ? (
+            <EmptyChart message="No departments have headcount yet." height={200} />
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie
+                    data={deptData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={68}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {deptData.map((d, i) => (
+                      <Cell key={i} fill={d.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, name) => [`${value} (${pct(Number(value), deptTotal)}%)`, name]}
+                    contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 space-y-1.5">
+                {deptData.slice(0, 5).map((d) => (
+                  <div key={d.name} className="flex items-center gap-2 text-xs">
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.fill }} />
+                    <span className="text-ink-600 flex-1 truncate">{d.name}</span>
+                    <span className="font-semibold text-ink-800">{d.value}</span>
+                    <span className="text-ink-400 w-7 text-right">{pct(d.value, deptTotal)}%</span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip
-                formatter={(value, name) => [`${value} (${pct(Number(value), employees.length)}%)`, name]}
-                contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-2 space-y-1.5">
-            {deptData.slice(0, 5).map((d) => (
-              <div key={d.name} className="flex items-center gap-2 text-xs">
-                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.fill }} />
-                <span className="text-ink-600 flex-1 truncate">{d.name}</span>
-                <span className="font-semibold text-ink-800">{d.value}</span>
-                <span className="text-ink-400 w-7 text-right">{pct(d.value, employees.length)}%</span>
+                {deptData.length > 5 && (
+                  <p className="text-xs text-ink-400 pt-0.5">+{deptData.length - 5} more departments</p>
+                )}
               </div>
-            ))}
-            {deptData.length > 5 && (
-              <p className="text-xs text-ink-400 pt-0.5">+{deptData.length - 5} more departments</p>
-            )}
-          </div>
+            </>
+          )}
         </Card>
       </div>
 
@@ -839,21 +867,25 @@ function AdminDashboard() {
               subtitle="Across all modules"
               action={<Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/recent-activity')}>See all</Button>}
             />
-            <div className="space-y-3">
-              {activityFeed.slice(0, 6).map((item) => (
-                <div key={item.id} className="flex items-start gap-3">
-                  <Avatar name={item.actor} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-ink-700">
-                      <span className="font-semibold">{item.actor}</span>
-                      {' '}{item.action}{' '}
-                      <span className="text-brand-600 font-medium">{item.subject}</span>
-                    </p>
-                    <p className="text-[11px] text-ink-400 mt-0.5">{timeAgo(item.timestamp)}</p>
+            {activityFeed.length === 0 ? (
+              <p className="text-sm text-ink-400 text-center py-6">No activity recorded yet</p>
+            ) : (
+              <div className="space-y-3">
+                {activityFeed.map((item) => (
+                  <div key={item.id} className="flex items-start gap-3">
+                    <Avatar name={item.actor} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-ink-700">
+                        <span className="font-semibold">{item.actor}</span>
+                        {' '}{item.action}{' '}
+                        <span className="text-brand-600 font-medium">{item.subject}</span>
+                      </p>
+                      <p className="text-[11px] text-ink-400 mt-0.5">{timeAgo(item.timestamp)}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
 
@@ -870,6 +902,9 @@ function AdminDashboard() {
                 </Link>
               )}
             />
+            {announcements.length === 0 && (
+              <p className="text-sm text-ink-400 text-center py-6">No announcements published yet</p>
+            )}
             <div className="space-y-4">
               {announcements.map((ann) => (
                 <div key={ann.id} className="group cursor-pointer" onClick={() => navigate('/dashboard/announcements')}>
@@ -905,9 +940,12 @@ function AdminDashboard() {
           <Card>
             <CardHeader
               title="Upcoming Holidays"
-              subtitle="Rest of 2026"
+              subtitle={upcomingHolidays.length ? `Next ${upcomingHolidays.length} on the calendar` : 'Nothing scheduled'}
               action={<Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/holiday-calendar')}>Full calendar</Button>}
             />
+            {upcomingHolidays.length === 0 && (
+              <p className="text-sm text-ink-400 text-center py-6">No upcoming holidays published</p>
+            )}
             <div className="space-y-2.5">
               {upcomingHolidays.map((h) => (
                 <div key={h.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-ink-50 transition-colors">
@@ -943,7 +981,7 @@ function AdminDashboard() {
           {/* Celebrations */}
           <Card>
             <CardHeader
-              title="June Celebrations"
+              title={`${celebrationMonthLabel} Celebrations`}
               subtitle={`${celebrations.length} birthdays & anniversaries`}
               action={(
                 <Link to="/dashboard/celebrations" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
@@ -996,7 +1034,7 @@ function AdminDashboard() {
             {(() => {
               const cutoff = new Date(TODAY_DATE);
               cutoff.setDate(cutoff.getDate() - 60);
-              const recent = employees
+              const recent = directory
                 .filter((e) => new Date(e.dateOfJoining) >= cutoff)
                 .sort((a, b) => new Date(b.dateOfJoining).getTime() - new Date(a.dateOfJoining).getTime());
               if (recent.length === 0) {
@@ -1025,29 +1063,39 @@ function AdminDashboard() {
             })()}
           </Card>
 
-          {/* HR Metrics summary card */}
+          {/* HR Metrics summary card — only metrics with records behind them */}
           <Card>
             <CardHeader
               title="HR Health Score"
-              subtitle="June 2026"
-              action={<Badge tone="green" dot>On Track</Badge>}
+              subtitle={`${celebrationMonthLabel} ${TODAY_DATE.getFullYear()}`}
+              action={healthMetrics.length > 0 ? (
+                <Badge tone={healthAverage >= 75 ? 'green' : healthAverage >= 50 ? 'amber' : 'red'} dot>
+                  {healthAverage}% overall
+                </Badge>
+              ) : null}
             />
-            <div className="space-y-4">
-              {[
-                { label: 'Offer Acceptance Rate', value: 87, tone: 'green' as const },
-                { label: 'Engagement Score', value: 74, tone: 'brand' as const },
-                { label: 'Training Completion', value: 62, tone: 'amber' as const },
-                { label: 'Policy Compliance', value: 95, tone: 'green' as const },
-              ].map((m) => (
-                <div key={m.label}>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-ink-600 font-medium">{m.label}</span>
-                    <span className="font-semibold text-ink-800">{m.value}%</span>
+            {healthMetrics.length === 0 ? (
+              <p className="text-sm text-ink-400 text-center py-6">
+                No recruitment, review, or onboarding records to score yet
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {healthMetrics.map((m) => (
+                  <div key={m.label}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-ink-600 font-medium">{m.label}</span>
+                      <span className="font-semibold text-ink-800">{m.value}%</span>
+                    </div>
+                    <ProgressBar
+                      value={m.value}
+                      tone={m.value >= 75 ? 'green' : m.value >= 50 ? 'brand' : 'amber'}
+                      size="sm"
+                    />
+                    <p className="text-[11px] text-ink-400 mt-1">{m.detail}</p>
                   </div>
-                  <ProgressBar value={m.value} tone={m.tone} size="sm" />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       </div>

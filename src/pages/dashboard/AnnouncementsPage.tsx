@@ -29,6 +29,9 @@ export function AnnouncementsPage() {
 
             <Card>
                 <CardHeader title="Announcements Feed" subtitle={`${announcements.length} published posts`} />
+                {announcements.length === 0 && (
+                    <p className="text-sm text-ink-400 text-center py-8">No announcements published yet</p>
+                )}
                 <div className="space-y-4">
                     {announcements.map((ann) => (
                         <article key={ann.id} className="rounded-xl border border-ink-100 bg-white p-4">

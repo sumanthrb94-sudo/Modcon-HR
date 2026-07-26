@@ -1,11 +1,18 @@
+import { useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { Avatar, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { activityFeed } from '@/data/dashboard';
+import { recentActivity } from '@/data/dashboard';
+import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { timeAgo } from '@/lib/utils';
 
 export function RecentActivityPage() {
+    const directoryRevision = useEmployeeDirectoryRevision();
+    const dataRevision = useDashboardDataRevision();
+    const activityFeed = useMemo(() => recentActivity(100), [directoryRevision, dataRevision]);
+
     return (
         <div className="space-y-6 animate-fade-in">
             <PageHeader
@@ -22,6 +29,9 @@ export function RecentActivityPage() {
 
             <Card>
                 <CardHeader title="Activity Feed" subtitle={`${activityFeed.length} events`} />
+                {activityFeed.length === 0 && (
+                    <p className="text-sm text-ink-400 text-center py-8">No activity recorded yet</p>
+                )}
                 <div className="space-y-4">
                     {activityFeed.map((item) => (
                         <div key={item.id} className="flex items-start gap-3 rounded-xl border border-ink-100 bg-ink-50 px-3 py-3">

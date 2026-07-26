@@ -44,27 +44,31 @@ export const standardTaskTemplate: Omit<OnboardingTask, 'id'>[] = [
 const raw: Omit<Onboarding, 'progress'>[] = isMockDataCleared() ? [] : [
   {
     id: 'ob-001',
-    employeeId: 'emp-015', // Ishaan Gupta — intern already in employees
+    // Ishaan Gupta — emp-015 in the directory, actual dateOfJoining 2026-01-05.
+    // The checklist tracks that real start date and is closed out: he has been
+    // on staff for five months, so leaving these tasks open reported him as a
+    // live onboarding on the dashboard's approval queue.
+    employeeId: 'emp-015',
     employeeName: 'Ishaan Gupta',
     designation: 'Software Engineer Intern',
     department: 'Engineering',
-    startDate: '2026-06-16',
+    startDate: '2026-01-05',
     buddy: 'Sneha Patil',
     tasks: [
-      { id: 'ob-001-t01', title: 'Submit signed offer letter', category: 'Documentation', status: 'Completed', dueDate: '2026-06-13', assignee: 'HR Executive' },
-      { id: 'ob-001-t02', title: 'Upload ID proofs & address verification', category: 'Documentation', status: 'Completed', dueDate: '2026-06-13', assignee: 'HR Executive' },
-      { id: 'ob-001-t03', title: 'Complete background check form', category: 'Documentation', status: 'Completed', dueDate: '2026-06-14', assignee: 'HR Executive' },
-      { id: 'ob-001-t04', title: 'Provision laptop & accessories', category: 'IT Setup', status: 'Completed', dueDate: '2026-06-15', assignee: 'IT Admin' },
-      { id: 'ob-001-t05', title: 'Create corporate email & accounts', category: 'IT Setup', status: 'Completed', dueDate: '2026-06-15', assignee: 'IT Admin' },
-      { id: 'ob-001-t06', title: 'Set up VPN & security tools', category: 'IT Setup', status: 'In Progress', dueDate: '2026-06-16', assignee: 'IT Admin' },
-      { id: 'ob-001-t07', title: 'Company & culture orientation session', category: 'Orientation', status: 'Pending', dueDate: '2026-06-17', assignee: 'Head of People' },
-      { id: 'ob-001-t08', title: 'Team introduction and buddy pairing', category: 'Orientation', status: 'Pending', dueDate: '2026-06-17', assignee: 'Buddy' },
-      { id: 'ob-001-t09', title: 'Meet key stakeholders (cross-functional)', category: 'Orientation', status: 'Pending', dueDate: '2026-06-20', assignee: 'Manager' },
-      { id: 'ob-001-t10', title: 'Complete POSH training', category: 'Compliance', status: 'Pending', dueDate: '2026-06-23', assignee: 'HR Business Partner' },
-      { id: 'ob-001-t11', title: 'Review and sign Code of Conduct', category: 'Compliance', status: 'Pending', dueDate: '2026-06-23', assignee: 'HR Business Partner' },
-      { id: 'ob-001-t12', title: 'Product demo & overview walkthrough', category: 'Training', status: 'Pending', dueDate: '2026-06-24', assignee: 'Manager' },
-      { id: 'ob-001-t13', title: 'Complete role-specific onboarding module', category: 'Training', status: 'Pending', dueDate: '2026-06-30', assignee: 'Manager' },
-      { id: 'ob-001-t14', title: '30-day check-in with manager', category: 'Training', status: 'Pending', dueDate: '2026-07-16', assignee: 'Manager' },
+      { id: 'ob-001-t01', title: 'Submit signed offer letter', category: 'Documentation', status: 'Completed', dueDate: '2026-01-02', assignee: 'HR Executive' },
+      { id: 'ob-001-t02', title: 'Upload ID proofs & address verification', category: 'Documentation', status: 'Completed', dueDate: '2026-01-02', assignee: 'HR Executive' },
+      { id: 'ob-001-t03', title: 'Complete background check form', category: 'Documentation', status: 'Completed', dueDate: '2026-01-03', assignee: 'HR Executive' },
+      { id: 'ob-001-t04', title: 'Provision laptop & accessories', category: 'IT Setup', status: 'Completed', dueDate: '2026-01-04', assignee: 'IT Admin' },
+      { id: 'ob-001-t05', title: 'Create corporate email & accounts', category: 'IT Setup', status: 'Completed', dueDate: '2026-01-04', assignee: 'IT Admin' },
+      { id: 'ob-001-t06', title: 'Set up VPN & security tools', category: 'IT Setup', status: 'Completed', dueDate: '2026-01-05', assignee: 'IT Admin' },
+      { id: 'ob-001-t07', title: 'Company & culture orientation session', category: 'Orientation', status: 'Completed', dueDate: '2026-01-06', assignee: 'Head of People' },
+      { id: 'ob-001-t08', title: 'Team introduction and buddy pairing', category: 'Orientation', status: 'Completed', dueDate: '2026-01-06', assignee: 'Buddy' },
+      { id: 'ob-001-t09', title: 'Meet key stakeholders (cross-functional)', category: 'Orientation', status: 'Completed', dueDate: '2026-01-09', assignee: 'Manager' },
+      { id: 'ob-001-t10', title: 'Complete POSH training', category: 'Compliance', status: 'Completed', dueDate: '2026-01-12', assignee: 'HR Business Partner' },
+      { id: 'ob-001-t11', title: 'Review and sign Code of Conduct', category: 'Compliance', status: 'Completed', dueDate: '2026-01-12', assignee: 'HR Business Partner' },
+      { id: 'ob-001-t12', title: 'Product demo & overview walkthrough', category: 'Training', status: 'Completed', dueDate: '2026-01-13', assignee: 'Manager' },
+      { id: 'ob-001-t13', title: 'Complete role-specific onboarding module', category: 'Training', status: 'Completed', dueDate: '2026-01-19', assignee: 'Manager' },
+      { id: 'ob-001-t14', title: '30-day check-in with manager', category: 'Training', status: 'Completed', dueDate: '2026-02-04', assignee: 'Manager' },
     ],
   },
   {

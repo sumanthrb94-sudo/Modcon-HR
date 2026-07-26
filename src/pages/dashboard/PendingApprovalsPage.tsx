@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { ChevronLeft, CalendarOff, IndianRupee, Clock, CheckSquare, AlertTriangle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { pendingApprovals } from '@/data/dashboard';
+import { pendingApprovalsSummary } from '@/data/dashboard';
+import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 
 const APPROVAL_ICONS: Record<string, JSX.Element> = {
     'Leave Requests': <CalendarOff size={18} />,
@@ -20,7 +23,10 @@ const APPROVAL_ROUTES: Record<string, string> = {
 
 export function PendingApprovalsPage() {
     const navigate = useNavigate();
+    const directoryRevision = useEmployeeDirectoryRevision();
+    const dataRevision = useDashboardDataRevision();
 
+    const pendingApprovals = useMemo(() => pendingApprovalsSummary(), [directoryRevision, dataRevision]);
     const total = pendingApprovals.reduce((sum, item) => sum + item.count, 0);
     const urgentTotal = pendingApprovals.reduce((sum, item) => sum + item.urgentCount, 0);
 
