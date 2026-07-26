@@ -176,6 +176,8 @@ function AddEmployeeModal({
       errors.email = 'Enter a valid email address.';
     }
     if (!designation.trim()) errors.designation = 'Designation is required.';
+    if (!department.trim()) errors.department = 'Department is required.';
+    if (!location.trim()) errors.location = 'Location is required.';
     if (!dateOfBirth) {
       errors.dateOfBirth = 'Date of birth is required.';
     } else if (dateOfBirth > todayIso()) {
@@ -189,7 +191,7 @@ function AddEmployeeModal({
     }
 
     return errors;
-  }, [firstName, lastName, email, designation, dateOfBirth, dateOfJoining, ctc]);
+  }, [firstName, lastName, email, designation, department, location, dateOfBirth, dateOfJoining, ctc]);
 
   const hasErrors = Object.keys(validationErrors).length > 0;
 
@@ -218,7 +220,15 @@ function AddEmployeeModal({
     const cleanLastName = lastName.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanDesignation = designation.trim();
+    const cleanDepartment = department.trim();
+    const cleanLocation = location.trim();
     const annualCtc = Number(ctc);
+
+    // A department typed rather than picked has to exist before the new hire
+    // is filed under it. Matching an existing name case-insensitively means
+    // typing "design" joins Design instead of standing up a rival to it.
+    const knownDepartment = departments.find((item) => item.toLowerCase() === cleanDepartment.toLowerCase());
+    if (!knownDepartment) addDepartmentToDirectory({ name: cleanDepartment, head: '—', headcount: 0 });
 
     onSave({
       firstName: cleanFirstName,
@@ -226,8 +236,8 @@ function AddEmployeeModal({
       email: cleanEmail,
       phone: phone.trim(),
       designation: cleanDesignation,
-      department,
-      location,
+      department: knownDepartment ?? cleanDepartment,
+      location: cleanLocation,
       employmentType,
       gender,
       dateOfBirth,
@@ -295,17 +305,25 @@ function AddEmployeeModal({
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Department</label>
-            <select className="input w-full" value={department} onChange={(event) => setDepartment(event.target.value as Employee['department'])}>
-              {departments.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
+            <SelectOrCreate
+              label="Department"
+              value={department}
+              onChange={(value) => setDepartment(value as Employee['department'])}
+              options={departments}
+            />
+            {submitAttempted && validationErrors.department && <p className="mt-1 text-xs text-red-600">{validationErrors.department}</p>}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Location</label>
-            <select className="input w-full" value={location} onChange={(event) => setLocation(event.target.value)}>
-              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
+            <SelectOrCreate
+              label="Location"
+              value={location}
+              onChange={setLocation}
+              options={locations}
+            />
+            {submitAttempted && validationErrors.location && <p className="mt-1 text-xs text-red-600">{validationErrors.location}</p>}
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-600 mb-1.5">Gender</label>
