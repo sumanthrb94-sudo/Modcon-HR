@@ -76,6 +76,23 @@ function daysSince(iso: string): number {
   return (TODAY_DATE.getTime() - new Date(iso).getTime()) / DAY_MS;
 }
 
+/**
+ * Last instant of the month `offset` months back — but never later than the
+ * reference date, so the current month is measured as-of today rather than
+ * as-of a month-end that has not happened yet. Without this the trailing
+ * point of a trend disagrees with the same stat on the dashboard.
+ */
+function monthEndOrToday(offset: number): Date {
+  const monthStart = new Date(TODAY_DATE.getFullYear(), TODAY_DATE.getMonth() - offset, 1);
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59);
+  return monthEnd > TODAY_DATE ? TODAY_DATE : monthEnd;
+}
+
+function monthLabel(offset: number): string {
+  const monthStart = new Date(TODAY_DATE.getFullYear(), TODAY_DATE.getMonth() - offset, 1);
+  return `${monthStart.toLocaleString('en-IN', { month: 'short' })} '${String(monthStart.getFullYear()).slice(2)}`;
+}
+
 function percent(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 100) : 0;
 }
@@ -93,13 +110,36 @@ export function headcountTrend(): MonthlyHeadcount[] {
 
   const series: MonthlyHeadcount[] = [];
   for (let offset = 11; offset >= 0; offset--) {
-    const monthStart = new Date(TODAY_DATE.getFullYear(), TODAY_DATE.getMonth() - offset, 1);
-    // Last instant of that month — an employee counts once they have joined.
-    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59);
+    // An employee counts once they have joined, as of the month's cut-off.
+    const asOf = monthEndOrToday(offset);
     series.push({
-      month: `${monthStart.toLocaleString('en-IN', { month: 'short' })} '${String(monthStart.getFullYear()).slice(2)}`,
-      count: directory.filter((employee) => new Date(employee.dateOfJoining) <= monthEnd).length,
+      month: monthLabel(offset),
+      count: directory.filter((employee) => new Date(employee.dateOfJoining) <= asOf).length,
     });
+  }
+  return series;
+}
+
+/**
+ * Mean tenure at the end of each of the trailing 12 months, over the people
+ * who had joined by that point. Genuinely reconstructible from dateOfJoining,
+ * so this is a real history rather than a projection backwards from a delta.
+ */
+export function avgTenureTrend(): { month: string; years: number }[] {
+  const directory = getEmployeeDirectory();
+  if (!directory.length) return [];
+
+  const series: { month: string; years: number }[] = [];
+  for (let offset = 11; offset >= 0; offset--) {
+    const asOf = monthEndOrToday(offset);
+    const joined = directory.filter((employee) => new Date(employee.dateOfJoining) <= asOf);
+    const years = joined.length
+      ? joined.reduce(
+        (sum, employee) => sum + (asOf.getTime() - new Date(employee.dateOfJoining).getTime()) / (DAY_MS * 365.25),
+        0,
+      ) / joined.length
+      : 0;
+    series.push({ month: monthLabel(offset), years: Math.round(years * 10) / 10 });
   }
   return series;
 }
