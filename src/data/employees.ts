@@ -23,6 +23,13 @@ interface Seed {
   managerId: string | null;
   ctc: number;
   skills: string[];
+  // Personal details an HR system only knows once someone supplies them.
+  // Optional, and absent unless a seed actually carries one — they used to be
+  // manufactured from the seed's array position (see buildEmployeeDirectory).
+  phone?: string;
+  bloodGroup?: string;
+  maritalStatus?: 'Single' | 'Married';
+  address?: string;
 }
 
 const seeds: Seed[] = [
@@ -98,8 +105,10 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
       firstName: s.first,
       lastName: s.last,
       fullName: `${s.first} ${s.last}`,
+      // Derived from the person's actual name, matching the corporate
+      // convention — unlike the fields below, this follows from real data.
       email: s.email ?? `${s.first.toLowerCase()}.${s.last.toLowerCase()}@modcon.com`,
-      phone: `+91 ${90000 + idx}${String(10000 + idx * 7).slice(0, 5)}`,
+      phone: s.phone ?? '',
       avatar: `${s.first} ${s.last}`,
       gender: s.gender,
       dateOfBirth: s.dob,
@@ -111,9 +120,15 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
       dateOfJoining: s.doj,
       reportingManagerId: s.managerId,
       ctc: s.ctc,
-      bloodGroup: ['O+', 'A+', 'B+', 'AB+', 'O-'][idx % 5],
-      maritalStatus: idx % 3 === 0 ? 'Married' : 'Single',
-      address: `${s.location}, India`,
+      // Previously manufactured from the array index: blood group was
+      // ['O+','A+','B+','AB+','O-'][idx % 5] and marital status was
+      // idx % 3 === 0 ? 'Married' : 'Single', so a person's medical and
+      // personal details were decided by where they sat in the seed list.
+      // Address was the work location restated as if it were a home address.
+      // All three are now absent unless supplied, and editable in the profile.
+      bloodGroup: s.bloodGroup,
+      maritalStatus: s.maritalStatus,
+      address: s.address,
       skills: s.skills,
     };
   });

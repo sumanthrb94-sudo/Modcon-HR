@@ -435,10 +435,10 @@ export function EmployeesPage() {
       reportingManagerId: payload.reportingManagerId,
       reportingManagerName: manager?.fullName,
       ctc: payload.ctc,
-      // maritalStatus and bloodGroup are personal details the form does not
-      // ask for — left unset rather than asserted. Address is the work
-      // location the admin did enter.
-      address: `${payload.location}, India`,
+      // Address, blood group and marital status are personal details this
+      // form does not ask for, so they stay unset and are filled in from Edit
+      // Profile. Address was previously the work location restated as though
+      // it were a home address.
       skills: [],
     };
 
@@ -683,11 +683,17 @@ export function EmployeesPage() {
 // ---------------------------------------------------------------------------
 // InfoRow helper for detail page
 // ---------------------------------------------------------------------------
+/** Standard ABO/Rh groups — a fixed clinical vocabulary, not per-person data. */
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
 function InfoRow({ label, value }: { label: string; value: string | undefined | null }) {
+  // An unrecorded detail shows as "—". Empty strings count as unrecorded too,
+  // otherwise the row renders blank and reads as a rendering fault.
+  const hasValue = typeof value === 'string' && value.trim().length > 0;
   return (
     <div>
       <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-0.5">{label}</p>
-      <p className="text-sm text-ink-800">{value ?? '—'}</p>
+      <p className={cn('text-sm', hasValue ? 'text-ink-800' : 'text-ink-400')}>{hasValue ? value : '—'}</p>
     </div>
   );
 }
@@ -1351,6 +1357,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editGender, setEditGender] = useState<Gender>('Male');
   const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>('Full-time');
   const [editStatus, setEditStatus] = useState<EmployeeStatus>('Active');
+  const [editDateOfBirth, setEditDateOfBirth] = useState('');
+  const [editBloodGroup, setEditBloodGroup] = useState('');
+  const [editMaritalStatus, setEditMaritalStatus] = useState('');
+  const [editAddress, setEditAddress] = useState('');
   const [editError, setEditError] = useState('');
 
   const emp = getEmployee(employeeId);
@@ -1447,6 +1457,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditGender(emp.gender);
     setEditEmploymentType(emp.employmentType);
     setEditStatus(emp.status);
+    setEditDateOfBirth(emp.dateOfBirth ?? '');
+    setEditBloodGroup(emp.bloodGroup ?? '');
+    setEditMaritalStatus(emp.maritalStatus ?? '');
+    setEditAddress(emp.address ?? '');
     setEditError('');
     setEditOpen(true);
   }
@@ -1471,6 +1485,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       setEditError('Designation is required.');
       return;
     }
+    if (editDateOfBirth && editDateOfBirth > todayIso()) {
+      setEditError('Date of birth cannot be in the future.');
+      return;
+    }
 
     updateEmployeeInDirectory({
       ...emp,
@@ -1485,6 +1503,12 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       gender: editGender,
       employmentType: editEmploymentType,
       status: editStatus,
+      dateOfBirth: editDateOfBirth,
+      // Left undefined rather than stored as '' when blank, so the record
+      // says "not recorded" instead of "recorded as empty".
+      bloodGroup: editBloodGroup.trim() || undefined,
+      maritalStatus: (editMaritalStatus as Employee['maritalStatus']) || undefined,
+      address: editAddress.trim() || undefined,
     });
 
     setEditOpen(false);
@@ -1573,10 +1597,18 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   <Mail size={13} className="text-ink-400" />
                   {emp.email}
                 </a>
-                <a href={`tel:${emp.phone}`} className="flex items-center gap-1.5 text-xs text-ink-600 hover:text-brand-700 transition-colors">
-                  <Phone size={13} className="text-ink-400" />
-                  {emp.phone}
-                </a>
+                {emp.phone?.trim() ? (
+                  <a href={`tel:${emp.phone}`} className="flex items-center gap-1.5 text-xs text-ink-600 hover:text-brand-700 transition-colors">
+                    <Phone size={13} className="text-ink-400" />
+                    {emp.phone}
+                  </a>
+                ) : (
+                  // No number on file — show the gap rather than an empty tel: link.
+                  <span className="flex items-center gap-1.5 text-xs text-ink-400">
+                    <Phone size={13} className="text-ink-300" />
+                    No phone on file
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1810,6 +1842,46 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
               onChange={(value) => setEditEmploymentType(value as EmploymentType)}
               options={(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((type) => ({ label: type, value: type }))}
               disabled={isEmployee}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Date of Birth</label>
+            <input
+              type="date"
+              max={todayIso()}
+              value={editDateOfBirth}
+              onChange={(event) => setEditDateOfBirth(event.target.value)}
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Blood Group</label>
+            <Select
+              value={editBloodGroup}
+              onChange={setEditBloodGroup}
+              options={[{ label: 'Not recorded', value: '' }, ...BLOOD_GROUPS.map((group) => ({ label: group, value: group }))]}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Marital Status</label>
+            <Select
+              value={editMaritalStatus}
+              onChange={setEditMaritalStatus}
+              options={[
+                { label: 'Not recorded', value: '' },
+                { label: 'Single', value: 'Single' },
+                { label: 'Married', value: 'Married' },
+              ]}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Address</label>
+            <input
+              type="text"
+              value={editAddress}
+              onChange={(event) => setEditAddress(event.target.value)}
+              placeholder="Not recorded"
+              className="input w-full"
             />
           </div>
           <div className="md:col-span-2">
