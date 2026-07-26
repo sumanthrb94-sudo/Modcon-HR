@@ -1,5 +1,6 @@
 import type { Goal, GoalStatus, PerformanceReview, ReviewStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { startOfYear } from '@/lib/today';
 import { orgScopedKey } from '@/lib/orgScope';
 
 const GOALS_STORAGE_KEY = 'modcon.hr.goals';
@@ -446,7 +447,7 @@ function getRecommendedStatus(goal: Goal): GoalStatus {
   // Calculate expected progress based on timeline
   const now = new Date();
   const due = new Date(dueDate);
-  const goalCreated = new Date('2026-01-01'); // Assume goals start at beginning of year
+  const goalCreated = startOfYear(); // Assume goals start at beginning of year
   
   const totalTime = due.getTime() - goalCreated.getTime();
   const elapsedTime = now.getTime() - goalCreated.getTime();

@@ -35,6 +35,7 @@ import { formatINR, formatDate } from '@/lib/utils';
 import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
+import { currentMonthIso, todayDate } from '@/lib/today';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import type { Payslip, PayrollRun } from '@/types';
@@ -47,6 +48,12 @@ function monthLabel(m: string): string {
   const [yr, mo] = m.split('-');
   const date = new Date(Number(yr), Number(mo) - 1, 1);
   return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+/** Pay day for a "YYYY-MM" run — the last day of that month. */
+function payDateFor(month: string): string {
+  const [yr, mo] = month.split('-').map(Number);
+  return new Date(Date.UTC(yr, mo, 0)).toISOString().slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +145,7 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
         </div>
         <div className="text-right text-sm text-brand-100">
           <p>{monthLabel(payslip.month)}</p>
-          <p className="mt-0.5">Paid on {payslip.status === 'Paid' ? '31 May 2026' : '—'}</p>
+          <p className="mt-0.5">Paid on {payslip.status === 'Paid' ? formatDate(payDateFor(payslip.month)) : '—'}</p>
         </div>
       </div>
     </Modal>
@@ -149,7 +156,7 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
 // Main Page
 // ---------------------------------------------------------------------------
 
-const CURRENT_PAYROLL_MONTH = '2026-06';
+
 
 export function PayrollPage() {
   const directoryRevision = useEmployeeDirectoryRevision();
@@ -160,6 +167,17 @@ export function PayrollPage() {
   const [deptFilter, setDeptFilter] = useState('');
   const [payrollRunList, setPayrollRunList] = useState<PayrollRun[]>(initialPayrollRuns);
   const [payslipList, setPayslipList] = useState<Payslip[]>(initialPayslips);
+
+  // Salaries are disbursed on the last day of the month.
+  const nextPayDate = useMemo(() => {
+    const today = todayDate();
+    const lastDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+    return lastDay.toISOString().slice(0, 10);
+  }, []);
+  const daysToPayDate = useMemo(
+    () => Math.max(0, Math.round((new Date(nextPayDate).getTime() - todayDate().getTime()) / 86_400_000)),
+    [nextPayDate],
+  );
 
   // ----- Aggregates -----
   const totalNetPay = useMemo(() => payslipList.reduce((s, p) => s + p.netPay, 0), [payslipList]);
@@ -213,24 +231,24 @@ export function PayrollPage() {
   }, [payslipList, search, deptFilter, directoryRevision]);
 
   function handleRunPayroll() {
-    const alreadyExists = payrollRunList.some((run) => run.month === CURRENT_PAYROLL_MONTH);
+    const alreadyExists = payrollRunList.some((run) => run.month === currentMonthIso());
     if (alreadyExists) {
       setActiveTab('runs');
       return;
     }
 
-    const monthPayslips = employees.map((employee) => buildPayslip(employee, CURRENT_PAYROLL_MONTH, 'Paid'));
+    const monthPayslips = employees.map((employee) => buildPayslip(employee, currentMonthIso(), 'Paid'));
     const grossTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
     const netTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
 
     const newRun: PayrollRun = {
-      id: `pr-${CURRENT_PAYROLL_MONTH}`,
-      month: CURRENT_PAYROLL_MONTH,
+      id: `pr-${currentMonthIso()}`,
+      month: currentMonthIso(),
       status: 'Paid',
       employeeCount: employees.length,
       grossTotal,
       netTotal,
-      processedOn: `${CURRENT_PAYROLL_MONTH}-30`,
+      processedOn: `${currentMonthIso()}-30`,
     };
 
     setPayrollRunList((prev) => [newRun, ...prev]);
@@ -372,10 +390,14 @@ export function PayrollPage() {
         />
         <StatCard
           label="Next Pay Date"
-          value="30 Jun 2026"
+          value={formatDate(nextPayDate)}
           icon={<CalendarClock size={22} />}
           iconClass="bg-amber-50 text-amber-600"
-          footer={<span className="text-ink-400 text-sm">20 days away</span>}
+          footer={
+            <span className="text-ink-400 text-sm">
+              {daysToPayDate === 0 ? 'Today' : `${daysToPayDate} day${daysToPayDate === 1 ? '' : 's'} away`}
+            </span>
+          }
         />
       </div>
 

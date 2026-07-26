@@ -2,6 +2,7 @@ import type { Payslip, PayrollRun, PayrollRunStatus } from '@/types';
 import type { Employee } from '@/types';
 import { employees } from '@/data/employees';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { currentMonthIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Salary component builder
@@ -51,7 +52,7 @@ export function buildPayslipComponents(employee: Employee): PayslipComponents {
   return { monthly, basic, hra, specialAllowance, bonus, pf, tax, otherDeductions, grossEarnings, totalDeductions, netPay };
 }
 
-export function buildPayslip(employee: Employee, month = '2026-05', status: PayrollRunStatus = 'Paid'): Payslip {
+export function buildPayslip(employee: Employee, month = currentMonthIso(), status: PayrollRunStatus = 'Paid'): Payslip {
   const c = buildPayslipComponents(employee);
   return {
     id: `ps-${employee.id}-${month}`,

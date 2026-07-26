@@ -1,5 +1,6 @@
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { todayDate } from '@/lib/today';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -211,8 +212,24 @@ export function getRecordsByDate(date: string): AttendanceRecord[] {
   return attendanceRecords.filter((r) => r.date === date);
 }
 
+/**
+ * Mon–Fri of the week containing today. WEEK_DATES is the week the seed
+ * records were written for, which is not the same thing once the app runs on
+ * the real clock — surfaces that say "current week" must ask for the current
+ * week, and get an empty result when nothing has been marked in it.
+ */
+export function getCurrentWeekDates(): string[] {
+  const base = todayDate(); // UTC midnight, matching how record dates parse
+  const sinceMonday = (base.getUTCDay() + 6) % 7;
+  return Array.from({ length: 5 }, (_, offset) => {
+    const day = new Date(base);
+    day.setUTCDate(base.getUTCDate() - sinceMonday + offset);
+    return day.toISOString().slice(0, 10);
+  });
+}
+
 export function getWeekSummary(): Array<{ date: string; Present: number; 'Work From Home': number; 'On Leave': number; Absent: number; 'Half Day': number }> {
-  return WEEK_DATES.map((date) => {
+  return getCurrentWeekDates().map((date) => {
     const records = getRecordsByDate(date);
     return {
       date,

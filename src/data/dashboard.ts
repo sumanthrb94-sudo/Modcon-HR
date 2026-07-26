@@ -17,6 +17,7 @@ import { getRecordsByDate, getWeekSummary, regularizationRequests } from './atte
 import { onboardings } from './onboarding';
 import { getCandidates, getJobOpenings } from './recruitment';
 import { getReviews } from './performance';
+import { todayDate, todayIso } from '@/lib/today';
 
 export interface MonthlyHeadcount {
   month: string;  // "Jun '26"
@@ -59,21 +60,14 @@ export interface HealthMetric {
   detail: string;  // the record counts the percentage came from
 }
 
-// ---------------------------------------------------------------------------
-// Fixed "today" for the demo dataset. Exported so every dashboard surface
-// agrees on the reference date instead of redeclaring its own copy.
-// ---------------------------------------------------------------------------
-export const TODAY_ISO = '2026-06-10';
-export const TODAY_DATE = new Date(TODAY_ISO);
-
 const DAY_MS = 1000 * 60 * 60 * 24;
 
 function daysUntil(iso: string): number {
-  return (new Date(iso).getTime() - TODAY_DATE.getTime()) / DAY_MS;
+  return (new Date(iso).getTime() - todayDate().getTime()) / DAY_MS;
 }
 
 function daysSince(iso: string): number {
-  return (TODAY_DATE.getTime() - new Date(iso).getTime()) / DAY_MS;
+  return (todayDate().getTime() - new Date(iso).getTime()) / DAY_MS;
 }
 
 /**
@@ -83,13 +77,13 @@ function daysSince(iso: string): number {
  * point of a trend disagrees with the same stat on the dashboard.
  */
 function monthEndOrToday(offset: number): Date {
-  const monthStart = new Date(TODAY_DATE.getFullYear(), TODAY_DATE.getMonth() - offset, 1);
+  const monthStart = new Date(todayDate().getFullYear(), todayDate().getMonth() - offset, 1);
   const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59);
-  return monthEnd > TODAY_DATE ? TODAY_DATE : monthEnd;
+  return monthEnd > todayDate() ? todayDate() : monthEnd;
 }
 
 function monthLabel(offset: number): string {
-  const monthStart = new Date(TODAY_DATE.getFullYear(), TODAY_DATE.getMonth() - offset, 1);
+  const monthStart = new Date(todayDate().getFullYear(), todayDate().getMonth() - offset, 1);
   return `${monthStart.toLocaleString('en-IN', { month: 'short' })} '${String(monthStart.getFullYear()).slice(2)}`;
 }
 
@@ -164,7 +158,7 @@ export function weeklyAttendanceSeries(): WeeklyAttendance[] {
 // 3. Today's attendance split
 // ---------------------------------------------------------------------------
 export function attendanceToday(): { present: number; wfh: number; onLeave: number; absent: number; marked: number } {
-  const records = getRecordsByDate(TODAY_ISO);
+  const records = getRecordsByDate(todayIso());
   return {
     present: records.filter((r) => r.status === 'Present' || r.status === 'Half Day').length,
     wfh: records.filter((r) => r.status === 'Work From Home').length,
@@ -186,8 +180,8 @@ export function onLeaveToday(): number {
     .forEach((employee) => off.add(employee.id));
   getLeaveRequests()
     .filter((request) => request.status === 'Approved'
-      && request.startDate <= TODAY_ISO
-      && request.endDate >= TODAY_ISO)
+      && request.startDate <= todayIso()
+      && request.endDate >= todayIso())
     .forEach((request) => off.add(request.employeeId));
   return off.size;
 }
@@ -217,7 +211,7 @@ export function avgTenureYears(): number {
   const directory = getEmployeeDirectory();
   if (!directory.length) return 0;
   const total = directory.reduce(
-    (sum, employee) => sum + (TODAY_DATE.getTime() - new Date(employee.dateOfJoining).getTime()) / (DAY_MS * 365.25),
+    (sum, employee) => sum + (todayDate().getTime() - new Date(employee.dateOfJoining).getTime()) / (DAY_MS * 365.25),
     0,
   );
   return Math.round((total / directory.length) * 10) / 10;

@@ -42,8 +42,9 @@ import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import type { LeaveRequest, LeaveType, LeaveStatus } from '@/types';
 import { formatDate, formatDateShort, pct } from '@/lib/utils';
+import { todayIso } from '@/lib/today';
 
-const TODAY = '2026-06-10';
+
 
 const leaveTypeTone = (type: LeaveType) => {
   if (type === 'Sick') return 'red' as const;
@@ -112,12 +113,12 @@ export function LeavePage() {
   const onLeaveToday = useMemo(
     () =>
       scopedRequests.filter(
-        (r) => r.status === 'Approved' && r.startDate <= TODAY && r.endDate >= TODAY,
+        (r) => r.status === 'Approved' && r.startDate <= todayIso() && r.endDate >= todayIso(),
       ).length,
     [scopedRequests],
   );
   const upcomingHolidays = useMemo(
-    () => holidays.filter((h) => h.date >= TODAY).length,
+    () => holidays.filter((h) => h.date >= todayIso()).length,
     [holidays],
   );
 
@@ -185,7 +186,7 @@ export function LeavePage() {
       days,
       reason: formReason.trim(),
       status: 'Pending',
-      appliedOn: TODAY,
+      appliedOn: todayIso(),
       approverId: null,
     };
     const updatedRequests = [newRequest, ...leaveRequests];
@@ -310,7 +311,7 @@ export function LeavePage() {
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {
     return scopedRequests
-      .filter((r) => r.status === 'Approved' && r.endDate >= TODAY)
+      .filter((r) => r.status === 'Approved' && r.endDate >= todayIso())
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
   }, [scopedRequests]);
 
@@ -465,7 +466,7 @@ export function LeavePage() {
                 {whosOff.map((r) => {
                   const emp = getEmployee(r.employeeId);
                   if (!emp) return null;
-                  const isOnLeaveNow = r.startDate <= TODAY && r.endDate >= TODAY;
+                  const isOnLeaveNow = r.startDate <= todayIso() && r.endDate >= todayIso();
                   return (
                     <div
                       key={r.id}
@@ -507,7 +508,7 @@ export function LeavePage() {
           <div className="p-5">
             <div className="space-y-2">
               {sortedHolidays.map((h) => {
-                const isPast = h.date < TODAY;
+                const isPast = h.date < todayIso();
                 return (
                   <div
                     key={h.id}
@@ -625,7 +626,7 @@ export function LeavePage() {
                 className="input w-full"
                 value={formStart}
                 onChange={(e) => setFormStart(e.target.value)}
-                min={TODAY}
+                min={todayIso()}
               />
             </div>
             <div>
@@ -637,7 +638,7 @@ export function LeavePage() {
                 className="input w-full"
                 value={formEnd}
                 onChange={(e) => setFormEnd(e.target.value)}
-                min={formStart || TODAY}
+                min={formStart || todayIso()}
               />
             </div>
           </div>

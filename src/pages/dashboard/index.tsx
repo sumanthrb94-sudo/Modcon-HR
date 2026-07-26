@@ -30,8 +30,9 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { todayDate } from '@/lib/today';
 import {
-  TODAY_DATE, attendanceToday, avgTenureYears, departmentDistribution, headcountTrend,
+  attendanceToday, avgTenureYears, departmentDistribution, headcountTrend,
   hrHealthMetrics, noticePeriodRate, onLeaveToday, openPositionsCount,
   pendingApprovalsSummary, recentActivity, weeklyAttendanceSeries, ATTENDANCE_COLORS,
 } from '@/data/dashboard';
@@ -142,7 +143,7 @@ function EmployeeDashboard() {
   );
   const upcomingHolidays = useMemo(
     () => getHolidayDirectory()
-      .filter((holiday) => new Date(holiday.date) >= TODAY_DATE)
+      .filter((holiday) => new Date(holiday.date) >= todayDate())
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 3),
     [holidayRevision],
@@ -156,7 +157,7 @@ function EmployeeDashboard() {
   );
   const nextPlannedLeave = useMemo(
     () => leaveRequests
-      .filter((request) => request.status !== 'Rejected' && request.status !== 'Cancelled' && new Date(request.startDate) >= TODAY_DATE)
+      .filter((request) => request.status !== 'Rejected' && request.status !== 'Cancelled' && new Date(request.startDate) >= todayDate())
       .sort((a, b) => a.startDate.localeCompare(b.startDate))[0],
     [leaveRequests],
   );
@@ -512,7 +513,7 @@ function AdminDashboard() {
   // ---- upcoming holidays (after today) ------------------------------------
   const upcomingHolidays = useMemo(() =>
     holidays
-      .filter((h) => new Date(h.date) > TODAY_DATE)
+      .filter((h) => new Date(h.date) > todayDate())
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 5),
     [holidays]);
@@ -522,8 +523,8 @@ function AdminDashboard() {
     | { type: 'Birthday'; name: string; date: string; dept: string }
     | { type: 'Anniversary'; name: string; date: string; dept: string; years: number };
 
-  const celebrationMonth = TODAY_DATE.getMonth();
-  const celebrationMonthLabel = TODAY_DATE.toLocaleString('en-IN', { month: 'long' });
+  const celebrationMonth = todayDate().getMonth();
+  const celebrationMonthLabel = todayDate().toLocaleString('en-IN', { month: 'long' });
 
   const celebrations = useMemo((): CelebrationItem[] => {
     const birthdays: CelebrationItem[] = directory
@@ -533,7 +534,7 @@ function AdminDashboard() {
     const anniversaries: CelebrationItem[] = directory
       .filter((e) => new Date(e.dateOfJoining).getMonth() === celebrationMonth)
       .map((e) => {
-        const years = TODAY_DATE.getFullYear() - new Date(e.dateOfJoining).getFullYear();
+        const years = todayDate().getFullYear() - new Date(e.dateOfJoining).getFullYear();
         return { type: 'Anniversary' as const, name: e.fullName, date: e.dateOfJoining, dept: e.department, years };
       });
 
@@ -545,7 +546,7 @@ function AdminDashboard() {
   }, [directory, celebrationMonth]);
 
   // ---- today date display -------------------------------------------------
-  const todayLabel = TODAY_DATE.toLocaleDateString('en-IN', {
+  const todayLabel = todayDate().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
@@ -1032,7 +1033,7 @@ function AdminDashboard() {
               action={<Button variant="ghost" size="sm" icon={<UserPlus size={13} />} onClick={() => navigate('/onboarding')}>Onboard</Button>}
             />
             {(() => {
-              const cutoff = new Date(TODAY_DATE);
+              const cutoff = new Date(todayDate());
               cutoff.setDate(cutoff.getDate() - 60);
               const recent = directory
                 .filter((e) => new Date(e.dateOfJoining) >= cutoff)
@@ -1067,7 +1068,7 @@ function AdminDashboard() {
           <Card>
             <CardHeader
               title="HR Health Score"
-              subtitle={`${celebrationMonthLabel} ${TODAY_DATE.getFullYear()}`}
+              subtitle={`${celebrationMonthLabel} ${todayDate().getFullYear()}`}
               action={healthMetrics.length > 0 ? (
                 <Badge tone={healthAverage >= 75 ? 'green' : healthAverage >= 50 ? 'amber' : 'red'} dot>
                   {healthAverage}% overall

@@ -1,5 +1,6 @@
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { currentMonthIso } from '@/lib/today';
 import { orgScopedKey } from '@/lib/orgScope';
 
 const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
@@ -373,7 +374,7 @@ export function getPendingCount(): number {
 }
 
 // Helper: approved this month
-export function getApprovedThisMonth(month = '2026-06'): number {
+export function getApprovedThisMonth(month = currentMonthIso()): number {
   return getLeaveRequests().filter(
     (r) => r.status === 'Approved' && r.appliedOn.startsWith(month),
   ).length;

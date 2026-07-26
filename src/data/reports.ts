@@ -8,16 +8,17 @@ import { getDepartmentDirectory } from './departments';
 import { getCandidates } from './recruitment';
 import { getReviews } from './performance';
 import { getWeekSummary } from './attendance';
+import { todayDate } from '@/lib/today';
 import { headcountTrend, noticePeriodRate, openPositionsCount } from './dashboard';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const TODAY = new Date('2026-06-10');
+
 
 function yearsFromDOJ(doj: string): number {
   const d = new Date(doj);
-  const ms = TODAY.getTime() - d.getTime();
+  const ms = todayDate().getTime() - d.getTime();
   return ms / (1000 * 60 * 60 * 24 * 365.25);
 }
 
@@ -192,7 +193,7 @@ export function openRolesCount(): number {
 export function avgTimeToHireDays(): number {
   const hired = getCandidates().filter((c) => c.stage === 'Hired');
   if (!hired.length) return 0;
-  const totalDays = hired.reduce((acc, c) => acc + (TODAY.getTime() - new Date(c.appliedOn).getTime()) / (1000 * 60 * 60 * 24), 0);
+  const totalDays = hired.reduce((acc, c) => acc + (todayDate().getTime() - new Date(c.appliedOn).getTime()) / (1000 * 60 * 60 * 24), 0);
   return Math.round(totalDays / hired.length);
 }
 

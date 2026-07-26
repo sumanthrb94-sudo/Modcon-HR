@@ -44,10 +44,11 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { todayIso } from '@/lib/today';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
 
-const TODAY = '2026-06-10';
+
 
 // day-of-week label for selects
 function dayLabel(iso: string): string {
@@ -60,7 +61,7 @@ function dayLabel(iso: string): string {
 export function AttendancePage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
-  const [selectedDate, setSelectedDate] = useState(TODAY);
+  const [selectedDate, setSelectedDate] = useState(todayIso());
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [markModalOpen, setMarkModalOpen] = useState(false);
@@ -80,7 +81,7 @@ export function AttendancePage() {
   // Stats for selected date
   const dayRecords = useMemo(() => recordsByDate(selectedDate), [attendanceState, selectedDate]);
   const todayStats = useMemo(() => {
-    const todayRecs = recordsByDate(TODAY);
+    const todayRecs = recordsByDate(todayIso());
     return {
       present: todayRecs.filter((r) => r.status === 'Present').length,
       wfh: todayRecs.filter((r) => r.status === 'Work From Home').length,
@@ -133,7 +134,7 @@ export function AttendancePage() {
   const dateOptions = useMemo(
     () =>
       WEEK_DATES.map((d) => ({
-        label: dayLabel(d) + (d === TODAY ? ' (Today)' : ''),
+        label: dayLabel(d) + (d === todayIso() ? ' (Today)' : ''),
         value: d,
       })),
     [],
@@ -239,9 +240,9 @@ export function AttendancePage() {
 
     setAttendanceState((prev) => {
       const nextRecord: AttendanceRecord = {
-        id: `att-manual-${markEmployeeId}-${TODAY}`,
+        id: `att-manual-${markEmployeeId}-${todayIso()}`,
         employeeId: markEmployeeId,
-        date: TODAY,
+        date: todayIso(),
         status: markStatus,
         checkIn: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckIn,
         checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
@@ -250,13 +251,13 @@ export function AttendancePage() {
         isLate,
       };
 
-      const withoutExisting = prev.filter((record) => !(record.employeeId === markEmployeeId && record.date === TODAY));
+      const withoutExisting = prev.filter((record) => !(record.employeeId === markEmployeeId && record.date === todayIso()));
       return [...withoutExisting, nextRecord];
     });
 
     setMarkModalOpen(false);
     resetMarkAttendanceForm();
-    setSelectedDate(TODAY);
+    setSelectedDate(todayIso());
   }
 
   const regColumns: Column<RegularizationRequest>[] = [

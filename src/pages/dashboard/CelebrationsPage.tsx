@@ -5,9 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { employees } from '@/data/employees';
 import { formatDateShort } from '@/lib/utils';
+import { todayDate } from '@/lib/today';
 
-const TODAY = '2026-06-10';
-const TODAY_DATE = new Date(TODAY);
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 type CelebrationItem = {
@@ -20,7 +19,7 @@ type CelebrationItem = {
 
 export function CelebrationsPage() {
     const navigate = useNavigate();
-    const [selectedMonth, setSelectedMonth] = useState<number>(TODAY_DATE.getMonth());
+    const [selectedMonth, setSelectedMonth] = useState<number>(todayDate().getMonth());
 
     const groupedCelebrations = useMemo(() => {
         const grouped: Record<number, CelebrationItem[]> = Object.fromEntries(MONTHS.map((_, index) => [index, []]));
@@ -35,7 +34,7 @@ export function CelebrationsPage() {
             });
 
             const anniversaryMonth = new Date(employee.dateOfJoining).getMonth();
-            const years = TODAY_DATE.getFullYear() - new Date(employee.dateOfJoining).getFullYear();
+            const years = todayDate().getFullYear() - new Date(employee.dateOfJoining).getFullYear();
             grouped[anniversaryMonth].push({
                 type: 'Anniversary',
                 name: employee.fullName,
