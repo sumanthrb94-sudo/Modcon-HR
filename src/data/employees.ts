@@ -243,6 +243,30 @@ export function deleteEmployeeFromDirectory(employeeId: string) {
   notifyEmployeeDirectoryChanged();
 }
 
+/**
+ * Move everyone in one department to another, in a single write.
+ *
+ * Renaming a department has to bring its people with it, or they end up
+ * assigned to a department that no longer exists. Seed employees are
+ * materialised as custom overrides here, since the seed array itself is
+ * immutable — that is the same mechanism an individual edit already uses.
+ *
+ * Returns how many records moved.
+ */
+export function reassignEmployeeDepartment(fromDepartment: string, toDepartment: string): number {
+  const affected = getEmployeeDirectory().filter((employee) => employee.department === fromDepartment);
+  if (!affected.length) return 0;
+
+  const movedIds = new Set(affected.map((employee) => employee.id));
+  const untouched = readCustomEmployees().filter((employee) => !movedIds.has(employee.id));
+  const moved = affected.map((employee) => ({ ...employee, department: toDepartment }));
+
+  writeCustomEmployees([...moved, ...untouched]);
+  syncDirectorySnapshots();
+  notifyEmployeeDirectoryChanged();
+  return moved.length;
+}
+
 export const getEmployee = (id: string): Employee | undefined => getEmployeeDirectory().find((employee) => employee.id === id);
 
 export const getEmployeeByEmail = (email: string): Employee | undefined =>

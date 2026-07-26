@@ -13,7 +13,7 @@ import {
 import type { Column } from '@/components/ui';
 import { Select } from '@/components/ui';
 import { employees } from '@/data/employees';
-import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
+import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { getLeavePolicies, saveLeavePolicies, type LeavePolicy } from '@/data/leavePolicies';
@@ -296,6 +296,7 @@ function DepartmentsSection() {
   const departmentRevision = useDepartmentDirectoryRevision();
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [editingDeptOriginalName, setEditingDeptOriginalName] = useState('');
   const [editingDeptName, setEditingDeptName] = useState('');
   const [editingDeptHead, setEditingDeptHead] = useState('');
   const [editingDeptHeadcount, setEditingDeptHeadcount] = useState('0');
@@ -306,6 +307,7 @@ function DepartmentsSection() {
   const [newDeptOpenRoles, setNewDeptOpenRoles] = useState('0');
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
+  const [deleteBlocked, setDeleteBlocked] = useState('');
 
   const deptRows: DeptRow[] = useMemo(() => getDepartmentDirectory(), [departmentRevision]);
 
@@ -318,6 +320,7 @@ function DepartmentsSection() {
   }
 
   function resetEditForm() {
+    setEditingDeptOriginalName('');
     setEditingDeptName('');
     setEditingDeptHead('');
     setEditingDeptHeadcount('0');
@@ -326,6 +329,7 @@ function DepartmentsSection() {
   }
 
   function openEditDepartment(row: DeptRow) {
+    setEditingDeptOriginalName(row.name);
     setEditingDeptName(row.name);
     setEditingDeptHead(row.head === '—' ? '' : row.head);
     setEditingDeptHeadcount(String(row.headcount));
@@ -386,7 +390,17 @@ function DepartmentsSection() {
       return;
     }
 
-    const currentRecord = getDepartmentRecord(name);
+    const renaming = name !== editingDeptOriginalName;
+    if (renaming && deptRows.some((department) => department.name.toLowerCase() === name.toLowerCase())) {
+      setEditError('A department with this name already exists.');
+      return;
+    }
+
+    if (renaming) {
+      // Moves the department's people across as part of the rename.
+      renameDepartmentInDirectory(editingDeptOriginalName, name);
+    }
+
     updateDepartmentInDirectory({
       name,
       head: head || '—',
@@ -395,6 +409,20 @@ function DepartmentsSection() {
     });
     setEditOpen(false);
     resetEditForm();
+  }
+
+  function handleDeleteDepartment(row: DeptRow) {
+    // Removing a department that still has people would leave them pointing at
+    // something that no longer exists, so require them to be moved first.
+    if (row.headcount > 0) {
+      setDeleteBlocked(
+        `${row.name} still has ${row.headcount} employee${row.headcount === 1 ? '' : 's'}. `
+        + 'Reassign them to another department before deleting it.',
+      );
+      return;
+    }
+    deleteDepartmentFromDirectory(row.name);
+    setDeleteBlocked('');
   }
 
   const cols: Column<DeptRow>[] = [
@@ -433,9 +461,20 @@ function DepartmentsSection() {
       header: '',
       align: 'right',
       render: (r) => (
-        <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditDepartment(r)}>
-          Edit
-        </Button>
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditDepartment(r)}>
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trash2 size={13} />}
+            onClick={() => handleDeleteDepartment(r)}
+            title={r.headcount > 0 ? 'Reassign this department\'s employees before deleting it' : 'Delete department'}
+          >
+            Delete
+          </Button>
+        </div>
       ),
     },
   ];
@@ -447,6 +486,12 @@ function DepartmentsSection() {
           <p className="text-sm text-ink-500">{deptRows.length} departments configured</p>
           <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Department</Button>
         </div>
+        {deleteBlocked && (
+          <div className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+            <p className="text-sm text-amber-800">{deleteBlocked}</p>
+          </div>
+        )}
         <Table columns={cols} data={deptRows} keyExtractor={(r) => r.name} />
       </Card>
 
@@ -539,7 +584,12 @@ function DepartmentsSection() {
         }
       >
         <div className="space-y-4">
-          <Field label="Department Name" value={editingDeptName} onChange={setEditingDeptName} disabled hint="Department names are fixed in this demo." />
+          <Field
+            label="Department Name"
+            value={editingDeptName}
+            onChange={setEditingDeptName}
+            hint="Renaming moves everyone in this department to the new name."
+          />
           <Field
             label="Department Head"
             value={editingDeptHead}

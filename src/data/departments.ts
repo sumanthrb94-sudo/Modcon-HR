@@ -1,4 +1,4 @@
-import { employees, departments as employeeDepartments, EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
+import { employees, departments as employeeDepartments, reassignEmployeeDepartment, EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { getJobOpenings } from '@/data/recruitment';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
@@ -11,6 +11,7 @@ export interface DepartmentRecord {
 }
 
 const CUSTOM_DEPARTMENTS_STORAGE_KEY = 'modcon.hr.customDepartments';
+const REMOVED_DEPARTMENTS_STORAGE_KEY = 'modcon.hr.removedDepartments';
 export const DEPARTMENT_DIRECTORY_CHANGED_EVENT = 'modcon-hr-department-directory-changed';
 
 /**
@@ -76,6 +77,31 @@ function notifyDepartmentDirectoryChanged() {
   window.dispatchEvent(new Event(DEPARTMENT_DIRECTORY_CHANGED_EVENT));
 }
 
+/**
+ * Built-in departments an org has removed or renamed away from.
+ *
+ * The ten starting departments come from a fixed list, so deleting one cannot
+ * simply drop a stored row — there is nothing to drop. Their names are
+ * recorded here instead and filtered out when the base rows are built, the
+ * same approach the employee directory uses for deleted seed employees.
+ */
+function readRemovedDepartments(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(orgScopedKey(REMOVED_DEPARTMENTS_STORAGE_KEY));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRemovedDepartments(names: string[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(orgScopedKey(REMOVED_DEPARTMENTS_STORAGE_KEY), JSON.stringify(names));
+}
+
 function getBaseDepartmentRows(): DepartmentRecord[] {
   // A freshly-created org has no relationship to ModCon Builders' 10 fixed
   // department rows/heads — only its own custom-added departments should
@@ -87,12 +113,16 @@ function getBaseDepartmentRows(): DepartmentRecord[] {
     return acc;
   }, {});
 
-  return employeeDepartments.map((name) => ({
-    name,
-    head: deriveDepartmentHead(name),
-    headcount: employeeCountByDepartment[name] ?? 0,
-    openRoles: deriveDepartmentOpenRoles(name),
-  }));
+  const removed = new Set(readRemovedDepartments());
+
+  return employeeDepartments
+    .filter((name) => !removed.has(name))
+    .map((name) => ({
+      name,
+      head: deriveDepartmentHead(name),
+      headcount: employeeCountByDepartment[name] ?? 0,
+      openRoles: deriveDepartmentOpenRoles(name),
+    }));
 }
 
 export function getDepartmentDirectory(): DepartmentRecord[] {
@@ -103,7 +133,18 @@ export function getDepartmentDirectory(): DepartmentRecord[] {
   baseRows.forEach((record) => combined.set(record.name, record));
   customRows.forEach((record) => combined.set(record.name, record));
 
-  return Array.from(combined.values());
+  // Headcount is a count of the people actually in the department, for every
+  // row. A stored figure on a custom row would go stale the moment somebody
+  // joined, left or was reassigned.
+  const liveCount = employees.reduce<Record<string, number>>((acc, employee) => {
+    acc[employee.department] = (acc[employee.department] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return Array.from(combined.values()).map((record) => ({
+    ...record,
+    headcount: liveCount[record.name] ?? 0,
+  }));
 }
 
 function syncDepartmentSnapshots() {
@@ -126,10 +167,48 @@ export function updateDepartmentInDirectory(record: DepartmentRecord) {
 }
 
 export function deleteDepartmentFromDirectory(name: string) {
-  const customDepartments = readCustomDepartments().filter((item) => item.name !== name);
-  writeCustomDepartments(customDepartments);
+  writeCustomDepartments(readCustomDepartments().filter((item) => item.name !== name));
+  // A built-in has no stored row to drop, so record it as removed instead.
+  if (employeeDepartments.includes(name)) {
+    writeRemovedDepartments(Array.from(new Set([...readRemovedDepartments(), name])));
+  }
   syncDepartmentSnapshots();
   notifyDepartmentDirectoryChanged();
+}
+
+/**
+ * Rename a department and move its people across. Works for built-in
+ * departments as well as added ones: the old name is retired, the new one is
+ * stored, and every employee assigned to it follows.
+ *
+ * Returns how many employee records were reassigned.
+ */
+export function renameDepartmentInDirectory(oldName: string, newName: string): number {
+  if (oldName === newName) return 0;
+
+  const existing = getDepartmentRecord(oldName);
+  const moved = reassignEmployeeDepartment(oldName, newName);
+
+  const remaining = readCustomDepartments().filter(
+    (item) => item.name !== oldName && item.name !== newName,
+  );
+  writeCustomDepartments([
+    {
+      name: newName,
+      head: existing?.head ?? '—',
+      headcount: moved,
+      openRoles: existing?.openRoles ?? 0,
+    },
+    ...remaining,
+  ]);
+
+  if (employeeDepartments.includes(oldName)) {
+    writeRemovedDepartments(Array.from(new Set([...readRemovedDepartments(), oldName])));
+  }
+
+  syncDepartmentSnapshots();
+  notifyDepartmentDirectoryChanged();
+  return moved;
 }
 
 export function getDepartmentRecord(name: string): DepartmentRecord | undefined {

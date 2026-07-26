@@ -47,17 +47,13 @@ export interface EmployeeCompensation {
   ctc: number;
 }
 
-export type Department =
-  | 'Engineering'
-  | 'Product'
-  | 'Design'
-  | 'Sales'
-  | 'Marketing'
-  | 'Human Resources'
-  | 'Finance'
-  | 'Operations'
-  | 'Customer Success'
-  | 'Legal';
+/**
+ * Departments are organisation data, not a fixed vocabulary — an org can add,
+ * rename and remove them from Settings. The ten names in
+ * `src/data/employees.ts` are the demo org's starting set, not the allowed
+ * set, so this deliberately is not a union of those literals.
+ */
+export type Department = string;
 
 // ---- Attendance ----------------------------------------------------------
 export type AttendanceStatus =
