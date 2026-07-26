@@ -41,7 +41,7 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import type { LeaveRequest, LeaveType, LeaveStatus } from '@/types';
-import { formatDate, formatDateShort, pct } from '@/lib/utils';
+import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatWeekdayLong, pct } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 
 
@@ -519,10 +519,10 @@ export function LeavePage() {
                   >
                     <div className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-brand-50 shrink-0">
                       <span className="text-xs font-bold text-brand-700 leading-none">
-                        {new Date(h.date).toLocaleDateString('en-IN', { month: 'short' })}
+                        {formatMonthShort(h.date)}
                       </span>
                       <span className="text-lg font-bold text-brand-900 leading-none">
-                        {new Date(h.date).getDate()}
+                        {dayOfMonth(h.date)}
                       </span>
                     </div>
                     <div className="flex-1">
@@ -534,7 +534,7 @@ export function LeavePage() {
                       </div>
                       <p className="text-sm text-ink-500 mt-0.5">
                         {formatDate(h.date)} ·{' '}
-                        {new Date(h.date).toLocaleDateString('en-IN', { weekday: 'long' })}
+                        {formatWeekdayLong(h.date)}
                       </p>
                     </div>
                     <Badge tone={holidayTypeTone(h.type)}>{h.type}</Badge>

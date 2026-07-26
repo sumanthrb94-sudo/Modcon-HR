@@ -46,6 +46,7 @@ import { locations, getEmployeeName } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { todayIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -770,7 +771,7 @@ export function RecruitmentPage() {
       status: 'Open' as JobStatus,
       openings: parseInt(form.openings, 10) || 1,
       applicants: 0,
-      postedOn: new Date().toISOString().slice(0, 10),
+      postedOn: todayIso(),
       hiringManagerId: 'emp-004',
       experience: form.experience || 'Not specified',
       description: '',

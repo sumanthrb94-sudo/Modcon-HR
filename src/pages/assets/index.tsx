@@ -37,6 +37,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { todayIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -163,7 +164,7 @@ const EMPTY_ASSET_FORM = {
   name: '',
   category: '' as AssetCategory | '',
   serialNumber: '',
-  purchaseDate: new Date().toISOString().slice(0, 10),
+  purchaseDate: todayIso(),
   value: '',
 };
 

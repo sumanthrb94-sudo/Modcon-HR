@@ -18,14 +18,16 @@ import {
     Avatar,
 } from '@/components/ui';
 import type { Organization } from '@/types';
+import { APP_TIME_ZONE } from '@/lib/today';
 
 function formatCreatedAt(value: unknown): string {
     const seconds = (value as { seconds?: number } | undefined)?.seconds;
     if (!seconds) return '—';
-    return new Date(seconds * 1000).toLocaleDateString(undefined, {
+    return new Date(seconds * 1000).toLocaleDateString('en-IN', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
+        timeZone: APP_TIME_ZONE,
     });
 }
 

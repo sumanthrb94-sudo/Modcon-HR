@@ -1,5 +1,6 @@
 import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { todayIso } from '@/lib/today';
 
 export type BillingPlanTier = 'Pro' | 'Enterprise';
 
@@ -141,7 +142,7 @@ function readStoredBillingInvoices(): BillingInvoice[] | null {
       .filter((item) => item && typeof item === 'object')
       .map((item): BillingInvoice => ({
         id: typeof item.id === 'string' && item.id.trim() ? item.id : createInvoiceId(),
-        date: typeof item.date === 'string' && item.date.trim() ? item.date : new Date().toISOString().slice(0, 10),
+        date: typeof item.date === 'string' && item.date.trim() ? item.date : todayIso(),
         amount: Number.isFinite(item.amount) ? Math.max(0, Number(item.amount)) : 0,
         status: item.status === 'Pending' || item.status === 'Draft' ? item.status : 'Paid',
         title: typeof item.title === 'string' && item.title.trim() ? item.title : 'Billing Invoice',

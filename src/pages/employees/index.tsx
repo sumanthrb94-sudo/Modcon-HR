@@ -54,6 +54,7 @@ import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
+import { todayIso } from '@/lib/today';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -1008,7 +1009,7 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
       return;
     }
 
-    const uploadedAt = new Date().toISOString().slice(0, 10);
+    const uploadedAt = todayIso();
     const existingDocument = documents.find((document) => document.name.trim().toLowerCase() === documentName.trim().toLowerCase());
     const nextDoc: DocRecord = {
       id: existingDocument?.id ?? `doc-${Date.now()}`,

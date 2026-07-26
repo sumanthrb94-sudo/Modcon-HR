@@ -55,6 +55,7 @@ import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { Collections, patch, upsert } from '@/lib/db';
 import { useExpenses } from '@/lib/useFirestore';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
+import { todayIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -116,7 +117,7 @@ const EMPTY_FORM: NewClaimForm = {
   title: '',
   category: '',
   amount: '',
-  date: new Date().toISOString().slice(0, 10),
+  date: todayIso(),
   description: '',
   receiptImage: '',
 };
@@ -227,7 +228,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
           amount: parsedAmount,
           category: parsedCategory,
           description: parsedDesc,
-          date: new Date().toISOString().slice(0, 10),
+          date: todayIso(),
         }));
 
         // Remove success message after a few seconds
@@ -251,7 +252,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
 
   function handleSubmit() {
     if (!validate()) return;
-    const now = new Date().toISOString().slice(0, 10);
+    const now = todayIso();
     const claim: ExpenseClaim = {
       id: `exp-${Date.now()}`,
       employeeId: form.employeeId || defaultEmployeeId || employees[0]?.id || 'emp-001',
@@ -273,7 +274,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
   }
 
   function buildDraftClaim(): ExpenseClaim {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     const fallbackEmployeeId = employees[0]?.id ?? 'emp-001';
 
     return {

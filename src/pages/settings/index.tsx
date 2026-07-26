@@ -46,12 +46,13 @@ import {
 } from '@/data/billing';
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
-import { formatDate, cn } from '@/lib/utils';
+import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
 import { belongsToActiveOrg, getActiveOrgKey, orgScopedKey, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import type { Holiday } from '@/types';
+import { todayIso } from '@/lib/today';
 
 const COMPANY_LOGO_STORAGE_KEY = 'modcon.hr.companyLogo';
 
@@ -1047,7 +1048,7 @@ function HolidaysSection() {
   const [editingHolidayDate, setEditingHolidayDate] = useState('');
   const [editingHolidayType, setEditingHolidayType] = useState<Holiday['type']>('National');
   const [newHolidayName, setNewHolidayName] = useState('');
-  const [newHolidayDate, setNewHolidayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newHolidayDate, setNewHolidayDate] = useState(() => todayIso());
   const [newHolidayType, setNewHolidayType] = useState<Holiday['type']>('National');
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
@@ -1070,7 +1071,7 @@ function HolidaysSection() {
 
   function resetAddForm() {
     setNewHolidayName('');
-    setNewHolidayDate(new Date().toISOString().slice(0, 10));
+    setNewHolidayDate(todayIso());
     setNewHolidayType('National');
     setAddError('');
   }
@@ -1164,7 +1165,7 @@ function HolidaysSection() {
       header: 'Day',
       render: (r) => (
         <span className="text-ink-500">
-          {new Date(r.date).toLocaleDateString('en-IN', { weekday: 'long' })}
+          {formatWeekdayLong(r.date)}
         </span>
       ),
     },
@@ -1740,7 +1741,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
       autoRenew,
     });
     appendBillingInvoice({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayIso(),
       amount: seats * pricePerSeat,
       status: 'Paid',
       title: 'Additional Seats Added',
@@ -1767,7 +1768,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
       autoRenew,
     });
     appendBillingInvoice({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayIso(),
       amount: nextSeats * pricePerSeat,
       status: 'Paid',
       title: 'Enterprise Upgrade',

@@ -18,6 +18,7 @@ import { onboardings } from './onboarding';
 import { getCandidates, getJobOpenings } from './recruitment';
 import { getReviews } from './performance';
 import { todayDate, todayIso } from '@/lib/today';
+import { formatMonthShort, formatWeekdayShort } from '@/lib/utils';
 
 export interface MonthlyHeadcount {
   month: string;  // "Jun '26"
@@ -71,20 +72,31 @@ function daysSince(iso: string): number {
 }
 
 /**
- * Last instant of the month `offset` months back — but never later than the
- * reference date, so the current month is measured as-of today rather than
- * as-of a month-end that has not happened yet. Without this the trailing
- * point of a trend disagrees with the same stat on the dashboard.
+ * Start of the month `offset` months back. Built in UTC because todayDate()
+ * and every stored record date are UTC midnight — reading local components off
+ * them would land on the previous month's boundary for viewers west of UTC.
+ */
+function monthStartUtc(offset: number): Date {
+  const today = todayDate();
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - offset, 1));
+}
+
+/**
+ * Last instant of that month — but never later than today, so the current
+ * month is measured as-of now rather than as-of a month-end that has not
+ * happened yet. Without this the trailing point of a trend disagrees with the
+ * same stat on the dashboard.
  */
 function monthEndOrToday(offset: number): Date {
-  const monthStart = new Date(todayDate().getFullYear(), todayDate().getMonth() - offset, 1);
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59);
-  return monthEnd > todayDate() ? todayDate() : monthEnd;
+  const start = monthStartUtc(offset);
+  const monthEnd = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59));
+  const today = todayDate();
+  return monthEnd > today ? today : monthEnd;
 }
 
 function monthLabel(offset: number): string {
-  const monthStart = new Date(todayDate().getFullYear(), todayDate().getMonth() - offset, 1);
-  return `${monthStart.toLocaleString('en-IN', { month: 'short' })} '${String(monthStart.getFullYear()).slice(2)}`;
+  const start = monthStartUtc(offset);
+  return `${formatMonthShort(start.toISOString())} '${String(start.getUTCFullYear()).slice(2)}`;
 }
 
 function percent(part: number, whole: number): number {
@@ -144,7 +156,7 @@ export function avgTenureTrend(): { month: string; years: number }[] {
 // ---------------------------------------------------------------------------
 export function weeklyAttendanceSeries(): WeeklyAttendance[] {
   const rows = getWeekSummary().map((day) => ({
-    day: new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short' }),
+    day: formatWeekdayShort(day.date),
     Present: day.Present + day['Half Day'],
     WFH: day['Work From Home'],
     Leave: day['On Leave'],

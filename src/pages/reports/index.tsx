@@ -40,6 +40,7 @@ import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { todayIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Color palette
@@ -247,7 +248,7 @@ export function ReportsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `workforce-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `workforce-report-${todayIso()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

@@ -43,7 +43,7 @@ import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
@@ -52,10 +52,7 @@ type AttendanceRow = AttendanceRecord & { employee: Employee };
 
 // day-of-week label for selects
 function dayLabel(iso: string): string {
-  const d = new Date(iso);
-  const day = d.toLocaleDateString('en-IN', { weekday: 'short' });
-  const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-  return `${day}, ${dateStr}`;
+  return `${formatWeekdayShort(iso)}, ${formatDateShort(iso)}`;
 }
 
 export function AttendancePage() {
@@ -96,7 +93,7 @@ export function AttendancePage() {
     return WEEK_DATES.map((date) => {
       const records = recordsByDate(date);
       return {
-        day: new Date(date).toLocaleDateString('en-IN', { weekday: 'short' }),
+        day: formatWeekdayShort(date),
         Present: records.filter((r) => r.status === 'Present').length,
         WFH: records.filter((r) => r.status === 'Work From Home').length,
         Leave: records.filter((r) => r.status === 'On Leave').length,

@@ -8,6 +8,7 @@ import { resolveAppRole } from '@/lib/accessControl';
 import { appendBillingInvoice, getBillingPreferences, saveBillingPreferences } from '@/data/billing';
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { Button, Modal } from '@/components/ui';
+import { todayIso } from '@/lib/today';
 
 interface SidebarProps {
   open: boolean;
@@ -51,7 +52,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     });
 
     appendBillingInvoice({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayIso(),
       amount: nextSeats * pricePerSeat,
       status: 'Paid',
       title: 'Enterprise Upgrade',

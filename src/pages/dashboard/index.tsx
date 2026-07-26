@@ -23,14 +23,14 @@ import { expenseClaims } from '@/data/expenses';
 import { tickets } from '@/data/helpdesk';
 import { announcements } from '@/data/common';
 import { getHolidayDirectory } from '@/data/holidays';
-import { formatDate, formatDateShort, timeAgo, pct } from '@/lib/utils';
+import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatMonthYearLong, monthIndexOf, pct, timeAgo, yearOf } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
-import { todayDate } from '@/lib/today';
+import { APP_TIME_ZONE, currentHour, todayDate, todayIso } from '@/lib/today';
 import {
   attendanceToday, avgTenureYears, departmentDistribution, headcountTrend,
   hrHealthMetrics, noticePeriodRate, onLeaveToday, openPositionsCount,
@@ -214,7 +214,7 @@ function EmployeeDashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader
-        title={`Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, ${firstName} 👋`}
+        title={`Good ${currentHour() < 12 ? 'morning' : currentHour() < 17 ? 'afternoon' : 'evening'}, ${firstName} 👋`}
         subtitle={currentEmployee ? `${currentEmployee.designation} · ${currentEmployee.department}` : 'Employee workspace'}
         actions={<NotificationsMenu />}
       />
@@ -460,7 +460,7 @@ function AdminDashboard() {
   const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
   const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
   const greetingPeriod = () => {
-    const hour = new Date().getHours();
+    const hour = currentHour();
     if (hour < 12) return 'morning';
     if (hour < 17) return 'afternoon';
     return 'evening';
@@ -523,31 +523,31 @@ function AdminDashboard() {
     | { type: 'Birthday'; name: string; date: string; dept: string }
     | { type: 'Anniversary'; name: string; date: string; dept: string; years: number };
 
-  const celebrationMonth = todayDate().getMonth();
-  const celebrationMonthLabel = todayDate().toLocaleString('en-IN', { month: 'long' });
+  const celebrationMonth = monthIndexOf(todayIso());
+  const celebrationMonthLabel = formatMonthYearLong(todayIso()).split(' ')[0];
 
   const celebrations = useMemo((): CelebrationItem[] => {
     const birthdays: CelebrationItem[] = directory
-      .filter((e) => new Date(e.dateOfBirth).getMonth() === celebrationMonth)
+      .filter((e) => monthIndexOf(e.dateOfBirth) === celebrationMonth)
       .map((e) => ({ type: 'Birthday' as const, name: e.fullName, date: e.dateOfBirth, dept: e.department }));
 
     const anniversaries: CelebrationItem[] = directory
-      .filter((e) => new Date(e.dateOfJoining).getMonth() === celebrationMonth)
+      .filter((e) => monthIndexOf(e.dateOfJoining) === celebrationMonth)
       .map((e) => {
-        const years = todayDate().getFullYear() - new Date(e.dateOfJoining).getFullYear();
+        const years = yearOf(todayIso()) - yearOf(e.dateOfJoining);
         return { type: 'Anniversary' as const, name: e.fullName, date: e.dateOfJoining, dept: e.department, years };
       });
 
     return [...birthdays, ...anniversaries].sort((a, b) => {
-      const da = new Date(a.date).getDate();
-      const db = new Date(b.date).getDate();
+      const da = dayOfMonth(a.date);
+      const db = dayOfMonth(b.date);
       return da - db;
     });
   }, [directory, celebrationMonth]);
 
   // ---- today date display -------------------------------------------------
   const todayLabel = todayDate().toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: APP_TIME_ZONE,
   });
 
   const visiblePendingApprovals = useMemo(
@@ -952,10 +952,10 @@ function AdminDashboard() {
                 <div key={h.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-ink-50 transition-colors">
                   <div className="h-10 w-10 rounded-xl bg-brand-600 text-white flex flex-col items-center justify-center shrink-0 text-center leading-none">
                     <span className="text-[10px] font-semibold uppercase opacity-80">
-                      {new Date(h.date).toLocaleString('en-IN', { month: 'short' })}
+                      {formatMonthShort(h.date)}
                     </span>
                     <span className="text-lg font-bold leading-none">
-                      {new Date(h.date).getDate()}
+                      {dayOfMonth(h.date)}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1068,7 +1068,7 @@ function AdminDashboard() {
           <Card>
             <CardHeader
               title="HR Health Score"
-              subtitle={`${celebrationMonthLabel} ${todayDate().getFullYear()}`}
+              subtitle={formatMonthYearLong(todayIso())}
               action={healthMetrics.length > 0 ? (
                 <Badge tone={healthAverage >= 75 ? 'green' : healthAverage >= 50 ? 'amber' : 'red'} dot>
                   {healthAverage}% overall

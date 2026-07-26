@@ -5,7 +5,7 @@ import { ArrowLeft, CalendarDays } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getHolidayDirectory } from '@/data/holidays';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
-import { formatDate } from '@/lib/utils';
+import { dayOfMonth, formatDate, formatMonthShort, formatMonthYearLong } from '@/lib/utils';
 
 function holidayTone(type: string) {
     if (type === 'National') return 'green' as const;
@@ -22,7 +22,7 @@ export function HolidayCalendarPage() {
         const groups: Record<string, typeof holidays> = {};
 
         sorted.forEach((holiday) => {
-            const month = new Date(holiday.date).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+            const month = formatMonthYearLong(holiday.date);
             if (!groups[month]) groups[month] = [];
             groups[month].push(holiday);
         });
@@ -63,9 +63,9 @@ export function HolidayCalendarPage() {
                                     >
                                         <div className="h-10 w-10 rounded-xl bg-brand-600 text-white flex flex-col items-center justify-center text-center leading-none shrink-0">
                                             <span className="text-[10px] font-semibold uppercase opacity-80">
-                                                {new Date(holiday.date).toLocaleString('en-IN', { month: 'short' })}
+                                                {formatMonthShort(holiday.date)}
                                             </span>
-                                            <span className="text-lg font-bold">{new Date(holiday.date).getDate()}</span>
+                                            <span className="text-lg font-bold">{dayOfMonth(holiday.date)}</span>
                                         </div>
 
                                         <div className="min-w-0 flex-1">

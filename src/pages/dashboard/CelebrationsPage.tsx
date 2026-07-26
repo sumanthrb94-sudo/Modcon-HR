@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Avatar, Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { employees } from '@/data/employees';
-import { formatDateShort } from '@/lib/utils';
-import { todayDate } from '@/lib/today';
+import { dayOfMonth, formatDateShort, monthIndexOf, yearOf } from '@/lib/utils';
+import { todayIso } from '@/lib/today';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -19,13 +19,13 @@ type CelebrationItem = {
 
 export function CelebrationsPage() {
     const navigate = useNavigate();
-    const [selectedMonth, setSelectedMonth] = useState<number>(todayDate().getMonth());
+    const [selectedMonth, setSelectedMonth] = useState<number>(monthIndexOf(todayIso()));
 
     const groupedCelebrations = useMemo(() => {
         const grouped: Record<number, CelebrationItem[]> = Object.fromEntries(MONTHS.map((_, index) => [index, []]));
 
         employees.forEach((employee) => {
-            const birthdayMonth = new Date(employee.dateOfBirth).getMonth();
+            const birthdayMonth = monthIndexOf(employee.dateOfBirth);
             grouped[birthdayMonth].push({
                 type: 'Birthday',
                 name: employee.fullName,
@@ -33,8 +33,8 @@ export function CelebrationsPage() {
                 date: employee.dateOfBirth,
             });
 
-            const anniversaryMonth = new Date(employee.dateOfJoining).getMonth();
-            const years = todayDate().getFullYear() - new Date(employee.dateOfJoining).getFullYear();
+            const anniversaryMonth = monthIndexOf(employee.dateOfJoining);
+            const years = yearOf(todayIso()) - yearOf(employee.dateOfJoining);
             grouped[anniversaryMonth].push({
                 type: 'Anniversary',
                 name: employee.fullName,
@@ -45,7 +45,7 @@ export function CelebrationsPage() {
         });
 
         for (const monthIndex of Object.keys(grouped).map(Number)) {
-            grouped[monthIndex].sort((a, b) => new Date(a.date).getDate() - new Date(b.date).getDate());
+            grouped[monthIndex].sort((a, b) => dayOfMonth(a.date) - dayOfMonth(b.date));
         }
 
         return grouped;

@@ -9,6 +9,7 @@ import { getCandidates } from './recruitment';
 import { getReviews } from './performance';
 import { getWeekSummary } from './attendance';
 import { todayDate } from '@/lib/today';
+import { formatWeekdayShort } from '@/lib/utils';
 import { headcountTrend, noticePeriodRate, openPositionsCount } from './dashboard';
 
 // ---------------------------------------------------------------------------
@@ -105,7 +106,7 @@ export function attendanceTrend(): { period: string; rate: number }[] {
       const marked = day.Present + day['Work From Home'] + day['On Leave'] + day.Absent + day['Half Day'];
       const attended = day.Present + day['Work From Home'] + day['Half Day'];
       return {
-        period: new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short' }),
+        period: formatWeekdayShort(day.date),
         rate: marked ? Math.round((attended / marked) * 1000) / 10 : 0,
         marked,
       };

@@ -25,12 +25,11 @@ import {
 import { attendanceRecords, WEEK_DATES } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import type { AttendanceRecord } from '@/types';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 
 function dayLabel(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-IN', { weekday: 'long' });
+  return formatWeekdayLong(iso);
 }
 
 export function MyAttendancePage() {
@@ -86,7 +85,7 @@ export function MyAttendancePage() {
       WEEK_DATES.map((date) => {
         const rec = records.find((r) => r.date === date);
         return {
-          day: new Date(date).toLocaleDateString('en-IN', { weekday: 'short' }),
+          day: formatWeekdayShort(date),
           Hours: rec ? Number(rec.workedHours.toFixed(1)) : 0,
         };
       }),
