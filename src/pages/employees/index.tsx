@@ -703,9 +703,40 @@ function InfoRow({ label, value }: { label: string; value: string | undefined | 
 }
 
 /**
+ * The resting state of an inline-editable value: the value itself, plus a
+ * pencil that only appears on hover so a page of them does not read as a form.
+ */
+function InlineEditTrigger({
+  label,
+  onActivate,
+  className,
+  children,
+}: {
+  label: string;
+  onActivate: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onActivate}
+      title={`Change ${label.toLowerCase()}`}
+      className={cn(
+        'group -mx-1 inline-flex items-center gap-1 rounded px-1 text-left transition-colors hover:bg-ink-100',
+        className,
+      )}
+    >
+      {children}
+      <Edit2 size={11} className="shrink-0 text-ink-400 opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
+  );
+}
+
+/**
  * A single-choice value that can be changed where it is read.
  *
- * Department and location are the two details most often corrected after a
+ * Department and location are among the details most often corrected after a
  * profile exists, and routing that through the Edit Profile modal is more
  * ceremony than the change is worth. Click the value, pick another, done.
  *
@@ -758,22 +789,89 @@ function InlineSelect({
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      title={`Change ${label.toLowerCase()}`}
-      className={cn(
-        'group -mx-1 inline-flex items-center gap-1 rounded px-1 text-left transition-colors hover:bg-ink-100',
-        triggerClassName,
-      )}
-    >
+    <InlineEditTrigger label={label} onActivate={() => setEditing(true)} className={triggerClassName}>
       {children ?? value}
-      <Edit2 size={11} className="shrink-0 text-ink-400 opacity-0 transition-opacity group-hover:opacity-100" />
-    </button>
+    </InlineEditTrigger>
   );
 }
 
-/** InfoRow whose value is editable in place. */
+/**
+ * A free-text value that can be changed where it is read. Enter or clicking
+ * away commits; Escape abandons the edit.
+ */
+function InlineText({
+  label,
+  value,
+  onSave,
+  editable,
+  triggerClassName,
+  children,
+}: {
+  label: string;
+  value: string;
+  onSave: (next: string) => void;
+  editable: boolean;
+  triggerClassName?: string;
+  children?: ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  // Enter commits and unmounts the input, which can also fire blur. Without
+  // this the same edit would be saved twice.
+  const committed = useRef(false);
+
+  if (!editable) return <>{children ?? value}</>;
+
+  if (editing) {
+    const commit = () => {
+      if (committed.current) return;
+      committed.current = true;
+      const next = draft.trim();
+      // Required field: blank is not a value. Leave the record as it was
+      // rather than emptying it, the same way the edit form refuses to save.
+      if (next && next !== value) onSave(next);
+      setEditing(false);
+    };
+
+    return (
+      <input
+        autoFocus
+        type="text"
+        aria-label={label}
+        className="input w-auto max-w-[16rem] py-0.5 px-2 text-sm"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+          if (event.key === 'Escape') {
+            committed.current = true;
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <InlineEditTrigger
+      label={label}
+      onActivate={() => {
+        setDraft(value);
+        committed.current = false;
+        setEditing(true);
+      }}
+      className={triggerClassName}
+    >
+      {children ?? value}
+    </InlineEditTrigger>
+  );
+}
+
+/**
+ * InfoRow whose value is editable in place. Pass `options` for a fixed set of
+ * choices; omit it for free text.
+ */
 function EditableInfoRow({
   label,
   value,
@@ -783,7 +881,7 @@ function EditableInfoRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options?: string[];
   onSave: (next: string) => void;
   editable: boolean;
 }) {
@@ -792,7 +890,9 @@ function EditableInfoRow({
     <div>
       <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-0.5">{label}</p>
       <div className="text-sm text-ink-800">
-        <InlineSelect label={label} value={value} options={options} onSave={onSave} editable />
+        {options
+          ? <InlineSelect label={label} value={value} options={options} onSave={onSave} editable />
+          : <InlineText label={label} value={value} onSave={onSave} editable />}
       </div>
     </div>
   );
@@ -807,6 +907,7 @@ function OverviewTab({
   onUploadProfilePicture,
   profilePictureError,
   canEdit,
+  canEditDesignation,
   onSaveField,
 }: {
   emp: Employee;
@@ -814,6 +915,7 @@ function OverviewTab({
   onUploadProfilePicture: () => void;
   profilePictureError: string;
   canEdit: boolean;
+  canEditDesignation: boolean;
   onSaveField: (patch: Partial<Employee>) => void;
 }) {
   return (
@@ -854,7 +956,12 @@ function OverviewTab({
         <CardHeader title="Job Information" />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
           <InfoRow label="Employee Code" value={emp.employeeCode} />
-          <InfoRow label="Designation" value={emp.designation} />
+          <EditableInfoRow
+            label="Designation"
+            value={emp.designation}
+            onSave={(designation) => onSaveField({ designation })}
+            editable={canEditDesignation}
+          />
           <EditableInfoRow
             label="Department"
             value={emp.department}
@@ -1490,6 +1597,12 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const isSelfView = emp ? emp.id === currentEmployee?.id : false;
   /** Who may change this person's details — the same rule as Edit Profile. */
   const canEditProfile = isSelfView || !isEmployee;
+  /**
+   * Designation is stricter: the edit form disables it for the employee role
+   * even on their own profile, since nobody promotes themselves. Editing it in
+   * place has to honour that, or the inline control would be a way around it.
+   */
+  const canEditDesignation = !isEmployee;
 
   /** Persist a single field without going through the full edit form. */
   function saveField(patch: Partial<Employee>) {
@@ -1748,7 +1861,16 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                 <h2 className="text-xl font-bold text-ink-900">{emp.fullName}</h2>
                 <Badge tone={statusTone(emp.status)} dot>{emp.status}</Badge>
               </div>
-              <p className="text-base text-ink-600 font-medium">{emp.designation}</p>
+              <InlineText
+                label="Designation"
+                value={emp.designation}
+                onSave={(designation) => saveField({ designation })}
+                editable={canEditDesignation}
+              >
+                {/* Styling rides on the child, not the trigger: viewers who
+                    cannot edit get the child on its own, without the button. */}
+                <span className="text-base text-ink-600 font-medium">{emp.designation}</span>
+              </InlineText>
               <div className="flex flex-wrap items-center gap-3 mt-1.5 text-sm text-ink-500">
                 <InlineSelect
                   label="Department"
@@ -1878,6 +2000,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           onUploadProfilePicture={openProfilePicturePicker}
           profilePictureError={profilePictureError}
           canEdit={canEditProfile}
+          canEditDesignation={canEditDesignation}
           onSaveField={saveField}
         />
       )}
