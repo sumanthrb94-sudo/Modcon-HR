@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
+  AreaChart, Area, BarChart, Bar,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
@@ -18,7 +18,6 @@ import {
   headcountByDepartment,
   genderDiversity,
   tenureDistribution,
-  attritionTrend,
   headcountGrowth,
   salaryByDepartment,
   hiringFunnel,
@@ -40,7 +39,7 @@ import {
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
-import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 
 // ---------------------------------------------------------------------------
 // Color palette
@@ -74,6 +73,21 @@ function ChartCard({ title, subtitle, children, className }: {
       <CardHeader title={title} subtitle={subtitle} />
       {children}
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shown in place of a chart when the underlying records do not exist. Kept
+// explicit rather than rendering empty axes, which read as "measured zero".
+// ---------------------------------------------------------------------------
+function NoData({ message, height = 220 }: { message: string; height?: number }) {
+  return (
+    <div
+      className="flex items-center justify-center rounded-xl border border-dashed border-ink-200 px-4 text-center text-sm text-ink-400"
+      style={{ height }}
+    >
+      {message}
+    </div>
   );
 }
 
@@ -127,9 +141,7 @@ export function ReportsPage() {
   const [deptFilter, setDeptFilter] = useState('all');
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
-  // Mock trend data, not derived from any real record — hide it for an org
-  // with no seed data instead of showing a fabricated trend.
-  const showTrends = !isMockDataCleared();
+  const dataRevision = useDashboardDataRevision();
 
   // Compute derived data
   const hcByDept = useMemo(() => headcountByDepartment(), [directoryRevision, departmentRevision]);
@@ -141,6 +153,8 @@ export function ReportsPage() {
   })), [directoryRevision, departmentRevision]);
   const empTypeSplit = useMemo(() => employmentTypeSplit(), [directoryRevision]);
   const headcountSeries = useMemo(() => headcountGrowth(), [directoryRevision]);
+  const funnelData = useMemo(() => hiringFunnel(), [dataRevision]);
+  const attendanceSeries = useMemo(() => attendanceTrend(), [directoryRevision, dataRevision]);
 
   const headcount = totalHeadcount();
   const active = activeHeadcount();
@@ -264,70 +278,66 @@ export function ReportsPage() {
           value={headcount}
           icon={<Users size={20} />}
           iconClass="bg-brand-50 text-brand-600"
-          {...(showTrends ? { delta: 4.5, deltaLabel: 'vs last quarter' } : {})}
         />
         <StatCard
-          label="Attrition Rate"
+          label="On Notice"
           value={`${attrition}%`}
           icon={<TrendingDown size={20} />}
           iconClass="bg-rose-50 text-rose-600"
-          {...(showTrends ? { delta: -0.3, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="Avg Tenure"
           value={`${tenure} yrs`}
           icon={<Clock size={20} />}
           iconClass="bg-amber-50 text-amber-600"
-          {...(showTrends ? { delta: 2.1, deltaLabel: 'year on year' } : {})}
         />
         <StatCard
           label="Annual Payroll"
           value={formatINR(payroll, { compact: true })}
           icon={<IndianRupee size={20} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          {...(showTrends ? { delta: 8.2, deltaLabel: 'vs last year' } : {})}
         />
         <StatCard
           label="Diversity Ratio"
           value={`${diversity}% F`}
           icon={<UserCheck size={20} />}
           iconClass="bg-violet-50 text-violet-600"
-          {...(showTrends ? { delta: 2.0, deltaLabel: 'year on year' } : {})}
         />
       </div>
 
       {/* Charts grid — row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Headcount Growth */}
-        <ChartCard title="Headcount Growth" subtitle="12-month trajectory">
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={headcountSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PALETTE.brand} stopOpacity={0.2} />
-                  <stop offset="95%" stopColor={PALETTE.brand} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="headcount" stroke={PALETTE.brand} fill="url(#hcGrad)" strokeWidth={2} name="Headcount" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+        <ChartCard title="Headcount Growth" subtitle="12-month trajectory, by joining date">
+          {headcountSeries.length === 0 ? (
+            <NoData message="No employees on record yet." />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={headcountSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={PALETTE.brand} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={PALETTE.brand} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} domain={[0, 'auto']} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area type="monotone" dataKey="headcount" stroke={PALETTE.brand} fill="url(#hcGrad)" strokeWidth={2} name="Headcount" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </ChartCard>
 
-        {/* Attrition Trend */}
-        <ChartCard title="Attrition Trend" subtitle="Monthly attrition %">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={attritionTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} domain={[0, 5]} />
-              <Tooltip content={<CustomTooltip formatter={(v) => `${v}%`} />} />
-              <Line type="monotone" dataKey="attrition" stroke={PALETTE.rose} strokeWidth={2} dot={{ r: 3 }} name="Attrition %" />
-            </LineChart>
-          </ResponsiveContainer>
+        {/* Notice-period rate — point in time, no reconstructable history */}
+        <ChartCard title="On Notice" subtitle="Share of workforce serving notice">
+          <div className="flex flex-col items-center justify-center" style={{ height: 220 }}>
+            <p className="text-4xl font-bold text-ink-900">{attrition}%</p>
+            <p className="mt-2 max-w-xs text-center text-sm text-ink-400">
+              Employee status is not versioned, so past attrition rates cannot be reconstructed.
+            </p>
+          </div>
         </ChartCard>
       </div>
 
@@ -411,35 +421,43 @@ export function ReportsPage() {
         </ChartCard>
 
         {/* Hiring funnel */}
-        <ChartCard title="Hiring Funnel" subtitle="This quarter">
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={hiringFunnel} layout="vertical" margin={{ top: 0, right: 20, left: 40, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="stage" tick={{ fontSize: 11 }} width={55} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="count" fill={PALETTE.emerald} radius={[0, 4, 4, 0]} name="Candidates" />
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartCard title="Hiring Funnel" subtitle="Current candidate pipeline">
+          {funnelData.length === 0 ? (
+            <NoData message="No candidates in the pipeline." height={200} />
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={funnelData} layout="vertical" margin={{ top: 0, right: 20, left: 40, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis type="category" dataKey="stage" tick={{ fontSize: 11 }} width={55} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="count" fill={PALETTE.emerald} radius={[0, 4, 4, 0]} name="Candidates" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </ChartCard>
 
         {/* Attendance rate */}
-        <ChartCard title="Attendance Rate" subtitle="Weekly trend">
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={attendanceTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PALETTE.teal} stopOpacity={0.25} />
-                  <stop offset="95%" stopColor={PALETTE.teal} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="period" tick={{ fontSize: 9 }} />
-              <YAxis tick={{ fontSize: 11 }} domain={[85, 100]} />
-              <Tooltip content={<CustomTooltip formatter={(v) => `${v}%`} />} />
-              <Area type="monotone" dataKey="rate" stroke={PALETTE.teal} fill="url(#attGrad)" strokeWidth={2} name="Rate %" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+        <ChartCard title="Attendance Rate" subtitle="Current week, by day">
+          {attendanceSeries.length === 0 ? (
+            <NoData message="No attendance has been marked yet." height={200} />
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={attendanceSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={PALETTE.teal} stopOpacity={0.25} />
+                    <stop offset="95%" stopColor={PALETTE.teal} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="period" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
+                <Tooltip content={<CustomTooltip formatter={(v) => `${v}%`} />} />
+                <Area type="monotone" dataKey="rate" stroke={PALETTE.teal} fill="url(#attGrad)" strokeWidth={2} name="Rate %" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </ChartCard>
       </div>
 

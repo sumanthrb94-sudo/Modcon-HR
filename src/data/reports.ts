@@ -5,10 +5,10 @@
 
 import { employees, locations } from './employees';
 import { getDepartmentDirectory } from './departments';
-import { getJobOpenings, getCandidates } from './recruitment';
+import { getCandidates } from './recruitment';
 import { getReviews } from './performance';
 import { getWeekSummary } from './attendance';
-import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { headcountTrend, noticePeriodRate, openPositionsCount } from './dashboard';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,42 +57,11 @@ export function tenureDistribution(): { bucket: string; count: number }[] {
 }
 
 // ---------------------------------------------------------------------------
-// 12-month attrition trend (mock)
-// ---------------------------------------------------------------------------
-export const attritionTrend: { month: string; attrition: number }[] = isMockDataCleared() ? [] : [
-  { month: 'Jul 25', attrition: 2.1 },
-  { month: 'Aug 25', attrition: 1.8 },
-  { month: 'Sep 25', attrition: 3.2 },
-  { month: 'Oct 25', attrition: 2.5 },
-  { month: 'Nov 25', attrition: 2.0 },
-  { month: 'Dec 25', attrition: 1.5 },
-  { month: 'Jan 26', attrition: 2.8 },
-  { month: 'Feb 26', attrition: 3.5 },
-  { month: 'Mar 26', attrition: 2.2 },
-  { month: 'Apr 26', attrition: 1.9 },
-  { month: 'May 26', attrition: 2.4 },
-  { month: 'Jun 26', attrition: 2.1 },
-];
-
-// ---------------------------------------------------------------------------
-// 12-month headcount growth (mock, seeded from real count)
+// 12-month headcount growth — real cumulative joiners, shared with the
+// dashboard so both surfaces plot the same series.
 // ---------------------------------------------------------------------------
 export function headcountGrowth(): { month: string; headcount: number }[] {
-  const currentCount = employees.length;
-  return [
-    { month: 'Jul 25', headcount: currentCount - 11 },
-    { month: 'Aug 25', headcount: currentCount - 9 },
-    { month: 'Sep 25', headcount: currentCount - 8 },
-    { month: 'Oct 25', headcount: currentCount - 7 },
-    { month: 'Nov 25', headcount: currentCount - 6 },
-    { month: 'Dec 25', headcount: currentCount - 5 },
-    { month: 'Jan 26', headcount: currentCount - 4 },
-    { month: 'Feb 26', headcount: currentCount - 3 },
-    { month: 'Mar 26', headcount: currentCount - 3 },
-    { month: 'Apr 26', headcount: currentCount - 2 },
-    { month: 'May 26', headcount: currentCount - 1 },
-    { month: 'Jun 26', headcount: currentCount },
-  ];
+  return headcountTrend().map((point) => ({ month: point.month, headcount: point.count }));
 }
 
 // ---------------------------------------------------------------------------
@@ -110,27 +79,39 @@ export function salaryByDepartment(): { department: string; cost: number }[] {
 }
 
 // ---------------------------------------------------------------------------
-// Hiring funnel (mock)
+// Hiring funnel — counted off the real candidate pipeline. 'Rejected' is a
+// terminal state rather than a funnel step, so it is not plotted.
 // ---------------------------------------------------------------------------
-export const hiringFunnel: { stage: string; count: number }[] = isMockDataCleared() ? [] : [
-  { stage: 'Applied', count: 312 },
-  { stage: 'Screening', count: 124 },
-  { stage: 'Interview', count: 68 },
-  { stage: 'Offer', count: 22 },
-  { stage: 'Hired', count: 15 },
-];
+const FUNNEL_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'] as const;
+
+export function hiringFunnel(): { stage: string; count: number }[] {
+  const list = getCandidates();
+  if (!list.length) return [];
+  return FUNNEL_STAGES.map((stage) => ({
+    stage,
+    count: list.filter((candidate) => candidate.stage === stage).length,
+  }));
+}
 
 // ---------------------------------------------------------------------------
-// Attendance rate — weekly mock
+// Attendance rate — per day across the current week. Only one week of
+// attendance is recorded, so this is a daily series rather than the
+// multi-week history the page used to imply.
 // ---------------------------------------------------------------------------
-export const attendanceTrend: { period: string; rate: number }[] = isMockDataCleared() ? [] : [
-  { period: 'W1 May', rate: 92.4 },
-  { period: 'W2 May', rate: 89.7 },
-  { period: 'W3 May', rate: 94.1 },
-  { period: 'W4 May', rate: 91.8 },
-  { period: 'W1 Jun', rate: 93.5 },
-  { period: 'W2 Jun', rate: 90.2 },
-];
+export function attendanceTrend(): { period: string; rate: number }[] {
+  return getWeekSummary()
+    .map((day) => {
+      const marked = day.Present + day['Work From Home'] + day['On Leave'] + day.Absent + day['Half Day'];
+      const attended = day.Present + day['Work From Home'] + day['Half Day'];
+      return {
+        period: new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short' }),
+        rate: marked ? Math.round((attended / marked) * 1000) / 10 : 0,
+        marked,
+      };
+    })
+    .filter((day) => day.marked > 0)
+    .map(({ period, rate }) => ({ period, rate }));
+}
 
 // ---------------------------------------------------------------------------
 // Employment type split
@@ -170,8 +151,13 @@ export function diversityRatio(): number {
   return Math.round((female / employees.length) * 100);
 }
 
+/**
+ * Share of the workforce currently serving notice. Employee status carries no
+ * audit trail, so a historical attrition rate cannot be reconstructed — this
+ * is the same point-in-time figure the dashboard reports, not a trend.
+ */
 export function currentAttritionRate(): number {
-  return attritionTrend.length ? attritionTrend[attritionTrend.length - 1].attrition : 0;
+  return noticePeriodRate();
 }
 
 export function departmentCount(): number {
@@ -194,8 +180,13 @@ export function attendanceSummary(): { avgRate: number; wfhPercent: number } {
   };
 }
 
+/**
+ * Vacancies, not postings — one job opening can carry several seats. Shares
+ * openPositionsCount() so Reports, the dashboard and the Recruitment page
+ * (which sums `openings` the same way) cannot drift apart.
+ */
 export function openRolesCount(): number {
-  return getJobOpenings().filter((job) => job.status === 'Open').length;
+  return openPositionsCount();
 }
 
 export function avgTimeToHireDays(): number {
