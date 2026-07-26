@@ -16,6 +16,14 @@ export interface Employee {
   lastName: string;
   fullName: string;
   email: string;
+  /**
+   * Firebase Auth uid of the account that signs in as this person, stamped the
+   * first time they are matched to this record. `email` is editable from the
+   * profile but is also how an account is first matched to it, so matching on
+   * the email alone would cut someone off from their own profile the moment
+   * they changed it. The uid never changes, so the link survives the edit.
+   */
+  authUid?: string;
   phone: string;
   avatar: string; // initials-based avatar uses fullName; this is a color seed
   gender: Gender;

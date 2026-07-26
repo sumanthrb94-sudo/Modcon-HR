@@ -31,6 +31,7 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
+import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
 
 // ---------------------------------------------------------------------------
 // Admin allow-list
@@ -183,6 +184,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         window.location.reload();
                         return;
                     }
+                    // Bind this account to its directory record now, while the
+                    // sign-in address still matches the work email on it. The
+                    // work email is editable from the profile; the uid is not,
+                    // so from here on the person is found by uid and editing
+                    // their email cannot cut them off from their own profile.
+                    // Runs after the org key is settled, so it writes into the
+                    // right org's overlay.
+                    const record = getEmployeeByEmail(p.email);
+                    if (record) linkEmployeeToAuthAccount(record.id, p.uid);
                 } catch {
                     setProfile(null);
                 }

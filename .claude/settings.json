@@ -35,7 +35,11 @@
       "Bash(grep -v \"toLocaleString\\('en-IN', { style: 'currency'\")",
       "Bash(grep -rnE \"^const [A-Z_]{3,} *\\(:|=\\) *\\\\[\" --include=\"*.tsx\" src/pages src/components)",
       "Bash(python3 -c \"import json;[json.load\\(open\\(p\\)\\) and print\\('ok',p\\) for p in ['.claude/settings.json','.claude/settings.local.json']]\")",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(export PW_CHROMIUM_PATH=/opt/pw-browsers/chromium)",
+      "Bash(curl -s \"https://api.github.com/repos/sumanthrb94-sudo/Modcon-HR/actions/runs?branch=main&per_page=2\")",
+      "Bash(REPRO_TAG=A1 npx playwright test /private/tmp/claude-501/-Users-Dell-Modcon-HR/dea320c8-4149-4ea1-b9c7-8134faea1e6a/scratchpad/edit-profile.spec.ts --project=app --reporter=list)",
+      "Bash(REPRO_TAG=A1 npx playwright test repro-interactions --project=app --reporter=list --workers=1)"
     ]
   }
 }

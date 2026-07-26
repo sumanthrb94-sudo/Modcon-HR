@@ -226,9 +226,16 @@ export function addEmployeeToDirectory(employee: Employee) {
 }
 
 export function updateEmployeeInDirectory(employee: Employee) {
+  // An edit form has no reason to know about the auth link, so carry it over
+  // rather than letting a payload built from form fields drop it.
+  const existing = getEmployeeDirectory().find((item) => item.id === employee.id);
+  const record: Employee = !employee.authUid && existing?.authUid
+    ? { ...employee, authUid: existing.authUid }
+    : employee;
+
   const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
   const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
-  writeCustomEmployees([employee, ...customEmployees]);
+  writeCustomEmployees([record, ...customEmployees]);
   writeDeletedEmployeeIds(deletedEmployeeIds);
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
@@ -271,6 +278,34 @@ export const getEmployee = (id: string): Employee | undefined => getEmployeeDire
 
 export const getEmployeeByEmail = (email: string): Employee | undefined =>
   getEmployeeDirectory().find((employee) => employee.email.toLowerCase() === email.toLowerCase());
+
+export const getEmployeeByAuthUid = (uid: string): Employee | undefined =>
+  getEmployeeDirectory().find((employee) => employee.authUid === uid);
+
+/**
+ * Record which directory record a signed-in account belongs to.
+ *
+ * Called once per sign-in, while the account's email still matches the record.
+ * From then on the person is found by uid, so editing the work email on the
+ * profile no longer orphans them from it.
+ *
+ * A uid maps to exactly one person: if it was previously stamped on a
+ * different record, that stamp is cleared, or both records would claim the
+ * same account and the winner would depend on directory order.
+ */
+export function linkEmployeeToAuthAccount(employeeId: string, uid: string) {
+  const directory = getEmployeeDirectory();
+  const target = directory.find((employee) => employee.id === employeeId);
+  if (!target || target.authUid === uid) return;
+
+  const stale = directory.filter((employee) => employee.authUid === uid && employee.id !== employeeId);
+  const touched = [...stale.map((employee) => ({ ...employee, authUid: undefined })), { ...target, authUid: uid }];
+  const touchedIds = new Set(touched.map((employee) => employee.id));
+
+  writeCustomEmployees([...touched, ...readCustomEmployees().filter((item) => !touchedIds.has(item.id))]);
+  syncDirectorySnapshots();
+  notifyEmployeeDirectoryChanged();
+}
 
 export const getEmployeeName = (id: string): string => getEmployeeDirectory().find((employee) => employee.id === id)?.fullName ?? 'Unknown';
 
