@@ -733,6 +733,87 @@ function InlineEditTrigger({
   );
 }
 
+/**
+ * A form Select that can also add a value the list does not have yet.
+ *
+ * Unlike the inline pickers, this lives in a form that saves on a button, so
+ * it must not create anything on its own — typing a name only sets the field.
+ * Whoever handles the save decides whether the name is new and creates it
+ * then, which is what keeps Cancel from leaving a department behind.
+ */
+function SelectOrCreate({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  const [creating, setCreating] = useState(false);
+  // What to fall back to if the new value is abandoned.
+  const previous = useRef(value);
+
+  if (creating) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          autoFocus
+          type="text"
+          aria-label={`New ${label.toLowerCase()}`}
+          placeholder={`New ${label.toLowerCase()}`}
+          className="input w-full"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              onChange(previous.current);
+              setCreating(false);
+            }
+          }}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            onChange(previous.current);
+            setCreating(false);
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Select
+      ariaLabel={label}
+      value={value}
+      disabled={disabled}
+      onChange={(next) => {
+        if (next === CREATE_OPTION) {
+          previous.current = value;
+          onChange('');
+          setCreating(true);
+          return;
+        }
+        onChange(next);
+      }}
+      options={[
+        // The person's current value survives the org renaming or removing it.
+        ...(options.includes(value) || !value ? [] : [{ label: value, value }]),
+        ...options.map((option) => ({ label: option, value: option })),
+        { label: `+ Add new ${label.toLowerCase()}\u2026`, value: CREATE_OPTION },
+      ]}
+    />
+  );
+}
+
 /** Sentinel option value, distinct from any plausible department or location. */
 const CREATE_OPTION = '__create__';
 
@@ -974,8 +1055,7 @@ function OverviewTab({
   profilePicture,
   onUploadProfilePicture,
   profilePictureError,
-  canEdit,
-  canEditDesignation,
+  canEditJobFields,
   onSaveField,
   onCreateDepartment,
   onCreateLocation,
@@ -984,8 +1064,7 @@ function OverviewTab({
   profilePicture: string | null;
   onUploadProfilePicture: () => void;
   profilePictureError: string;
-  canEdit: boolean;
-  canEditDesignation: boolean;
+  canEditJobFields: boolean;
   onSaveField: (patch: Partial<Employee>) => void;
   onCreateDepartment: (name: string) => void;
   onCreateLocation: (name: string) => void;
@@ -1032,7 +1111,7 @@ function OverviewTab({
             label="Designation"
             value={emp.designation}
             onSave={(designation) => onSaveField({ designation })}
-            editable={canEditDesignation}
+            editable={canEditJobFields}
           />
           <EditableInfoRow
             label="Department"
@@ -1040,7 +1119,7 @@ function OverviewTab({
             options={departments}
             onSave={(department) => onSaveField({ department })}
             onCreate={onCreateDepartment}
-            editable={canEdit}
+            editable={canEditJobFields}
           />
           <EditableInfoRow
             label="Location"
@@ -1048,7 +1127,7 @@ function OverviewTab({
             options={locations}
             onSave={(location) => onSaveField({ location })}
             onCreate={onCreateLocation}
-            editable={canEdit}
+            editable={canEditJobFields}
           />
           <InfoRow label="Employment Type" value={emp.employmentType} />
           <InfoRow label="Status" value={emp.status} />
@@ -1675,11 +1754,13 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   /** Who may change this person's details — the same rule as Edit Profile. */
   const canEditProfile = isSelfView || !isEmployee;
   /**
-   * Designation is stricter: the edit form disables it for the employee role
-   * even on their own profile, since nobody promotes themselves. Editing it in
-   * place has to honour that, or the inline control would be a way around it.
+   * Job details are stricter than the rest of the profile: the edit form
+   * disables designation, department and location for the employee role even
+   * on their own profile — nobody moves themselves between departments or
+   * promotes themselves. Editing in place has to honour the same rule, or the
+   * inline controls would be a way around the restriction.
    */
-  const canEditDesignation = !isEmployee;
+  const canEditJobFields = !isEmployee;
 
   /** Persist a single field without going through the full edit form. */
   function saveField(patch: Partial<Employee>) {
@@ -1688,7 +1769,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   }
 
   /**
-   * Add a department to the org and move this person into it.
+   * Add a department to the org.
    *
    * Headcount is passed as 0 and the head as "—" because neither is stored
    * data: headcount is recounted from the people actually in the department
@@ -1696,8 +1777,17 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
    * unset keeps the new department tracking its real job openings rather
    * than pinning a literal — the same default Settings uses.
    */
-  function createDepartment(name: string) {
+  function addDepartment(name: string) {
     addDepartmentToDirectory({ name, head: '—', headcount: 0 });
+  }
+
+  /**
+   * Add a department and move this person into it, for the inline picker,
+   * which saves as soon as a value is chosen. The edit form does these two
+   * steps itself so it can create nothing until Save is pressed.
+   */
+  function createDepartment(name: string) {
+    addDepartment(name);
     saveField({ department: name });
   }
 
@@ -1846,6 +1936,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     const lastName = editLastName.trim();
     const email = editEmail.trim().toLowerCase();
     const designation = editDesignation.trim();
+    const department = editDepartment.trim();
+    const location = editLocation.trim();
 
     if (!firstName || !lastName) {
       setEditError('First name and last name are required.');
@@ -1859,10 +1951,27 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       setEditError('Designation is required.');
       return;
     }
+    // Both can now be typed rather than only picked, so both can arrive blank.
+    if (!department) {
+      setEditError('Department is required.');
+      return;
+    }
+    if (!location) {
+      setEditError('Location is required.');
+      return;
+    }
     if (editDateOfBirth && editDateOfBirth > todayIso()) {
       setEditError('Date of birth cannot be in the future.');
       return;
     }
+
+    // A department typed rather than picked has to exist before someone is
+    // filed under it. Matching an existing name case-insensitively means
+    // typing "design" joins Design instead of standing up a rival to it.
+    const knownDepartment = departments.find((item) => item.toLowerCase() === department.toLowerCase());
+    if (!knownDepartment) addDepartment(department);
+    // Locations need no such step: the list is derived from where people are,
+    // so assigning this one is what brings it into existence.
 
     updateEmployeeInDirectory({
       ...emp,
@@ -1872,8 +1981,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       email,
       phone: editPhone.trim(),
       designation,
-      department: editDepartment,
-      location: editLocation,
+      department: knownDepartment ?? department,
+      location,
       gender: editGender,
       employmentType: editEmploymentType,
       status: editStatus,
@@ -1966,7 +2075,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                 label="Designation"
                 value={emp.designation}
                 onSave={(designation) => saveField({ designation })}
-                editable={canEditDesignation}
+                editable={canEditJobFields}
               >
                 {/* Styling rides on the child, not the trigger: viewers who
                     cannot edit get the child on its own, without the button. */}
@@ -1979,7 +2088,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   options={departments}
                   onSave={(department) => saveField({ department })}
                   onCreate={createDepartment}
-                  editable={canEditProfile}
+                  editable={canEditJobFields}
                 >
                   <span className="flex items-center gap-1"><Building2 size={13} />{emp.department}</span>
                 </InlineSelect>
@@ -1990,7 +2099,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   options={locations}
                   onSave={(location) => saveField({ location })}
                   onCreate={createLocation}
-                  editable={canEditProfile}
+                  editable={canEditJobFields}
                 >
                   <span className="flex items-center gap-1"><MapPin size={13} />{emp.location}</span>
                 </InlineSelect>
@@ -2102,8 +2211,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           profilePicture={profilePicture}
           onUploadProfilePicture={openProfilePicturePicker}
           profilePictureError={profilePictureError}
-          canEdit={canEditProfile}
-          canEditDesignation={canEditDesignation}
+          canEditJobFields={canEditJobFields}
           onSaveField={saveField}
           onCreateDepartment={createDepartment}
           onCreateLocation={createLocation}
@@ -2221,19 +2329,21 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Department</label>
-            <Select
+            <SelectOrCreate
+              label="Department"
               value={editDepartment}
               onChange={(value) => setEditDepartment(value as Employee['department'])}
-              options={departments.map((department) => ({ label: department, value: department }))}
+              options={departments}
               disabled={isEmployee}
             />
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Location</label>
-            <Select
+            <SelectOrCreate
+              label="Location"
               value={editLocation}
               onChange={setEditLocation}
-              options={locations.map((location) => ({ label: location, value: location }))}
+              options={locations}
               disabled={isEmployee}
             />
           </div>

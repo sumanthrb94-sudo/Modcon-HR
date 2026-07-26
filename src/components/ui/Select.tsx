@@ -7,14 +7,17 @@ interface SelectProps {
   className?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Accessible name, for selects whose <label> is not associated by id. */
+  ariaLabel?: string;
 }
 
-export function Select({ value, onChange, options, className, placeholder, disabled }: SelectProps) {
+export function Select({ value, onChange, options, className, placeholder, disabled, ariaLabel }: SelectProps) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
+      aria-label={ariaLabel}
       className={cn('input cursor-pointer', className)}
     >
       {placeholder && <option value="">{placeholder}</option>}
