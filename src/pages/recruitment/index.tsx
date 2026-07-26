@@ -46,7 +46,6 @@ import { locations, getEmployeeName } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
-import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -736,9 +735,6 @@ export function RecruitmentPage() {
   const [selectedJob, setSelectedJob] = useState<JobOpening | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JobOpening | null>(null);
-  // Mock trend data, not derived from any real record — hide it for an org
-  // with no seed data instead of showing a fabricated trend.
-  const showTrends = !isMockDataCleared();
 
   useEffect(() => {
     function handleJobOpeningsChanged() {
@@ -820,14 +816,12 @@ export function RecruitmentPage() {
           value={stats.open}
           icon={<Briefcase size={22} />}
           iconClass="bg-brand-50 text-brand-600"
-          {...(showTrends ? { delta: 8, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="Total Applicants"
           value={stats.totalApplicants}
           icon={<Users size={22} />}
           iconClass="bg-violet-50 text-violet-600"
-          {...(showTrends ? { delta: 14, deltaLabel: 'vs last month' } : {})}
         />
         <StatCard
           label="In Interview"
@@ -840,7 +834,6 @@ export function RecruitmentPage() {
           value={stats.offers}
           icon={<Gift size={22} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          {...(showTrends ? { delta: 2, deltaLabel: 'this week' } : {})}
         />
       </div>
 
