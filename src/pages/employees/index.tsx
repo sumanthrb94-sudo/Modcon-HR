@@ -118,14 +118,8 @@ function ProfileField({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------
 // Add Employee Modal
 // ---------------------------------------------------------------------------
-interface NewManagerDetails {
-  firstName: string;
-  lastName: string;
-  designation: string;
-  email: string;
-}
-
-interface NewEmployeePayload {
+/** One person's details as the form holds them — every field a string. */
+interface EmployeeDetailsDraft {
   firstName: string;
   lastName: string;
   email: string;
@@ -134,18 +128,317 @@ interface NewEmployeePayload {
   department: Employee['department'];
   location: string;
   employmentType: EmploymentType;
-  gender: Gender;
+  /** '' means nobody has said — see the note on Employee.gender. */
+  gender: Gender | '';
+  dateOfBirth: string;
+  dateOfJoining: string;
+  ctc: string;
+  reportingManagerId: string;
+}
+
+/** The same details, cleaned and typed, ready to become an Employee. */
+interface EmployeeDetails {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  designation: string;
+  department: Employee['department'];
+  location: string;
+  employmentType: EmploymentType;
+  gender?: Gender;
   dateOfBirth: string;
   dateOfJoining: string;
   ctc: number;
   reportingManagerId: string | null;
+}
+
+interface NewEmployeePayload extends EmployeeDetails {
   /**
-   * A manager to bring into being alongside this hire. Held as data rather
-   * than created when it is typed, so abandoning the dialog leaves no
-   * half-invented person behind — the same rule the new-department field
-   * follows.
+   * A manager to bring into being alongside this hire, with the same details
+   * asked of anyone else. Held as data rather than created when it is typed,
+   * so abandoning the dialog leaves nobody behind — the same rule the
+   * new-department field follows.
    */
-  newManager: NewManagerDetails | null;
+  newManager: EmployeeDetails | null;
+}
+
+function emptyDetailsDraft(): EmployeeDetailsDraft {
+  return {
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    designation: '',
+    // Default to whatever the org's first department actually is. Naming one
+    // here would survive that department being renamed or deleted in Settings,
+    // leaving the form defaulted to a department its own dropdown cannot offer.
+    department: departments[0] ?? '',
+    location: locations[0] ?? '',
+    employmentType: 'Full-time',
+    // Not pre-selected: a gender nobody chose is not a gender they have.
+    gender: '',
+    dateOfBirth: '',
+    dateOfJoining: '',
+    ctc: '',
+    reportingManagerId: '',
+  };
+}
+
+function validateDetailsDraft(draft: EmployeeDetailsDraft): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const cleanEmail = draft.email.trim();
+  const annualCtc = Number(draft.ctc);
+
+  if (!draft.firstName.trim()) errors.firstName = 'First name is required.';
+  if (!draft.lastName.trim()) errors.lastName = 'Last name is required.';
+  if (!cleanEmail) {
+    errors.email = 'Work email is required.';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    errors.email = 'Enter a valid email address.';
+  }
+  if (!draft.designation.trim()) errors.designation = 'Designation is required.';
+  // Both can be typed rather than only picked, so both can arrive blank.
+  if (!draft.department.trim()) errors.department = 'Department is required.';
+  if (!draft.location.trim()) errors.location = 'Location is required.';
+  if (!draft.dateOfBirth) {
+    errors.dateOfBirth = 'Date of birth is required.';
+  } else if (draft.dateOfBirth > todayIso()) {
+    errors.dateOfBirth = 'Date of birth cannot be in the future.';
+  }
+  if (!draft.dateOfJoining) errors.dateOfJoining = 'Date of joining is required.';
+  if (!draft.ctc.trim()) {
+    errors.ctc = 'Annual CTC is required.';
+  } else if (Number.isNaN(annualCtc) || annualCtc <= 0) {
+    errors.ctc = 'Annual CTC must be greater than 0.';
+  }
+
+  return errors;
+}
+
+function toEmployeeDetails(draft: EmployeeDetailsDraft): EmployeeDetails {
+  return {
+    firstName: draft.firstName.trim(),
+    lastName: draft.lastName.trim(),
+    email: draft.email.trim().toLowerCase(),
+    phone: draft.phone.trim(),
+    designation: draft.designation.trim(),
+    department: draft.department.trim(),
+    location: draft.location.trim(),
+    employmentType: draft.employmentType,
+    gender: draft.gender || undefined,
+    dateOfBirth: draft.dateOfBirth,
+    dateOfJoining: draft.dateOfJoining,
+    ctc: Number(draft.ctc),
+    reportingManagerId: draft.reportingManagerId || null,
+  };
+}
+
+/**
+ * State and rules for one person's details.
+ *
+ * This dialog fills in two people — the hire, and a manager who does not
+ * exist yet — and both are employees, so both need the same fields and the
+ * same rules. One hook used twice is what keeps them from drifting apart.
+ */
+function useEmployeeDetailsForm() {
+  const [draft, setDraft] = useState<EmployeeDetailsDraft>(emptyDetailsDraft);
+
+  function set<K extends keyof EmployeeDetailsDraft>(key: K, value: EmployeeDetailsDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  const errors = useMemo(() => validateDetailsDraft(draft), [draft]);
+
+  return {
+    draft,
+    set,
+    errors,
+    hasErrors: Object.keys(errors).length > 0,
+    reset: () => setDraft(emptyDetailsDraft()),
+  };
+}
+
+type DetailsForm = ReturnType<typeof useEmployeeDetailsForm>;
+
+/**
+ * The employee fields themselves. `managerControl` is a slot because the two
+ * uses differ there and only there: a hire can invent a manager, a manager
+ * can only be given one who already exists.
+ */
+function EmployeeDetailsFields({
+  form,
+  showErrors,
+  fieldPrefix,
+  managerControl,
+}: {
+  form: DetailsForm;
+  showErrors: boolean;
+  /** Distinguishes the two forms' accessible names while both are mounted. */
+  fieldPrefix: string;
+  managerControl: ReactNode;
+}) {
+  const { draft, set, errors } = form;
+  const error = (key: string) =>
+    showErrors && errors[key] ? <p className="mt-1 text-xs text-red-600">{errors[key]}</p> : null;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">First Name</label>
+          <input
+            className="input w-full"
+            aria-label={`${fieldPrefix} first name`}
+            placeholder="Enter first name"
+            value={draft.firstName}
+            onChange={(event) => set('firstName', event.target.value)}
+          />
+          {error('firstName')}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Last Name</label>
+          <input
+            className="input w-full"
+            aria-label={`${fieldPrefix} last name`}
+            placeholder="Enter last name"
+            value={draft.lastName}
+            onChange={(event) => set('lastName', event.target.value)}
+          />
+          {error('lastName')}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Work Email</label>
+          <input
+            className="input w-full"
+            type="email"
+            aria-label={`${fieldPrefix} email`}
+            placeholder="name@modcon.com"
+            value={draft.email}
+            onChange={(event) => set('email', event.target.value)}
+          />
+          {error('email')}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Phone</label>
+          <input
+            className="input w-full"
+            aria-label={`${fieldPrefix} phone`}
+            placeholder="+91 XXXXX XXXXX"
+            value={draft.phone}
+            onChange={(event) => set('phone', event.target.value)}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Designation</label>
+          <input
+            className="input w-full"
+            aria-label={`${fieldPrefix} designation`}
+            placeholder="Job title"
+            value={draft.designation}
+            onChange={(event) => set('designation', event.target.value)}
+          />
+          {error('designation')}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Department</label>
+          <SelectOrCreate
+            label={`${fieldPrefix} department`}
+            value={draft.department}
+            onChange={(value) => set('department', value)}
+            options={departments}
+          />
+          {error('department')}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Location</label>
+          <SelectOrCreate
+            label={`${fieldPrefix} location`}
+            value={draft.location}
+            onChange={(value) => set('location', value)}
+            options={locations}
+          />
+          {error('location')}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Gender</label>
+          <select
+            className="input w-full"
+            aria-label={`${fieldPrefix} gender`}
+            value={draft.gender}
+            onChange={(event) => set('gender', event.target.value as Gender | '')}
+          >
+            <option value="">Not recorded</option>
+            {(['Male', 'Female', 'Other'] as Gender[]).map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Employment Type</label>
+          <select
+            className="input w-full"
+            aria-label={`${fieldPrefix} employment type`}
+            value={draft.employmentType}
+            onChange={(event) => set('employmentType', event.target.value as EmploymentType)}
+          >
+            {(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Birth</label>
+          <input
+            className="input w-full"
+            type="date"
+            max={todayIso()}
+            aria-label={`${fieldPrefix} date of birth`}
+            value={draft.dateOfBirth}
+            onChange={(event) => set('dateOfBirth', event.target.value)}
+          />
+          {error('dateOfBirth')}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Joining</label>
+          <input
+            className="input w-full"
+            type="date"
+            aria-label={`${fieldPrefix} date of joining`}
+            value={draft.dateOfJoining}
+            onChange={(event) => set('dateOfJoining', event.target.value)}
+          />
+          {error('dateOfJoining')}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Annual CTC (₹)</label>
+          <input
+            className="input w-full"
+            type="number"
+            aria-label={`${fieldPrefix} ctc`}
+            placeholder="e.g. 2400000"
+            value={draft.ctc}
+            onChange={(event) => set('ctc', event.target.value)}
+          />
+          {error('ctc')}
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-ink-600 mb-1.5">Reporting Manager</label>
+        {managerControl}
+      </div>
+    </div>
+  );
 }
 
 function AddEmployeeModal({
@@ -159,164 +452,80 @@ function AddEmployeeModal({
   onSave: (payload: NewEmployeePayload) => void;
   employeeOptions: Employee[];
 }) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [designation, setDesignation] = useState('');
-  // Default to whatever the org's first department actually is. Naming one
-  // here would survive that department being renamed or deleted in Settings,
-  // leaving the form defaulted to a department its own dropdown cannot offer.
-  const [department, setDepartment] = useState<Employee['department']>(departments[0] ?? '');
-  const [location, setLocation] = useState(locations[0] ?? '');
-  const [employmentType, setEmploymentType] = useState<EmploymentType>('Full-time');
-  const [gender, setGender] = useState<Gender>('Male');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [dateOfJoining, setDateOfJoining] = useState('');
-  const [ctc, setCtc] = useState('');
-  const [reportingManagerId, setReportingManagerId] = useState('');
-  const [pendingManager, setPendingManager] = useState<NewManagerDetails | null>(null);
-  const [managerFormOpen, setManagerFormOpen] = useState(false);
-  const [managerFirstName, setManagerFirstName] = useState('');
-  const [managerLastName, setManagerLastName] = useState('');
-  const [managerDesignation, setManagerDesignation] = useState('');
-  const [managerEmail, setManagerEmail] = useState('');
-  const [managerError, setManagerError] = useState('');
+  const hire = useEmployeeDetailsForm();
+  const manager = useEmployeeDetailsForm();
+  /** 'manager' swaps the dialog over to filling in the new manager. */
+  const [mode, setMode] = useState<'hire' | 'manager'>('hire');
+  const [pendingManager, setPendingManager] = useState<EmployeeDetails | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
-
-  const validationErrors = useMemo(() => {
-    const errors: Record<string, string> = {};
-    const cleanEmail = email.trim();
-    const annualCtc = Number(ctc);
-
-    if (!firstName.trim()) errors.firstName = 'First name is required.';
-    if (!lastName.trim()) errors.lastName = 'Last name is required.';
-    if (!cleanEmail) {
-      errors.email = 'Work email is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      errors.email = 'Enter a valid email address.';
-    }
-    if (!designation.trim()) errors.designation = 'Designation is required.';
-    if (!department.trim()) errors.department = 'Department is required.';
-    if (!location.trim()) errors.location = 'Location is required.';
-    if (!dateOfBirth) {
-      errors.dateOfBirth = 'Date of birth is required.';
-    } else if (dateOfBirth > todayIso()) {
-      errors.dateOfBirth = 'Date of birth cannot be in the future.';
-    }
-    if (!dateOfJoining) errors.dateOfJoining = 'Date of joining is required.';
-    if (!ctc.trim()) {
-      errors.ctc = 'Annual CTC is required.';
-    } else if (Number.isNaN(annualCtc) || annualCtc <= 0) {
-      errors.ctc = 'Annual CTC must be greater than 0.';
-    }
-
-    return errors;
-  }, [firstName, lastName, email, designation, department, location, dateOfBirth, dateOfJoining, ctc]);
-
-  const hasErrors = Object.keys(validationErrors).length > 0;
+  const [managerSubmitAttempted, setManagerSubmitAttempted] = useState(false);
+  const [managerError, setManagerError] = useState('');
 
   function resetForm() {
-    setFirstName('');
-    setLastName('');
-    setEmail('');
-    setPhone('');
-    setDesignation('');
-    setDepartment(departments[0] ?? '');
-    setLocation(locations[0] ?? '');
-    setEmploymentType('Full-time');
-    setGender('Male');
-    setDateOfBirth('');
-    setDateOfJoining('');
-    setCtc('');
-    setReportingManagerId('');
+    hire.reset();
+    manager.reset();
     setPendingManager(null);
-    closeManagerForm();
+    setMode('hire');
     setSubmitAttempted(false);
+    setManagerSubmitAttempted(false);
+    setManagerError('');
   }
 
   function handleSave() {
     setSubmitAttempted(true);
-    if (hasErrors) return;
-
-    const cleanFirstName = firstName.trim();
-    const cleanLastName = lastName.trim();
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanDesignation = designation.trim();
-    const cleanDepartment = department.trim();
-    const cleanLocation = location.trim();
-    const annualCtc = Number(ctc);
-
-    // A department typed rather than picked has to exist before the new hire
-    // is filed under it. Matching an existing name case-insensitively means
-    // typing "design" joins Design instead of standing up a rival to it.
-    const knownDepartment = departments.find((item) => item.toLowerCase() === cleanDepartment.toLowerCase());
-    if (!knownDepartment) addDepartmentToDirectory({ name: cleanDepartment, head: '—', headcount: 0 });
+    if (hire.hasErrors) return;
 
     onSave({
-      firstName: cleanFirstName,
-      lastName: cleanLastName,
-      email: cleanEmail,
-      phone: phone.trim(),
-      designation: cleanDesignation,
-      department: knownDepartment ?? cleanDepartment,
-      location: cleanLocation,
-      employmentType,
-      gender,
-      dateOfBirth,
-      dateOfJoining,
-      ctc: annualCtc,
-      // PENDING_MANAGER is a placeholder for someone who does not exist yet;
-      // the parent creates them first and links the two together.
-      reportingManagerId: reportingManagerId === PENDING_MANAGER ? null : reportingManagerId || null,
-      newManager: reportingManagerId === PENDING_MANAGER ? pendingManager : null,
+      ...toEmployeeDetails(hire.draft),
+      // PENDING_MANAGER stands in for someone who does not exist yet; the
+      // parent creates them first and links the two together.
+      reportingManagerId: hire.draft.reportingManagerId === PENDING_MANAGER
+        ? null
+        : hire.draft.reportingManagerId || null,
+      newManager: hire.draft.reportingManagerId === PENDING_MANAGER ? pendingManager : null,
     });
     resetForm();
     onClose();
   }
 
-  function closeManagerForm() {
-    setManagerFormOpen(false);
-    setManagerFirstName('');
-    setManagerLastName('');
-    setManagerDesignation('');
-    setManagerEmail('');
-    setManagerError('');
-  }
-
-  /** Accept the typed manager as this hire's manager, without creating them. */
+  /** Accept the manager as this hire's manager, without creating them yet. */
   function confirmManager() {
-    const first = managerFirstName.trim();
-    const last = managerLastName.trim();
-    const managerRole = managerDesignation.trim();
-    const managerAddress = managerEmail.trim().toLowerCase();
+    setManagerSubmitAttempted(true);
+    setManagerError('');
+    if (manager.hasErrors) return;
 
-    if (!first || !last) {
-      setManagerError('The manager needs a first and last name.');
-      return;
-    }
-    if (!managerRole) {
-      setManagerError('The manager needs a designation.');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(managerAddress)) {
-      setManagerError('Enter a valid email address for the manager.');
-      return;
-    }
+    const details = toEmployeeDetails(manager.draft);
     // Two people cannot share a work email: it is how a sign-in is matched to
     // a record, so a duplicate would attach one account to the wrong person.
-    if (employeeOptions.some((candidate) => candidate.email.toLowerCase() === managerAddress)) {
+    if (employeeOptions.some((candidate) => candidate.email.toLowerCase() === details.email)) {
       setManagerError('Someone already has that email address.');
       return;
     }
-    if (managerAddress === email.trim().toLowerCase()) {
+    if (details.email === hire.draft.email.trim().toLowerCase()) {
       setManagerError('The manager cannot share an email with the new hire.');
       return;
     }
 
-    setPendingManager({ firstName: first, lastName: last, designation: managerRole, email: managerAddress });
-    setReportingManagerId(PENDING_MANAGER);
-    closeManagerForm();
+    setPendingManager(details);
+    hire.set('reportingManagerId', PENDING_MANAGER);
+    setMode('hire');
+  }
+
+  function startManager() {
+    manager.reset();
+    // The manager almost always sits with the person they will manage, so
+    // start them there — every field stays editable.
+    manager.set('department', hire.draft.department);
+    manager.set('location', hire.draft.location);
+    setManagerSubmitAttempted(false);
+    setManagerError('');
+    setMode('manager');
+  }
+
+  function cancelManager() {
+    setMode('hire');
+    setManagerError('');
+    setManagerSubmitAttempted(false);
   }
 
   function handleClose() {
@@ -324,185 +533,101 @@ function AddEmployeeModal({
     onClose();
   }
 
+  const hireManagerControl = (
+    <select
+      className="input w-full"
+      aria-label="Reporting Manager"
+      value={hire.draft.reportingManagerId}
+      onChange={(event) => {
+        if (event.target.value === CREATE_OPTION) {
+          startManager();
+          return;
+        }
+        hire.set('reportingManagerId', event.target.value);
+      }}
+    >
+      <option value="">Select reporting manager</option>
+      {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
+      {pendingManager && (
+        <option value={PENDING_MANAGER}>
+          {pendingManager.firstName} {pendingManager.lastName} — {pendingManager.designation} (new)
+        </option>
+      )}
+      <option value={CREATE_OPTION}>+ Add new reporting manager…</option>
+    </select>
+  );
+
+  // No "add new" here: a manager invented for a manager would recurse with
+  // nothing to stop it, and one unrecorded person at a time is enough.
+  const managerManagerControl = (
+    <select
+      className="input w-full"
+      aria-label="Manager's Reporting Manager"
+      value={manager.draft.reportingManagerId}
+      onChange={(event) => manager.set('reportingManagerId', event.target.value)}
+    >
+      <option value="">No manager</option>
+      {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
+    </select>
+  );
+
+  const isManagerMode = mode === 'manager';
+
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title="Add New Employee"
-      subtitle="Fill in the details to create a new employee profile"
+      title={isManagerMode ? 'New Reporting Manager' : 'Add New Employee'}
+      subtitle={isManagerMode
+        ? 'The manager is an employee too, so the same details are needed. Nobody is created until you save the hire.'
+        : 'Fill in the details to create a new employee profile'}
       size="lg"
-      footer={
+      footer={isManagerMode ? (
+        <>
+          <Button variant="secondary" onClick={cancelManager}>Back</Button>
+          <Button variant="primary" onClick={confirmManager}>Add manager</Button>
+        </>
+      ) : (
         <>
           <Button variant="secondary" onClick={handleClose}>Cancel</Button>
           <Button variant="primary" onClick={handleSave}>Save Employee</Button>
         </>
-      }
+      )}
     >
-      <div className="space-y-5">
-        {submitAttempted && hasErrors && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            Please fix the highlighted fields before saving.
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">First Name</label>
-            <input className="input w-full" placeholder="Enter first name" value={firstName} onChange={(event) => setFirstName(event.target.value)} />
-            {submitAttempted && validationErrors.firstName && <p className="mt-1 text-xs text-red-600">{validationErrors.firstName}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Last Name</label>
-            <input className="input w-full" placeholder="Enter last name" value={lastName} onChange={(event) => setLastName(event.target.value)} />
-            {submitAttempted && validationErrors.lastName && <p className="mt-1 text-xs text-red-600">{validationErrors.lastName}</p>}
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Work Email</label>
-            <input className="input w-full" type="email" placeholder="name@modcon.com" value={email} onChange={(event) => setEmail(event.target.value)} />
-            {submitAttempted && validationErrors.email && <p className="mt-1 text-xs text-red-600">{validationErrors.email}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Phone</label>
-            <input className="input w-full" placeholder="+91 XXXXX XXXXX" value={phone} onChange={(event) => setPhone(event.target.value)} />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Designation</label>
-            <input className="input w-full" placeholder="Job title" value={designation} onChange={(event) => setDesignation(event.target.value)} />
-            {submitAttempted && validationErrors.designation && <p className="mt-1 text-xs text-red-600">{validationErrors.designation}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Department</label>
-            <SelectOrCreate
-              label="Department"
-              value={department}
-              onChange={(value) => setDepartment(value as Employee['department'])}
-              options={departments}
-            />
-            {submitAttempted && validationErrors.department && <p className="mt-1 text-xs text-red-600">{validationErrors.department}</p>}
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Location</label>
-            <SelectOrCreate
-              label="Location"
-              value={location}
-              onChange={setLocation}
-              options={locations}
-            />
-            {submitAttempted && validationErrors.location && <p className="mt-1 text-xs text-red-600">{validationErrors.location}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Gender</label>
-            <select className="input w-full" value={gender} onChange={(event) => setGender(event.target.value as Gender)}>
-              {(['Male', 'Female', 'Other'] as Gender[]).map((value) => (
-                <option key={value} value={value}>{value}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Employment Type</label>
-            <select className="input w-full" value={employmentType} onChange={(event) => setEmploymentType(event.target.value as EmploymentType)}>
-              {(['Full-time', 'Part-time', 'Contract', 'Intern'] as EmploymentType[]).map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Birth</label>
-            <input className="input w-full" type="date" max={todayIso()} value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} />
-            {submitAttempted && validationErrors.dateOfBirth && <p className="mt-1 text-xs text-red-600">{validationErrors.dateOfBirth}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Date of Joining</label>
-            <input className="input w-full" type="date" value={dateOfJoining} onChange={(event) => setDateOfJoining(event.target.value)} />
-            {submitAttempted && validationErrors.dateOfJoining && <p className="mt-1 text-xs text-red-600">{validationErrors.dateOfJoining}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Annual CTC (₹)</label>
-            <input className="input w-full" type="number" placeholder="e.g. 2400000" value={ctc} onChange={(event) => setCtc(event.target.value)} />
-            {submitAttempted && validationErrors.ctc && <p className="mt-1 text-xs text-red-600">{validationErrors.ctc}</p>}
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Reporting Manager</label>
-          <select
-            className="input w-full"
-            aria-label="Reporting Manager"
-            value={reportingManagerId}
-            onChange={(event) => {
-              if (event.target.value === CREATE_OPTION) {
-                setManagerError('');
-                setManagerFormOpen(true);
-                return;
-              }
-              setReportingManagerId(event.target.value);
-            }}
-          >
-            <option value="">Select reporting manager</option>
-            {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
-            {pendingManager && (
-              <option value={PENDING_MANAGER}>
-                {pendingManager.firstName} {pendingManager.lastName} — {pendingManager.designation} (new)
-              </option>
-            )}
-            <option value={CREATE_OPTION}>+ Add new reporting manager…</option>
-          </select>
-
-          {managerFormOpen && (
-            <div className="mt-3 rounded-lg border border-ink-200 bg-ink-50/60 p-3 space-y-3">
-              <p className="text-xs font-semibold text-ink-600 uppercase tracking-wide">New reporting manager</p>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  className="input w-full"
-                  aria-label="Manager first name"
-                  placeholder="First name"
-                  value={managerFirstName}
-                  onChange={(event) => setManagerFirstName(event.target.value)}
-                />
-                <input
-                  className="input w-full"
-                  aria-label="Manager last name"
-                  placeholder="Last name"
-                  value={managerLastName}
-                  onChange={(event) => setManagerLastName(event.target.value)}
-                />
-                <input
-                  className="input w-full"
-                  aria-label="Manager designation"
-                  placeholder="Designation"
-                  value={managerDesignation}
-                  onChange={(event) => setManagerDesignation(event.target.value)}
-                />
-                <input
-                  className="input w-full"
-                  type="email"
-                  aria-label="Manager email"
-                  placeholder="name@modcon.com"
-                  value={managerEmail}
-                  onChange={(event) => setManagerEmail(event.target.value)}
-                />
-              </div>
-              <p className="text-xs text-ink-500">
-                Department, location and employment type follow this hire. Joining date is today;
-                anything not asked for here stays unrecorded until someone fills it in.
-              </p>
-              {managerError && <p className="text-xs text-red-600">{managerError}</p>}
-              <div className="flex justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={closeManagerForm}>Cancel</Button>
-                <Button variant="primary" size="sm" onClick={confirmManager}>Add manager</Button>
-              </div>
+      {isManagerMode ? (
+        <div className="space-y-5">
+          {managerSubmitAttempted && manager.hasErrors && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Please fix the highlighted fields before adding this manager.
             </div>
           )}
+          {managerError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {managerError}
+            </div>
+          )}
+          <EmployeeDetailsFields
+            form={manager}
+            showErrors={managerSubmitAttempted}
+            fieldPrefix="Manager"
+            managerControl={managerManagerControl}
+          />
         </div>
-      </div>
+      ) : (
+        <div className="space-y-5">
+          {submitAttempted && hire.hasErrors && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Please fix the highlighted fields before saving.
+            </div>
+          )}
+          <EmployeeDetailsFields
+            form={hire}
+            showErrors={submitAttempted}
+            fieldPrefix="Employee"
+            managerControl={hireManagerControl}
+          />
+        </div>
+      )}
     </Modal>
   );
 }
@@ -566,23 +691,29 @@ export function EmployeesPage() {
   const deptCount = new Set(visibleEmployeeList.map((e) => e.department)).size;
 
   /**
-   * Bring a manager into being from the four details the dialog collects.
+   * Make sure a department exists, and return the name to file someone under.
    *
-   * Department, location and employment type follow the person they will
-   * manage, since a manager typed in while placing a hire almost always sits
-   * with them, and joining date is today. Everything the dialog did not ask
-   * for is left unrecorded rather than invented: no date of birth, no gender,
-   * no phone, and a CTC of 0 standing for "not set" — the profile shows each
-   * as "—" until someone fills it in, which is honest, where a guess would
-   * not be.
+   * Both the hire and a manager created alongside them can name a department
+   * that does not exist yet, so this sits here rather than in the dialog —
+   * one place, covering both. An existing name matched case-insensitively
+   * wins, so typing "design" joins Design instead of standing up a rival.
+   */
+  function ensureDepartment(name: string): string {
+    const known = departments.find((item) => item.toLowerCase() === name.toLowerCase());
+    if (known) return known;
+    addDepartmentToDirectory({ name, head: '—', headcount: 0 });
+    return name;
+  }
+
+  /**
+   * Bring a manager into being from the details the dialog collected.
+   *
+   * They are filled in as completely as any other hire, so nothing here is
+   * invented — every value came from the form.
    *
    * Returns the new manager's id.
    */
-  function createManagerFromDetails(
-    details: NewManagerDetails,
-    payload: NewEmployeePayload,
-    directory: Employee[],
-  ): string {
+  function createManagerFromDetails(details: EmployeeDetails, directory: Employee[]): string {
     const index = getNextEmployeeSequence(directory);
     const id = `emp-${String(index).padStart(3, '0')}`;
     const fullName = `${details.firstName} ${details.lastName}`;
@@ -594,18 +725,18 @@ export function EmployeesPage() {
       lastName: details.lastName,
       fullName,
       email: details.email,
-      phone: '',
+      phone: details.phone,
       avatar: fullName,
-      dateOfBirth: '',
+      gender: details.gender,
+      dateOfBirth: details.dateOfBirth,
       designation: details.designation,
-      department: payload.department,
-      location: payload.location,
-      employmentType: payload.employmentType,
+      department: ensureDepartment(details.department),
+      location: details.location,
+      employmentType: details.employmentType,
       status: 'Active',
-      dateOfJoining: todayIso(),
-      // Who this manager reports to is not something the dialog can know.
-      reportingManagerId: null,
-      ctc: 0,
+      dateOfJoining: details.dateOfJoining,
+      reportingManagerId: details.reportingManagerId,
+      ctc: details.ctc,
       skills: [],
     });
 
@@ -619,7 +750,7 @@ export function EmployeesPage() {
     // sequence is derived from it, and the hire below must not reuse the id
     // the manager just took.
     const reportingManagerId = payload.newManager
-      ? createManagerFromDetails(payload.newManager, payload, directory)
+      ? createManagerFromDetails(payload.newManager, directory)
       : payload.reportingManagerId;
     if (payload.newManager) directory = getEmployeeDirectory();
 
@@ -634,12 +765,12 @@ export function EmployeesPage() {
       lastName: payload.lastName,
       fullName: `${payload.firstName} ${payload.lastName}`,
       email: payload.email,
-      phone: payload.phone || 'N/A',
+      phone: payload.phone,
       avatar: `${payload.firstName} ${payload.lastName}`,
       gender: payload.gender,
       dateOfBirth: payload.dateOfBirth,
       designation: payload.designation,
-      department: payload.department,
+      department: ensureDepartment(payload.department),
       location: payload.location,
       employmentType: payload.employmentType,
       status: 'Active',
