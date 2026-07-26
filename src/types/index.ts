@@ -26,8 +26,13 @@ export interface Employee {
   authUid?: string;
   phone: string;
   avatar: string; // initials-based avatar uses fullName; this is a color seed
-  gender: Gender;
-  dateOfBirth: string; // ISO
+  /**
+   * Absent when nobody has recorded it — a record can be created before every
+   * personal detail is known, and guessing one is worse than showing it is
+   * missing. The same reasoning as bloodGroup and maritalStatus below.
+   */
+  gender?: Gender;
+  dateOfBirth: string; // ISO; '' when not recorded
   designation: string;
   department: Department;
   location: string;

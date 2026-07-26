@@ -118,6 +118,13 @@ function ProfileField({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------
 // Add Employee Modal
 // ---------------------------------------------------------------------------
+interface NewManagerDetails {
+  firstName: string;
+  lastName: string;
+  designation: string;
+  email: string;
+}
+
 interface NewEmployeePayload {
   firstName: string;
   lastName: string;
@@ -132,6 +139,13 @@ interface NewEmployeePayload {
   dateOfJoining: string;
   ctc: number;
   reportingManagerId: string | null;
+  /**
+   * A manager to bring into being alongside this hire. Held as data rather
+   * than created when it is typed, so abandoning the dialog leaves no
+   * half-invented person behind — the same rule the new-department field
+   * follows.
+   */
+  newManager: NewManagerDetails | null;
 }
 
 function AddEmployeeModal({
@@ -161,6 +175,13 @@ function AddEmployeeModal({
   const [dateOfJoining, setDateOfJoining] = useState('');
   const [ctc, setCtc] = useState('');
   const [reportingManagerId, setReportingManagerId] = useState('');
+  const [pendingManager, setPendingManager] = useState<NewManagerDetails | null>(null);
+  const [managerFormOpen, setManagerFormOpen] = useState(false);
+  const [managerFirstName, setManagerFirstName] = useState('');
+  const [managerLastName, setManagerLastName] = useState('');
+  const [managerDesignation, setManagerDesignation] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
+  const [managerError, setManagerError] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const validationErrors = useMemo(() => {
@@ -209,6 +230,8 @@ function AddEmployeeModal({
     setDateOfJoining('');
     setCtc('');
     setReportingManagerId('');
+    setPendingManager(null);
+    closeManagerForm();
     setSubmitAttempted(false);
   }
 
@@ -243,10 +266,57 @@ function AddEmployeeModal({
       dateOfBirth,
       dateOfJoining,
       ctc: annualCtc,
-      reportingManagerId: reportingManagerId || null,
+      // PENDING_MANAGER is a placeholder for someone who does not exist yet;
+      // the parent creates them first and links the two together.
+      reportingManagerId: reportingManagerId === PENDING_MANAGER ? null : reportingManagerId || null,
+      newManager: reportingManagerId === PENDING_MANAGER ? pendingManager : null,
     });
     resetForm();
     onClose();
+  }
+
+  function closeManagerForm() {
+    setManagerFormOpen(false);
+    setManagerFirstName('');
+    setManagerLastName('');
+    setManagerDesignation('');
+    setManagerEmail('');
+    setManagerError('');
+  }
+
+  /** Accept the typed manager as this hire's manager, without creating them. */
+  function confirmManager() {
+    const first = managerFirstName.trim();
+    const last = managerLastName.trim();
+    const managerRole = managerDesignation.trim();
+    const managerAddress = managerEmail.trim().toLowerCase();
+
+    if (!first || !last) {
+      setManagerError('The manager needs a first and last name.');
+      return;
+    }
+    if (!managerRole) {
+      setManagerError('The manager needs a designation.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(managerAddress)) {
+      setManagerError('Enter a valid email address for the manager.');
+      return;
+    }
+    // Two people cannot share a work email: it is how a sign-in is matched to
+    // a record, so a duplicate would attach one account to the wrong person.
+    if (employeeOptions.some((candidate) => candidate.email.toLowerCase() === managerAddress)) {
+      setManagerError('Someone already has that email address.');
+      return;
+    }
+    if (managerAddress === email.trim().toLowerCase()) {
+      setManagerError('The manager cannot share an email with the new hire.');
+      return;
+    }
+
+    setPendingManager({ firstName: first, lastName: last, designation: managerRole, email: managerAddress });
+    setReportingManagerId(PENDING_MANAGER);
+    closeManagerForm();
   }
 
   function handleClose() {
@@ -363,10 +433,74 @@ function AddEmployeeModal({
         </div>
         <div>
           <label className="block text-xs font-semibold text-ink-600 mb-1.5">Reporting Manager</label>
-          <select className="input w-full" value={reportingManagerId} onChange={(event) => setReportingManagerId(event.target.value)}>
+          <select
+            className="input w-full"
+            aria-label="Reporting Manager"
+            value={reportingManagerId}
+            onChange={(event) => {
+              if (event.target.value === CREATE_OPTION) {
+                setManagerError('');
+                setManagerFormOpen(true);
+                return;
+              }
+              setReportingManagerId(event.target.value);
+            }}
+          >
             <option value="">Select reporting manager</option>
             {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
+            {pendingManager && (
+              <option value={PENDING_MANAGER}>
+                {pendingManager.firstName} {pendingManager.lastName} — {pendingManager.designation} (new)
+              </option>
+            )}
+            <option value={CREATE_OPTION}>+ Add new reporting manager…</option>
           </select>
+
+          {managerFormOpen && (
+            <div className="mt-3 rounded-lg border border-ink-200 bg-ink-50/60 p-3 space-y-3">
+              <p className="text-xs font-semibold text-ink-600 uppercase tracking-wide">New reporting manager</p>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  className="input w-full"
+                  aria-label="Manager first name"
+                  placeholder="First name"
+                  value={managerFirstName}
+                  onChange={(event) => setManagerFirstName(event.target.value)}
+                />
+                <input
+                  className="input w-full"
+                  aria-label="Manager last name"
+                  placeholder="Last name"
+                  value={managerLastName}
+                  onChange={(event) => setManagerLastName(event.target.value)}
+                />
+                <input
+                  className="input w-full"
+                  aria-label="Manager designation"
+                  placeholder="Designation"
+                  value={managerDesignation}
+                  onChange={(event) => setManagerDesignation(event.target.value)}
+                />
+                <input
+                  className="input w-full"
+                  type="email"
+                  aria-label="Manager email"
+                  placeholder="name@modcon.com"
+                  value={managerEmail}
+                  onChange={(event) => setManagerEmail(event.target.value)}
+                />
+              </div>
+              <p className="text-xs text-ink-500">
+                Department, location and employment type follow this hire. Joining date is today;
+                anything not asked for here stays unrecorded until someone fills it in.
+              </p>
+              {managerError && <p className="text-xs text-red-600">{managerError}</p>}
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" size="sm" onClick={closeManagerForm}>Cancel</Button>
+                <Button variant="primary" size="sm" onClick={confirmManager}>Add manager</Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
@@ -431,12 +565,68 @@ export function EmployeesPage() {
   const probationNotice = visibleEmployeeList.filter((e) => e.status === 'Probation' || e.status === 'Notice Period').length;
   const deptCount = new Set(visibleEmployeeList.map((e) => e.department)).size;
 
+  /**
+   * Bring a manager into being from the four details the dialog collects.
+   *
+   * Department, location and employment type follow the person they will
+   * manage, since a manager typed in while placing a hire almost always sits
+   * with them, and joining date is today. Everything the dialog did not ask
+   * for is left unrecorded rather than invented: no date of birth, no gender,
+   * no phone, and a CTC of 0 standing for "not set" — the profile shows each
+   * as "—" until someone fills it in, which is honest, where a guess would
+   * not be.
+   *
+   * Returns the new manager's id.
+   */
+  function createManagerFromDetails(
+    details: NewManagerDetails,
+    payload: NewEmployeePayload,
+    directory: Employee[],
+  ): string {
+    const index = getNextEmployeeSequence(directory);
+    const id = `emp-${String(index).padStart(3, '0')}`;
+    const fullName = `${details.firstName} ${details.lastName}`;
+
+    addEmployeeToDirectory({
+      id,
+      employeeCode: `MC-${String(index).padStart(3, '0')}`,
+      firstName: details.firstName,
+      lastName: details.lastName,
+      fullName,
+      email: details.email,
+      phone: '',
+      avatar: fullName,
+      dateOfBirth: '',
+      designation: details.designation,
+      department: payload.department,
+      location: payload.location,
+      employmentType: payload.employmentType,
+      status: 'Active',
+      dateOfJoining: todayIso(),
+      // Who this manager reports to is not something the dialog can know.
+      reportingManagerId: null,
+      ctc: 0,
+      skills: [],
+    });
+
+    return id;
+  }
+
   function handleAddEmployee(payload: NewEmployeePayload) {
-    const directory = getEmployeeDirectory();
+    let directory = getEmployeeDirectory();
+    // A manager typed into the dialog has to exist before anyone can report to
+    // them, so they are created first and the directory re-read — the id
+    // sequence is derived from it, and the hire below must not reuse the id
+    // the manager just took.
+    const reportingManagerId = payload.newManager
+      ? createManagerFromDetails(payload.newManager, payload, directory)
+      : payload.reportingManagerId;
+    if (payload.newManager) directory = getEmployeeDirectory();
+
     const nextIndex = getNextEmployeeSequence(directory);
     const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
     const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
-    const manager = directory.find((e) => e.id === payload.reportingManagerId);
+    const manager = directory.find((e) => e.id === reportingManagerId);
     const nextEmployee: Employee = {
       id: nextId,
       employeeCode,
@@ -454,7 +644,7 @@ export function EmployeesPage() {
       employmentType: payload.employmentType,
       status: 'Active',
       dateOfJoining: payload.dateOfJoining,
-      reportingManagerId: payload.reportingManagerId,
+      reportingManagerId,
       reportingManagerName: manager?.fullName,
       ctc: payload.ctc,
       // Address, blood group and marital status are personal details this
@@ -831,6 +1021,9 @@ function SelectOrCreate({
     />
   );
 }
+
+/** Sentinel manager id standing in for one that has not been created yet. */
+const PENDING_MANAGER = '__new_manager__';
 
 /** Sentinel option value, distinct from any plausible department or location. */
 const CREATE_OPTION = '__create__';
@@ -1748,7 +1941,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editDesignation, setEditDesignation] = useState('');
   const [editDepartment, setEditDepartment] = useState<Employee['department']>(departments[0] as Employee['department']);
   const [editLocation, setEditLocation] = useState(locations[0] ?? '');
-  const [editGender, setEditGender] = useState<Gender>('Male');
+  const [editGender, setEditGender] = useState<Gender | ''>('');
   const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>('Full-time');
   const [editStatus, setEditStatus] = useState<EmployeeStatus>('Active');
   const [editDateOfBirth, setEditDateOfBirth] = useState('');
@@ -1935,7 +2128,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditDesignation(emp.designation);
     setEditDepartment(emp.department);
     setEditLocation(emp.location);
-    setEditGender(emp.gender);
+    setEditGender(emp.gender ?? '');
     setEditEmploymentType(emp.employmentType);
     setEditStatus(emp.status);
     setEditDateOfBirth(emp.dateOfBirth ?? '');
@@ -2001,7 +2194,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       designation,
       department: knownDepartment ?? department,
       location,
-      gender: editGender,
+      gender: editGender || undefined,
       employmentType: editEmploymentType,
       status: editStatus,
       dateOfBirth: editDateOfBirth,
@@ -2369,8 +2562,11 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Gender</label>
             <Select
               value={editGender}
-              onChange={(value) => setEditGender(value as Gender)}
-              options={(['Male', 'Female', 'Other'] as Gender[]).map((genderOption) => ({ label: genderOption, value: genderOption }))}
+              onChange={(value) => setEditGender(value as Gender | '')}
+              options={[
+                { label: 'Not recorded', value: '' },
+                ...(['Male', 'Female', 'Other'] as Gender[]).map((genderOption) => ({ label: genderOption, value: genderOption })),
+              ]}
             />
           </div>
           <div>

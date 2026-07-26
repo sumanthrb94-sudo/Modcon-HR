@@ -38,6 +38,9 @@ export function headcountByDepartment(): { department: string; count: number }[]
 export function genderDiversity(): { name: string; value: number }[] {
   const map: Record<string, number> = {};
   employees.forEach((e) => {
+    // Someone whose gender nobody recorded is not a category — leave them out
+    // rather than charting an "undefined" slice.
+    if (!e.gender) return;
     map[e.gender] = (map[e.gender] ?? 0) + 1;
   });
   return Object.entries(map).map(([name, value]) => ({ name, value }));
