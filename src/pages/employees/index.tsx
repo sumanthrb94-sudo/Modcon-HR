@@ -150,7 +150,7 @@ function AddEmployeeModal({
   const [phone, setPhone] = useState('');
   const [designation, setDesignation] = useState('');
   const [department, setDepartment] = useState<Employee['department']>('Engineering');
-  const [location, setLocation] = useState(locations[0] ?? 'Bengaluru');
+  const [location, setLocation] = useState(locations[0] ?? '');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('Full-time');
   const [gender, setGender] = useState<Gender>('Male');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -196,7 +196,7 @@ function AddEmployeeModal({
     setPhone('');
     setDesignation('');
     setDepartment('Engineering');
-    setLocation(locations[0] ?? 'Bengaluru');
+    setLocation(locations[0] ?? '');
     setEmploymentType('Full-time');
     setGender('Male');
     setDateOfBirth('');
@@ -1353,7 +1353,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editPhone, setEditPhone] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
   const [editDepartment, setEditDepartment] = useState<Employee['department']>(departments[0] as Employee['department']);
-  const [editLocation, setEditLocation] = useState(locations[0] ?? 'Bengaluru');
+  const [editLocation, setEditLocation] = useState(locations[0] ?? '');
   const [editGender, setEditGender] = useState<Gender>('Male');
   const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>('Full-time');
   const [editStatus, setEditStatus] = useState<EmployeeStatus>('Active');
@@ -1361,10 +1361,39 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editBloodGroup, setEditBloodGroup] = useState('');
   const [editMaritalStatus, setEditMaritalStatus] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editReportingManagerId, setEditReportingManagerId] = useState('');
   const [editError, setEditError] = useState('');
 
   const emp = getEmployee(employeeId);
   const isSelfView = emp ? emp.id === currentEmployee?.id : false;
+
+  /**
+   * Who this person could report to: anyone in the directory except
+   * themselves and anyone already below them. Offering a subordinate would
+   * create a reporting cycle, which the org chart walks and would hang on.
+   */
+  const managerOptions = useMemo(() => {
+    if (!emp) return [] as { label: string; value: string }[];
+    const directory = getEmployeeDirectory();
+
+    const blocked = new Set<string>([emp.id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      directory.forEach((candidate) => {
+        const managerId = candidate.reportingManagerId;
+        if (managerId && blocked.has(managerId) && !blocked.has(candidate.id)) {
+          blocked.add(candidate.id);
+          grew = true;
+        }
+      });
+    }
+
+    return directory
+      .filter((candidate) => !blocked.has(candidate.id))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName))
+      .map((candidate) => ({ label: `${candidate.fullName} · ${candidate.designation}`, value: candidate.id }));
+  }, [emp]);
 
   useEffect(() => {
     if (!emp) return;
@@ -1461,6 +1490,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditBloodGroup(emp.bloodGroup ?? '');
     setEditMaritalStatus(emp.maritalStatus ?? '');
     setEditAddress(emp.address ?? '');
+    setEditReportingManagerId(emp.reportingManagerId ?? '');
     setEditError('');
     setEditOpen(true);
   }
@@ -1509,6 +1539,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       bloodGroup: editBloodGroup.trim() || undefined,
       maritalStatus: (editMaritalStatus as Employee['maritalStatus']) || undefined,
       address: editAddress.trim() || undefined,
+      reportingManagerId: editReportingManagerId || null,
+      // getEmployeeDirectory() recomputes the name on read; setting it here
+      // keeps the record self-consistent in the meantime.
+      reportingManagerName: managerOptions.find((option) => option.value === editReportingManagerId)?.label,
     });
 
     setEditOpen(false);
@@ -1882,6 +1916,15 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
               onChange={(event) => setEditAddress(event.target.value)}
               placeholder="Not recorded"
               className="input w-full"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Reporting Manager</label>
+            <Select
+              value={editReportingManagerId}
+              onChange={setEditReportingManagerId}
+              options={[{ label: 'No manager', value: '' }, ...managerOptions]}
+              disabled={isEmployee}
             />
           </div>
           <div className="md:col-span-2">
