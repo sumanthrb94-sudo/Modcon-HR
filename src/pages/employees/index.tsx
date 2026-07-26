@@ -55,6 +55,9 @@ import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
+import { getEmployeeBalances, getLeaveRequests } from '@/data/leave';
+import { buildPayslipComponents } from '@/data/payroll';
+import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -830,15 +833,19 @@ const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b'];
 
 function CompensationTab({ emp }: { emp: Employee }) {
   const annual = emp.ctc;
-  const monthly = Math.round(annual / 12);
-  const basic = Math.round(monthly * 0.4);
-  const hra = Math.round(monthly * 0.2);
-  const special = monthly - basic - hra;
+  // Reuse payroll's own split rather than restating the 40/20 ratios here —
+  // duplicating them meant this tab could silently disagree with the payslip.
+  const { monthly, basic, hra, specialAllowance: special } = buildPayslipComponents(emp);
+
+  // Percentages are computed from the amounts, not asserted alongside them.
+  // "Special Allowance" was labelled a flat 40% while actually being the
+  // rounding remainder.
+  const share = (amount: number) => pct(amount, monthly);
 
   const breakdown = [
-    { label: 'Basic Salary', amount: basic, pct: 40, color: 'text-indigo-600' },
-    { label: 'HRA', amount: hra, pct: 20, color: 'text-emerald-600' },
-    { label: 'Special Allowance', amount: special, pct: 40, color: 'text-amber-600' },
+    { label: 'Basic Salary', amount: basic, pct: share(basic), color: 'text-indigo-600' },
+    { label: 'HRA', amount: hra, pct: share(hra), color: 'text-emerald-600' },
+    { label: 'Special Allowance', amount: special, pct: share(special), color: 'text-amber-600' },
   ];
 
   const pieData = [
@@ -1207,66 +1214,86 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
 // ---------------------------------------------------------------------------
 // Time Off Tab
 // ---------------------------------------------------------------------------
-interface LeaveBalanceRow {
-  type: string;
-  total: number;
-  used: number;
-  available: number;
-  tone: 'green' | 'amber' | 'brand';
-}
+/**
+ * This tab used to render one hardcoded set of balances and four fixed leave
+ * events for every employee, so every profile in the directory reported the
+ * same time off. Both cards now come from the employee's own records.
+ */
+function TimeOffTab({ employeeId }: { employeeId: string }) {
+  const dataRevision = useDashboardDataRevision();
 
-const LEAVE_BALANCES: LeaveBalanceRow[] = [
-  { type: 'Casual Leave', total: 12, used: 5, available: 7, tone: 'brand' },
-  { type: 'Sick Leave', total: 12, used: 3, available: 9, tone: 'amber' },
-  { type: 'Earned Leave', total: 21, used: 8, available: 13, tone: 'green' },
-  { type: 'Comp Off', total: 4, used: 2, available: 2, tone: 'brand' },
-];
+  const requests = useMemo(() => getLeaveRequests(), [dataRevision]);
+  const balances = useMemo(
+    () => getEmployeeBalances(employeeId, requests),
+    [employeeId, requests],
+  );
+  const history = useMemo(
+    () => requests
+      .filter((request) => request.employeeId === employeeId)
+      .slice()
+      .sort((a, b) => b.startDate.localeCompare(a.startDate))
+      .slice(0, 6),
+    [requests, employeeId],
+  );
 
-function TimeOffTab() {
+  const year = todayIso().slice(0, 4);
+
   return (
     <div className="space-y-5">
       <Card>
-        <CardHeader title="Leave Balances" subtitle="Current year (Jan – Dec 2026)" />
-        <div className="space-y-5">
-          {LEAVE_BALANCES.map((lb) => (
-            <div key={lb.type}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-ink-800">{lb.type}</span>
-                <div className="flex items-center gap-4 text-xs text-ink-500">
-                  <span><span className="font-semibold text-ink-700">{lb.used}</span> used</span>
-                  <span><span className="font-semibold text-emerald-600">{lb.available}</span> remaining</span>
-                  <span>of {lb.total} days</span>
+        <CardHeader title="Leave Balances" subtitle={`Current year (Jan – Dec ${year})`} />
+        {balances.length === 0 ? (
+          <p className="py-6 text-center text-sm text-ink-400">
+            No leave balance has been set up for this employee yet.
+          </p>
+        ) : (
+          <div className="space-y-5">
+            {balances.map((lb) => {
+              const usedPct = pct(lb.used, lb.total);
+              return (
+                <div key={lb.type}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-ink-800">{lb.type} Leave</span>
+                    <div className="flex items-center gap-4 text-xs text-ink-500">
+                      <span><span className="font-semibold text-ink-700">{lb.used}</span> used</span>
+                      <span><span className="font-semibold text-emerald-600">{lb.available}</span> remaining</span>
+                      <span>of {lb.total} days</span>
+                    </div>
+                  </div>
+                  {/* Tone tracks how much of the entitlement is gone, rather
+                      than being fixed per leave type. */}
+                  <ProgressBar value={usedPct} tone={usedPct > 75 ? 'amber' : 'brand'} showLabel />
                 </div>
-              </div>
-              <ProgressBar value={pct(lb.used, lb.total)} tone={lb.tone} showLabel />
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       <Card>
         <CardHeader title="Recent Leave Activity" />
-        <div className="space-y-3">
-          {[
-            { type: 'Casual Leave', dates: '23 May – 24 May 2026', days: 2, status: 'Approved' },
-            { type: 'Sick Leave', dates: '10 Apr – 10 Apr 2026', days: 1, status: 'Approved' },
-            { type: 'Earned Leave', dates: '01 Mar – 05 Mar 2026', days: 5, status: 'Approved' },
-            { type: 'Casual Leave', dates: '14 Jan – 15 Jan 2026', days: 2, status: 'Rejected' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-ink-50 last:border-0">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
-                  <Calendar size={14} className="text-brand-600" />
+        {history.length === 0 ? (
+          <p className="py-6 text-center text-sm text-ink-400">No leave requests on record.</p>
+        ) : (
+          <div className="space-y-3">
+            {history.map((item) => (
+              <div key={item.id} className="flex items-center justify-between py-2 border-b border-ink-50 last:border-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
+                    <Calendar size={14} className="text-brand-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-ink-800">{item.type} Leave</p>
+                    <p className="text-xs text-ink-400">
+                      {formatDate(item.startDate)} – {formatDate(item.endDate)} · {item.days} day{item.days !== 1 ? 's' : ''}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-ink-800">{item.type}</p>
-                  <p className="text-xs text-ink-400">{item.dates} · {item.days} day{item.days !== 1 ? 's' : ''}</p>
-                </div>
+                <Badge tone={statusTone(item.status)} dot>{item.status}</Badge>
               </div>
-              <Badge tone={statusTone(item.status)} dot>{item.status}</Badge>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -1627,7 +1654,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       {activeTab === 'team' && <TeamTab emp={emp} embeddedSelfView={embeddedSelfView} />}
       {activeTab === 'compensation' && <CompensationTab emp={emp} />}
       {activeTab === 'documents' && <DocumentsTab employeeId={emp.id} />}
-      {activeTab === 'timeoff' && <TimeOffTab />}
+      {activeTab === 'timeoff' && <TimeOffTab employeeId={emp.id} />}
 
       <Modal
         open={messageOpen}
