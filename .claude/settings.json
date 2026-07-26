@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)",
+      "Bash(git commit *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh auth *)",
+      "Bash(npx firebase *)",
+      "Bash(timeout 25 npx firebase emulators:exec --only firestore \"echo RULES_OK\")",
+      "Bash(curl -s http://localhost:5173/src/main.tsx -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:5173/src/pages/organizations/index.tsx -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:5173/src/lib/orgScope.ts -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://modcon-hr.web.app/)",
+      "Bash(curl -s --max-time 20 https://modcon-hr.web.app/)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' --max-time 8 https://identitytoolkit.googleapis.com)",
+      "Bash(curl -s \"https://api.github.com/repos/sumanthrb94-sudo/Modcon-HR/actions/runs?branch=main&per_page=10\")",
+      "Bash(curl -s \"https://api.github.com/repos/sumanthrb94-sudo/Modcon-HR/actions/runs?branch=main&per_page=3\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(pkill -f \"vite$\")",
+      "Bash(pkill -f \"vite preview\")",
+      "Bash(rm -f /tmp/vite-dev.log)",
+      "Bash(rm -f /tmp/preview.log)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -)",
+      "Bash(tar tzf *)",
+      "Bash(sort -t\"'\" -k2)",
+      "Bash(sort -t\"'\" -k2 -r)",
+      "Bash(uniq -c -f1)",
+      "Bash(grep -v '^--$')",
+      "Bash(grep -rnE \"new Date\\\\\\([^\\)]*\\\\\\)\\\\.toLocale\\(Date|\\)String\\\\\\('en-IN', \\\\{ \\(?!.*timeZone\\)\" -P --include=\"*.ts\" --include=\"*.tsx\" src)",
+      "Bash(grep -v \"toLocaleString\\('en-IN', { style: 'currency'\")",
+      "Bash(grep -rnE \"^const [A-Z_]{3,} *\\(:|=\\) *\\\\[\" --include=\"*.tsx\" src/pages src/components)",
+      "Bash(python3 -c \"import json;[json.load\\(open\\(p\\)\\) and print\\('ok',p\\) for p in ['.claude/settings.json','.claude/settings.local.json']]\")",
+      "Bash(git check-ignore *)"
+    ]
+  }
+}

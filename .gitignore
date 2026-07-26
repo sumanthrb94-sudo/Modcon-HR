@@ -22,3 +22,12 @@ coverage
 /playwright-report/
 /blob-report/
 /.playwright/
+
+# Firebase CLI deploy cache (regenerated on every deploy)
+/.firebase/
+
+# Generated graph/wiki output
+/graphify-out/
+
+# Per-machine agent permission overrides; .claude/settings.json is shared
+/.claude/settings.local.json
