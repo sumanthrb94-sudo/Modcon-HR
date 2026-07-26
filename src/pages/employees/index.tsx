@@ -41,7 +41,7 @@ import {
 } from '@/components/ui';
 import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
 import { addDocumentToLibrary, updateDocumentStatus, useEmployeeDocumentLibrary, type DocumentRecord, type DocumentStatus } from '@/data/documents';
-import { departments } from '@/data/departments';
+import { departments, addDepartmentToDirectory } from '@/data/departments';
 import type { Employee, EmployeeStatus, EmploymentType, Gender } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { OrgChart } from './OrgChart';
@@ -733,6 +733,9 @@ function InlineEditTrigger({
   );
 }
 
+/** Sentinel option value, distinct from any plausible department or location. */
+const CREATE_OPTION = '__create__';
+
 /**
  * A single-choice value that can be changed where it is read.
  *
@@ -742,12 +745,16 @@ function InlineEditTrigger({
  *
  * Viewers who cannot edit get the plain value with no affordance — a control
  * that looks clickable but refuses to act is worse than no control at all.
+ *
+ * When `onCreate` is given the list also offers an "add new" option, so a
+ * department or location that does not exist yet can be added from here.
  */
 function InlineSelect({
   label,
   value,
   options,
   onSave,
+  onCreate,
   editable,
   triggerClassName,
   children,
@@ -756,15 +763,60 @@ function InlineSelect({
   value: string;
   options: string[];
   onSave: (next: string) => void;
+  /** Supplied when the list can be added to from here; omitted when it cannot. */
+  onCreate?: (name: string) => void;
   editable: boolean;
   triggerClassName?: string;
   children?: ReactNode;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<'rest' | 'choose' | 'create'>('rest');
+  const [draft, setDraft] = useState('');
+  const committed = useRef(false);
+  // Picking "add new" closes the select, which also fires its blur. Without
+  // this the blur would send us back to rest before the text box appeared.
+  const openingCreate = useRef(false);
 
   if (!editable) return <>{children ?? value}</>;
 
-  if (editing) {
+  if (mode === 'create' && onCreate) {
+    const commit = () => {
+      if (committed.current) return;
+      committed.current = true;
+      const next = draft.trim();
+      setMode('rest');
+      if (!next) return;
+      // Typing a name that already exists should pick it, not add a second
+      // one alongside it under different capitalisation.
+      const existing = options.find((option) => option.toLowerCase() === next.toLowerCase());
+      if (existing) {
+        if (existing !== value) onSave(existing);
+        return;
+      }
+      onCreate(next);
+    };
+
+    return (
+      <input
+        autoFocus
+        type="text"
+        aria-label={`New ${label.toLowerCase()}`}
+        placeholder={`New ${label.toLowerCase()}`}
+        className="input w-auto max-w-[16rem] py-0.5 px-2 text-sm"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+          if (event.key === 'Escape') {
+            committed.current = true;
+            setMode('rest');
+          }
+        }}
+      />
+    );
+  }
+
+  if (mode === 'choose') {
     return (
       <select
         autoFocus
@@ -772,11 +824,24 @@ function InlineSelect({
         className="input w-auto max-w-[13rem] py-0.5 px-2 text-sm"
         value={value}
         onChange={(event) => {
+          if (event.target.value === CREATE_OPTION) {
+            setDraft('');
+            committed.current = false;
+            openingCreate.current = true;
+            setMode('create');
+            return;
+          }
           if (event.target.value !== value) onSave(event.target.value);
-          setEditing(false);
+          setMode('rest');
         }}
-        onBlur={() => setEditing(false)}
-        onKeyDown={(event) => { if (event.key === 'Escape') setEditing(false); }}
+        onBlur={() => {
+          if (openingCreate.current) {
+            openingCreate.current = false;
+            return;
+          }
+          setMode('rest');
+        }}
+        onKeyDown={(event) => { if (event.key === 'Escape') setMode('rest'); }}
       >
         {/* A value the org has since renamed or removed is still this
             person's value. Without this it would be absent from the list,
@@ -784,12 +849,13 @@ function InlineSelect({
             editor untouched would silently reassign them. */}
         {!options.includes(value) && <option value={value}>{value}</option>}
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {onCreate && <option value={CREATE_OPTION}>+ Add new {label.toLowerCase()}…</option>}
       </select>
     );
   }
 
   return (
-    <InlineEditTrigger label={label} onActivate={() => setEditing(true)} className={triggerClassName}>
+    <InlineEditTrigger label={label} onActivate={() => setMode('choose')} className={triggerClassName}>
       {children ?? value}
     </InlineEditTrigger>
   );
@@ -877,12 +943,14 @@ function EditableInfoRow({
   value,
   options,
   onSave,
+  onCreate,
   editable,
 }: {
   label: string;
   value: string;
   options?: string[];
   onSave: (next: string) => void;
+  onCreate?: (name: string) => void;
   editable: boolean;
 }) {
   if (!editable) return <InfoRow label={label} value={value} />;
@@ -891,7 +959,7 @@ function EditableInfoRow({
       <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-0.5">{label}</p>
       <div className="text-sm text-ink-800">
         {options
-          ? <InlineSelect label={label} value={value} options={options} onSave={onSave} editable />
+          ? <InlineSelect label={label} value={value} options={options} onSave={onSave} onCreate={onCreate} editable />
           : <InlineText label={label} value={value} onSave={onSave} editable />}
       </div>
     </div>
@@ -909,6 +977,8 @@ function OverviewTab({
   canEdit,
   canEditDesignation,
   onSaveField,
+  onCreateDepartment,
+  onCreateLocation,
 }: {
   emp: Employee;
   profilePicture: string | null;
@@ -917,6 +987,8 @@ function OverviewTab({
   canEdit: boolean;
   canEditDesignation: boolean;
   onSaveField: (patch: Partial<Employee>) => void;
+  onCreateDepartment: (name: string) => void;
+  onCreateLocation: (name: string) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -967,6 +1039,7 @@ function OverviewTab({
             value={emp.department}
             options={departments}
             onSave={(department) => onSaveField({ department })}
+            onCreate={onCreateDepartment}
             editable={canEdit}
           />
           <EditableInfoRow
@@ -974,6 +1047,7 @@ function OverviewTab({
             value={emp.location}
             options={locations}
             onSave={(location) => onSaveField({ location })}
+            onCreate={onCreateLocation}
             editable={canEdit}
           />
           <InfoRow label="Employment Type" value={emp.employmentType} />
@@ -1592,6 +1666,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   // because closing the modal happened to re-render; editing in place has no
   // such side effect to lean on.
   useEmployeeDirectoryRevision();
+  // Likewise for the department list behind the picker, so one added here or
+  // renamed in Settings shows up without a reload.
+  useDepartmentDirectoryRevision();
 
   const emp = getEmployee(employeeId);
   const isSelfView = emp ? emp.id === currentEmployee?.id : false;
@@ -1608,6 +1685,30 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   function saveField(patch: Partial<Employee>) {
     if (!emp) return;
     updateEmployeeInDirectory({ ...emp, ...patch });
+  }
+
+  /**
+   * Add a department to the org and move this person into it.
+   *
+   * Headcount is passed as 0 and the head as "—" because neither is stored
+   * data: headcount is recounted from the people actually in the department
+   * on every read, and the head is Settings' to record. Leaving open roles
+   * unset keeps the new department tracking its real job openings rather
+   * than pinning a literal — the same default Settings uses.
+   */
+  function createDepartment(name: string) {
+    addDepartmentToDirectory({ name, head: '—', headcount: 0 });
+    saveField({ department: name });
+  }
+
+  /**
+   * Locations are not a managed list. `locations` is the set of places people
+   * actually are, recomputed from the directory on every change — so putting
+   * someone somewhere new is all it takes for that place to exist, and it
+   * stops existing once nobody is there.
+   */
+  function createLocation(name: string) {
+    saveField({ location: name });
   }
 
   /**
@@ -1877,6 +1978,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   value={emp.department}
                   options={departments}
                   onSave={(department) => saveField({ department })}
+                  onCreate={createDepartment}
                   editable={canEditProfile}
                 >
                   <span className="flex items-center gap-1"><Building2 size={13} />{emp.department}</span>
@@ -1887,6 +1989,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   value={emp.location}
                   options={locations}
                   onSave={(location) => saveField({ location })}
+                  onCreate={createLocation}
                   editable={canEditProfile}
                 >
                   <span className="flex items-center gap-1"><MapPin size={13} />{emp.location}</span>
@@ -2002,6 +2105,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           canEdit={canEditProfile}
           canEditDesignation={canEditDesignation}
           onSaveField={saveField}
+          onCreateDepartment={createDepartment}
+          onCreateLocation={createLocation}
         />
       )}
       {activeTab === 'team' && <TeamTab emp={emp} embeddedSelfView={embeddedSelfView} />}
