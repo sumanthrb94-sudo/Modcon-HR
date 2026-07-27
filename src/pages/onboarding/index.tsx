@@ -23,7 +23,7 @@ import {
   Modal,
 } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
-import { onboardings as initialOnboardings } from '@/data/onboarding';
+import { getOnboardings, saveOnboardings, onboardings as initialOnboardings } from '@/data/onboarding';
 import { orgScopedKey } from '@/lib/orgScope';
 import type { Onboarding, OnboardingTask, TaskStatus } from '@/types';
 
@@ -379,11 +379,16 @@ function OnboardingCard({ onboarding, onToggleTask }: OnboardingCardProps) {
 // ---------------------------------------------------------------------------
 
 export function OnboardingPage() {
-  const [onboardings, setOnboardings] = useState<Onboarding[]>(() => readStoredOnboardings() ?? initialOnboardings);
+  // Shared store rather than a page-local copy, so the notification feed and
+  // anything else counting outstanding tasks sees the same progress.
+  const [onboardings, setOnboardingsState] = useState<Onboarding[]>(() => getOnboardings());
 
-  useEffect(() => {
-    writeStoredOnboardings(onboardings);
-  }, [onboardings]);
+  const setOnboardings = useCallback(
+    (updater: (prev: Onboarding[]) => Onboarding[]) => {
+      setOnboardingsState((prev) => saveOnboardings(updater(prev)));
+    },
+    [],
+  );
 
   const handleToggleTask = useCallback((onboardingId: string, taskId: string) => {
     setOnboardings((prev) =>

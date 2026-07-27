@@ -1,5 +1,6 @@
 import type { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { persistentCollection } from '@/data/persistence';
 
 export const tickets: Ticket[] = isMockDataCleared() ? [] : [
   {
@@ -214,3 +215,16 @@ export const tickets: Ticket[] = isMockDataCleared() ? [] : [
 ];
 
 export const ticketCategories = ['IT', 'HR', 'Facilities', 'Payroll'] as const;
+
+// ---- Persistence ------------------------------------------------------------
+// `tickets` above is the seed. Every change a user made to it lived in React
+// state alone and was lost on the next refresh.
+const ticketStore = persistentCollection<Ticket>(
+  'modcon.hr.tickets',
+  'modcon-hr-tickets-changed',
+  () => tickets,
+);
+
+export const TICKETS_CHANGED_EVENT = ticketStore.changedEvent;
+export const getTickets = () => ticketStore.get();
+export const saveTickets = (next: Ticket[]) => ticketStore.save(next);

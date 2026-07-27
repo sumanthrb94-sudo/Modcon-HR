@@ -24,7 +24,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { assets as initialAssets } from '@/data/assets';
+import { assets as initialAssets, getAssets, saveAssets } from '@/data/assets';
 import { employees } from '@/data/employees';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
@@ -273,7 +273,11 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
 
 export function AssetsPage() {
   const directoryRevision = useEmployeeDirectoryRevision();
-  const [assetList, setAssetList] = useState<Asset[]>(initialAssets);
+  // Seeded from the store and written through on every change, so an edit
+  // is still there after a refresh.
+  const [assetList, setAssetListRaw] = useState(() => getAssets());
+  const setAssetList = (updater: Parameters<typeof setAssetListRaw>[0]) =>
+    setAssetListRaw((prev) => saveAssets(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

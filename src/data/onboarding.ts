@@ -1,5 +1,6 @@
 import type { Onboarding, OnboardingTask } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { persistentCollection } from '@/data/persistence';
 
 // ---------------------------------------------------------------------------
 // Helper — compute progress from tasks
@@ -177,3 +178,17 @@ export const onboardings: Onboarding[] = raw.map((o) => ({
   ...o,
   progress: computeProgress(o.tasks),
 }));
+
+// ---- Persistence ------------------------------------------------------------
+// The onboarding page already persisted its own copy under this key. Sharing
+// the store means other readers — the notification feed counts outstanding
+// tasks — see the user's real progress instead of the untouched seed.
+const onboardingStore = persistentCollection<Onboarding>(
+  'modcon.hr.onboarding.state',
+  'modcon-hr-onboarding-changed',
+  () => onboardings,
+);
+
+export const ONBOARDING_CHANGED_EVENT = onboardingStore.changedEvent;
+export const getOnboardings = () => onboardingStore.get();
+export const saveOnboardings = (next: Onboarding[]) => onboardingStore.save(next);

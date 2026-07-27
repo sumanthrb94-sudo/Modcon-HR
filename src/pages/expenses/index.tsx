@@ -47,7 +47,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate, cn } from '@/lib/utils';
-import { expenseClaims, expenseByCategory } from '@/data/expenses';
+import { expenseClaims, expenseByCategory, getExpenseClaims, saveExpenseClaims } from '@/data/expenses';
 import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -713,7 +713,11 @@ export function ExpensesPage() {
   const isEmployee = role === 'Employee';
   const currentEmployee = getCurrentEmployee(profile);
   const { data: liveExpenses, loading: liveLoading } = useExpenses();
-  const [claims, setClaims] = useState<ExpenseClaim[]>(expenseClaims);
+  // Seeded from the store and written through on every change, so an edit
+  // is still there after a refresh.
+  const [claims, setClaimsRaw] = useState(() => getExpenseClaims());
+  const setClaims = (updater: Parameters<typeof setClaimsRaw>[0]) =>
+    setClaimsRaw((prev) => saveExpenseClaims(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
   const [activeTab, setActiveTab] = useState<TabId>('all');
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [activeView, setActiveView] = useState<ViewTab>('claims');

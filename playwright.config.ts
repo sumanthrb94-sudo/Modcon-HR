@@ -47,7 +47,7 @@ export default defineConfig({
   projects: [
     {
       name: 'app',
-      testMatch: /(smoke|interactions)\.spec\.ts$/,
+      testMatch: /(smoke|interactions|persistence)\.spec\.ts$/,
       use: commonUse,
     },
     {

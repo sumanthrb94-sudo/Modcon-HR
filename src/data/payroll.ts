@@ -3,6 +3,7 @@ import type { Employee } from '@/types';
 import { employees } from '@/data/employees';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
+import { persistentCollection } from '@/data/persistence';
 
 // ---------------------------------------------------------------------------
 // Salary component builder
@@ -137,3 +138,27 @@ export function salaryByDepartment(): Array<{ department: string; total: number 
     .map(([department, total]) => ({ department, total }))
     .sort((a, b) => b.total - a.total);
 }
+
+// ---- Persistence ------------------------------------------------------------
+// Processing a payroll run changed React state only, so the run went back to
+// Draft on the next refresh — the app appearing to forget that payroll had
+// been run is about the worst version of this bug.
+const payrollRunStore = persistentCollection<PayrollRun>(
+  'modcon.hr.payrollRuns',
+  'modcon-hr-payroll-runs-changed',
+  () => payrollRuns,
+);
+
+export const PAYROLL_RUNS_CHANGED_EVENT = payrollRunStore.changedEvent;
+export const getPayrollRuns = () => payrollRunStore.get();
+export const savePayrollRuns = (next: PayrollRun[]) => payrollRunStore.save(next);
+
+const payslipStore = persistentCollection<Payslip>(
+  'modcon.hr.payslips',
+  'modcon-hr-payslips-changed',
+  () => payslips,
+);
+
+export const PAYSLIPS_CHANGED_EVENT = payslipStore.changedEvent;
+export const getPayslips = () => payslipStore.get();
+export const savePayslips = (next: Payslip[]) => payslipStore.save(next);

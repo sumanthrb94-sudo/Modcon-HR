@@ -32,7 +32,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment } from '@/data/payroll';
+import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';
@@ -165,8 +165,14 @@ export function PayrollPage() {
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
-  const [payrollRunList, setPayrollRunList] = useState<PayrollRun[]>(initialPayrollRuns);
-  const [payslipList, setPayslipList] = useState<Payslip[]>(initialPayslips);
+  // Seeded from the store and written through, so a processed run does not
+  // revert to Draft on the next refresh.
+  const [payrollRunList, setPayrollRunListRaw] = useState(() => getPayrollRuns());
+  const setPayrollRunList = (updater: Parameters<typeof setPayrollRunListRaw>[0]) =>
+    setPayrollRunListRaw((prev) => savePayrollRuns(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+    const [payslipList, setPayslipListRaw] = useState(() => getPayslips());
+  const setPayslipList = (updater: Parameters<typeof setPayslipListRaw>[0]) =>
+    setPayslipListRaw((prev) => savePayslips(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
 
   // Salaries are disbursed on the last day of the month.
   const nextPayDate = useMemo(() => {
