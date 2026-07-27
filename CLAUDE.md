@@ -26,7 +26,7 @@ Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.conf
 
 ### Mutable collections must persist
 
-Anything a user can change goes through `persistentCollection` in `src/data/persistence.ts` — an org-scoped localStorage store with a change event. Seeding `useState` straight from a `src/data/*.ts` array means every edit is lost on refresh, which is what attendance, assets, expenses, helpdesk and payroll all did. `tests/e2e/persistence.spec.ts` guards this: it creates a record, **reloads**, and asserts it survived. The other specs never reload, so in-memory state passes them exactly as persisted state would.
+Anything a user can change goes through `persistentCollection` in `src/data/persistence.ts` — an org-scoped localStorage store with a change event. **Read it through the store's getter everywhere, never the exported seed array.** Aggregates (`src/data/dashboard.ts`, `src/data/notifications.ts`) and the approval pages all derived from the seeds, so a decision made on one page left every other surface reporting its original figure. `src/lib/seed.ts` is the deliberate exception — it pushes the canonical demo dataset into Firestore. Components that stay mounted while data changes elsewhere subscribe via `useDashboardDataRevision` / `useCollectionRevision`. Seeding `useState` straight from a `src/data/*.ts` array means every edit is lost on refresh, which is what attendance, assets, expenses, helpdesk and payroll all did. `tests/e2e/persistence.spec.ts` guards this: it creates a record, **reloads**, and asserts it survived. The other specs never reload, so in-memory state passes them exactly as persisted state would.
 
 ### Two independent data sources — do not conflate them
 

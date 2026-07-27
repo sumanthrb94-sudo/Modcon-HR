@@ -47,7 +47,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate, cn } from '@/lib/utils';
-import { expenseClaims, expenseByCategory, getExpenseClaims, saveExpenseClaims } from '@/data/expenses';
+import { expenseByCategory, getExpenseClaims, saveExpenseClaims } from '@/data/expenses';
 import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -736,7 +736,10 @@ export function ExpensesPage() {
 
     const mergedMap = new Map<string, ExpenseClaim>();
     setClaims((prev) => {
-      for (const claim of expenseClaims) mergedMap.set(claim.id, claim);
+      // `prev` already starts from the store, which falls back to the seed
+      // when a company has none of its own. Layering the raw seed underneath
+      // as well would resurrect any claim that had been removed from the
+      // stored set.
       for (const claim of prev) mergedMap.set(claim.id, claim);
       for (const claim of liveExpenses) mergedMap.set(claim.id, claim);
 

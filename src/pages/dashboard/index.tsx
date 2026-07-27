@@ -19,8 +19,8 @@ import {
 } from '@/components/ui';
 import { getEmployeeDirectory } from '@/data/employees';
 import { getLeaveRequests, getEmployeeBalances } from '@/data/leave';
-import { expenseClaims } from '@/data/expenses';
-import { tickets } from '@/data/helpdesk';
+import { getExpenseClaims } from '@/data/expenses';
+import { getTickets } from '@/data/helpdesk';
 import { announcements } from '@/data/common';
 import { getHolidayDirectory } from '@/data/holidays';
 import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatMonthYearLong, monthIndexOf, pct, timeAgo, yearOf } from '@/lib/utils';
@@ -120,7 +120,7 @@ function EmployeeDashboard() {
     [currentEmployee],
   );
   const employeeExpenses = useMemo(
-    () => (currentEmployee ? expenseClaims.filter((claim) => claim.employeeId === currentEmployee.id) : []),
+    () => (currentEmployee ? getExpenseClaims().filter((claim) => claim.employeeId === currentEmployee.id) : []),
     [currentEmployee],
   );
   const expenseRows = useMemo(
@@ -131,7 +131,7 @@ function EmployeeDashboard() {
     [employeeExpenses],
   );
   const employeeTickets = useMemo(
-    () => (currentEmployee ? tickets.filter((ticket) => ticket.raisedById === currentEmployee.id) : []),
+    () => (currentEmployee ? getTickets().filter((ticket) => ticket.raisedById === currentEmployee.id) : []),
     [currentEmployee],
   );
   const ticketRows = useMemo(

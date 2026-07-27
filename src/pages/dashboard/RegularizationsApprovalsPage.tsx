@@ -3,14 +3,14 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { regularizationRequests } from '@/data/attendance';
+import { getRegularizationRequests } from '@/data/attendance';
 import { employees } from '@/data/employees';
 import { formatDate } from '@/lib/utils';
 
 export function RegularizationsApprovalsPage() {
     const navigate = useNavigate();
     const [requestStatuses, setRequestStatuses] = useState<Record<string, 'Pending' | 'Approved' | 'Rejected'>>(() =>
-        regularizationRequests.reduce((acc, request) => {
+        getRegularizationRequests().reduce((acc, request) => {
             acc[request.id] = request.status;
             return acc;
         }, {} as Record<string, 'Pending' | 'Approved' | 'Rejected'>),
@@ -21,7 +21,7 @@ export function RegularizationsApprovalsPage() {
     }
 
     const pendingRegularizations = useMemo(
-        () => regularizationRequests
+        () => getRegularizationRequests()
             .filter((r) => requestStatuses[r.id] === 'Pending')
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         [requestStatuses],

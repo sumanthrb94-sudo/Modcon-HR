@@ -101,3 +101,50 @@ test.describe.serial('data survives a refresh', () => {
     expect(await page.locator('table tbody tr').count()).toBe(before);
   });
 });
+
+/**
+ * A change made on one page has to show up wherever else that record is
+ * counted.
+ *
+ * The consolidated approval queue derives its figures from
+ * `pendingApprovalsSummary()`, which read the static seed arrays rather than
+ * the stores. So deciding a regularization or completing an onboarding task
+ * changed the page you were on and nothing else: this queue kept reporting the
+ * number it started with.
+ *
+ * These assertions deliberately compare a count on a *different* page after
+ * acting — asserting on the page that performed the action would pass whether
+ * or not the aggregate readers were fixed.
+ */
+async function pendingCountFor(page: Page, queue: string): Promise<number> {
+  await page.goto('/dashboard/pending-approvals');
+  const row = page.locator('a', { hasText: queue }).first();
+  await expect(row).toBeVisible();
+  const text = (await row.innerText()).replace(/\s+/g, ' ');
+  return Number(text.match(/(\d+) pending items/)?.[1] ?? -1);
+}
+
+test.describe.serial('changes reflect on related pages', () => {
+  let page: Page;
+
+  test.beforeAll(async ({ browser }) => {
+    page = await browser.newPage();
+    await login(page);
+  });
+
+  test.afterAll(async () => {
+    await page?.close();
+  });
+
+  test('deciding a regularization updates the consolidated approval queue', async () => {
+    const before = await pendingCountFor(page, 'Regularizations');
+    test.skip(before <= 0, 'no pending regularizations in this dataset');
+
+    await page.getByRole('link', { name: 'Attendance', exact: true }).first().click();
+    await page.getByRole('button', { name: /^Approve$/ }).first().click();
+
+    expect(await pendingCountFor(page, 'Regularizations')).toBe(before - 1);
+  });
+
+
+});

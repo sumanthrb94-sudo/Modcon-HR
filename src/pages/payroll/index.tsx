@@ -32,7 +32,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
+import { buildPayslip, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';

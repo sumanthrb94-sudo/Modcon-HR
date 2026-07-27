@@ -210,7 +210,10 @@ export const regularizationRequests: RegularizationRequest[] = isMockDataCleared
 
 // ---- Aggregate helpers ------------------------------------------------------
 export function getRecordsByDate(date: string): AttendanceRecord[] {
-  return attendanceRecords.filter((r) => r.date === date);
+  // Reads the store, so a day marked on the Attendance page shows up in the
+  // dashboard's cards and the weekly chart rather than only on the page that
+  // recorded it.
+  return getAttendanceRecords().filter((r) => r.date === date);
 }
 
 /**

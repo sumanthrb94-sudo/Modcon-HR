@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { expenseClaims } from '@/data/expenses';
+import { getExpenseClaims } from '@/data/expenses';
 import { employees } from '@/data/employees';
 import { formatDate, formatINR } from '@/lib/utils';
 import type { ExpenseStatus } from '@/types';
@@ -11,7 +11,7 @@ import type { ExpenseStatus } from '@/types';
 export function ExpenseClaimsApprovalsPage() {
     const navigate = useNavigate();
     const [claimStatuses, setClaimStatuses] = useState<Record<string, ExpenseStatus>>(() =>
-        expenseClaims.reduce((acc, claim) => {
+        getExpenseClaims().reduce((acc, claim) => {
             acc[claim.id] = claim.status;
             return acc;
         }, {} as Record<string, ExpenseStatus>),
@@ -22,7 +22,7 @@ export function ExpenseClaimsApprovalsPage() {
     }
 
     const pendingClaims = useMemo(
-        () => expenseClaims
+        () => getExpenseClaims()
             .filter((c) => claimStatuses[c.id] === 'Submitted')
             .sort((a, b) => new Date(b.submittedOn).getTime() - new Date(a.submittedOn).getTime()),
         [claimStatuses],

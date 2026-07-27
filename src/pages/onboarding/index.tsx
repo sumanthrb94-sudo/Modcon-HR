@@ -23,7 +23,7 @@ import {
   Modal,
 } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
-import { getOnboardings, saveOnboardings, onboardings as initialOnboardings } from '@/data/onboarding';
+import { getOnboardings, saveOnboardings } from '@/data/onboarding';
 import { orgScopedKey } from '@/lib/orgScope';
 import type { Onboarding, OnboardingTask, TaskStatus } from '@/types';
 

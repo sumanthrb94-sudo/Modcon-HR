@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { onboardings } from '@/data/onboarding';
+import { getOnboardings } from '@/data/onboarding';
 import { formatDate } from '@/lib/utils';
 
 export function OnboardingTasksApprovalsPage() {
@@ -15,7 +15,7 @@ export function OnboardingTasksApprovalsPage() {
     }
 
     const pendingTasks = useMemo(
-        () => onboardings
+        () => getOnboardings()
             .flatMap((onboarding) => onboarding.tasks
                 .filter((task) => task.status !== 'Completed')
                 .map((task) => ({
