@@ -2,7 +2,14 @@ import { useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, ShieldCheck, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useOrganizations } from '@/lib/useFirestore';
-import { createOrganization, friendlyOrgError, type CreateOrganizationResult } from '@/lib/organizations';
+import {
+    createOrganization,
+    friendlyOrgError,
+    findOrgAdminsToMigrate,
+    migrateOrgAdminsToHr,
+    type CreateOrganizationResult,
+    type OrgAdminMigrationCandidate,
+} from '@/lib/organizations';
 import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import {
     PageHeader,
@@ -43,6 +50,47 @@ export function OrganizationsPage() {
     const [adminEmail, setAdminEmail] = useState('');
     const [result, setResult] = useState<CreateOrganizationResult | null>(null);
     const [copied, setCopied] = useState(false);
+
+    // Migration for organisations created before the first account became an
+    // HR administrator. Two stages on purpose: this revokes the Admin role from
+    // live accounts, so the list is shown and confirmed before anything is
+    // written.
+    const [migrateOpen, setMigrateOpen] = useState(false);
+    const [migrateScanning, setMigrateScanning] = useState(false);
+    const [migrateRunning, setMigrateRunning] = useState(false);
+    const [migrateCandidates, setMigrateCandidates] = useState<OrgAdminMigrationCandidate[] | null>(null);
+    const [migrateReport, setMigrateReport] = useState<{ migrated: string[]; failed: { email: string; reason: string }[] } | null>(null);
+    const [migrateError, setMigrateError] = useState('');
+
+    const migratable = (migrateCandidates ?? []).filter((c) => !c.skipReason);
+
+    async function openMigration() {
+        setMigrateOpen(true);
+        setMigrateReport(null);
+        setMigrateError('');
+        setMigrateCandidates(null);
+        setMigrateScanning(true);
+        try {
+            setMigrateCandidates(await findOrgAdminsToMigrate(organizations));
+        } catch (err) {
+            setMigrateError((err as Error)?.message ?? 'Could not read the organizations.');
+        } finally {
+            setMigrateScanning(false);
+        }
+    }
+
+    async function runMigration() {
+        if (!migrateCandidates || !profile?.uid) return;
+        setMigrateRunning(true);
+        setMigrateError('');
+        try {
+            setMigrateReport(await migrateOrgAdminsToHr(migrateCandidates, profile.uid));
+        } catch (err) {
+            setMigrateError((err as Error)?.message ?? 'The migration did not complete.');
+        } finally {
+            setMigrateRunning(false);
+        }
+    }
 
     const activeOrgKey = getActiveOrgKey();
     const activeOrgName = organizations.find((o) => o.id === activeOrgKey)?.name;
@@ -149,9 +197,14 @@ export function OrganizationsPage() {
                 title="Organizations"
                 subtitle="Create and oversee every organization on ModCon HR. Each gets its own HR administrator and HR system."
                 actions={
-                    <Button icon={<Plus size={16} />} onClick={openCreate}>
-                        Create Organization
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button variant="secondary" icon={<ShieldCheck size={16} />} onClick={openMigration}>
+                            Review admin roles
+                        </Button>
+                        <Button icon={<Plus size={16} />} onClick={openCreate}>
+                            Create Organization
+                        </Button>
+                    </div>
                 }
             />
 
@@ -272,6 +325,85 @@ export function OrganizationsPage() {
                             />
                         </div>
                         {formError && <p className="text-xs text-rose-600">{formError}</p>}
+                    </div>
+                )}
+            </Modal>
+
+            <Modal
+                open={migrateOpen}
+                onClose={() => setMigrateOpen(false)}
+                title="Organization administrator roles"
+                subtitle={
+                    migrateReport
+                        ? 'Migration complete.'
+                        : 'Organizations created before this change were given a platform Admin account, which can grant the Admin role to others. Converting them to HR administrator confines them to their own organization.'
+                }
+            >
+                {migrateScanning ? (
+                    <div className="flex items-center gap-2 py-6 text-sm text-ink-500">
+                        <Loader2 size={16} className="animate-spin" /> Checking each organization&apos;s account…
+                    </div>
+                ) : migrateReport ? (
+                    <div className="space-y-3 text-sm">
+                        <p className="text-ink-700">
+                            {migrateReport.migrated.length === 0
+                                ? 'No accounts needed changing.'
+                                : `${migrateReport.migrated.length} account${migrateReport.migrated.length === 1 ? '' : 's'} converted to HR administrator.`}
+                        </p>
+                        {migrateReport.migrated.map((email) => (
+                            <p key={email} className="font-mono text-xs text-ink-600">{email}</p>
+                        ))}
+                        {migrateReport.failed.length > 0 ? (
+                            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                                <p className="font-medium text-rose-800">Could not change:</p>
+                                {migrateReport.failed.map((f) => (
+                                    <p key={f.email} className="text-xs text-rose-700">{f.email} — {f.reason}</p>
+                                ))}
+                            </div>
+                        ) : null}
+                        <p className="text-xs text-ink-400">
+                            Converted accounts keep their access to their own organization. They pick up the
+                            change the next time their profile is read.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {migrateError ? <p className="text-sm text-rose-600">{migrateError}</p> : null}
+                        {(migrateCandidates ?? []).length === 0 ? (
+                            <p className="text-sm text-ink-500">No organizations with a provisioned account yet.</p>
+                        ) : (
+                            <div className="space-y-1.5 max-h-72 overflow-auto">
+                                {(migrateCandidates ?? []).map((c) => (
+                                    <div key={c.uid} className="flex items-center justify-between gap-3 rounded-lg border border-ink-100 px-3 py-2">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium text-ink-900 truncate">{c.orgName}</p>
+                                            <p className="text-xs text-ink-500 truncate font-mono">{c.email}</p>
+                                        </div>
+                                        {c.skipReason ? (
+                                            <span className="shrink-0 text-xs text-ink-400">{c.skipReason}</span>
+                                        ) : (
+                                            <span className="shrink-0 text-xs font-medium text-amber-700">Admin → HR administrator</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {migratable.length > 0 ? (
+                            <p className="text-xs text-ink-500">
+                                This revokes the platform Admin role from {migratable.length} live account
+                                {migratable.length === 1 ? '' : 's'}. They keep full access to their own organization.
+                            </p>
+                        ) : null}
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button variant="secondary" onClick={() => setMigrateOpen(false)}>Close</Button>
+                            <Button
+                                onClick={runMigration}
+                                disabled={migratable.length === 0 || migrateRunning}
+                                icon={migrateRunning ? <Loader2 size={15} className="animate-spin" /> : undefined}
+                            >
+                                {migrateRunning ? 'Converting…' : `Convert ${migratable.length || ''}`.trim()}
+                            </Button>
+                        </div>
                     </div>
                 )}
             </Modal>

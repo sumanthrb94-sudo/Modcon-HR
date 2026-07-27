@@ -467,3 +467,44 @@ describe('organization provisioning — the first account is an HR administrator
     await assertFails(updateDoc(doc(db, 'users', USERS.employeeA.uid), { role: 'manager' }));
   });
 });
+
+
+describe('migrating a legacy org admin down to HR', () => {
+  beforeEach(seed);
+
+  /** An organisation provisioned before the first account became `hr`. */
+  async function legacyOrgAdmin() {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', 'legacy-org-admin'), {
+        uid: 'legacy-org-admin',
+        email: 'legacy@acme.com',
+        displayName: 'Legacy Acme Admin',
+        role: 'admin',
+        orgId: 'org-acme',
+      });
+    });
+  }
+
+  it('a super admin can demote a legacy org admin to HR', async () => {
+    await legacyOrgAdmin();
+    await assertSucceeds(
+      updateDoc(doc(as(USERS.superA), 'users', 'legacy-org-admin'), { role: 'hr' }),
+    );
+  });
+
+  it('an HR manager cannot run the migration', async () => {
+    // The demotion targets an account holding `admin`, which HR may not edit —
+    // so this is super-admin/admin work, as the UI gating implies.
+    await legacyOrgAdmin();
+    await assertFails(
+      updateDoc(doc(as(USERS.hrA), 'users', 'legacy-org-admin'), { role: 'hr' }),
+    );
+  });
+
+  it('the demotion does not strip or grant superAdmin', async () => {
+    await legacyOrgAdmin();
+    await assertFails(
+      updateDoc(doc(as(USERS.adminA), 'users', 'legacy-org-admin'), { role: 'hr', superAdmin: true }),
+    );
+  });
+});
