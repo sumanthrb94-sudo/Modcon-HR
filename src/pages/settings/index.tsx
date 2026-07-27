@@ -13,6 +13,7 @@ import {
 import type { Column } from '@/components/ui';
 import { Select } from '@/components/ui';
 import { employees } from '@/data/employees';
+import { getCompanyProfile, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -28,6 +29,7 @@ import {
   type PermissionMatrix,
   savePermissionMatrix,
   getPermissionMatrix,
+  isModuleExcluded,
 } from '@/lib/accessControl';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 import { getHolidayDirectory, saveHolidayDirectory } from '@/data/holidays';
@@ -149,21 +151,21 @@ function SettingsSection({ title, subtitle, children }: {
 // ===========================================================================
 function CompanyProfile() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [form, setForm] = useState({
-    name: 'ModCon Technologies Pvt Ltd',
-    legalName: 'ModCon Technologies Private Limited',
-    industry: 'SaaS / HR Tech',
-    founded: '2019',
-    hq: 'Bengaluru, Karnataka',
-    website: 'https://modcon.io',
-    gstin: '29AACCM1234F1Z5',
-    cin: 'U72900KA2019PTC12345',
-    employeeCount: String(employees.length),
-    supportEmail: 'hr@modcon.io',
-    phone: '+91 80 4567 8900',
-  });
+  const departmentRevision = useDepartmentDirectoryRevision();
+  // Read from the company's own record rather than starting every organisation
+  // on ModCon's name, address and registration numbers.
+  const [form, setForm] = useState<CompanyProfileRecord>(() => getCompanyProfile());
   const [logoDataUrl, setLogoDataUrl] = useState('');
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const departmentOptions = useMemo(
+    () => [
+      { label: 'Not set', value: '' },
+      ...getDepartmentDirectory().map((department) => ({ label: department.name, value: department.name })),
+    ],
+    [departmentRevision],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -175,18 +177,25 @@ function CompanyProfile() {
     }
   }, []);
 
-  useEffect(() => {
-    setForm((prev) => ({
-      ...prev,
-      employeeCount: String(employees.length),
-    }));
-  }, [employees.length]);
+  const update = (k: keyof CompanyProfileRecord) => (v: string) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    setDirty(true);
+    setSaved(false);
+  };
 
-  const update = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
-
+  // Save used to flash "Saved!" and discard the edit — every field reverted on
+  // the next page load. It now writes to the company's own org-scoped record.
   function handleSave() {
+    saveCompanyProfile(form);
+    setDirty(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  }
+
+  function handleDiscard() {
+    setForm(getCompanyProfile());
+    setDirty(false);
+    setSaved(false);
   }
 
   function handlePickLogo() {
@@ -229,8 +238,11 @@ function CompanyProfile() {
             )}
           </div>
           <div>
-            <p className="font-semibold text-ink-900 text-lg">{form.name}</p>
-            <p className="text-sm text-ink-500 mt-0.5">{form.industry} · Founded {form.founded}</p>
+            <p className="font-semibold text-ink-900 text-lg">{form.name || 'Unnamed company'}</p>
+            <p className="text-sm text-ink-500 mt-0.5">
+              {[form.industry, form.founded ? `Founded ${form.founded}` : ''].filter(Boolean).join(' · ')
+                || 'Add your company details below'}
+            </p>
             <div className="flex gap-2 mt-2">
               <Button variant="secondary" size="sm" icon={<Edit2 size={13} />} onClick={handlePickLogo}>
                 Change Logo
@@ -266,16 +278,32 @@ function CompanyProfile() {
           <Field label="Website" value={form.website} onChange={update('website')} type="url" />
           <Field label="GSTIN" value={form.gstin} onChange={update('gstin')} />
           <Field label="CIN" value={form.cin} onChange={update('cin')} />
-          <Field label="Employee Count" value={form.employeeCount} onChange={update('employeeCount')} disabled />
+          {/* Counted from the directory, never typed — it was already read-only
+              but is now derived at render rather than mirrored into form state. */}
+          <Field label="Employee Count" value={String(employees.length)} onChange={() => {}} disabled />
           <Field label="Support Email" value={form.supportEmail} onChange={update('supportEmail')} type="email" />
           <Field label="Contact Phone" value={form.phone} onChange={update('phone')} />
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+              HR Department
+            </label>
+            <Select
+              value={form.hrDepartment}
+              onChange={update('hrDepartment')}
+              options={departmentOptions}
+            />
+            <p className="text-xs text-ink-400 mt-1">
+              Which department carries the HR function. Its head oversees every employee&apos;s records,
+              including top management.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 mt-6 pt-5 border-t border-ink-100">
           <Button variant="primary" onClick={handleSave} icon={saved ? <CheckCircle2 size={15} /> : undefined}>
             {saved ? 'Saved!' : 'Save Changes'}
           </Button>
-          <Button variant="ghost">Discard</Button>
+          <Button variant="ghost" onClick={handleDiscard} disabled={!dirty}>Discard</Button>
         </div>
       </Card>
     </SettingsSection>
@@ -291,6 +319,73 @@ interface DeptRow {
   headcount: number;
   openRoles: number;
   openRolesOverride?: number;
+}
+
+/**
+ * Picks a department head from the people actually on the books.
+ *
+ * This was a free-text box, so the head was whatever string someone typed — it
+ * could name a person who had left, or nobody at all, and it never had to match
+ * a directory record. Choosing from the directory means the head is always a
+ * real, current employee, which is what lets lib/dataScope.ts resolve the HR
+ * Manager from it.
+ *
+ * The department's own members are offered first because the head usually comes
+ * from within, but anyone may be picked — a new department has no members yet.
+ */
+function DepartmentHeadSelect({
+  value, onChange, department, hint,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  department?: string;
+  hint?: string;
+}) {
+  const directoryRevision = useEmployeeDirectoryRevision();
+
+  const { insiders, others } = useMemo(() => {
+    // "Resigned" people are off the books; offering them as a head would be
+    // re-creating the stale-name problem this select exists to remove.
+    const candidates = employees
+      .filter((employee) => employee.status !== 'Resigned')
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
+    return {
+      insiders: department ? candidates.filter((e) => e.department === department) : [],
+      others: department ? candidates.filter((e) => e.department !== department) : candidates,
+    };
+  }, [department, directoryRevision]);
+
+  const label = (employee: typeof employees[number]) => `${employee.fullName} · ${employee.designation}`;
+  // A stored head who is no longer in the directory would otherwise vanish
+  // silently from the select, making it look as though none was ever set.
+  const isKnown = !value || [...insiders, ...others].some((e) => e.fullName === value);
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+        Department Head
+      </label>
+      <select className="input w-full" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Not set</option>
+        {!isKnown ? <option value={value}>{value} (no longer in the directory)</option> : null}
+        {insiders.length ? (
+          <optgroup label={`In ${department}`}>
+            {insiders.map((employee) => (
+              <option key={employee.id} value={employee.fullName}>{label(employee)}</option>
+            ))}
+          </optgroup>
+        ) : null}
+        {others.length ? (
+          <optgroup label={insiders.length ? 'Other departments' : 'All employees'}>
+            {others.map((employee) => (
+              <option key={employee.id} value={employee.fullName}>{label(employee)}</option>
+            ))}
+          </optgroup>
+        ) : null}
+      </select>
+      {hint && <p className="text-xs text-ink-400 mt-1">{hint}</p>}
+    </div>
+  );
 }
 
 function DepartmentsSection() {
@@ -546,14 +641,13 @@ function DepartmentsSection() {
               setAddError('');
             }}
           />
-          <Field
-            label="Department Head"
+          <DepartmentHeadSelect
             value={newDeptHead}
             onChange={(v) => {
               setNewDeptHead(v);
               setAddError('');
             }}
-            hint="Optional"
+            hint="Optional — pick from current employees."
           />
           <Field
             label="Headcount"
@@ -625,9 +719,9 @@ function DepartmentsSection() {
             onChange={setEditingDeptName}
             hint="Renaming moves everyone in this department to the new name."
           />
-          <Field
-            label="Department Head"
+          <DepartmentHeadSelect
             value={editingDeptHead}
+            department={editingDeptOriginalName}
             onChange={(v) => {
               setEditingDeptHead(v);
               setEditError('');
@@ -1052,28 +1146,20 @@ function RolesPermissions() {
 
   const cycleHint = 'Define what each role can access. Click any cell to cycle: Full -> View -> None.';
 
-  const roleUserCount = (role: AppRole) => employees.filter((employee) =>
-    role === 'Admin'
-      ? employee.designation.includes('CEO') || employee.designation.includes('Head of Finance')
-      : role === 'HR Manager'
-        ? employee.department === 'Human Resources'
-        : role === 'Manager'
-          ? employee.designation.toLowerCase().includes('manager')
-            || employee.designation.toLowerCase().includes('vp')
-            || employee.designation.toLowerCase().includes('lead')
-          : true,
-  ).length;
-
   return (
     <SettingsSection title="Roles & Permissions" subtitle={cycleHint}>
-      <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
         <AlertCircle size={16} className="mt-0.5 shrink-0" />
+        {/* Was an amber warning that HR Manager and Manager "are not yet
+            enforced for any signed-in user", alongside per-role user counts
+            guessed from job titles — 'CEO' or 'Head of Finance' in a
+            designation was counted as an Admin. All four roles are assignable
+            now, so the warning is gone and so is the guess: an accurate count
+            lives on the Admin dashboard, which reads the actual assignments. */}
         <p>
-          Only <strong>Admin</strong> and <strong>Employee</strong> can currently be assigned to a real
-          account (see the Admin dashboard&apos;s Role column). <strong>HR Manager</strong> and{' '}
-          <strong>Manager</strong> permissions configured below are not yet enforced for any signed-in
-          user — the &quot;users&quot; counts shown are an estimate based on job title/department, not an
-          active assignment.
+          All four roles can be assigned to a real account from the{' '}
+          <strong>Admin dashboard</strong>. An <strong>HR Manager</strong> administers their own
+          organisation and cannot grant the Admin role.
         </p>
       </div>
       <Card padding={false}>
@@ -1084,15 +1170,7 @@ function RolesPermissions() {
                 <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide w-52">Module</th>
                 {APP_ROLES.map((role) => (
                   <th key={role} className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">
-                    <div className="flex flex-col items-center gap-1">
-                      <span>{role}</span>
-                      <Badge
-                        tone={role === 'Admin' ? 'violet' : role === 'HR Manager' ? 'blue' : role === 'Manager' ? 'amber' : 'gray'}
-                        className="text-[10px] px-2 py-0"
-                      >
-                        {roleUserCount(role)} users
-                      </Badge>
-                    </div>
+                    <span>{role}</span>
                   </th>
                 ))}
               </tr>
@@ -1101,18 +1179,31 @@ function RolesPermissions() {
               {APP_MODULES.map((module) => (
                 <tr key={module} className="hover:bg-ink-50">
                   <td className="px-5 py-3 font-medium text-ink-800">{module}</td>
-                  {APP_ROLES.map((role) => (
-                    <td key={role} className="px-4 py-3 text-center">
-                      <button
-                        title={`${module} / ${role}: ${perms[module][role]} - click to change`}
-                        onClick={() => cycle(module, role)}
-                        className={cn('inline-flex items-center justify-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors hover:bg-ink-100', permColor[perms[module][role]])}
-                      >
-                        <PermIcon level={perms[module][role]} />
-                        <span className="capitalize">{perms[module][role]}</span>
-                      </button>
-                    </td>
-                  ))}
+                  {APP_ROLES.map((role) => {
+                    // Some pairs are not a permission anyone can grant — see
+                    // MODULE_ROLE_EXCLUSIONS. Cycling them would appear to work
+                    // and then be overridden on read, so they are locked.
+                    const locked = isModuleExcluded(module, role);
+                    return (
+                      <td key={role} className="px-4 py-3 text-center">
+                        <button
+                          disabled={locked}
+                          title={locked
+                            ? `${module} is not available to ${role}`
+                            : `${module} / ${role}: ${perms[module][role]} - click to change`}
+                          onClick={() => cycle(module, role)}
+                          className={cn(
+                            'inline-flex items-center justify-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                            locked ? 'opacity-40 cursor-not-allowed' : 'hover:bg-ink-100',
+                            permColor[perms[module][role]],
+                          )}
+                        >
+                          <PermIcon level={perms[module][role]} />
+                          <span className="capitalize">{locked ? 'n/a' : perms[module][role]}</span>
+                        </button>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

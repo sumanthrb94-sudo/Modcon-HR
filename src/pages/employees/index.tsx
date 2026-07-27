@@ -53,6 +53,7 @@ import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevi
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { canViewEmployee, getVisibleEmployees } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
@@ -550,10 +551,15 @@ export function EmployeesPage() {
 
   const currentEmployee = useMemo(() => getCurrentEmployee(profile), [profile, employeeList]);
   const isEmployeeSelfView = resolveAppRole(profile) === 'Employee';
-  const visibleEmployeeList = useMemo(() => {
-    if (!isEmployeeSelfView) return employeeList;
-    return currentEmployee ? employeeList.filter((employee) => employee.id === currentEmployee.id) : [];
-  }, [currentEmployee, employeeList, isEmployeeSelfView]);
+  // HR and Admin see the whole company; a manager sees their own reporting line
+  // plus HR; an employee sees only themselves. The self-only case used to be
+  // handled here inline — it now comes from the same rule as every other role
+  // so the directory, attendance and leave cannot disagree about who is
+  // visible. See lib/dataScope.ts.
+  const visibleEmployeeList = useMemo(
+    () => getVisibleEmployees(profile, employeeList),
+    [profile, employeeList],
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -2642,16 +2648,36 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
 export function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { profile } = useAuth();
+  const directoryRevision = useEmployeeDirectoryRevision();
 
   const currentEmployee = getCurrentEmployee(profile);
   const role = resolveAppRole(profile);
   const isEmployee = role === 'Employee';
   const resolvedEmployeeId = id || (isEmployee ? currentEmployee?.id : undefined);
 
-  return resolvedEmployeeId ? (
+  // The list was scoped but this route was not, so anyone could read any
+  // colleague's full profile — salary band included — by typing the id into the
+  // URL. The same rule that filters the directory now guards the record itself.
+  const allowed = useMemo(
+    () => (resolvedEmployeeId ? canViewEmployee(profile, resolvedEmployeeId) : false),
+    [profile, resolvedEmployeeId, directoryRevision],
+  );
+
+  if (!resolvedEmployeeId) return null;
+  if (!allowed) {
+    return (
+      <EmptyState
+        icon={<Users size={24} />}
+        title="Profile not available"
+        description="You do not have access to this employee's record."
+      />
+    );
+  }
+
+  return (
     <EmployeeProfileExperience
       employeeId={resolvedEmployeeId}
       embeddedSelfView={resolvedEmployeeId === currentEmployee?.id}
     />
-  ) : null;
+  );
 }

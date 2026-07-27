@@ -35,6 +35,7 @@ import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies'
 import { getHolidayDirectory } from '@/data/holidays';
 import { employees, getEmployee, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -99,9 +100,14 @@ export function LeavePage() {
     }
   }, [isEmployee, currentEmployee]);
 
+  // Every stat and table on this page reads from here. Previously anyone who
+  // wasn't a plain Employee saw the whole company's leave; now HR and Admin do,
+  // a Manager sees their own reporting line plus HR, and an Employee sees only
+  // themselves. See lib/dataScope.ts.
+  const visibleEmployeeIds = useMemo(() => getVisibleEmployeeIds(profile), [profile]);
   const scopedRequests = useMemo(
-    () => (isEmployee && currentEmployee ? leaveRequests.filter((request) => request.employeeId === currentEmployee.id) : leaveRequests),
-    [leaveRequests, isEmployee, currentEmployee],
+    () => leaveRequests.filter((request) => visibleEmployeeIds.has(request.employeeId)),
+    [leaveRequests, visibleEmployeeIds],
   );
 
   // Stats
@@ -307,9 +313,10 @@ export function LeavePage() {
     }
 
     return balanceEmployeeIds
+      .filter((empId) => visibleEmployeeIds.has(empId))
       .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId, scopedRequests) }))
       .filter((b): b is BalanceViewItem => b.emp !== undefined);
-  }, [scopedRequests, isEmployee, currentEmployee]);
+  }, [scopedRequests, isEmployee, currentEmployee, visibleEmployeeIds]);
 
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {
@@ -595,7 +602,9 @@ export function LeavePage() {
                 onChange={(e) => setFormEmpId(e.target.value)}
               >
                 <option value="">Select employee…</option>
-                {employees.map((e) => (
+                {/* Applying on behalf of someone is limited to the people this
+                    viewer oversees. */}
+                {employees.filter((e) => visibleEmployeeIds.has(e.id)).map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.fullName} ({e.employeeCode})
                   </option>

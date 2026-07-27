@@ -1,4 +1,5 @@
 import type { LeaveType } from '@/types';
+import { orgScopedKey } from '@/lib/orgScope';
 
 export interface LeavePolicy {
   id: string;
@@ -26,7 +27,7 @@ const defaultPolicies: LeavePolicy[] = [
 function readStoredLeavePolicies(): LeavePolicy[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(LEAVE_POLICIES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(LEAVE_POLICIES_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as LeavePolicy[];
     return Array.isArray(parsed) ? parsed : null;
@@ -37,7 +38,7 @@ function readStoredLeavePolicies(): LeavePolicy[] | null {
 
 function writeStoredLeavePolicies(policies: LeavePolicy[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LEAVE_POLICIES_STORAGE_KEY, JSON.stringify(policies));
+  window.localStorage.setItem(orgScopedKey(LEAVE_POLICIES_STORAGE_KEY), JSON.stringify(policies));
 }
 
 function notifyLeavePoliciesChanged() {
@@ -66,7 +67,7 @@ export function normalizeLeaveTypeValue(type: string): LeaveType {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === LEAVE_POLICIES_STORAGE_KEY) {
+    if (event.key === orgScopedKey(LEAVE_POLICIES_STORAGE_KEY)) {
       notifyLeavePoliciesChanged();
     }
   });

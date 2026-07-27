@@ -153,6 +153,11 @@ export function getDepartmentDirectory(): DepartmentRecord[] {
 
   const combine = (record: StoredDepartment) => combined.set(record.name, {
     ...record,
+    // A head nominated in Settings wins. Left unset, the department falls back
+    // to reading its head off the reporting hierarchy, which is what it always
+    // did before the field became a choice — so making the field explicit did
+    // not turn every existing department's head into a dash.
+    head: record.head && record.head !== '—' ? record.head : deriveDepartmentHead(record.name),
     // An override wins; otherwise the department tracks its real openings.
     openRoles: record.openRolesOverride ?? deriveDepartmentOpenRoles(record.name),
   });

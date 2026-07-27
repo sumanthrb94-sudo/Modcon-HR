@@ -5,7 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
-import { canAccessModule, resolveAppRole, type AppModule } from '@/lib/accessControl';
+import { canAccessModule, isModuleExcluded, resolveAppRole, type AppModule } from '@/lib/accessControl';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 
 import { Card } from '@/components/ui';
@@ -63,8 +63,14 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
-function RequireAdmin({ children }: { children: JSX.Element }) {
-  const { user, isAdmin, loading } = useAuth();
+/**
+ * An organisation's own administrators: platform Admins and HR Managers.
+ * The Admin dashboard they share already filters its user list to the viewer's
+ * `orgId`, so an HR Manager admits to their own company and no further.
+ * Cross-organisation routes are guarded by RequireSuperAdmin instead.
+ */
+function RequireOrgAdmin({ children }: { children: JSX.Element }) {
+  const { user, isAdmin, isHR, loading } = useAuth();
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-50">
@@ -73,7 +79,7 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  return isAdmin ? children : <Navigate to="/" replace />;
+  return isAdmin || isHR ? children : <Navigate to="/" replace />;
 }
 
 function RequireSuperAdmin({ children }: { children: JSX.Element }) {
@@ -102,14 +108,21 @@ function RequireManager({ children }: { children: JSX.Element }) {
   return isManager ? children : <Navigate to="/" replace />;
 }
 
-function AccessDeniedPage({ module }: { module: AppModule }) {
+function AccessDeniedPage({ module, excluded }: { module: AppModule; excluded: boolean }) {
   return (
     <div className="py-10">
       <Card>
         <div className="p-6 sm:p-8">
-          <h1 className="text-xl font-semibold text-ink-900">Access Restricted</h1>
+          <h1 className="text-xl font-semibold text-ink-900">
+            {excluded ? 'Not available for your role' : 'Access Restricted'}
+          </h1>
           <p className="mt-2 text-sm text-ink-500">
-            You do not have permission to access {module}. Contact an administrator to update Roles and Permissions.
+            {excluded
+              // Telling an admin to "contact an administrator" about a module
+              // that is deliberately not theirs was misleading — this is not a
+              // permission anybody can grant them.
+              ? `${module} is not part of your role. It is not a permission that can be enabled in Settings.`
+              : `You do not have permission to access ${module}. Contact an administrator to update Roles and Permissions.`}
           </p>
         </div>
       </Card>
@@ -131,7 +144,7 @@ function RequireModuleAccess({ module, children }: { module: AppModule; children
 
   const role = resolveAppRole(profile);
   if (!canAccessModule(module, role)) {
-    return <AccessDeniedPage module={module} />;
+    return <AccessDeniedPage module={module} excluded={isModuleExcluded(module, role)} />;
   }
 
   return children;
@@ -164,10 +177,10 @@ function AppRoutes() {
         <Route path="helpdesk" element={<RequireModuleAccess module="Helpdesk"><HelpdeskPage /></RequireModuleAccess>} />
         <Route path="reports" element={<RequireModuleAccess module="Reports & Analytics"><ReportsPage /></RequireModuleAccess>} />
         <Route path="settings" element={<RequireModuleAccess module="Settings"><SettingsPage /></RequireModuleAccess>} />
-        {/* RequireAdmin is outermost so a non-admin is redirected away rather
-            than shown the in-place "Access Restricted" card, keeping privileged
-            routes consistent with /approvals. */}
-        <Route path="admin" element={<RequireAdmin><RequireModuleAccess module="Admin"><AdminDashboardPage /></RequireModuleAccess></RequireAdmin>} />
+        {/* RequireOrgAdmin is outermost so a non-administrator is redirected
+            away rather than shown the in-place "Access Restricted" card,
+            keeping privileged routes consistent with /approvals. */}
+        <Route path="admin" element={<RequireOrgAdmin><RequireModuleAccess module="Admin"><AdminDashboardPage /></RequireModuleAccess></RequireOrgAdmin>} />
         <Route path="organizations" element={<RequireSuperAdmin><OrganizationsPage /></RequireSuperAdmin>} />
         <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />

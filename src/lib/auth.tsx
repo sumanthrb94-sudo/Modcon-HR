@@ -62,7 +62,13 @@ export const SUPER_ADMIN_EMAILS = [
     'saikrishnakoppaka@gmail.com',
 ].map((e) => e.toLowerCase());
 
-export type UserRole = 'admin' | 'manager' | 'employee';
+/**
+ * `hr` is a real, assignable role — not a label. An HR Manager has
+ * admin-equivalent reach over people data, but only inside their own
+ * organization: they never see the Organizations page and are never a super
+ * admin. See `resolveAppRole` and `canAccessModule` in lib/accessControl.ts.
+ */
+export type UserRole = 'admin' | 'hr' | 'manager' | 'employee';
 
 export interface UserProfile {
     uid: string;
@@ -76,6 +82,15 @@ export interface UserProfile {
     orgId?: string;
     createdAt?: unknown;
     lastLoginAt?: unknown;
+}
+
+export const USER_ROLES: UserRole[] = ['admin', 'hr', 'manager', 'employee'];
+
+/** Narrows a stored `users/{uid}.role` value, which is arbitrary data as far as
+ * the client is concerned. Anything unrecognised — including documents written
+ * before a role existed — falls back to the least-privileged role. */
+function asUserRole(value: unknown): UserRole {
+    return USER_ROLES.includes(value as UserRole) ? (value as UserRole) : 'employee';
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +107,7 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
         ? 'admin'
         : isHardcodedManager
             ? 'manager'
-            : (existing.exists() ? (existing.data().role as UserRole) : 'employee') ?? 'employee';
+            : asUserRole(existing.exists() ? existing.data().role : undefined);
 
     // orgId is assigned once at org-creation time (see src/lib/organizations.ts)
     // and never set here, but must be carried forward so it isn't dropped from
@@ -130,7 +145,11 @@ interface AuthContextValue {
     profile: UserProfile | null;
     loading: boolean;
     isAdmin: boolean;
-    /** True for managers and admins (admins have all manager privileges). */
+    /** True for the HR Manager role. Distinct from `isAdmin`: an HR Manager has
+     * admin-level reach over their own organization's people data, but is not a
+     * platform admin and can never act across organizations. */
+    isHR: boolean;
+    /** True for managers, HR managers and admins (each has all manager privileges). */
     isManager: boolean;
     /** Reserved for future cross-org scoping; not yet enforced anywhere. */
     isSuperAdmin: boolean;
@@ -234,7 +253,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const isAdmin = profile?.role === 'admin';
-    const isManager = profile?.role === 'manager' || isAdmin;
+    const isHR = profile?.role === 'hr';
+    const isManager = profile?.role === 'manager' || isHR || isAdmin;
     const isSuperAdmin = profile?.superAdmin === true;
 
     return (
@@ -244,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 profile,
                 loading,
                 isAdmin,
+                isHR,
                 isManager,
                 isSuperAdmin,
                 error,

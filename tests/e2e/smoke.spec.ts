@@ -11,6 +11,12 @@ import { PERSONAS } from './config';
  * Runs as the admin persona: module visibility is governed by the permission
  * matrix in src/lib/accessControl.ts, and only an admin has every module, so
  * any lesser role would leave most of the walk below unreachable.
+ *
+ * Finance is the one exception and is deliberately absent below — it is the
+ * employee's own payslip view, and is structurally excluded for Admins (see
+ * MODULE_ROLE_EXCLUSIONS in src/lib/accessControl.ts) because /finance renders
+ * the Payroll page verbatim for anyone who is not an Employee. The employee
+ * persona covers it in roles.spec.ts instead.
  */
 const SMOKE_PERSONA = PERSONAS.admin;
 
@@ -20,7 +26,6 @@ const MODULES: { label: string; path: string; heading: RegExp }[] = [
   { label: 'Attendance', path: '/attendance', heading: /attendance/i },
   { label: 'My Attendance', path: '/my-attendance', heading: /attendance/i },
   { label: 'Leave', path: '/leave', heading: /leave/i },
-  { label: 'Finance', path: '/finance', heading: /finance|salary/i },
   { label: 'Payroll', path: '/payroll', heading: /payroll/i },
   { label: 'Recruitment', path: '/recruitment', heading: /recruit/i },
   { label: 'Onboarding', path: '/onboarding', heading: /onboard/i },

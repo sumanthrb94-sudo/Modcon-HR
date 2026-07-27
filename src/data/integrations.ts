@@ -1,3 +1,5 @@
+import { orgScopedKey } from '@/lib/orgScope';
+
 export interface IntegrationPreference {
   id: string;
   connected: boolean;
@@ -24,7 +26,7 @@ function notifyIntegrationsChanged() {
 function readStoredIntegrations(): IntegrationPreference[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(INTEGRATIONS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(INTEGRATIONS_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as IntegrationPreference[];
     return Array.isArray(parsed) ? parsed : null;
@@ -40,13 +42,13 @@ export function getIntegrationPreferences(): IntegrationPreference[] {
 
 export function saveIntegrationPreferences(integrations: IntegrationPreference[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(INTEGRATIONS_STORAGE_KEY, JSON.stringify(integrations));
+  window.localStorage.setItem(orgScopedKey(INTEGRATIONS_STORAGE_KEY), JSON.stringify(integrations));
   notifyIntegrationsChanged();
 }
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === INTEGRATIONS_STORAGE_KEY) {
+    if (event.key === orgScopedKey(INTEGRATIONS_STORAGE_KEY)) {
       notifyIntegrationsChanged();
     }
   });

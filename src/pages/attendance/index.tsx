@@ -35,13 +35,15 @@ import {
 import {
   attendanceRecords,
   regularizationRequests,
-  WEEK_DATES,
+  getCurrentWeekDates,
   type RegularizationRequest,
 } from '@/data/attendance';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { useAuth } from '@/lib/auth';
+import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
@@ -58,7 +60,24 @@ function dayLabel(iso: string): string {
 export function AttendancePage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
-  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const { profile } = useAuth();
+  // The working week is Mon–Fri of whichever week today falls in, not the week
+  // the seed records happen to cover. A date literal here would have gone stale
+  // the following Monday and stayed wrong forever.
+  const weekDates = useMemo(() => getCurrentWeekDates(), []);
+  // Whose rows this viewer is entitled to. HR and Admin get the whole company;
+  // a Manager gets their own reporting line plus HR. See lib/dataScope.ts.
+  const visibleEmployeeIds = useMemo(
+    () => getVisibleEmployeeIds(profile),
+    [profile, directoryRevision],
+  );
+  // Clamped into the Mon–Fri options: opening the page at the weekend would
+  // otherwise leave the date Select holding a value it does not offer.
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = todayIso();
+    const week = getCurrentWeekDates();
+    return week.includes(today) ? today : week[week.length - 1];
+  });
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [markModalOpen, setMarkModalOpen] = useState(false);
@@ -71,12 +90,27 @@ export function AttendancePage() {
   // Regularization state — mutable local copy
   const [regRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
 
+  // Requests raised by people outside this viewer's scope aren't theirs to see
+  // or approve.
+  const visibleRegRequests = useMemo(
+    () => regRequests.filter((request) => visibleEmployeeIds.has(request.employeeId)),
+    [regRequests, visibleEmployeeIds],
+  );
+
+  // Every figure on this page — the stat cards, the weekly chart and the table
+  // — reads through here, so the visibility scope is applied once at the source
+  // rather than being re-remembered at each call site.
   function recordsByDate(date: string) {
-    return attendanceState.filter((record) => record.date === date);
+    return attendanceState.filter(
+      (record) => record.date === date && visibleEmployeeIds.has(record.employeeId),
+    );
   }
 
   // Stats for selected date
-  const dayRecords = useMemo(() => recordsByDate(selectedDate), [attendanceState, selectedDate]);
+  const dayRecords = useMemo(
+    () => recordsByDate(selectedDate),
+    [attendanceState, selectedDate, visibleEmployeeIds],
+  );
   const todayStats = useMemo(() => {
     const todayRecs = recordsByDate(todayIso());
     return {
@@ -86,11 +120,11 @@ export function AttendancePage() {
       absent: todayRecs.filter((r) => r.status === 'Absent').length,
       late: todayRecs.filter((r) => r.isLate).length,
     };
-  }, [attendanceState]);
+  }, [attendanceState, visibleEmployeeIds]);
 
   // Weekly trend data
   const weeklyData = useMemo(() => {
-    return WEEK_DATES.map((date) => {
+    return weekDates.map((date) => {
       const records = recordsByDate(date);
       return {
         day: formatWeekdayShort(date),
@@ -100,7 +134,7 @@ export function AttendancePage() {
         Absent: records.filter((r) => r.status === 'Absent').length,
       };
     });
-  }, [attendanceState]);
+  }, [attendanceState, weekDates, visibleEmployeeIds]);
 
   // Table rows: join attendance with employee info
   const tableRows = useMemo((): AttendanceRow[] => {
@@ -130,11 +164,11 @@ export function AttendancePage() {
   // Date options
   const dateOptions = useMemo(
     () =>
-      WEEK_DATES.map((d) => ({
+      weekDates.map((d) => ({
         label: dayLabel(d) + (d === todayIso() ? ' (Today)' : ''),
         value: d,
       })),
-    [],
+    [weekDates],
   );
 
   // Columns for attendance table
@@ -340,7 +374,7 @@ export function AttendancePage() {
     <div className="space-y-6">
       <PageHeader
         title="Attendance"
-        subtitle={`Week of ${formatDate(WEEK_DATES[0])} – ${formatDate(WEEK_DATES[4])}`}
+        subtitle={`Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[4])}`}
         actions={
           <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
             Mark Attendance
@@ -452,16 +486,16 @@ export function AttendancePage() {
           <div>
             <h3 className="text-base font-semibold text-ink-900">Regularization Requests</h3>
             <p className="text-sm text-ink-500 mt-0.5">
-              {regRequests.filter((r) => r.status === 'Pending').length} pending approval
+              {visibleRegRequests.filter((r) => r.status === 'Pending').length} pending approval
             </p>
           </div>
           <Badge tone="amber">
-            {regRequests.filter((r) => r.status === 'Pending').length} Pending
+            {visibleRegRequests.filter((r) => r.status === 'Pending').length} Pending
           </Badge>
         </div>
         <Table
           columns={regColumns}
-          data={regRequests}
+          data={visibleRegRequests}
           keyExtractor={(r) => r.id}
           emptyMessage="No regularization requests."
         />
@@ -489,11 +523,15 @@ export function AttendancePage() {
             <label className="block text-sm font-medium text-ink-700 mb-1">Employee</label>
             <select className="input w-full" value={markEmployeeId} onChange={(e) => setMarkEmployeeId(e.target.value)}>
               <option value="">Select employee…</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.fullName} ({e.employeeCode})
-                </option>
-              ))}
+              {/* Only people this viewer oversees — marking attendance for
+                  someone whose record you cannot see would be writing blind. */}
+              {employees
+                .filter((e) => visibleEmployeeIds.has(e.id))
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.fullName} ({e.employeeCode})
+                  </option>
+                ))}
             </select>
           </div>
           <div>
