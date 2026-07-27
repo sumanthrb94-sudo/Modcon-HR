@@ -10,7 +10,7 @@
  */
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { ADMIN_EMAILS } from './auth';
 import { Collections, addNew, remove } from './db';
@@ -202,6 +202,67 @@ export async function migrateOrgAdminsToHr(
     }
 
     return { migrated, failed };
+}
+
+/**
+ * Points an existing account at an organisation as its HR administrator.
+ *
+ * `createOrganization` mints a brand new account; this is the other case —
+ * someone already has a login and needs to become (or replace) an
+ * organisation's administrator. Nothing could do that before: the Admin
+ * dashboard changes a role but never an `orgId`, so an existing account could
+ * not be attached to an organisation at all.
+ *
+ * Writes the role and the org membership together, because either alone is
+ * wrong: the role without the `orgId` is an administrator of nothing, and the
+ * `orgId` without the role is an ordinary employee of that org.
+ */
+export async function setOrgHrAdministrator(
+    params: { orgId: string; orgName: string; email: string },
+    actedByUid: string,
+): Promise<{ uid: string; email: string; replaced?: string }> {
+    const email = params.email.trim().toLowerCase();
+    if (!email) throw new Error('Enter the account email.');
+
+    const matches = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
+    if (matches.empty) {
+        throw new Error(
+            'No account exists with that email. They need to sign up first, or use Create Organization to provision a new account.',
+        );
+    }
+    if (matches.size > 1) {
+        throw new Error('More than one account uses that email. Resolve the duplicate before assigning.');
+    }
+
+    const snap = matches.docs[0];
+    const data = snap.data() as { role?: string; superAdmin?: boolean; orgId?: string };
+
+    // A super admin is not an organisation's account, and pinning them to one
+    // org would strip the cross-org access their role exists for.
+    if (data.superAdmin) throw new Error('That account is a super admin and cannot be scoped to one organization.');
+    // Their role is re-asserted from ADMIN_EMAILS on every sign-in, so writing
+    // `hr` here would be silently undone at their next login.
+    if (ADMIN_EMAILS.includes(email)) {
+        throw new Error('That account is a fixed platform admin; its role is reset on every sign-in.');
+    }
+    if (data.orgId && data.orgId !== params.orgId) {
+        throw new Error(`That account already belongs to another organization (${data.orgId}). Move them there first.`);
+    }
+
+    await updateDoc(doc(db, 'users', snap.id), { role: 'hr', orgId: params.orgId });
+    await assignRole({ email, role: 'hr', orgId: params.orgId, assignedBy: actedByUid }).catch(() => {
+        // The profile write above is what grants access; this is durability only.
+    });
+
+    const orgSnap = await getDoc(doc(db, 'organizations', params.orgId));
+    const previous = orgSnap.exists() ? (orgSnap.data().adminEmail as string | undefined) : undefined;
+    await updateDoc(doc(db, 'organizations', params.orgId), { adminEmail: email, adminUid: snap.id });
+
+    return {
+        uid: snap.id,
+        email,
+        ...(previous && previous !== email ? { replaced: previous } : {}),
+    };
 }
 
 export function friendlyOrgError(err: unknown): string {

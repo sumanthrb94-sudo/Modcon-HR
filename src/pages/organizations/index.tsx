@@ -7,6 +7,7 @@ import {
     friendlyOrgError,
     findOrgAdminsToMigrate,
     migrateOrgAdminsToHr,
+    setOrgHrAdministrator,
     type CreateOrganizationResult,
     type OrgAdminMigrationCandidate,
 } from '@/lib/organizations';
@@ -63,6 +64,39 @@ export function OrganizationsPage() {
     const [migrateError, setMigrateError] = useState('');
 
     const migratable = (migrateCandidates ?? []).filter((c) => !c.skipReason);
+
+    // Attaching an existing account to an organisation as its HR
+    // administrator — the counterpart to Create Organization, which mints a
+    // new account instead.
+    const [assignOrg, setAssignOrg] = useState<Organization | null>(null);
+    const [assignEmail, setAssignEmail] = useState('');
+    const [assigning, setAssigning] = useState(false);
+    const [assignError, setAssignError] = useState('');
+    const [assignDone, setAssignDone] = useState<{ email: string; replaced?: string } | null>(null);
+
+    function openAssign(org: Organization) {
+        setAssignOrg(org);
+        setAssignEmail('');
+        setAssignError('');
+        setAssignDone(null);
+    }
+
+    async function submitAssign() {
+        if (!assignOrg?.id || !profile?.uid) return;
+        setAssigning(true);
+        setAssignError('');
+        try {
+            const res = await setOrgHrAdministrator(
+                { orgId: assignOrg.id, orgName: assignOrg.name, email: assignEmail },
+                profile.uid,
+            );
+            setAssignDone({ email: res.email, replaced: res.replaced });
+        } catch (err) {
+            setAssignError((err as Error)?.message ?? friendlyOrgError(err));
+        } finally {
+            setAssigning(false);
+        }
+    }
 
     async function openMigration() {
         setMigrateOpen(true);
@@ -178,6 +212,10 @@ export function OrganizationsPage() {
             render: (o) => {
                 const isActive = o.id === getActiveOrgKey();
                 return (
+                    <div className="flex items-center gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => openAssign(o)}>
+                        Set HR admin
+                    </Button>
                     <Button
                         variant={isActive ? 'secondary' : 'primary'}
                         size="sm"
@@ -186,6 +224,7 @@ export function OrganizationsPage() {
                     >
                         {isActive ? 'Currently managing' : 'Manage this org'}
                     </Button>
+                    </div>
                 );
             },
         },
@@ -402,6 +441,67 @@ export function OrganizationsPage() {
                                 icon={migrateRunning ? <Loader2 size={15} className="animate-spin" /> : undefined}
                             >
                                 {migrateRunning ? 'Converting…' : `Convert ${migratable.length || ''}`.trim()}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            <Modal
+                open={assignOrg !== null}
+                onClose={() => setAssignOrg(null)}
+                title="Set HR administrator"
+                subtitle={
+                    assignDone
+                        ? undefined
+                        : `Point an existing account at ${assignOrg?.name ?? 'this organization'} as its HR administrator.`
+                }
+            >
+                {assignDone ? (
+                    <div className="space-y-3 text-sm">
+                        <p className="text-ink-700">
+                            <span className="font-mono">{assignDone.email}</span> is now the HR administrator for{' '}
+                            <span className="font-medium">{assignOrg?.name}</span>.
+                        </p>
+                        {assignDone.replaced ? (
+                            <p className="text-xs text-amber-700">
+                                This replaced {assignDone.replaced}, whose role and organization were left as they were —
+                                change them from the Admin dashboard if they should no longer have access.
+                            </p>
+                        ) : null}
+                        <p className="text-xs text-ink-400">
+                            They pick this up the next time their profile is read; an open session keeps its current
+                            role until it reloads.
+                        </p>
+                        <div className="flex justify-end pt-1">
+                            <Button onClick={() => setAssignOrg(null)}>Done</Button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-ink-500">Account email</label>
+                            <input
+                                className="input w-full"
+                                type="email"
+                                value={assignEmail}
+                                onChange={(e) => setAssignEmail(e.target.value)}
+                                placeholder="person@example.com"
+                            />
+                            <p className="text-xs text-ink-400">
+                                The account must already exist. Sets its role to HR administrator and attaches it to
+                                this organization.
+                            </p>
+                        </div>
+                        {assignError ? <p className="text-sm text-rose-600">{assignError}</p> : null}
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button variant="secondary" onClick={() => setAssignOrg(null)}>Cancel</Button>
+                            <Button
+                                onClick={submitAssign}
+                                disabled={!assignEmail.trim() || assigning}
+                                icon={assigning ? <Loader2 size={15} className="animate-spin" /> : undefined}
+                            >
+                                {assigning ? 'Assigning…' : 'Assign'}
                             </Button>
                         </div>
                     </div>
