@@ -36,6 +36,7 @@ Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.conf
 - Roles: `admin | manager | employee`. `ADMIN_EMAILS` are always admin, `MANAGER_EMAILS` always manager; otherwise the Firestore-stored role wins (admins change it from the Admin dashboard), defaulting to `employee`.
 - `useAuth()` exposes `profile`, `isAdmin`, and `isManager` (**manager includes admin**). Prefer `isManager` for approval/team gating and `isAdmin` for admin-only.
 - E2E test emails are granted elevated roles **only** when built with `VITE_ENABLE_E2E_ACCOUNTS=true`; production builds never trust them.
+- **Adding an employee to the company's HR department grants them the `hr` role** (= administrator for that organisation). The grant is *not* derived from the employee record at sign-in — `src/data/employees.ts` is localStorage-backed and therefore client-controlled, so trusting it would let anyone edit their own department and become an admin. Instead an administrator writes a `role_assignments/{email}` document (`src/data/roleAssignments.ts`), and `firestore.rules` verifies the sign-in self-write against it. `admin` is never assignable this way, in the client *and* the rules. Which department counts as HR is `hrDepartment` on the company profile, not a hardcoded name.
 
 ### Routing & access control (`src/App.tsx`)
 

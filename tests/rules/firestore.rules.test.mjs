@@ -227,3 +227,174 @@ describe('HR data collections', () => {
     await assertFails(getDoc(doc(as(USERS.employeeA), 'employee_compensation', 'emp-001')));
   });
 });
+
+describe('role_assignments — granting HR access to an employee', () => {
+  beforeEach(seed);
+
+  it('an org admin can assign the HR role to an email', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.adminA), 'role_assignments', 'newjoiner@example.com'), {
+        email: 'newjoiner@example.com',
+        role: 'hr',
+        orgId: 'org-a',
+        assignedBy: USERS.adminA.uid,
+      }),
+    );
+  });
+
+  it('an HR manager can assign the HR role within their own organisation', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'role_assignments', 'newjoiner@example.com'), {
+        email: 'newjoiner@example.com',
+        role: 'hr',
+        orgId: 'org-a',
+        assignedBy: USERS.hrA.uid,
+      }),
+    );
+  });
+
+  it('nobody can assign the admin role through this collection', async () => {
+    // Otherwise it would be a way around the /users rules, which never let an
+    // HR manager grant admin.
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'role_assignments', 'newjoiner@example.com'), {
+        email: 'newjoiner@example.com',
+        role: 'admin',
+        orgId: 'org-a',
+        assignedBy: USERS.hrA.uid,
+      }),
+    );
+  });
+
+  it('an HR manager cannot assign into another organisation', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'role_assignments', 'newjoiner@example.com'), {
+        email: 'newjoiner@example.com',
+        role: 'hr',
+        orgId: 'org-b',
+        assignedBy: USERS.hrA.uid,
+      }),
+    );
+  });
+
+  it('an assignment cannot be filed under an id that is not its email', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.adminA), 'role_assignments', 'victim@example.com'), {
+        email: 'someone-else@example.com',
+        role: 'hr',
+        orgId: 'org-a',
+        assignedBy: USERS.adminA.uid,
+      }),
+    );
+  });
+
+  it('a user can read their own assignment but not a colleague\'s', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'role_assignments', USERS.employeeA.email), {
+        email: USERS.employeeA.email, role: 'hr', orgId: 'org-a', assignedBy: USERS.adminA.uid,
+      });
+      await setDoc(doc(db, 'role_assignments', USERS.managerA.email), {
+        email: USERS.managerA.email, role: 'hr', orgId: 'org-a', assignedBy: USERS.adminA.uid,
+      });
+    });
+    // Own assignment: needed by auth.tsx at sign-in.
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'role_assignments', USERS.employeeA.email)));
+    // Somebody else's: would otherwise expose every colleague's address and role.
+    await assertFails(getDoc(doc(as(USERS.employeeA), 'role_assignments', USERS.managerA.email)));
+    // Administrators manage the collection, so they may read it.
+    await assertSucceeds(getDoc(doc(as(USERS.hrA), 'role_assignments', USERS.managerA.email)));
+  });
+
+  it('a manager cannot assign roles', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.managerA), 'role_assignments', 'newjoiner@example.com'), {
+        email: 'newjoiner@example.com',
+        role: 'hr',
+        orgId: 'org-a',
+        assignedBy: USERS.managerA.uid,
+      }),
+    );
+  });
+
+  it('an employee cannot assign themselves a role', async () => {
+    // The whole point of the collection: the grant must come from someone who
+    // already holds the privilege, never from the person receiving it.
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'role_assignments', USERS.employeeA.email), {
+        email: USERS.employeeA.email,
+        role: 'hr',
+        orgId: 'org-a',
+        assignedBy: USERS.employeeA.uid,
+      }),
+    );
+  });
+});
+
+describe('role_assignments — adopting an assigned role at sign-in', () => {
+  beforeEach(seed);
+
+  /** Write an assignment as the admin would have, bypassing rules. */
+  async function assignment(email, role, orgId = 'org-a') {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'role_assignments', email), {
+        email, role, orgId, assignedBy: USERS.adminA.uid,
+      });
+    });
+  }
+
+  it('a new account adopts the HR role its administrator assigned', async () => {
+    await assignment('newjoiner@example.com', 'hr');
+    const db = testEnv
+      .authenticatedContext('new-uid', { email: 'newjoiner@example.com' })
+      .firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', 'new-uid'), {
+        uid: 'new-uid',
+        email: 'newjoiner@example.com',
+        displayName: 'New Joiner',
+        role: 'hr',
+      }),
+    );
+  });
+
+  it('an existing account adopts an assignment made after it was created', async () => {
+    await assignment(USERS.employeeA.email, 'hr');
+    await assertSucceeds(
+      updateDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid), { role: 'hr' }),
+    );
+  });
+
+  it('an account cannot claim a role nobody assigned it', async () => {
+    // No assignment document exists for this address.
+    await assertFails(
+      updateDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid), { role: 'hr' }),
+    );
+  });
+
+  it("an account cannot claim a role assigned to somebody else's email", async () => {
+    await assignment('someone-else@example.com', 'hr');
+    await assertFails(
+      updateDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid), { role: 'hr' }),
+    );
+  });
+
+  it('an account cannot claim admin even if an assignment somehow says admin', async () => {
+    // Defence in depth: the write rule above rejects role == 'admin', but if
+    // such a document existed it must still not be adoptable.
+    await assignment(USERS.employeeA.email, 'admin');
+    await assertFails(
+      updateDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid), { role: 'admin' }),
+    );
+  });
+
+  it('an assignment cannot be used to grant superAdmin', async () => {
+    await assignment(USERS.employeeA.email, 'hr');
+    await assertFails(
+      updateDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid), {
+        role: 'hr',
+        superAdmin: true,
+      }),
+    );
+  });
+});

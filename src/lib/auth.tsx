@@ -93,6 +93,25 @@ function asUserRole(value: unknown): UserRole {
     return USER_ROLES.includes(value as UserRole) ? (value as UserRole) : 'employee';
 }
 
+/** Roles that an administrator's assignment may confer at sign-in. `admin` is
+ *  excluded here and in firestore.rules: it is granted directly on a profile by
+ *  an existing admin, not through the employee-directory flow. */
+const ASSIGNABLE_ON_SIGN_IN: UserRole[] = ['hr', 'manager', 'employee'];
+
+async function readAssignedRole(email: string): Promise<UserRole | null> {
+    const id = email.trim().toLowerCase();
+    if (!id) return null;
+    try {
+        const snap = await getDoc(doc(db, 'role_assignments', id));
+        if (!snap.exists()) return null;
+        const role = snap.data().role as UserRole;
+        return ASSIGNABLE_ON_SIGN_IN.includes(role) ? role : null;
+    } catch {
+        // Never block sign-in on this lookup.
+        return null;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Firestore profile sync
 // ---------------------------------------------------------------------------
@@ -103,11 +122,26 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
     const ref = doc(db, 'users', user.uid);
     const existing = await getDoc(ref);
 
+    const storedRole = asUserRole(existing.exists() ? existing.data().role : undefined);
+
+    // A role an administrator granted to this address before the account
+    // existed — how someone added to the HR department picks up their access
+    // the first time they sign in. Never consulted for the hard-coded lists,
+    // and never able to produce `admin`: firestore.rules verifies this write
+    // against the same document, and only accepts hr/manager/employee.
+    // Deliberately does not downgrade someone whose profile already carries a
+    // higher role, so assigning `employee` cannot demote an admin.
+    const assigned = isHardcodedAdmin || isHardcodedManager
+        ? null
+        : await readAssignedRole(email);
+
     const role: UserRole = isHardcodedAdmin
         ? 'admin'
         : isHardcodedManager
             ? 'manager'
-            : asUserRole(existing.exists() ? existing.data().role : undefined);
+            : storedRole === 'admin'
+                ? 'admin'
+                : assigned ?? storedRole;
 
     // orgId is assigned once at org-creation time (see src/lib/organizations.ts)
     // and never set here, but must be carried forward so it isn't dropped from

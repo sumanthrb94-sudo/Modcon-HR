@@ -20,6 +20,7 @@ import {
   Calendar,
   MapPin,
   User,
+  X,
 } from 'lucide-react';
 import {
   Avatar,
@@ -54,6 +55,8 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { canViewEmployee, getVisibleEmployees } from '@/lib/dataScope';
+import { syncHrRoleForEmployee } from '@/data/roleAssignments';
+import { getCompanyProfile } from '@/data/companyProfile';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
@@ -534,6 +537,9 @@ export function EmployeesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeTab, setActiveTab] = useState<DirectoryTab>('directory');
   const [addModalOpen, setAddModalOpen] = useState(false);
+  // Surfaced when adding or moving someone changes their platform access —
+  // a silent role grant is the kind of thing an admin should be told about.
+  const [roleNotice, setRoleNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const syncEmployeeList = () => {
@@ -634,6 +640,18 @@ export function EmployeesPage() {
     setLocationFilter('');
     setStatusFilter('');
     setTypeFilter('');
+
+    // Someone added to the HR department administers this company, so grant
+    // the role now rather than waiting for an admin to remember. The directory
+    // write above has already landed and is local; this one is remote and may
+    // fail, so it is reported rather than allowed to fail the add.
+    void syncHrRoleForEmployee(nextEmployee, profile).then((outcome) => {
+      if (outcome === 'granted') {
+        setRoleNotice(`${nextEmployee.fullName} joins ${getCompanyProfile().hrDepartment} and now has administrator access for this company.`);
+      } else if (outcome === 'failed') {
+        setRoleNotice(`${nextEmployee.fullName} was added, but granting HR administrator access failed. Set their role from the Admin dashboard.`);
+      }
+    });
   }
 
   const listColumns: Column<Employee>[] = [
@@ -701,6 +719,22 @@ export function EmployeesPage() {
 
   return (
     <div className="space-y-6">
+      {roleNotice ? (
+        <div
+          className="flex items-start justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800"
+          role="status"
+        >
+          <span>{roleNotice}</span>
+          <button
+            type="button"
+            onClick={() => setRoleNotice(null)}
+            className="shrink-0 text-brand-600 hover:text-brand-800"
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
       <PageHeader
         title="Employees"
         subtitle={isEmployeeSelfView
@@ -1920,6 +1954,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editAddress, setEditAddress] = useState('');
   const [editReportingManagerId, setEditReportingManagerId] = useState('');
   const [editError, setEditError] = useState('');
+  // Told, not silent: a directory edit that changes someone's platform access
+  // is worth saying out loud.
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
 
   // Re-read the directory whenever it changes, so an edit made here — or on
   // another tab — is reflected without a reload. Saving used to repaint only
@@ -1943,10 +1980,31 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
    */
   const canEditJobFields = !isEmployee;
 
+  /**
+   * Keeps platform access in step with the HR department after a directory
+   * edit. Moving someone into HR grants administrator access for this company;
+   * moving them out withdraws it. Awaiting nothing — the directory write has
+   * already succeeded locally and this must not be able to undo it.
+   */
+  function syncAccess(next: Employee) {
+    void syncHrRoleForEmployee(next, profile).then((outcome) => {
+      if (outcome === 'granted') {
+        setAccessNotice(`${next.fullName} is now in ${getCompanyProfile().hrDepartment} and has administrator access for this company.`);
+      } else if (outcome === 'revoked') {
+        setAccessNotice(`${next.fullName} has left ${getCompanyProfile().hrDepartment}; their administrator access has been withdrawn.`);
+      } else if (outcome === 'failed') {
+        setAccessNotice('The profile was saved, but updating platform access failed. Check their role on the Admin dashboard.');
+      }
+    });
+  }
+
   /** Persist a single field without going through the full edit form. */
   function saveField(patch: Partial<Employee>) {
     if (!emp) return;
-    updateEmployeeInDirectory({ ...emp, ...patch });
+    const next = { ...emp, ...patch };
+    updateEmployeeInDirectory(next);
+    // Department and email are the two fields the HR grant keys off.
+    if ('department' in patch || 'email' in patch) syncAccess(next);
   }
 
   /**
@@ -2154,7 +2212,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     // Locations need no such step: the list is derived from where people are,
     // so assigning this one is what brings it into existence.
 
-    updateEmployeeInDirectory({
+    const updatedEmployee: Employee = {
       ...emp,
       firstName,
       lastName,
@@ -2177,7 +2235,12 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       // getEmployeeDirectory() recomputes the name on read; setting it here
       // keeps the record self-consistent in the meantime.
       reportingManagerName: managerOptions.find((option) => option.value === editReportingManagerId)?.label,
-    });
+    };
+
+    updateEmployeeInDirectory(updatedEmployee);
+    // The form can move someone between departments, so access is re-evaluated
+    // on every save rather than only when the department field looks changed.
+    syncAccess(updatedEmployee);
 
     setEditOpen(false);
   }
@@ -2214,6 +2277,22 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
 
   return (
     <div className="space-y-6">
+      {accessNotice ? (
+        <div
+          className="flex items-start justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800"
+          role="status"
+        >
+          <span>{accessNotice}</span>
+          <button
+            type="button"
+            onClick={() => setAccessNotice(null)}
+            className="shrink-0 text-brand-600 hover:text-brand-800"
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
       {!embeddedSelfView && (
         <button
           onClick={() => navigate('/employees')}

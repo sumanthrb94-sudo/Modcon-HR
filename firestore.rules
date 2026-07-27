@@ -72,12 +72,30 @@ service cloud.firestore {
       return email in fixedAdminEmails() ? 'admin' : 'employee';
     }
 
+    // A role an administrator has already granted to this email, recorded in
+    // /role_assignments (written only by org admins — see that block below).
+    // This is what lets an HR employee pick up their role on first sign-in
+    // without the client being trusted to name its own role: the grant is a
+    // document an admin authored, and the check happens here on the server.
+    // `admin` is deliberately not adoptable this way — it is not something the
+    // employee-directory flow hands out.
+    function assignedRoleFor(email) {
+      return exists(/databases/$(database)/documents/role_assignments/$(email))
+        ? get(/databases/$(database)/documents/role_assignments/$(email)).data.role
+        : null;
+    }
+    function isAdoptableAssignedRole(email, role) {
+      return role == assignedRoleFor(email) && (role == 'hr' || role == 'manager' || role == 'employee');
+    }
+
     // First-ever profile doc for an account: role/superAdmin must be the
-    // safe default unless the caller's own email is hard-coded — a brand
-    // new sign-up can never self-register as admin/super-admin.
+    // safe default, a role an administrator assigned to this email, or the
+    // value dictated by the hard-coded lists — a brand new sign-up can never
+    // self-register as admin/super-admin.
     function selfCreateRoleIsValid(data) {
       let email = request.auth.token.email.lower();
-      return data.role == fixedRoleForEmail(email) &&
+      return (data.role == fixedRoleForEmail(email) ||
+          isAdoptableAssignedRole(email, data.role)) &&
         data.get('superAdmin', false) == (email in fixedSuperAdminEmails());
     }
 
@@ -89,7 +107,9 @@ service cloud.firestore {
     // ever re-affirm it afterwards.
     function selfUpdateRoleIsValid(data) {
       let email = request.auth.token.email.lower();
-      return (data.role == fixedRoleForEmail(email) || data.role == resource.data.role) &&
+      return (data.role == fixedRoleForEmail(email) ||
+          data.role == resource.data.role ||
+          isAdoptableAssignedRole(email, data.role)) &&
         (data.get('superAdmin', false) == (email in fixedSuperAdminEmails()) ||
           data.get('superAdmin', false) == resource.data.get('superAdmin', false));
     }
@@ -148,6 +168,37 @@ service cloud.firestore {
       // are additionally protected in-app.
       allow delete: if isAdmin() ||
         (isHR() && resource.data.role != 'admin' && resource.data.get('orgId', null) == myOrgId());
+    }
+
+    // -------------------------------------------------------------------
+    // Role assignments — an administrator granting a role to an email
+    // before (or after) that person has an account. Consulted by
+    // selfCreateRoleIsValid / selfUpdateRoleIsValid above, which is what
+    // makes an assignment take effect at sign-in.
+    //
+    // Everything an org admin cannot do to a user profile, they cannot do
+    // here either — otherwise this collection would be a way around the
+    // /users rules. In particular `admin` is never assignable: that role is
+    // granted directly on a profile by an existing admin, not through the
+    // employee-directory flow this collection serves.
+    // -------------------------------------------------------------------
+    match /role_assignments/{emailId} {
+      // Your own assignment (auth.tsx reads it at sign-in), or an
+      // administrator's. Not `isSignedIn()`: that would let any employee
+      // enumerate every colleague's address and pending role. The server-side
+      // get() in assignedRoleFor() is unaffected by this — rule evaluation is
+      // not subject to the caller's read permission.
+      allow read: if isOrgAdmin() ||
+        (isSignedIn() && emailId == request.auth.token.email.lower());
+      allow create, update: if isOrgAdmin() &&
+        request.resource.data.role in ['hr', 'manager', 'employee'] &&
+        // The document id is the email, so an assignment can never be filed
+        // under one address while naming another.
+        request.resource.data.email == emailId &&
+        // An HR manager may only assign within their own organisation.
+        (isAdmin() || request.resource.data.get('orgId', null) == myOrgId());
+      allow delete: if isOrgAdmin() &&
+        (isAdmin() || resource.data.get('orgId', null) == myOrgId());
     }
 
     // -------------------------------------------------------------------
