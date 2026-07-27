@@ -29,6 +29,7 @@ const PORT = 8080;
 // Accounts under test. `orgId` is the boundary: org-a's HR manager must not be
 // able to reach org-b, nor promote anyone, nor rewrite an orgId.
 const USERS = {
+  superA: { uid: 'super-a', email: 'super-a@example.com', role: 'admin', superAdmin: true },
   adminA: { uid: 'admin-a', email: 'admin-a@example.com', role: 'admin', orgId: 'org-a' },
   hrA: { uid: 'hr-a', email: 'hr-a@example.com', role: 'hr', orgId: 'org-a' },
   hrB: { uid: 'hr-b', email: 'hr-b@example.com', role: 'hr', orgId: 'org-b' },
@@ -71,6 +72,7 @@ async function seed() {
         displayName: user.email,
         role: user.role,
         ...(user.orgId ? { orgId: user.orgId } : {}),
+        ...(user.superAdmin ? { superAdmin: true } : {}),
       });
     }
     await setDoc(doc(db, 'employees', 'emp-001'), { fullName: 'Seed Person' });
@@ -396,5 +398,72 @@ describe('role_assignments — adopting an assigned role at sign-in', () => {
         superAdmin: true,
       }),
     );
+  });
+});
+
+
+describe('organization provisioning — the first account is an HR administrator', () => {
+  beforeEach(seed);
+
+  it('a super admin can provision a new organisation\'s HR account', async () => {
+    // What lib/organizations.ts writes: the role is `hr`, not `admin`, so the
+    // account administers one organisation without being a platform admin.
+    await assertSucceeds(
+      setDoc(doc(as(USERS.superA), 'users', 'new-org-admin'), {
+        uid: 'new-org-admin',
+        email: 'hr@acme.com',
+        displayName: 'Acme HR',
+        photoURL: null,
+        role: 'hr',
+        orgId: 'org-acme',
+        superAdmin: false,
+      }),
+    );
+  });
+
+  it('a super admin can record the matching role assignment for another org', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.superA), 'role_assignments', 'hr@acme.com'), {
+        email: 'hr@acme.com',
+        role: 'hr',
+        orgId: 'org-acme',
+        assignedBy: USERS.superA.uid,
+      }),
+    );
+  });
+
+  it('provisioning cannot mint another super admin', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.adminA), 'users', 'new-org-admin'), {
+        uid: 'new-org-admin',
+        email: 'hr@acme.com',
+        displayName: 'Acme HR',
+        role: 'hr',
+        orgId: 'org-acme',
+        superAdmin: true,
+      }),
+    );
+  });
+
+  it('the provisioned account cannot promote itself once it signs in', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', 'acme-hr'), {
+        uid: 'acme-hr', email: 'hr@acme.com', displayName: 'Acme HR',
+        role: 'hr', orgId: 'org-acme',
+      });
+    });
+    const db = testEnv.authenticatedContext('acme-hr', { email: 'hr@acme.com' }).firestore();
+    await assertFails(updateDoc(doc(db, 'users', 'acme-hr'), { role: 'admin' }));
+  });
+
+  it('the provisioned account cannot reach another organisation', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', 'acme-hr'), {
+        uid: 'acme-hr', email: 'hr@acme.com', displayName: 'Acme HR',
+        role: 'hr', orgId: 'org-acme',
+      });
+    });
+    const db = testEnv.authenticatedContext('acme-hr', { email: 'hr@acme.com' }).firestore();
+    await assertFails(updateDoc(doc(db, 'users', USERS.employeeA.uid), { role: 'manager' }));
   });
 });

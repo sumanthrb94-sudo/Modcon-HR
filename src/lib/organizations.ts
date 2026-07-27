@@ -1,7 +1,9 @@
 /**
  * Organization creation for super admins.
  *
- * Creating an org also provisions its first admin's Firebase Auth account.
+ * Creating an org also provisions its first administrator's Firebase Auth
+ * account, with the `hr` role — an administrator of that one organisation
+ * rather than a platform admin.
  * The client SDK signs in as whichever user `createUserWithEmailAndPassword`
  * creates, so that call runs on a throwaway secondary `FirebaseApp` instance
  * — this keeps the super admin's own session on the primary `auth` intact.
@@ -11,6 +13,7 @@ import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 
 import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { Collections, addNew, remove } from './db';
+import { assignRole } from '@/data/roleAssignments';
 import type { Organization } from '@/types';
 
 function randomPassword(length = 14): string {
@@ -64,17 +67,36 @@ export async function createOrganization(
 
         // Written via the primary `db` as the signed-in super admin — the
         // secondary app/auth instance above is only used to mint the account.
+        //
+        // The role is `hr`, not `admin`. This account administers one
+        // organisation: it holds the same module access as an admin but is
+        // confined to its own org and cannot grant the admin role (see
+        // lib/accessControl.ts and the /users rules). Provisioning it as a
+        // platform admin would have handed every new organisation the ability
+        // to mint further admins, which is not what "an organisation's own
+        // administrator" means here.
         await setDoc(doc(db, 'users', adminUid), {
             uid: adminUid,
             email,
             displayName: adminName || email.split('@')[0],
             photoURL: null,
-            role: 'admin',
+            role: 'hr',
             orgId,
             superAdmin: false,
             createdAt: serverTimestamp(),
             lastLoginAt: null,
         });
+
+        // Recorded as an assignment as well as on the profile, so the role is
+        // restored if the profile document is ever deleted and rebuilt by a
+        // later sign-in. Best-effort: the profile above is what actually grants
+        // access, and failing to write the audit trail must not undo the org.
+        await assignRole({
+            email,
+            role: 'hr',
+            orgId,
+            assignedBy: createdByUid,
+        }).catch(() => {});
 
         await updateDoc(doc(db, 'organizations', orgId), { adminUid });
 
