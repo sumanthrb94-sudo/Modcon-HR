@@ -16,7 +16,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
-import { buildPayslip, buildPayslipComponents, payrollRuns } from '@/data/payroll';
+import { buildPayslip, buildPayslipComponents, getPayrollRuns } from '@/data/payroll';
 import { formatINR, formatDate } from '@/lib/utils';
 import type { Payslip } from '@/types';
 import { PayrollPage } from '@/pages/payroll';
@@ -47,7 +47,7 @@ function EmployeeFinancePage() {
   const payslipHistory = useMemo(
     () =>
       employee
-        ? payrollRuns
+        ? getPayrollRuns()
             .map((run) => buildPayslip(employee, run.month, run.status))
             .sort((a, b) => b.month.localeCompare(a.month))
         : [],

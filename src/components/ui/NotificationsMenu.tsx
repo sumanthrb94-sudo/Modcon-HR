@@ -7,6 +7,7 @@ import { getNotifications, getIntegrationSummary, type NotificationIcon } from '
 import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
 import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 
@@ -33,13 +34,16 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const notificationRevision = useNotificationPreferencesRevision();
     const integrationRevision = useIntegrationPreferencesRevision();
     const directoryRevision = useEmployeeDirectoryRevision();
+    // The same sources the dashboard's approval cards read, so approving a
+    // claim empties the badge instead of leaving a stale number behind.
+    const dataRevision = useDashboardDataRevision();
 
     // Counted from live records each time anything they depend on changes, so
     // approving the last leave request empties the badge instead of leaving it
     // stuck on a number that was written by hand.
     const visibleNotifications = useMemo(
         () => getNotifications(profile),
-        [profile, notificationRevision, directoryRevision],
+        [profile, notificationRevision, directoryRevision, dataRevision],
     );
     const { connected: connectedIntegrations, total: totalIntegrations } = useMemo(
         () => getIntegrationSummary(),

@@ -22,7 +22,7 @@ import {
   Select,
   EmptyState,
 } from '@/components/ui';
-import { attendanceRecords, getCurrentWeekDates } from '@/data/attendance';
+import { getAttendanceRecords, getCurrentWeekDates } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import type { AttendanceRecord } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
@@ -74,7 +74,7 @@ export function MyAttendancePage() {
 
   const records = useMemo(
     () =>
-      attendanceRecords
+      getAttendanceRecords()
         .filter((r) => r.employeeId === targetId)
         .slice()
         .sort((a, b) => a.date.localeCompare(b.date)),

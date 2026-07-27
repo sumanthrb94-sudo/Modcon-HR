@@ -13,8 +13,8 @@
  */
 import type { UserProfile } from '@/lib/auth';
 import { getLeaveRequests } from '@/data/leave';
-import { expenseClaims } from '@/data/expenses';
-import { regularizationRequests } from '@/data/attendance';
+import { getExpenseClaims } from '@/data/expenses';
+import { getRegularizationRequests } from '@/data/attendance';
 import { getOnboardings } from '@/data/onboarding';
 import { announcements } from '@/data/common';
 import { getNotificationPreferences } from '@/data/notificationPreferences';
@@ -62,11 +62,11 @@ function buildCandidates(profile: UserProfile | null): NotificationItem[] {
     (request) => request.status === 'Pending' && visible.has(request.employeeId),
   ).length;
 
-  const pendingExpenses = expenseClaims.filter(
+  const pendingExpenses = getExpenseClaims().filter(
     (claim) => claim.status === 'Submitted' && visible.has(claim.employeeId),
   ).length;
 
-  const pendingRegularizations = regularizationRequests.filter(
+  const pendingRegularizations = getRegularizationRequests().filter(
     (request) => request.status === 'Pending' && visible.has(request.employeeId),
   ).length;
 

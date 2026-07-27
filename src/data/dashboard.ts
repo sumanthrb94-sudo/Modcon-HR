@@ -11,10 +11,10 @@
 
 import { getEmployeeDirectory } from './employees';
 import { getLeaveRequests } from './leave';
-import { expenseClaims } from './expenses';
-import { tickets } from './helpdesk';
-import { getRecordsByDate, getWeekSummary, regularizationRequests } from './attendance';
-import { onboardings } from './onboarding';
+import { getExpenseClaims } from './expenses';
+import { getTickets } from './helpdesk';
+import { getRecordsByDate, getWeekSummary, getRegularizationRequests } from './attendance';
+import { getOnboardings } from './onboarding';
 import { getCandidates, getJobOpenings } from './recruitment';
 import { getReviews } from './performance';
 import { todayDate, todayIso } from '@/lib/today';
@@ -235,9 +235,9 @@ export function avgTenureYears(): number {
 // ---------------------------------------------------------------------------
 export function pendingApprovalsSummary(): ApprovalItem[] {
   const leave = getLeaveRequests().filter((request) => request.status === 'Pending');
-  const expenses = expenseClaims.filter((claim) => claim.status === 'Submitted');
-  const regularizations = regularizationRequests.filter((request) => request.status === 'Pending');
-  const onboardingTasks = onboardings
+  const expenses = getExpenseClaims().filter((claim) => claim.status === 'Submitted');
+  const regularizations = getRegularizationRequests().filter((request) => request.status === 'Pending');
+  const onboardingTasks = getOnboardings()
     .flatMap((onboarding) => onboarding.tasks)
     .filter((task) => task.status !== 'Completed');
 
@@ -294,7 +294,7 @@ export function recentActivity(limit = 25): ActivityItem[] {
     timestamp: request.appliedOn,
   }));
 
-  expenseClaims.forEach((claim) => items.push({
+  getExpenseClaims().forEach((claim) => items.push({
     id: `expense-${claim.id}`,
     actor: nameOf(claim.employeeId),
     action: 'submitted',
@@ -302,7 +302,7 @@ export function recentActivity(limit = 25): ActivityItem[] {
     timestamp: claim.submittedOn,
   }));
 
-  tickets.forEach((ticket) => items.push({
+  getTickets().forEach((ticket) => items.push({
     id: `ticket-${ticket.id}`,
     actor: nameOf(ticket.raisedById),
     action: 'raised a ticket',
@@ -348,7 +348,7 @@ export function hrHealthMetrics(): HealthMetric[] {
   const reviews = getReviews();
   const completedReviews = reviews.filter((review) => review.status === 'Completed');
 
-  const tasks = onboardings.flatMap((onboarding) => onboarding.tasks);
+  const tasks = getOnboardings().flatMap((onboarding) => onboarding.tasks);
   const training = tasks.filter((task) => task.category === 'Training');
   const compliance = tasks.filter((task) => task.category === 'Compliance');
   const doneIn = (list: typeof tasks) => list.filter((task) => task.status === 'Completed').length;
