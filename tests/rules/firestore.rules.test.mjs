@@ -508,3 +508,54 @@ describe('migrating a legacy org admin down to HR', () => {
     );
   });
 });
+
+
+describe('attaching an existing account to an organisation', () => {
+  beforeEach(seed);
+
+  it('a super admin can set an account\'s role and org together', async () => {
+    // setOrgHrAdministrator writes both in one update: the role without the
+    // orgId is an administrator of nothing, the orgId without the role is an
+    // ordinary employee of that org.
+    await assertSucceeds(
+      updateDoc(doc(as(USERS.superA), 'users', USERS.employeeA.uid), { role: 'hr', orgId: 'org-acme' }),
+    );
+  });
+
+  it('an HR manager cannot move an account into an organisation', async () => {
+    // The orgId hole fixed in 950730b — still closed for this newer path.
+    await assertFails(
+      updateDoc(doc(as(USERS.hrA), 'users', USERS.employeeA.uid), { role: 'hr', orgId: 'org-acme' }),
+    );
+  });
+
+  it('an account cannot attach itself to an organisation', async () => {
+    await assertFails(
+      updateDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid), { role: 'hr', orgId: 'org-acme' }),
+    );
+  });
+
+  it('a super admin can repoint the organisation record at the new account', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'org-acme'), {
+        name: 'Acme', adminEmail: 'old@acme.com', createdBy: USERS.superA.uid,
+      });
+    });
+    await assertSucceeds(
+      updateDoc(doc(as(USERS.superA), 'organizations', 'org-acme'), {
+        adminEmail: 'new@acme.com', adminUid: 'new-uid',
+      }),
+    );
+  });
+
+  it('an HR manager cannot repoint their own organisation record', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'org-a'), {
+        name: 'Org A', adminEmail: USERS.hrA.email, createdBy: USERS.superA.uid,
+      });
+    });
+    await assertFails(
+      updateDoc(doc(as(USERS.hrA), 'organizations', 'org-a'), { adminEmail: 'attacker@example.com' }),
+    );
+  });
+});
