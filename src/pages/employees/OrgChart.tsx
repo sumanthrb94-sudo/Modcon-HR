@@ -79,9 +79,17 @@ interface OrgChartProps {
 }
 
 export function OrgChart({ employees }: OrgChartProps) {
-  const root = employees.find((e) => e.reportingManagerId === null);
+  // The chart is drawn from whatever slice of the organisation the viewer is
+  // entitled to see, which is not always the whole company — a manager sees
+  // their own branch of it. So a root is any node whose own manager is outside
+  // the slice, rather than only the one person with no manager at all. Without
+  // this, every scoped view rendered "No root node found".
+  const present = new Set(employees.map((e) => e.id));
+  const roots = employees.filter(
+    (e) => !e.reportingManagerId || !present.has(e.reportingManagerId),
+  );
 
-  if (!root) {
+  if (!roots.length) {
     return (
       <div className="py-12 text-center text-ink-400">
         No root node found. Ensure at least one employee has no reporting manager.
@@ -91,8 +99,10 @@ export function OrgChart({ employees }: OrgChartProps) {
 
   return (
     <div className="overflow-x-auto py-8 px-4">
-      <div className="flex justify-center min-w-max">
-        <OrgNode employee={root} allEmployees={employees} depth={0} maxDepth={3} />
+      <div className="flex justify-center gap-10 min-w-max">
+        {roots.map((root) => (
+          <OrgNode key={root.id} employee={root} allEmployees={employees} depth={0} maxDepth={3} />
+        ))}
       </div>
     </div>
   );

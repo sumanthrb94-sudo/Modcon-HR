@@ -76,6 +76,27 @@ test.describe.serial('role-based access', () => {
     }
   });
 
+  test('Finance nav visibility matches role', async () => {
+    const p = persona();
+    const finance = page.getByRole('link', { name: 'Finance', exact: true });
+
+    if (p.role === 'employee') {
+      // Finance is the employee's own payslip view.
+      await expect(finance.first()).toBeVisible();
+      return;
+    }
+
+    // Manager has Finance set to 'none' in the permission matrix; Admin is
+    // excluded from it outright, because /finance rendered the Payroll page
+    // they already have (see MODULE_ROLE_EXCLUSIONS in lib/accessControl.ts).
+    await expect(finance).toHaveCount(0);
+
+    if (p.role === 'admin') {
+      await page.goto('/finance');
+      await expect(page.getByText('Not available for your role')).toBeVisible();
+    }
+  });
+
   test('approvals route access control', async () => {
     const p = persona();
     await page.goto('/approvals');

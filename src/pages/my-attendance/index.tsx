@@ -22,11 +22,12 @@ import {
   Select,
   EmptyState,
 } from '@/components/ui';
-import { attendanceRecords, WEEK_DATES } from '@/data/attendance';
+import { attendanceRecords, getCurrentWeekDates } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import type { AttendanceRecord } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { getVisibleEmployees } from '@/lib/dataScope';
 
 function dayLabel(iso: string): string {
   return formatWeekdayLong(iso);
@@ -35,6 +36,15 @@ function dayLabel(iso: string): string {
 export function MyAttendancePage() {
   const { profile, isAdmin, isManager } = useAuth();
   const directory = useMemo(() => getEmployeeDirectory(), []);
+  // Mon–Fri of the current week, derived rather than pinned to the week the
+  // seed records were written for.
+  const weekDates = useMemo(() => getCurrentWeekDates(), []);
+  // A manager may look up their own reporting line and HR, not the whole
+  // company — the picker below offers exactly what they are entitled to see.
+  const viewableEmployees = useMemo(
+    () => getVisibleEmployees(profile, directory),
+    [profile, directory],
+  );
 
   // Match the signed-in user to an employee record by email.
   const ownEmployee = useMemo(() => {
@@ -45,7 +55,9 @@ export function MyAttendancePage() {
   // Admins & managers can view any employee's attendance; a plain employee is
   // locked to their own record.
   const canPickAny = isAdmin || isManager;
-  const fallbackId = ownEmployee?.id ?? directory[0]?.id ?? '';
+  // Falls back within the viewer's own scope, so an unlinked manager account
+  // lands on someone they may actually see rather than the first seed record.
+  const fallbackId = ownEmployee?.id ?? viewableEmployees[0]?.id ?? directory[0]?.id ?? '';
   const [selectedId, setSelectedId] = useState(fallbackId);
 
   const targetId = canPickAny ? selectedId || fallbackId : ownEmployee?.id ?? fallbackId;
@@ -56,8 +68,8 @@ export function MyAttendancePage() {
   const showingSample = !canPickAny && !ownEmployee;
 
   const employeeOptions = useMemo(
-    () => directory.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id })),
-    [directory],
+    () => viewableEmployees.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id })),
+    [viewableEmployees],
   );
 
   const records = useMemo(
@@ -82,14 +94,14 @@ export function MyAttendancePage() {
 
   const chartData = useMemo(
     () =>
-      WEEK_DATES.map((date) => {
+      weekDates.map((date) => {
         const rec = records.find((r) => r.date === date);
         return {
           day: formatWeekdayShort(date),
           Hours: rec ? Number(rec.workedHours.toFixed(1)) : 0,
         };
       }),
-    [records],
+    [records, weekDates],
   );
 
   const columns: Column<AttendanceRecord>[] = [
@@ -155,7 +167,7 @@ export function MyAttendancePage() {
         subtitle={
           canPickAny
             ? 'View any employee’s attendance for the week'
-            : `Your attendance · Week of ${formatDate(WEEK_DATES[0])} – ${formatDate(WEEK_DATES[4])}`
+            : `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[4])}`
         }
         actions={
           canPickAny ? (

@@ -27,6 +27,7 @@ export interface NavItem {
   icon: LucideIcon;
   group: 'Main' | 'People' | 'Operations';
   module: AppModule;
+  /** Visible to an organisation's administrators — Admin and HR Manager. */
   adminOnly?: boolean;
   /** Visible to managers and admins only. */
   managerOnly?: boolean;
@@ -59,11 +60,15 @@ export const navGroups: NavItem['group'][] = ['Main', 'People', 'Operations'];
 
 export function getVisibleNavItems(role: AppRole, isSuperAdmin = false): NavItem[] {
   const canManage = role === 'Admin' || role === 'HR Manager' || role === 'Manager';
+  // An HR Manager administers their own company, so admin-flagged entries are
+  // theirs too. Cross-organisation entries stay behind `superAdminOnly`, which
+  // no amount of org-level administration satisfies.
+  const isOrgAdmin = role === 'Admin' || role === 'HR Manager';
 
   return navItems.filter(
     (item) =>
       canAccessModule(item.module, role) &&
-      (!item.adminOnly || role === 'Admin') &&
+      (!item.adminOnly || isOrgAdmin) &&
       (!item.managerOnly || canManage) &&
       (!item.superAdminOnly || isSuperAdmin),
   );

@@ -28,11 +28,26 @@ service cloud.firestore {
         myProfile().superAdmin == true;
     }
 
-    // Managers and admins can act on approval workflows.
+    // An HR Manager administers their own organisation's people data. They hold
+    // the same reach as an admin over the collections below, but are not
+    // platform admins: they can never grant the `admin` role, touch an admin's
+    // profile, or become a super admin. See isOrgAdmin() and the /users rules.
+    function isHR() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        myProfile().role == 'hr';
+    }
+
+    // Administrators of an organisation: platform admins and HR managers.
+    function isOrgAdmin() {
+      return isAdmin() || isHR();
+    }
+
+    // Managers, HR and admins can act on approval workflows.
     function isManager() {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (myProfile().role == 'manager' || myProfile().role == 'admin');
+        (myProfile().role == 'manager' || myProfile().role == 'hr' || myProfile().role == 'admin');
     }
 
     // Mirrors src/lib/auth.tsx ADMIN_EMAILS / SUPER_ADMIN_EMAILS (prod emails
@@ -88,20 +103,29 @@ service cloud.firestore {
         (request.auth.uid == uid &&
           selfCreateRoleIsValid(request.resource.data) &&
           !('orgId' in request.resource.data)) ||
-        (isAdmin() && (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()))
+        (isOrgAdmin() &&
+          // An HR manager may provision users, but not admins.
+          (isAdmin() || request.resource.data.role != 'admin') &&
+          (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()))
       );
       allow update: if isSignedIn() && (
         (request.auth.uid == uid &&
           selfUpdateRoleIsValid(request.resource.data) &&
           request.resource.data.get('orgId', null) == resource.data.get('orgId', null)) ||
-        (isAdmin() && (
-          request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
-          isSuperAdmin()
-        ))
+        (isOrgAdmin() &&
+          // An HR manager can neither grant the admin role nor edit anyone who
+          // already holds it — so they cannot promote themselves, and cannot
+          // demote the admin who could undo it.
+          (isAdmin() || (request.resource.data.role != 'admin' && resource.data.role != 'admin')) &&
+          (
+            request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
+            isSuperAdmin()
+          ))
       );
-      // Only admins can delete a user from the directory, and never a
-      // profile whose email is a fixed admin (enforced in-app too).
-      allow delete: if isAdmin();
+      // Administrators can delete a user from the directory, but an HR manager
+      // may not delete an admin. Profiles whose email is a fixed admin are
+      // additionally protected in-app.
+      allow delete: if isOrgAdmin() && (isAdmin() || resource.data.role != 'admin');
     }
 
     // -------------------------------------------------------------------
@@ -119,25 +143,26 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
-    // Core HR data — read: any signed-in user, write: admins only.
+    // Core HR data — read: any signed-in user, write: organisation
+    // administrators (admins and HR managers, see isOrgAdmin()).
     // Adjust per-collection if employees need to self-service specific
     // actions (e.g. submitting their own leave/expense requests).
     // -------------------------------------------------------------------
     match /employees/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     // Salary data lives in its own admin-only collection, split out of the
     // broadly-readable `employees` directory (see src/lib/seed.ts).
     match /employee_compensation/{docId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read: if isOrgAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /attendance/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /leave_requests/{docId} {
@@ -146,47 +171,47 @@ service cloud.firestore {
       // manage all of them (e.g. approve/reject).
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isAdmin();
+      allow delete: if isOrgAdmin();
     }
 
     match /leave_balances/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /payslips/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /payroll_runs/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /jobs/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /candidates/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /onboarding/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /goals/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /performance_reviews/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /expenses/{docId} {
@@ -194,12 +219,12 @@ service cloud.firestore {
       // Employees can submit/edit their own expense claims; admins manage all.
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isAdmin();
+      allow delete: if isOrgAdmin();
     }
 
     match /assets/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOrgAdmin();
     }
 
     match /billing_preferences/{docId} {
@@ -216,15 +241,15 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // Employees can raise/update their own tickets; admins manage all.
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isOrgAdmin());
+      allow delete: if isOrgAdmin();
     }
 
     match /regularizations/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isAdmin();
+      allow delete: if isOrgAdmin();
     }
 
     // -------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { todayIso } from '@/lib/today';
+import { orgScopedKey } from '@/lib/orgScope';
 
 export type BillingPlanTier = 'Pro' | 'Enterprise';
 
@@ -109,7 +110,7 @@ async function mirrorBillingInvoiceToFirestore(invoice: BillingInvoice) {
 function readStoredBillingPreferences(): BillingPreferences | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(BILLING_PREFERENCES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(BILLING_PREFERENCES_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<BillingPreferences>;
     if (!parsed || typeof parsed !== 'object') return null;
@@ -133,7 +134,7 @@ function createInvoiceId() {
 function readStoredBillingInvoices(): BillingInvoice[] | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(BILLING_INVOICES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(orgScopedKey(BILLING_INVOICES_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<BillingInvoice>[];
     if (!Array.isArray(parsed)) return null;
@@ -164,7 +165,7 @@ export function getBillingPreferences(): BillingPreferences {
 
 export function saveBillingPreferences(preferences: BillingPreferences) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(BILLING_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+  window.localStorage.setItem(orgScopedKey(BILLING_PREFERENCES_STORAGE_KEY), JSON.stringify(preferences));
   notifyBillingPreferencesChanged();
   void mirrorBillingPreferencesToFirestore(preferences);
 }
@@ -175,7 +176,7 @@ export function getBillingInvoices(): BillingInvoice[] {
 
 export function saveBillingInvoices(invoices: BillingInvoice[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(BILLING_INVOICES_STORAGE_KEY, JSON.stringify(invoices));
+  window.localStorage.setItem(orgScopedKey(BILLING_INVOICES_STORAGE_KEY), JSON.stringify(invoices));
   notifyBillingInvoicesChanged();
 }
 
@@ -190,10 +191,10 @@ export function appendBillingInvoice(invoice: Omit<BillingInvoice, 'id'> & { id?
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === BILLING_PREFERENCES_STORAGE_KEY) {
+    if (event.key === orgScopedKey(BILLING_PREFERENCES_STORAGE_KEY)) {
       notifyBillingPreferencesChanged();
     }
-    if (event.key === BILLING_INVOICES_STORAGE_KEY) {
+    if (event.key === orgScopedKey(BILLING_INVOICES_STORAGE_KEY)) {
       notifyBillingInvoicesChanged();
     }
   });

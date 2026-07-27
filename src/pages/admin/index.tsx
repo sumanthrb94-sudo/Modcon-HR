@@ -33,6 +33,20 @@ import {
 import { useEmployees, useJobOpenings, usePayrollRuns, useExpenses } from '@/lib/useFirestore';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 
+const ROLE_LABEL: Record<UserRole, string> = {
+    admin: 'Admin',
+    hr: 'HR Manager',
+    manager: 'Manager',
+    employee: 'Employee',
+};
+
+const ROLE_TONE: Record<UserRole, 'violet' | 'blue' | 'amber' | 'gray'> = {
+    admin: 'violet',
+    hr: 'blue',
+    manager: 'amber',
+    employee: 'gray',
+};
+
 // ---------------------------------------------------------------------------
 // Live user directory (Firebase Auth users mirrored into Firestore `users`)
 // ---------------------------------------------------------------------------
@@ -57,7 +71,7 @@ function useUserDirectory() {
 }
 
 export function AdminDashboardPage() {
-    const { profile, isSuperAdmin } = useAuth();
+    const { profile, isAdmin, isSuperAdmin } = useAuth();
     const directoryRevision = useEmployeeDirectoryRevision();
     const { users: allUsers, loading: usersLoading } = useUserDirectory();
     const { data: allEmployees, loading: empLoading } = useEmployees();
@@ -165,7 +179,15 @@ export function AdminDashboardPage() {
         },
     ];
 
+    // An HR Manager administers their own company but is not a platform admin,
+    // so Admin is not theirs to hand out — including to themselves, which is
+    // what makes this a privilege boundary rather than a UI nicety.
+    const assignableRoles: UserRole[] = isAdmin
+        ? ['employee', 'manager', 'hr', 'admin']
+        : ['employee', 'manager', 'hr'];
+
     async function setRole(uid: string, role: UserRole) {
+        if (!assignableRoles.includes(role)) return;
         await updateDoc(doc(db, 'users', uid), { role });
     }
 
@@ -193,9 +215,7 @@ export function AdminDashboardPage() {
             key: 'role',
             header: 'Role',
             render: (u) => (
-                <Badge tone={u.role === 'admin' ? 'violet' : u.role === 'manager' ? 'blue' : 'gray'}>
-                    {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'Employee'}
-                </Badge>
+                <Badge tone={ROLE_TONE[u.role] ?? 'gray'}>{ROLE_LABEL[u.role] ?? 'Employee'}</Badge>
             ),
         },
         {
@@ -223,9 +243,14 @@ export function AdminDashboardPage() {
                             disabled={isFixedAdmin}
                             onChange={(e) => setRole(u.uid, e.target.value as UserRole)}
                         >
-                            <option value="employee">Employee</option>
-                            <option value="manager">Manager</option>
-                            <option value="admin">Admin</option>
+                            {assignableRoles.map((role) => (
+                                <option key={role} value={role}>{ROLE_LABEL[role]}</option>
+                            ))}
+                            {/* An HR Manager cannot grant Admin, but must still see
+                                the current value of a row that already holds it. */}
+                            {!assignableRoles.includes(u.role) ? (
+                                <option value={u.role} disabled>{ROLE_LABEL[u.role]}</option>
+                            ) : null}
                         </select>
                         <button
                             type="button"
@@ -246,7 +271,9 @@ export function AdminDashboardPage() {
         <div className="space-y-6">
             <PageHeader
                 title="Admin Dashboard"
-                subtitle={`Signed in as ${profile?.email ?? ''} · full platform administration`}
+                subtitle={`Signed in as ${profile?.email ?? ''} · ${
+                    isAdmin ? 'full platform administration' : 'administration for your organisation'
+                }`}
             />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

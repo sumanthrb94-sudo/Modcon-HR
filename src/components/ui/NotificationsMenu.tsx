@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarOff, CheckSquare, Megaphone, Receipt, Settings } from 'lucide-react';
+import { Bell, CalendarOff, CheckSquare, Clock, Megaphone, Receipt, Settings } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from './Button';
-import { getNotificationPreferences } from '@/data/notificationPreferences';
+import { getNotifications, getIntegrationSummary, type NotificationIcon } from '@/data/notifications';
 import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
-import { getIntegrationPreferences } from '@/data/integrations';
 import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 
@@ -14,36 +15,13 @@ interface NotificationsMenuProps {
     className?: string;
 }
 
-const notifications = [
-    {
-        id: 'n1',
-        title: 'Leave requests pending',
-        subtitle: '7 approvals are waiting',
-        path: '/dashboard/pending-approvals',
-        icon: CalendarOff,
-    },
-    {
-        id: 'n2',
-        title: 'Expense claims need review',
-        subtitle: '4 claims in queue',
-        path: '/expenses',
-        icon: Receipt,
-    },
-    {
-        id: 'n3',
-        title: 'New company announcement',
-        subtitle: 'Policy update posted',
-        path: '/dashboard/announcements',
-        icon: Megaphone,
-    },
-    {
-        id: 'n4',
-        title: 'Tasks require action',
-        subtitle: '5 onboarding tasks due',
-        path: '/dashboard/pending-approvals',
-        icon: CheckSquare,
-    },
-];
+const ICONS: Record<NotificationIcon, LucideIcon> = {
+    leave: CalendarOff,
+    expense: Receipt,
+    announcement: Megaphone,
+    task: CheckSquare,
+    clock: Clock,
+};
 
 export function NotificationsMenu({ compact = false, className }: NotificationsMenuProps) {
     const navigate = useNavigate();
@@ -54,24 +32,23 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const menuRef = useRef<HTMLDivElement | null>(null);
     const notificationRevision = useNotificationPreferencesRevision();
     const integrationRevision = useIntegrationPreferencesRevision();
-    const preferences = getNotificationPreferences();
-    const integrations = getIntegrationPreferences();
-    const enabledNotificationIds = new Set(preferences.filter((pref) => pref.inApp).map((pref) => pref.id));
-    const integrationById = new Map(integrations.map((integration) => [integration.id, integration]));
-    const slackConnected = integrationById.get('slack')?.connected ?? false;
-    const visibleNotifications = notifications.filter((item) => {
-        if (item.id === 'n3' && !slackConnected) return false;
-        return enabledNotificationIds.has(item.id);
-    });
-    const totalCount = visibleNotifications.length;
-    const connectedIntegrations = integrations.filter((integration) => integration.connected).length;
-    const totalIntegrations = integrations.length;
+    const directoryRevision = useEmployeeDirectoryRevision();
 
-    useEffect(() => {
-        if (open && visibleNotifications.length === 0) {
-            setOpen(false);
-        }
-    }, [open, visibleNotifications.length, notificationRevision, integrationRevision]);
+    // Counted from live records each time anything they depend on changes, so
+    // approving the last leave request empties the badge instead of leaving it
+    // stuck on a number that was written by hand.
+    const visibleNotifications = useMemo(
+        () => getNotifications(profile),
+        [profile, notificationRevision, directoryRevision],
+    );
+    const { connected: connectedIntegrations, total: totalIntegrations } = useMemo(
+        () => getIntegrationSummary(),
+        [integrationRevision],
+    );
+
+    // The badge counts outstanding items, not the number of rows in the menu —
+    // "3 unread" when three separate queues each hold work was misleading.
+    const totalCount = visibleNotifications.reduce((sum, item) => sum + item.count, 0);
 
     useEffect(() => {
         function handleOutsideClick(event: MouseEvent) {
@@ -105,7 +82,11 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                     aria-label="Notifications"
                 >
                     <Bell size={20} />
-                    <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+                    {/* The dot was painted unconditionally, so the bell always
+                        looked like it had something waiting. */}
+                    {totalCount > 0 ? (
+                        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+                    ) : null}
                 </button>
             ) : (
                 <Button
@@ -118,9 +99,11 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                     aria-haspopup="menu"
                 >
                     Notifications
-                    <span className="ml-1 h-4 w-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
-                        {totalCount}
-                    </span>
+                    {totalCount > 0 ? (
+                        <span className="ml-1 h-4 min-w-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                            {totalCount}
+                        </span>
+                    ) : null}
                 </Button>
             )}
 
@@ -128,11 +111,13 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                 <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-ink-100 bg-white p-1.5 shadow-card-hover">
                     <div className="flex items-center justify-between px-2.5 py-2">
                         <p className="text-sm font-semibold text-ink-800">Notifications</p>
-                        <span className="text-xs text-ink-500">{totalCount} unread</span>
+                        <span className="text-xs text-ink-500">
+                            {totalCount === 1 ? '1 item' : `${totalCount} items`}
+                        </span>
                     </div>
                     <div className="max-h-80 overflow-auto">
                         {visibleNotifications.map((item) => {
-                            const Icon = item.icon;
+                            const Icon = ICONS[item.icon];
                             return (
                                 <button
                                     key={item.id}
@@ -154,7 +139,7 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                         })}
                         {visibleNotifications.length === 0 ? (
                             <div className="px-2.5 py-4 text-center text-sm text-ink-500">
-                                No in-app notifications are enabled.
+                                Nothing needs your attention right now.
                             </div>
                         ) : null}
                     </div>
