@@ -27,18 +27,28 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
 
   if (!open) return null;
 
+  const titleId = `modal-title-${title.replace(/\W+/g, '-').toLowerCase()}`;
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-3xl' };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <div className={cn('relative w-full card animate-fade-in max-h-[90vh] flex flex-col', sizes[size])}>
+      {/* Announced as a dialog and labelled by its own heading. Without this a
+          screen reader met the contents as loose page text, and a button inside
+          the modal was indistinguishable from an identically-named one behind
+          it — which is also what made these dialogs awkward to target in tests. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={cn('relative w-full card animate-fade-in max-h-[90vh] flex flex-col', sizes[size])}
+      >
         <div className="flex items-start justify-between gap-4 border-b border-ink-100 p-5">
           <div>
-            <h2 className="text-lg font-semibold text-ink-900">{title}</h2>
+            <h2 id={titleId} className="text-lg font-semibold text-ink-900">{title}</h2>
             {subtitle && <p className="text-sm text-ink-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700">
+          <button aria-label="Close dialog" onClick={onClose} className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700">
             <X size={20} />
           </button>
         </div>

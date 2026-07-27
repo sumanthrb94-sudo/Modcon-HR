@@ -33,8 +33,12 @@ import {
   Modal,
 } from '@/components/ui';
 import {
-  attendanceRecords,
-  regularizationRequests,
+  getAttendanceRecords,
+  saveAttendanceRecords,
+  getRegularizationRequests,
+  saveRegularizationRequests,
+  ATTENDANCE_CHANGED_EVENT,
+  REGULARIZATIONS_CHANGED_EVENT,
   getCurrentWeekDates,
   type RegularizationRequest,
 } from '@/data/attendance';
@@ -44,6 +48,7 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
@@ -81,14 +86,20 @@ export function AttendancePage() {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [markModalOpen, setMarkModalOpen] = useState(false);
-  const [attendanceState, setAttendanceState] = useState<AttendanceRecord[]>(attendanceRecords);
+  // Read from the store rather than the seed, so a marked day is still there
+  // after a refresh — and re-read when another tab changes it.
+  const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
+  const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
+  const attendanceState = useMemo(() => getAttendanceRecords(), [attendanceRevision]);
   const [markEmployeeId, setMarkEmployeeId] = useState('');
   const [markStatus, setMarkStatus] = useState<AttendanceStatus>('Present');
   const [markCheckIn, setMarkCheckIn] = useState('09:00');
   const [markCheckOut, setMarkCheckOut] = useState('18:00');
 
-  // Regularization state — mutable local copy
-  const [regRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
+  const regRequests = useMemo<RegularizationRequest[]>(
+    () => getRegularizationRequests(),
+    [regularizationRevision],
+  );
 
   // Requests raised by people outside this viewer's scope aren't theirs to see
   // or approve.
@@ -239,16 +250,13 @@ export function AttendancePage() {
   ];
 
   // Regularization handlers
-  function approveReg(id: string) {
-    setRegRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'Approved' as const } : r)),
+  function decideReg(id: string, status: 'Approved' | 'Rejected') {
+    saveRegularizationRequests(
+      getRegularizationRequests().map((r) => (r.id === id ? { ...r, status } : r)),
     );
   }
-  function rejectReg(id: string) {
-    setRegRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'Rejected' as const } : r)),
-    );
-  }
+  const approveReg = (id: string) => decideReg(id, 'Approved');
+  const rejectReg = (id: string) => decideReg(id, 'Rejected');
 
   function resetMarkAttendanceForm() {
     setMarkEmployeeId('');
@@ -269,22 +277,22 @@ export function AttendancePage() {
       );
     const isLate = markStatus === 'Present' && markCheckIn > '09:15';
 
-    setAttendanceState((prev) => {
-      const nextRecord: AttendanceRecord = {
-        id: `att-manual-${markEmployeeId}-${todayIso()}`,
-        employeeId: markEmployeeId,
-        date: todayIso(),
-        status: markStatus,
-        checkIn: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckIn,
-        checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
-        workedHours,
-        shift: 'General (09:00 – 18:00)',
-        isLate,
-      };
+    const nextRecord: AttendanceRecord = {
+      id: `att-manual-${markEmployeeId}-${todayIso()}`,
+      employeeId: markEmployeeId,
+      date: todayIso(),
+      status: markStatus,
+      checkIn: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckIn,
+      checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
+      workedHours,
+      shift: 'General (09:00 – 18:00)',
+      isLate,
+    };
 
-      const withoutExisting = prev.filter((record) => !(record.employeeId === markEmployeeId && record.date === todayIso()));
-      return [...withoutExisting, nextRecord];
-    });
+    const withoutExisting = getAttendanceRecords().filter(
+      (record) => !(record.employeeId === markEmployeeId && record.date === todayIso()),
+    );
+    saveAttendanceRecords([...withoutExisting, nextRecord]);
 
     setMarkModalOpen(false);
     resetMarkAttendanceForm();

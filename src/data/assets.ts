@@ -1,5 +1,6 @@
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { persistentCollection } from '@/data/persistence';
 
 export const assets: Asset[] = isMockDataCleared() ? [] : [
   // Laptops
@@ -347,3 +348,16 @@ export function assetsByCategory(): { category: string; count: number; value: nu
   });
   return Object.entries(map).map(([category, data]) => ({ category, ...data }));
 }
+
+// ---- Persistence ------------------------------------------------------------
+// `assets` above is the seed. Every change a user made to it lived in React
+// state alone and was lost on the next refresh.
+const assetsStore = persistentCollection<Asset>(
+  'modcon.hr.assets',
+  'modcon-hr-assets-changed',
+  () => assets,
+);
+
+export const ASSETS_CHANGED_EVENT = assetsStore.changedEvent;
+export const getAssets = () => assetsStore.get();
+export const saveAssets = (next: Asset[]) => assetsStore.save(next);

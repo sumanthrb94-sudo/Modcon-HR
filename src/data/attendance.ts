@@ -1,6 +1,7 @@
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { todayDate } from '@/lib/today';
+import { persistentCollection } from '@/data/persistence';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -241,3 +242,29 @@ export function getWeekSummary(): Array<{ date: string; Present: number; 'Work F
     };
   });
 }
+
+// ---- Persistence ------------------------------------------------------------
+// `attendanceRecords` and `regularizationRequests` above are the seed. Marking
+// attendance or deciding a regularization used to change React state only, so
+// the next refresh silently threw the decision away.
+
+const attendanceStore = persistentCollection<AttendanceRecord>(
+  'modcon.hr.attendanceRecords',
+  'modcon-hr-attendance-changed',
+  () => attendanceRecords,
+);
+
+export const ATTENDANCE_CHANGED_EVENT = attendanceStore.changedEvent;
+export const getAttendanceRecords = () => attendanceStore.get();
+export const saveAttendanceRecords = (records: AttendanceRecord[]) => attendanceStore.save(records);
+
+const regularizationStore = persistentCollection<RegularizationRequest>(
+  'modcon.hr.regularizationRequests',
+  'modcon-hr-regularizations-changed',
+  () => regularizationRequests,
+);
+
+export const REGULARIZATIONS_CHANGED_EVENT = regularizationStore.changedEvent;
+export const getRegularizationRequests = () => regularizationStore.get();
+export const saveRegularizationRequests = (requests: RegularizationRequest[]) =>
+  regularizationStore.save(requests);

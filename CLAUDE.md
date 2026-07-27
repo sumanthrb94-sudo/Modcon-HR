@@ -24,6 +24,10 @@ Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.conf
 
 ## Architecture
 
+### Mutable collections must persist
+
+Anything a user can change goes through `persistentCollection` in `src/data/persistence.ts` — an org-scoped localStorage store with a change event. Seeding `useState` straight from a `src/data/*.ts` array means every edit is lost on refresh, which is what attendance, assets, expenses, helpdesk and payroll all did. `tests/e2e/persistence.spec.ts` guards this: it creates a record, **reloads**, and asserts it survived. The other specs never reload, so in-memory state passes them exactly as persisted state would.
+
 ### Two independent data sources — do not conflate them
 
 1. **Mock/seed data in `src/data/*.ts`** powers most feature pages (attendance, leave, payroll, etc.). It is static seed data, not Firestore.

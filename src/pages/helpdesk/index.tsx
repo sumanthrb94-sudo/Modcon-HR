@@ -22,7 +22,7 @@ import {
   SearchInput,
   Select,
 } from '@/components/ui';
-import { tickets as initialTickets, ticketCategories } from '@/data/helpdesk';
+import { tickets as initialTickets, ticketCategories, getTickets, saveTickets } from '@/data/helpdesk';
 import { employees, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -341,7 +341,11 @@ export function HelpdeskPage() {
   const isEmployee = role === 'Employee';
   const currentEmployee = getCurrentEmployee(profile);
   const directoryRevision = useEmployeeDirectoryRevision();
-  const [ticketList, setTicketList] = useState<Ticket[]>(initialTickets);
+  // Seeded from the store and written through on every change, so an edit
+  // is still there after a refresh.
+  const [ticketList, setTicketListRaw] = useState(() => getTickets());
+  const setTicketList = (updater: Parameters<typeof setTicketListRaw>[0]) =>
+    setTicketListRaw((prev) => saveTickets(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [showRaise, setShowRaise] = useState(false);

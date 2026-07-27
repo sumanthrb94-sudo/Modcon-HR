@@ -1,5 +1,6 @@
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
+import { persistentCollection } from '@/data/persistence';
 
 // ---------------------------------------------------------------------------
 // Seed data — 16 claims spread across employees & categories
@@ -247,3 +248,16 @@ export function expenseByCategory(claims: ExpenseClaim[] = expenseClaims): Array
     .map(([category, total]) => ({ category, total }))
     .sort((a, b) => b.total - a.total);
 }
+
+// ---- Persistence ------------------------------------------------------------
+// `expenseClaims` above is the seed. Every change a user made to it lived in React
+// state alone and was lost on the next refresh.
+const expenseStore = persistentCollection<ExpenseClaim>(
+  'modcon.hr.expenseClaims',
+  'modcon-hr-expenses-changed',
+  () => expenseClaims,
+);
+
+export const EXPENSES_CHANGED_EVENT = expenseStore.changedEvent;
+export const getExpenseClaims = () => expenseStore.get();
+export const saveExpenseClaims = (next: ExpenseClaim[]) => expenseStore.save(next);

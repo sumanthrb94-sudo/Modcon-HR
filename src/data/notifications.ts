@@ -15,7 +15,7 @@ import type { UserProfile } from '@/lib/auth';
 import { getLeaveRequests } from '@/data/leave';
 import { expenseClaims } from '@/data/expenses';
 import { regularizationRequests } from '@/data/attendance';
-import { onboardings } from '@/data/onboarding';
+import { getOnboardings } from '@/data/onboarding';
 import { announcements } from '@/data/common';
 import { getNotificationPreferences } from '@/data/notificationPreferences';
 import { getIntegrationPreferences } from '@/data/integrations';
@@ -70,7 +70,7 @@ function buildCandidates(profile: UserProfile | null): NotificationItem[] {
     (request) => request.status === 'Pending' && visible.has(request.employeeId),
   ).length;
 
-  const openOnboardingTasks = onboardings
+  const openOnboardingTasks = getOnboardings()
     .filter((onboarding) => visible.has(onboarding.employeeId))
     .flatMap((onboarding) => onboarding.tasks)
     .filter((task) => task.status !== 'Completed').length;
