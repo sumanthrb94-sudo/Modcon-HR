@@ -1,0 +1,79 @@
+name: CI
+
+# Correctness gates that run on every pull request and every push to main.
+#
+# Deliberately separate from firebase-hosting.yml: that workflow's job is to
+# ship, and it is triggered only by main. This one also runs on pull requests,
+# which is where a rules regression should be caught — before it is merged and
+# auto-deployed.
+#
+# Not covered here: the Playwright E2E suite. It signs in through real Firebase
+# Auth and provisions test accounts, so it needs live project credentials rather
+# than an emulator, and is run locally against the production build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer commit on the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Type-check & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run build` is `tsc -b && vite build` — type checking is the
+      # correctness gate for this project, not lint (ESLint is unconfigured).
+      - name: Build
+        run: npm run build
+
+  rules:
+    name: Firestore security rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The Firestore emulator is a Java process; without a JDK on the runner
+      # `emulators:exec` fails before a single test runs.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The HR Manager privilege boundary lives entirely in firestore.rules —
+      # nothing in the app or the E2E suite exercises it, so this is the only
+      # thing standing between a rules edit and a live privilege-escalation
+      # path. See tests/rules/.
+      - name: Run security-rules tests
+        run: npm run test:rules
