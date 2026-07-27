@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "ModCon HR — a modern HRMS platform (investor demo)",
+  "description": "ModCon HR \u2014 a modern HRMS platform (investor demo)",
   "engines": {
     "node": ">=18"
   },
@@ -14,7 +14,8 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "firebase:serve": "firebase emulators:start --only hosting",
-    "firebase:deploy": "firebase deploy --only hosting"
+    "firebase:deploy": "firebase deploy --only hosting",
+    "test:rules": "firebase emulators:exec --only firestore --project modcon-hr \"node --test tests/rules/*.test.mjs\""
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^20.19.42",
     "@types/react": "^18.3.3",

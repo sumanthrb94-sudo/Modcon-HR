@@ -11,11 +11,13 @@ npm run dev        # Vite dev server → http://localhost:5173
 npm run build      # tsc -b && vite build  (type-check is part of the build)
 npm run preview    # serve the production build locally
 npm run test:e2e   # Playwright E2E (playwright test)
+npm run test:rules # Firestore security-rules tests (Firestore emulator; needs Java)
 ```
 
 - **Type checking is the CI gate, not lint.** `npm run lint` (`eslint .`) is defined but ESLint is **not configured or installed**, so it currently fails. Correctness is enforced by `tsc -b` inside `npm run build` — run the build to type-check.
 - **Single E2E test / project:** `npx playwright test tests/e2e/smoke.spec.ts`, filter with `-g "test name"`, or one role with `--project=role-admin`. Point at the sandbox browser with `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium`. The suite builds + serves the production bundle and signs in through real Firebase Auth, so it needs network access to Firebase.
-- **Deploy:** `npm run firebase:deploy` (hosting). Firestore rules deploy separately: `firebase deploy --only firestore:rules`. Pushes to `main` also auto-deploy hosting via `.github/workflows/firebase-hosting.yml` (needs the `FIREBASE_TOKEN` repo secret).
+- **Security rules are tested separately from the app.** `tests/rules/` runs `firestore.rules` against the Firestore emulator via `@firebase/rules-unit-testing` (`npm run test:rules`, wrapped in `firebase emulators:exec`). The E2E suite drives the UI and never exercises the rules, so role/permission changes need a test here as well. Each test reseeds — the suites mutate roles, so shared state produces false passes.
+- **Deploy:** `npm run firebase:deploy` (hosting). Firestore rules deploy separately: `firebase deploy --only firestore:rules`. Pushes to `main` also auto-deploy hosting via `.github/workflows/firebase-hosting.yml` (needs the `FIREBASE_TOKEN` repo secret). **App code and rules deploy independently — if a change needs both, deploy the rules first or privileged users get permission-denied against the new UI.**
 
 Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.config.ts`).
 
