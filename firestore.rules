@@ -43,6 +43,14 @@ service cloud.firestore {
       return isAdmin() || isHR();
     }
 
+    // The caller's own organisation. Null for super admins and for the
+    // legacy/default-org accounts that predate multi-org support, which is the
+    // same value those orgs' user documents carry — so the comparisons in
+    // /users below match default-org users for a default-org HR manager.
+    function myOrgId() {
+      return myProfile().get('orgId', null);
+    }
+
     // Managers, HR and admins can act on approval workflows.
     function isManager() {
       return isSignedIn() &&
@@ -99,33 +107,47 @@ service cloud.firestore {
       // Admins may create/update anyone else's profile — e.g. to change
       // roles, or when a super admin provisions a new org's admin — but
       // granting/revoking superAdmin itself is reserved to super admins.
+      // The HR-manager branches are deliberately separate from the admin ones
+      // rather than folded in behind isOrgAdmin(). An HR manager administers
+      // one organisation, so on top of never granting `admin` or `superAdmin`
+      // they may only act on users already in their own org, and may never
+      // write an orgId — including onto their own profile, which would
+      // otherwise move them into another company's data namespace and grant
+      // read of its /organizations record.
       allow create: if isSignedIn() && (
         (request.auth.uid == uid &&
           selfCreateRoleIsValid(request.resource.data) &&
           !('orgId' in request.resource.data)) ||
-        (isOrgAdmin() &&
-          // An HR manager may provision users, but not admins.
-          (isAdmin() || request.resource.data.role != 'admin') &&
-          (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()))
+        (isAdmin() && (request.resource.data.get('superAdmin', false) == false || isSuperAdmin())) ||
+        (isHR() &&
+          request.resource.data.role != 'admin' &&
+          request.resource.data.get('superAdmin', false) == false &&
+          request.resource.data.get('orgId', null) == myOrgId())
       );
       allow update: if isSignedIn() && (
         (request.auth.uid == uid &&
           selfUpdateRoleIsValid(request.resource.data) &&
           request.resource.data.get('orgId', null) == resource.data.get('orgId', null)) ||
-        (isOrgAdmin() &&
-          // An HR manager can neither grant the admin role nor edit anyone who
-          // already holds it — so they cannot promote themselves, and cannot
-          // demote the admin who could undo it.
-          (isAdmin() || (request.resource.data.role != 'admin' && resource.data.role != 'admin')) &&
-          (
-            request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
-            isSuperAdmin()
-          ))
+        (isAdmin() && (
+          request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
+          isSuperAdmin()
+        )) ||
+        (isHR() &&
+          // Cannot grant the admin role, nor edit anyone who already holds it —
+          // so no self-promotion, and no demoting the admin who could undo it.
+          request.resource.data.role != 'admin' &&
+          resource.data.role != 'admin' &&
+          request.resource.data.get('superAdmin', false) == false &&
+          resource.data.get('superAdmin', false) == false &&
+          // Target is in my org, and its orgId is left exactly as it was.
+          resource.data.get('orgId', null) == myOrgId() &&
+          request.resource.data.get('orgId', null) == resource.data.get('orgId', null))
       );
-      // Administrators can delete a user from the directory, but an HR manager
-      // may not delete an admin. Profiles whose email is a fixed admin are
-      // additionally protected in-app.
-      allow delete: if isOrgAdmin() && (isAdmin() || resource.data.role != 'admin');
+      // Admins can delete anyone. An HR manager may remove a user from their own
+      // organisation, but never an admin. Profiles whose email is a fixed admin
+      // are additionally protected in-app.
+      allow delete: if isAdmin() ||
+        (isHR() && resource.data.role != 'admin' && resource.data.get('orgId', null) == myOrgId());
     }
 
     // -------------------------------------------------------------------
