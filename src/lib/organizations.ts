@@ -10,8 +10,9 @@
  */
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
-import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
+import { ADMIN_EMAILS } from './auth';
 import { Collections, addNew, remove } from './db';
 import { assignRole } from '@/data/roleAssignments';
 import type { Organization } from '@/types';
@@ -108,6 +109,99 @@ export async function createOrganization(
     } finally {
         await deleteApp(secondaryApp);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Migration: organisations provisioned before the first account became `hr`
+// ---------------------------------------------------------------------------
+
+export interface OrgAdminMigrationCandidate {
+    orgId: string;
+    orgName: string;
+    uid: string;
+    email: string;
+    /** Present when the account will be left alone, saying why. */
+    skipReason?: string;
+}
+
+/**
+ * Accounts that `createOrganization` provisioned as platform admins before it
+ * started provisioning `hr`.
+ *
+ * Read-only: this is the dry run. Revoking the admin role from live accounts is
+ * not something to do from a single unexplained button, so the caller shows
+ * this list and asks before anything is written.
+ *
+ * Three kinds of account are deliberately never touched, each for a different
+ * reason:
+ *   - super admins, who are not an organisation's account at all;
+ *   - the hard-coded ADMIN_EMAILS, whose role is re-asserted from
+ *     src/lib/auth.tsx on every sign-in, so writing `hr` here would be undone
+ *     on their next login and only confuse the audit trail;
+ *   - anything already `hr`, which is the target state.
+ */
+export async function findOrgAdminsToMigrate(
+    organizations: Organization[],
+): Promise<OrgAdminMigrationCandidate[]> {
+    const withAdmin = organizations.filter((org) => org.id && org.adminUid);
+
+    const rows = await Promise.all(
+        withAdmin.map(async (org) => {
+            const snap = await getDoc(doc(db, 'users', org.adminUid as string));
+            const base = {
+                orgId: org.id as string,
+                orgName: org.name,
+                uid: org.adminUid as string,
+                email: org.adminEmail,
+            };
+            if (!snap.exists()) return { ...base, skipReason: 'No user profile found' };
+
+            const data = snap.data() as { role?: string; email?: string; superAdmin?: boolean };
+            const email = (data.email ?? org.adminEmail ?? '').toLowerCase();
+            if (data.superAdmin) return { ...base, email, skipReason: 'Super admin' };
+            if (ADMIN_EMAILS.includes(email)) return { ...base, email, skipReason: 'Fixed platform admin' };
+            if (data.role === 'hr') return { ...base, email, skipReason: 'Already an HR administrator' };
+            if (data.role !== 'admin') return { ...base, email, skipReason: `Role is "${data.role ?? 'unset'}"` };
+
+            return { ...base, email };
+        }),
+    );
+
+    return rows;
+}
+
+/**
+ * Demotes the given accounts from platform admin to HR administrator, and
+ * records the matching assignment. Only candidates with no `skipReason` are
+ * written; the rest are passed through untouched so the caller can report the
+ * full picture.
+ */
+export async function migrateOrgAdminsToHr(
+    candidates: OrgAdminMigrationCandidate[],
+    actedByUid: string,
+): Promise<{ migrated: string[]; failed: { email: string; reason: string }[] }> {
+    const migrated: string[] = [];
+    const failed: { email: string; reason: string }[] = [];
+
+    for (const candidate of candidates.filter((item) => !item.skipReason)) {
+        try {
+            await updateDoc(doc(db, 'users', candidate.uid), { role: 'hr' });
+            await assignRole({
+                email: candidate.email,
+                role: 'hr',
+                orgId: candidate.orgId,
+                assignedBy: actedByUid,
+            }).catch(() => {
+                // The profile write above is what changes access; the
+                // assignment is only a durability record.
+            });
+            migrated.push(candidate.email);
+        } catch (err) {
+            failed.push({ email: candidate.email, reason: (err as Error)?.message ?? 'Unknown error' });
+        }
+    }
+
+    return { migrated, failed };
 }
 
 export function friendlyOrgError(err: unknown): string {
