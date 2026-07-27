@@ -23,7 +23,7 @@ import {
 import { db } from '@/lib/firebase';
 import type { UserProfile, UserRole } from '@/lib/auth';
 import type { Employee } from '@/types';
-import { getCompanyProfile } from '@/data/companyProfile';
+import { isHrDesignation } from '@/data/companyProfile';
 
 export interface RoleAssignment {
   email: string;
@@ -106,10 +106,11 @@ async function applyRoleToExistingAccount(email: string, role: UserRole): Promis
  * Keeps an employee's access in step with whether they sit in the company's HR
  * department.
  *
- * "Added as HR" means added to the department the company nominated as its HR
- * function (Settings → Company Profile), not a job title containing the letters
- * H and R — the department is the thing an organisation actually configures,
- * and departments are renameable, so nothing is matched against a fixed string.
+ * "Added as HR" means appointed to one of the job titles the company nominated
+ * as carrying the HR function (Settings → Company Profile). Matched against
+ * that configured list, not by looking for "HR" inside the title — that
+ * substring turns up in titles with no HR involvement at all, and would have
+ * handed administrator access to a Threat Analyst.
  *
  * Best-effort by design: the employee directory is local and its write has
  * already succeeded by the time this runs, so a Firestore failure here must not
@@ -117,14 +118,13 @@ async function applyRoleToExistingAccount(email: string, role: UserRole): Promis
  * user rather than silently dropping it.
  */
 export async function syncHrRoleForEmployee(
-  employee: Pick<Employee, 'email' | 'department'>,
+  employee: Pick<Employee, 'email' | 'designation'>,
   actor: UserProfile | null,
 ): Promise<'granted' | 'revoked' | 'unchanged' | 'failed'> {
   const email = roleAssignmentId(employee.email ?? '');
-  const { hrDepartment } = getCompanyProfile();
-  if (!email || !hrDepartment) return 'unchanged';
+  if (!email) return 'unchanged';
 
-  const shouldBeHr = employee.department === hrDepartment;
+  const shouldBeHr = isHrDesignation(employee.designation ?? '');
 
   try {
     const existing = await getRoleAssignment(email);

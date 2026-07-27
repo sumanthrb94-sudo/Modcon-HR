@@ -56,7 +56,6 @@ import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { canViewEmployee, getVisibleEmployees } from '@/lib/dataScope';
 import { syncHrRoleForEmployee } from '@/data/roleAssignments';
-import { getCompanyProfile } from '@/data/companyProfile';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
@@ -647,7 +646,7 @@ export function EmployeesPage() {
     // fail, so it is reported rather than allowed to fail the add.
     void syncHrRoleForEmployee(nextEmployee, profile).then((outcome) => {
       if (outcome === 'granted') {
-        setRoleNotice(`${nextEmployee.fullName} joins ${getCompanyProfile().hrDepartment} and now has administrator access for this company.`);
+        setRoleNotice(`${nextEmployee.fullName} was added as ${nextEmployee.designation} and now has administrator access for this company.`);
       } else if (outcome === 'failed') {
         setRoleNotice(`${nextEmployee.fullName} was added, but granting HR administrator access failed. Set their role from the Admin dashboard.`);
       }
@@ -1989,9 +1988,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   function syncAccess(next: Employee) {
     void syncHrRoleForEmployee(next, profile).then((outcome) => {
       if (outcome === 'granted') {
-        setAccessNotice(`${next.fullName} is now in ${getCompanyProfile().hrDepartment} and has administrator access for this company.`);
+        setAccessNotice(`${next.fullName} is now ${next.designation} and has administrator access for this company.`);
       } else if (outcome === 'revoked') {
-        setAccessNotice(`${next.fullName} has left ${getCompanyProfile().hrDepartment}; their administrator access has been withdrawn.`);
+        setAccessNotice(`${next.fullName} no longer holds an HR role; their administrator access has been withdrawn.`);
       } else if (outcome === 'failed') {
         setAccessNotice('The profile was saved, but updating platform access failed. Check their role on the Admin dashboard.');
       }
@@ -2003,8 +2002,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     if (!emp) return;
     const next = { ...emp, ...patch };
     updateEmployeeInDirectory(next);
-    // Department and email are the two fields the HR grant keys off.
-    if ('department' in patch || 'email' in patch) syncAccess(next);
+    // Designation and email are the two fields the HR grant keys off.
+    if ('designation' in patch || 'email' in patch) syncAccess(next);
   }
 
   /**
