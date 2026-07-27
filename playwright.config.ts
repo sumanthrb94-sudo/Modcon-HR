@@ -4,10 +4,13 @@ import { PERSONAS } from './tests/e2e/config';
 /**
  * Playwright E2E configuration.
  *
- * Runs the production build via `vite preview` and drives it in real Chromium.
+ * Runs the production build via `vite preview` and drives it in real browsers.
  * The three role personas (employee / manager / admin) run as separate projects
  * so they execute in parallel. A global setup provisions their Firebase Auth
  * accounts, and the preview build enables the E2E role allow-list.
+ *
+ * The app specs run across every engine in E2E_BROWSERS (default: all three).
+ * The role specs stay on Chromium — see ROLE_ENGINE below.
  */
 const PORT = Number(process.env.E2E_PORT ?? 4173);
 
@@ -18,22 +21,60 @@ const proxy = proxyServer
   ? { server: proxyServer, bypass: 'localhost,127.0.0.1,::1' }
   : undefined;
 
-const proxyArgs = proxy
+// Chrome command-line switches. Firefox and WebKit reject unknown argv and fail
+// to launch, so these must only ever reach Chromium.
+const chromiumProxyArgs = proxy
   ? ['--ssl-version-max=tls1.2', '--disable-quic', '--disable-features=EncryptedClientHello']
   : [];
 
-const commonUse = {
+type Engine = 'chromium' | 'firefox' | 'webkit';
+
+const DEVICE: Record<Engine, (typeof devices)[string]> = {
+  chromium: devices['Desktop Chrome'],
+  firefox: devices['Desktop Firefox'],
+  webkit: devices['Desktop Safari'],
+};
+
+/** Engines the app specs run on. Override with E2E_BROWSERS=chromium,webkit. */
+const ENGINES: Engine[] = (process.env.E2E_BROWSERS ?? 'chromium,firefox,webkit')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => {
+    if (!(s in DEVICE)) throw new Error(`Unknown browser in E2E_BROWSERS: ${s}`);
+    return s as Engine;
+  });
+
+/**
+ * The role specs sign in through real Firebase Auth and are the only specs that
+ * provision accounts, so running them once per engine triples live auth traffic
+ * for no extra coverage — access control is app logic, not engine behaviour.
+ */
+const ROLE_ENGINE: Engine = 'chromium';
+
+const baseUse = {
   baseURL: `http://localhost:${PORT}`,
   proxy,
   ignoreHTTPSErrors: Boolean(proxy),
   trace: 'retain-on-failure' as const,
   screenshot: 'only-on-failure' as const,
-  ...devices['Desktop Chrome'],
-  launchOptions: {
-    executablePath: process.env.PW_CHROMIUM_PATH || undefined,
-    args: proxyArgs,
-  },
 };
+
+function useFor(engine: Engine) {
+  return {
+    ...baseUse,
+    ...DEVICE[engine],
+    // PW_CHROMIUM_PATH points at a prebuilt sandbox Chromium; it is meaningless
+    // for the other engines, which use their own downloaded builds.
+    launchOptions:
+      engine === 'chromium'
+        ? { executablePath: process.env.PW_CHROMIUM_PATH || undefined, args: chromiumProxyArgs }
+        : {},
+  };
+}
+
+const APP_SPECS = /(smoke|interactions|persistence)\.spec\.ts$/;
+const ROLE_SPECS = /roles\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -45,28 +86,29 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   projects: [
-    {
-      name: 'app',
-      testMatch: /(smoke|interactions|persistence)\.spec\.ts$/,
-      use: commonUse,
-    },
+    // Chromium keeps the bare name `app` so existing --project=app still works.
+    ...ENGINES.map((engine) => ({
+      name: engine === 'chromium' ? 'app' : `app-${engine}`,
+      testMatch: APP_SPECS,
+      use: useFor(engine),
+    })),
     {
       name: 'role-employee',
-      testMatch: /roles\.spec\.ts$/,
+      testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.employee },
-      use: commonUse,
+      use: useFor(ROLE_ENGINE),
     },
     {
       name: 'role-manager',
-      testMatch: /roles\.spec\.ts$/,
+      testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.manager },
-      use: commonUse,
+      use: useFor(ROLE_ENGINE),
     },
     {
       name: 'role-admin',
-      testMatch: /roles\.spec\.ts$/,
+      testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.admin },
-      use: commonUse,
+      use: useFor(ROLE_ENGINE),
     },
   ],
   webServer: {
