@@ -27,29 +27,21 @@
 import type { Employee } from '@/types';
 import type { UserProfile } from '@/lib/auth';
 import { getEmployeeDirectory } from '@/data/employees';
-import { getCompanyProfile } from '@/data/companyProfile';
-import { getDepartmentRecord } from '@/data/departments';
+import { isHrDesignation } from '@/data/companyProfile';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 
 /**
  * The employee records that represent the HR Manager(s).
  *
- * Resolved as the head of whichever department the company nominated as its HR
- * function (Settings → Departments), so neither the department name nor the
- * person is hardcoded here. A company that has not nominated one has no HR
- * Manager, and the Manager scope below simply falls back to its own subtree.
+ * Anyone holding one of the job titles the company nominated as carrying the
+ * HR function (Settings → Company Profile) — the same list that grants them
+ * administrator access, so the two cannot disagree about who HR is. A company
+ * that has nominated none has no HR Manager, and the Manager scope below simply
+ * falls back to its own subtree.
  */
 export function getHrManagers(directory: Employee[] = getEmployeeDirectory()): Employee[] {
-  const { hrDepartment } = getCompanyProfile();
-  if (!hrDepartment) return [];
-
-  const head = getDepartmentRecord(hrDepartment)?.head;
-  if (!head || head === '—') return [];
-
-  return directory.filter(
-    (employee) => employee.department === hrDepartment && employee.fullName === head,
-  );
+  return directory.filter((employee) => isHrDesignation(employee.designation));
 }
 
 /** Every employee at or beneath `rootId` in the reporting tree, including it. */

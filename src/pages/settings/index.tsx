@@ -151,7 +151,7 @@ function SettingsSection({ title, subtitle, children }: {
 // ===========================================================================
 function CompanyProfile() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const departmentRevision = useDepartmentDirectoryRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
   // Read from the company's own record rather than starting every organisation
   // on ModCon's name, address and registration numbers.
   const [form, setForm] = useState<CompanyProfileRecord>(() => getCompanyProfile());
@@ -159,13 +159,25 @@ function CompanyProfile() {
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  const departmentOptions = useMemo(
-    () => [
-      { label: 'Not set', value: '' },
-      ...getDepartmentDirectory().map((department) => ({ label: department.name, value: department.name })),
-    ],
-    [departmentRevision],
-  );
+  // Every distinct title in the directory, plus any the company has already
+  // nominated that nobody currently holds — dropping those from the list would
+  // silently deselect them on the next save.
+  const designationOptions = useMemo(() => {
+    const inUse = employees.map((employee) => employee.designation).filter(Boolean);
+    return Array.from(new Set([...inUse, ...form.hrDesignations])).sort((a, b) => a.localeCompare(b));
+  }, [directoryRevision, form.hrDesignations]);
+
+  function toggleHrDesignation(designation: string) {
+    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    setForm((current) => ({
+      ...current,
+      hrDesignations: current.hrDesignations.some((item) => same(item, designation))
+        ? current.hrDesignations.filter((item) => !same(item, designation))
+        : [...current.hrDesignations, designation],
+    }));
+    setDirty(true);
+    setSaved(false);
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -283,20 +295,45 @@ function CompanyProfile() {
           <Field label="Employee Count" value={String(employees.length)} onChange={() => {}} disabled />
           <Field label="Support Email" value={form.supportEmail} onChange={update('supportEmail')} type="email" />
           <Field label="Contact Phone" value={form.phone} onChange={update('phone')} />
-          <div>
-            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
-              HR Department
-            </label>
-            <Select
-              value={form.hrDepartment}
-              onChange={update('hrDepartment')}
-              options={departmentOptions}
-            />
-            <p className="text-xs text-ink-400 mt-1">
-              Which department carries the HR function. Its head oversees every employee&apos;s records,
-              including top management.
-            </p>
+        </div>
+
+        {/* Chosen from the titles actually in use rather than typed: a
+            mistyped designation would silently stop conferring access, and
+            matching "HR" inside a title would confer it on unrelated roles. */}
+        <div className="mt-6 pt-5 border-t border-ink-100">
+          <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+            HR Designations
+          </label>
+          <p className="text-xs text-ink-400 mb-3">
+            Job titles that carry the HR function. Anyone appointed to one of these administers this
+            organisation and can see every employee&apos;s records, including top management.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-auto rounded-lg border border-ink-100 p-3">
+            {designationOptions.map((designation) => {
+              const checked = form.hrDesignations.some(
+                (item) => item.trim().toLowerCase() === designation.trim().toLowerCase(),
+              );
+              return (
+                <label key={designation} className="flex items-start gap-2 text-sm text-ink-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={checked}
+                    onChange={() => toggleHrDesignation(designation)}
+                  />
+                  <span>{designation}</span>
+                </label>
+              );
+            })}
+            {designationOptions.length === 0 ? (
+              <p className="text-sm text-ink-400">No designations recorded yet.</p>
+            ) : null}
           </div>
+          {form.hrDesignations.length === 0 ? (
+            <p className="text-xs text-amber-700 mt-2">
+              None selected — nobody will be granted HR administrator access automatically.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3 mt-6 pt-5 border-t border-ink-100">

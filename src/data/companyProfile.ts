@@ -25,12 +25,16 @@ export interface CompanyProfile {
   supportEmail: string;
   phone: string;
   /**
-   * Which department carries the HR function. Read rather than assumed because
-   * departments are renameable org data (see data/departments.ts) — "Human
-   * Resources" is what the demo org happens to call it, not a fixed name. Used
-   * by lib/dataScope.ts to work out whose records an HR Manager oversees.
+   * Job titles that carry the HR function. Someone appointed to one of these
+   * administers this organisation (see data/roleAssignments.ts) and oversees
+   * every employee's records (see lib/dataScope.ts).
+   *
+   * A configured list rather than a pattern match on the title: "HR" as a
+   * substring appears in words that have nothing to do with the function —
+   * a Threat Analyst would have been handed administrator access. Matching is
+   * exact, case- and whitespace-insensitive.
    */
-  hrDepartment: string;
+  hrDesignations: string[];
 }
 
 const COMPANY_PROFILE_STORAGE_KEY = 'modcon.hr.companyProfile';
@@ -47,7 +51,7 @@ const emptyCompanyProfile: CompanyProfile = {
   cin: '',
   supportEmail: '',
   phone: '',
-  hrDepartment: '',
+  hrDesignations: [],
 };
 
 /**
@@ -67,7 +71,7 @@ const demoCompanyProfile: CompanyProfile = {
   cin: 'U72900KA2019PTC12345',
   supportEmail: 'hr@modcon.io',
   phone: '+91 80 4567 8900',
-  hrDepartment: 'Human Resources',
+  hrDesignations: ['Head of People', 'HR Business Partner', 'HR Executive', 'Talent Acquisition Lead'],
 };
 
 function notifyCompanyProfileChanged() {
@@ -88,7 +92,15 @@ export function getCompanyProfile(): CompanyProfile {
     if (!parsed || typeof parsed !== 'object') return defaultCompanyProfile();
     // Merged over the empty shape, not the demo one: a company that cleared a
     // field meant to clear it, and must not have ModCon's value restored.
-    return { ...emptyCompanyProfile, ...parsed };
+    return {
+      ...emptyCompanyProfile,
+      ...parsed,
+      // Guards against a record written before this was a list, and against a
+      // hand-edited value of the wrong shape — callers iterate it.
+      hrDesignations: Array.isArray(parsed.hrDesignations)
+        ? parsed.hrDesignations.filter((item): item is string => typeof item === 'string')
+        : [],
+    };
   } catch {
     return defaultCompanyProfile();
   }
@@ -98,6 +110,19 @@ export function saveCompanyProfile(profile: CompanyProfile) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(COMPANY_PROFILE_STORAGE_KEY), JSON.stringify(profile));
   notifyCompanyProfileChanged();
+}
+
+/**
+ * True when this job title carries the HR function for the company.
+ *
+ * Compared exactly rather than by substring, and normalised for case and
+ * spacing so "hr executive" and "HR  Executive" are the same appointment.
+ */
+export function isHrDesignation(designation: string): boolean {
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+  const target = normalize(designation ?? '');
+  if (!target) return false;
+  return getCompanyProfile().hrDesignations.some((item) => normalize(item) === target);
 }
 
 if (typeof window !== 'undefined') {
