@@ -111,7 +111,7 @@ export function OrganizationsPage() {
         },
         {
             key: 'admin',
-            header: 'Admin',
+            header: 'HR administrator',
             render: (o) => (
                 <div className="flex items-center gap-2">
                     <Avatar name={o.adminEmail} size="sm" />
@@ -147,7 +147,7 @@ export function OrganizationsPage() {
         <div className="space-y-6">
             <PageHeader
                 title="Organizations"
-                subtitle="Create and oversee every organization on ModCon HR. Each gets its own admin and HR system."
+                subtitle="Create and oversee every organization on ModCon HR. Each gets its own HR administrator and HR system."
                 actions={
                     <Button icon={<Plus size={16} />} onClick={openCreate}>
                         Create Organization
@@ -181,7 +181,7 @@ export function OrganizationsPage() {
                 <SearchInput
                     value={search}
                     onChange={setSearch}
-                    placeholder="Search by organization or admin email…"
+                    placeholder="Search by organization or HR administrator email…"
                     className="mb-4"
                 />
                 {loading ? (
@@ -191,7 +191,7 @@ export function OrganizationsPage() {
                 ) : filtered.length === 0 ? (
                     <EmptyState
                         title="No organizations yet"
-                        description="Create the first organization to provision its admin account."
+                        description="Create the first organization to provision its HR administrator account."
                     />
                 ) : (
                     <Table columns={columns} data={filtered} keyExtractor={(o) => o.id ?? o.adminEmail} />
@@ -204,8 +204,8 @@ export function OrganizationsPage() {
                 title={result ? 'Organization created' : 'Create Organization'}
                 subtitle={
                     result
-                        ? 'Share these credentials with the new admin securely. The temporary password will not be shown again.'
-                        : 'This provisions a new organization and its first admin account.'
+                        ? 'Share these credentials with the new HR administrator securely. The temporary password will not be shown again.'
+                        : 'This provisions a new organization and its first HR administrator account.'
                 }
                 size="sm"
                 footer={
@@ -226,7 +226,7 @@ export function OrganizationsPage() {
                 {result ? (
                     <div className="space-y-3 text-sm">
                         <div className="rounded-lg bg-ink-50 p-3 space-y-1.5">
-                            <p><span className="text-ink-400">Admin email:</span> <span className="font-mono text-ink-900">{result.adminEmail}</span></p>
+                            <p><span className="text-ink-400">HR administrator email:</span> <span className="font-mono text-ink-900">{result.adminEmail}</span></p>
                             <p><span className="text-ink-400">Temporary password:</span> <span className="font-mono text-ink-900">{result.tempPassword}</span></p>
                         </div>
                         <button
@@ -238,7 +238,7 @@ export function OrganizationsPage() {
                             {copied ? 'Copied' : 'Copy credentials'}
                         </button>
                         <p className="text-xs text-ink-400">
-                            The admin can sign in with these and start building out their organization's HR system.
+                            They can sign in with these and start building out their organization's HR system. The account administers that organization only — it cannot grant the Admin role or reach any other organization.
                         </p>
                     </div>
                 ) : (
@@ -253,7 +253,7 @@ export function OrganizationsPage() {
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-semibold text-ink-500">Admin name</label>
+                            <label className="text-xs font-semibold text-ink-500">HR administrator name</label>
                             <input
                                 className="input mt-1"
                                 value={adminName}
@@ -262,13 +262,13 @@ export function OrganizationsPage() {
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-semibold text-ink-500">Admin email</label>
+                            <label className="text-xs font-semibold text-ink-500">HR administrator email</label>
                             <input
                                 className="input mt-1"
                                 type="email"
                                 value={adminEmail}
                                 onChange={(e) => setAdminEmail(e.target.value)}
-                                placeholder="admin@acme.com"
+                                placeholder="hr@acme.com"
                             />
                         </div>
                         {formError && <p className="text-xs text-rose-600">{formError}</p>}
