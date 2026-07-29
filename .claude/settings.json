@@ -95,7 +95,16 @@
       "Bash(python3 -c \"import sysconfig,os;p=os.path.join\\(sysconfig.get_path\\('stdlib'\\),'EXTERNALLY-MANAGED'\\);print\\('EXTERNALLY-MANAGED present' if os.path.exists\\(p\\) else 'not externally managed'\\)\")",
       "Bash(open -a Obsidian \"/Users/Dell/Modcon-HR/graphify-out\")",
       "Bash(git switch *)",
-      "Bash(git branch *)"
+      "Bash(git branch *)",
+      "Bash(gh pr create --base main --head chore/record-git-switch-permission --title 'chore: record the git switch tool permission' --body ' *)",
+      "Bash(VITE_ENABLE_E2E_ACCOUNTS=true npm run dev -- --port 5199 --strictPort)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_evaluate",
+      "Bash(pkill -f \"vite.*5199\")",
+      "Bash(E2E_BROWSERS=chromium npx playwright test tests/e2e/attendance.spec.ts --project=app)",
+      "Bash(E2E_BROWSERS=chromium npx playwright test --project=app)",
+      "Bash(git merge *)",
+      "mcp__playwright__browser_take_screenshot"
     ],
     "additionalDirectories": [
       "/dev",
