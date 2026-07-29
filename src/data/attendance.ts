@@ -165,11 +165,19 @@ export interface RegularizationRequest {
   status: 'Pending' | 'Approved' | 'Rejected';
 }
 
+// The seed requests sit in the current work week rather than on fixed dates. A
+// regularization is something an employee raises about a day that has just
+// passed, so a `2026-06-08` literal presented the queue as months stale and got
+// steadily worse — see lib/today.ts on why no calendar date is written by hand.
+// `getCurrentWeekDates` is a hoisted function declaration, so calling it from
+// above its definition is fine.
+const REG_WEEK = getCurrentWeekDates();
+
 export const regularizationRequests: RegularizationRequest[] = isMockDataCleared() ? [] : [
   {
     id: 'reg-001',
     employeeId: 'emp-007',
-    date: '2026-06-08',
+    date: REG_WEEK[0],
     reason: 'System outage prevented check-in recording, was working from client site.',
     requestedStatus: 'Work From Home',
     status: 'Pending',
@@ -177,7 +185,7 @@ export const regularizationRequests: RegularizationRequest[] = isMockDataCleared
   {
     id: 'reg-002',
     employeeId: 'emp-025',
-    date: '2026-06-08',
+    date: REG_WEEK[0],
     reason: 'Attended off-site conference, forgot to mark attendance.',
     requestedStatus: 'Present',
     status: 'Pending',
@@ -185,7 +193,7 @@ export const regularizationRequests: RegularizationRequest[] = isMockDataCleared
   {
     id: 'reg-003',
     employeeId: 'emp-032',
-    date: '2026-06-08',
+    date: REG_WEEK[0],
     reason: 'Biometric device malfunction at entry gate.',
     requestedStatus: 'Present',
     status: 'Approved',
@@ -193,7 +201,7 @@ export const regularizationRequests: RegularizationRequest[] = isMockDataCleared
   {
     id: 'reg-004',
     employeeId: 'emp-015',
-    date: '2026-06-08',
+    date: REG_WEEK[0],
     reason: 'Late due to metro breakdown, was in office by 09:18.',
     requestedStatus: 'Present',
     status: 'Approved',
@@ -201,7 +209,7 @@ export const regularizationRequests: RegularizationRequest[] = isMockDataCleared
   {
     id: 'reg-005',
     employeeId: 'emp-035',
-    date: '2026-06-10',
+    date: REG_WEEK[2],
     reason: "Medical emergency — submitted doctor's note.",
     requestedStatus: 'On Leave',
     status: 'Pending',
