@@ -85,6 +85,15 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   checkIn: string | null; // HH:mm
   checkOut: string | null; // HH:mm
+  /**
+   * The exact instants the employee checked in and out, when the record was
+   * made by them doing so rather than by an administrator entering times.
+   * `checkIn`/`checkOut` above stay the display value; these carry the
+   * precision that `HH:mm` throws away, so worked hours are measured rather
+   * than inferred from two rounded strings.
+   */
+  checkInAt?: string;
+  checkOutAt?: string;
   workedHours: number;
   shift: string;
   isLate: boolean;

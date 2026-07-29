@@ -71,3 +71,35 @@ export function startOfYear(): Date {
 export function currentHour(): number {
   return Number(partsOf(istHour, new Date()).hour);
 }
+
+const istClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: APP_TIME_ZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * Current IST wall-clock time as `HH:mm`.
+ *
+ * This is what a check-in stamps onto the record, and it has to come from the
+ * same zone as `todayIso()`: stamping a Chicago viewer's local 09:00 onto an
+ * IST business day would record them as on time for a day that, in IST, was
+ * most of the way over.
+ */
+export function currentClockTime(): string {
+  const p = partsOf(istClock, new Date());
+  return `${p.hour}:${p.minute}`;
+}
+
+/**
+ * The exact instant of an event, as an ISO timestamp.
+ *
+ * `toISOString()` is right here and wrong for a calendar date: this is a point
+ * in time, which is zone-independent and needs no interpretation, whereas
+ * "which day is it" does. Stored alongside the `HH:mm` field so elapsed time
+ * can be measured to the second without the display losing its shape.
+ */
+export function nowInstant(): string {
+  return new Date().toISOString();
+}

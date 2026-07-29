@@ -1,6 +1,6 @@
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
-import { todayDate } from '@/lib/today';
+import { todayDate, todayIso, currentClockTime, nowInstant } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
@@ -406,6 +406,114 @@ function applyRequestedStatus(employeeId: string, date: string, status: Attendan
   saveAttendanceRecords([
     ...records.filter((record) => !(record.employeeId === employeeId && record.date === date)),
     corrected,
+  ]);
+}
+
+// ---- Check-in / check-out ---------------------------------------------------
+
+/**
+ * A check-in at or before this IST time is on time; after it is late.
+ *
+ * One constant, because two copies disagreed. The Mark Attendance form tested
+ * `> '09:15'` while seed records carry `isLate` on check-ins as early as 09:12,
+ * and the derived regularization reason used to quote the threshold — so the
+ * queue asserted a rule the data it described did not follow.
+ */
+export const LATE_AFTER = '09:15';
+
+export const DEFAULT_SHIFT = 'General (09:00 – 18:00)';
+
+/** True when this `HH:mm` check-in counts as late. */
+export function isLateCheckIn(checkIn: string): boolean {
+  return checkIn > LATE_AFTER;
+}
+
+/**
+ * Hours between two instants, to one decimal, never negative.
+ *
+ * Measured from the stored instants rather than differencing the `HH:mm`
+ * strings, so a 09:00:50 → 18:00:10 day is 8.99h rather than the flat 9.0 that
+ * rounding both ends would produce.
+ */
+function hoursBetween(startIso: string, endIso: string): number {
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  return Math.max(0, Math.round((ms / 3_600_000) * 100) / 100);
+}
+
+/** Today's record for this employee, if they have one. */
+export function getTodayRecord(employeeId: string): AttendanceRecord | undefined {
+  return getAttendanceRecordFor(employeeId, todayIso());
+}
+
+/**
+ * Stamp a check-in for today.
+ *
+ * The time is read from the app clock at the moment of the event, not typed by
+ * anyone, which is the point: it is evidence rather than an assertion. Status
+ * and lateness are derived from it, so a late arrival flows straight into the
+ * regularization queue with no separate step.
+ *
+ * Checking in again on a day already checked in is a no-op — the first stamp is
+ * the one that happened, and overwriting it would quietly erase a late arrival.
+ */
+export function recordCheckIn(employeeId: string): AttendanceRecord {
+  const date = todayIso();
+  const existing = getAttendanceRecordFor(employeeId, date);
+  if (existing?.checkIn) return existing;
+
+  const at = nowInstant();
+  const time = currentClockTime();
+
+  const record: AttendanceRecord = {
+    id: existing?.id ?? `att-checkin-${employeeId}-${date}`,
+    employeeId,
+    date,
+    status: 'Present',
+    checkIn: time,
+    checkInAt: at,
+    checkOut: existing?.checkOut ?? null,
+    checkOutAt: existing?.checkOutAt,
+    workedHours: 0,
+    shift: existing?.shift ?? DEFAULT_SHIFT,
+    isLate: isLateCheckIn(time),
+  };
+
+  writeRecord(record);
+  return record;
+}
+
+/**
+ * Stamp a check-out for today and settle the hours.
+ *
+ * Returns undefined when there is nothing to close — checking out of a day you
+ * never checked into would invent a start time for the elapsed hours.
+ */
+export function recordCheckOut(employeeId: string): AttendanceRecord | undefined {
+  const date = todayIso();
+  const existing = getAttendanceRecordFor(employeeId, date);
+  if (!existing?.checkIn) return undefined;
+
+  const at = nowInstant();
+  const record: AttendanceRecord = {
+    ...existing,
+    checkOut: currentClockTime(),
+    checkOutAt: at,
+    // Prefer the instants; fall back to the record's own hours for a day an
+    // administrator entered by hand, which has no check-in instant to measure
+    // from and whose hours were already stated.
+    workedHours: existing.checkInAt ? hoursBetween(existing.checkInAt, at) : existing.workedHours,
+  };
+
+  writeRecord(record);
+  return record;
+}
+
+function writeRecord(record: AttendanceRecord) {
+  saveAttendanceRecords([
+    ...getAttendanceRecords().filter(
+      (item) => !(item.employeeId === record.employeeId && item.date === record.date),
+    ),
+    record,
   ]);
 }
 

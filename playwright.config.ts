@@ -73,7 +73,7 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out)\.spec\.ts$/;
 const ROLE_SPECS = /roles\.spec\.ts$/;
 
 export default defineConfig({

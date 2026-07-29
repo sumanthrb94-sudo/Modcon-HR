@@ -41,6 +41,7 @@ import {
   REGULARIZATIONS_CHANGED_EVENT,
   getCurrentWeekDates,
   getAttendanceRecordFor,
+  isLateCheckIn,
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployee } from '@/data/employees';
@@ -292,7 +293,7 @@ export function AttendancePage() {
         (new Date(`1970-01-01T${markCheckOut}:00`).getTime() - new Date(`1970-01-01T${markCheckIn}:00`).getTime())
         / (1000 * 60 * 60),
       );
-    const isLate = markStatus === 'Present' && markCheckIn > '09:15';
+    const isLate = markStatus === 'Present' && isLateCheckIn(markCheckIn);
 
     const nextRecord: AttendanceRecord = {
       id: `att-manual-${markEmployeeId}-${todayIso()}`,
