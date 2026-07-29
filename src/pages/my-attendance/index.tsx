@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus } from 'lucide-react';
+import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut } from 'lucide-react';
 import {
   PageHeader,
   StatCard,
@@ -28,6 +28,9 @@ import {
   getAttendanceRecords,
   getCurrentWeekDates,
   getRegularizationRequestsFor,
+  getTodayRecord,
+  recordCheckIn,
+  recordCheckOut,
   addRegularizationRequest,
   REGULARIZATIONS_CHANGED_EVENT,
   ATTENDANCE_CHANGED_EVENT,
@@ -36,6 +39,7 @@ import {
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
+import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
@@ -120,6 +124,32 @@ export function MyAttendancePage() {
       }),
     [records, weekDates],
   );
+
+  // ---- Check in / check out --------------------------------------------------
+  // Today's record drives the whole panel: which action is available, and what
+  // has been stamped so far. Re-read on the attendance event so checking in
+  // updates the card, the stat cards and the flagged-day list together.
+  const todayRecord = useMemo(
+    () => (targetId ? getTodayRecord(targetId) : undefined),
+    [targetId, attendanceRevision],
+  );
+  const [clockError, setClockError] = useState('');
+
+  function handleCheckIn() {
+    setClockError('');
+    if (!targetId) return;
+    recordCheckIn(targetId);
+  }
+
+  function handleCheckOut() {
+    setClockError('');
+    if (!targetId) return;
+    if (!recordCheckOut(targetId)) {
+      // Only reachable if the record changed under us; the button is disabled
+      // without a check-in.
+      setClockError('There is no check-in to close for today.');
+    }
+  }
 
   // ---- Raising a regularization ---------------------------------------------
   const ownRequests = useMemo(
@@ -337,6 +367,55 @@ export function MyAttendancePage() {
               <div className="text-left sm:text-right">
                 <p className="text-2xl font-bold text-ink-900">{stats.totalHours.toFixed(1)}h</p>
                 <p className="text-xs text-ink-400">worked this week</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Check in / check out for today */}
+          <Card>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Today · {formatDate(todayIso())}</h3>
+                {todayRecord?.checkIn ? (
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <Badge tone={statusTone(todayRecord.status)} dot>
+                      {todayRecord.status}
+                    </Badge>
+                    {todayRecord.isLate && <Badge tone="amber">Late</Badge>}
+                    <span className="text-sm text-ink-600">
+                      In {todayRecord.checkIn}
+                      {todayRecord.checkOut ? ` · Out ${todayRecord.checkOut}` : ' · still working'}
+                    </span>
+                    {todayRecord.checkOut && (
+                      <span className="text-sm font-medium text-ink-900">
+                        {todayRecord.workedHours.toFixed(2)}h
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-500 mt-1">Not checked in yet today.</p>
+                )}
+                {clockError && <p className="text-sm text-rose-600 mt-2">{clockError}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  icon={<LogIn size={16} />}
+                  onClick={handleCheckIn}
+                  // The first stamp is the one that happened; re-stamping would
+                  // quietly erase a late arrival.
+                  disabled={Boolean(todayRecord?.checkIn)}
+                >
+                  Check In
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<LogOut size={16} />}
+                  onClick={handleCheckOut}
+                  disabled={!todayRecord?.checkIn || Boolean(todayRecord?.checkOut)}
+                >
+                  Check Out
+                </Button>
               </div>
             </div>
           </Card>
