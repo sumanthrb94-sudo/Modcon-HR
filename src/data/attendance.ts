@@ -1,6 +1,6 @@
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
-import { todayDate, todayIso, currentClockTime, nowInstant } from '@/lib/today';
+import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
@@ -35,9 +35,33 @@ export const LATE_AFTER = '09:15';
 
 export const DEFAULT_SHIFT = 'General (09:00 – 18:00)';
 
-/** True when this `HH:mm` check-in counts as late. */
+/** `HH:mm` as minutes past midnight, or null if it is not a clock time. */
+export function clockMinutes(time: string | null | undefined): number | null {
+  if (!time) return null;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/**
+ * True when this `HH:mm` check-in counts as late.
+ *
+ * Compared as minutes, not as strings. `'9:05' > '09:15'` is true
+ * lexicographically — a single unpadded hour would have marked an early
+ * arrival late, silently and only for times before 10:00. Nothing produces an
+ * unpadded time today, which is exactly why it would have gone unnoticed.
+ *
+ * An unparseable time is not late: flagging someone on the strength of a value
+ * we could not read would be an assertion about a day we know nothing about.
+ */
 export function isLateCheckIn(checkIn: string): boolean {
-  return checkIn > LATE_AFTER;
+  const at = clockMinutes(checkIn);
+  const threshold = clockMinutes(LATE_AFTER);
+  if (at === null || threshold === null) return false;
+  return at > threshold;
 }
 
 // Deterministic per-employee, per-date overrides
@@ -244,7 +268,13 @@ export function deriveRegularizationRequests(
       reason:
         record.status === 'Absent'
           ? 'Marked absent — no check-in was recorded for this day.'
-          : `Checked in at ${record.checkIn} and was flagged as a late arrival.`,
+          : record.checkIn
+            // The check-in is interpolated, so it has to be checked. A record
+            // flagged late with no time rendered "Checked in at null and was
+            // flagged as a late arrival." — user-visible text asserting a
+            // check-in that never happened.
+            ? `Checked in at ${record.checkIn} and was flagged as a late arrival.`
+            : 'Flagged as a late arrival, but no check-in time was recorded.',
       requestedStatus: null,
       status: 'Pending' as const,
     }))
@@ -447,9 +477,57 @@ function hoursBetween(startIso: string, endIso: string): number {
   return Math.max(0, Math.round((ms / 3_600_000) * 100) / 100);
 }
 
+/**
+ * Hours between two `HH:mm` clock times on the same day.
+ *
+ * The fallback for a record with no captured instants. Less precise than
+ * measuring, but it describes the times the record actually carries — which is
+ * the point: overwriting the check-out while keeping hours computed from a
+ * check-out that no longer exists leaves the record contradicting itself.
+ */
+function hoursBetweenClockTimes(start: string, end: string): number {
+  const from = clockMinutes(start);
+  const to = clockMinutes(end);
+  if (from === null || to === null) return 0;
+  return Math.max(0, Math.round(((to - from) / 60) * 100) / 100);
+}
+
 /** Today's record for this employee, if they have one. */
 export function getTodayRecord(employeeId: string): AttendanceRecord | undefined {
   return getAttendanceRecordFor(employeeId, todayIso());
+}
+
+/**
+ * A shift this employee has started and not closed.
+ *
+ * Check-out used to key on `todayIso()` alone, so a shift begun at 23:50 could
+ * never be closed: by 00:05 the date had rolled, there was no record for the
+ * new day, and the old one stayed open forever at 0h — still flagged as a late
+ * arrival nobody could resolve.
+ *
+ * Yesterday is as far back as this looks. A day left open a week ago is not
+ * something to silently close with today's clock; it is what regularization is
+ * for.
+ */
+export function getOpenShift(employeeId: string): AttendanceRecord | undefined {
+  const eligible = new Set([todayIso(), isoDaysAgo(1)]);
+  return getAttendanceRecords()
+    .filter(
+      (record) =>
+        record.employeeId === employeeId &&
+        eligible.has(record.date) &&
+        record.checkIn &&
+        !record.checkOut,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
+/**
+ * The record the check-in/check-out panel is about: today's, or a shift still
+ * open from yesterday.
+ */
+export function getActiveRecord(employeeId: string): AttendanceRecord | undefined {
+  return getTodayRecord(employeeId) ?? getOpenShift(employeeId);
 }
 
 /**
@@ -496,19 +574,29 @@ export function recordCheckIn(employeeId: string): AttendanceRecord {
  * never checked into would invent a start time for the elapsed hours.
  */
 export function recordCheckOut(employeeId: string): AttendanceRecord | undefined {
-  const date = todayIso();
-  const existing = getAttendanceRecordFor(employeeId, date);
+  // Today's record, or yesterday's shift if it ran past midnight. Deliberately
+  // not `getOpenShift` alone: that excludes closed days, which would report an
+  // already-finished day as "nothing to close" rather than as a no-op.
+  const existing = getActiveRecord(employeeId);
   if (!existing?.checkIn) return undefined;
+  // Already closed is a no-op, matching check-in. Without this, a second call
+  // moved the check-out later and recomputed the hours from it — two tabs were
+  // enough to rewrite a finished day.
+  if (existing.checkOut) return existing;
 
   const at = nowInstant();
+  const time = currentClockTime();
   const record: AttendanceRecord = {
     ...existing,
-    checkOut: currentClockTime(),
+    checkOut: time,
     checkOutAt: at,
-    // Prefer the instants; fall back to the record's own hours for a day an
-    // administrator entered by hand, which has no check-in instant to measure
-    // from and whose hours were already stated.
-    workedHours: existing.checkInAt ? hoursBetween(existing.checkInAt, at) : existing.workedHours,
+    // Measured from the instants when the check-in was captured. Otherwise
+    // computed from the two clock times, because the check-out has just been
+    // overwritten — keeping the old hours would leave the record stating a
+    // duration its own times contradict.
+    workedHours: existing.checkInAt
+      ? hoursBetween(existing.checkInAt, at)
+      : hoursBetweenClockTimes(existing.checkIn, time),
   };
 
   writeRecord(record);
