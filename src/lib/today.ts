@@ -57,6 +57,19 @@ export function todayDate(): Date {
   return new Date(todayIso());
 }
 
+/**
+ * The IST calendar date `days` before today, as `YYYY-MM-DD`.
+ *
+ * Steps the date in UTC from IST midnight, the same way `getCurrentWeekDates`
+ * does, so it lands on the same calendar day the stored record dates parse to
+ * rather than drifting by an offset.
+ */
+export function isoDaysAgo(days: number): string {
+  const base = todayDate();
+  base.setUTCDate(base.getUTCDate() - days);
+  return base.toISOString().slice(0, 10);
+}
+
 /** Current IST month as `YYYY-MM`, for month-keyed records such as payroll runs. */
 export function currentMonthIso(): string {
   return todayIso().slice(0, 7);

@@ -154,6 +154,19 @@ test.describe.serial('regularizations derive from attendance', () => {
     await expect(regRow(page, new RegExp(nameOf(people[2])))).toHaveCount(0);
   });
 
+  test('a late Work From Home is late too', async () => {
+    // Lateness is about when the day started, not where it was worked. Mark
+    // Attendance used to require status Present, so this day was on time here
+    // while the identical day in seed data — which derives from the check-in
+    // alone — was late. The two writers now share one rule.
+    await markAttendance(page, people[2], 'Work From Home', '09:52');
+
+    const row = regRow(page, new RegExp(nameOf(people[2])));
+    await expect(row.first()).toBeVisible();
+    await expect(row.first()).toContainText('Checked in at 09:52');
+    await expect(row.first().getByText('Late', { exact: true })).toBeVisible();
+  });
+
   test('the flagged entries survive a reload', async () => {
     await page.reload();
     await expect(regRow(page, new RegExp(nameOf(people[0]))).first()).toBeVisible();

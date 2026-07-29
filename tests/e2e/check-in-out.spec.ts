@@ -27,13 +27,26 @@ const LATE_AFTER = '09:15';
  * start simulating a day in the past. IST is UTC+5:30 year-round.
  */
 function istToday(time: string): Date {
+  return istDay(0, time);
+}
+
+/** A fixed instant at `HH:mm` IST, `offsetDays` from today. */
+function istDay(offsetDays: number, time: string): Date {
   const date = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-  return new Date(`${date}T${time}:00+05:30`);
+  const shifted = new Date(`${date}T00:00:00+05:30`);
+  shifted.setUTCDate(shifted.getUTCDate() + offsetDays);
+  const iso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(shifted);
+  return new Date(`${iso}T${time}:00+05:30`);
 }
 
 async function login(page: Page) {
@@ -83,7 +96,10 @@ async function resetAttendance(page: Page) {
   });
 }
 
-const clockCard = (page: Page) => page.locator('div').filter({ hasText: /^Today · / }).last();
+// The card heads itself "Today · <date>", or "Open shift · <date>" when it is
+// about a shift that ran past midnight.
+const clockCard = (page: Page) =>
+  page.locator('div').filter({ hasText: /^(Today|Open shift) · / }).last();
 
 /** The check-in time the card is showing, as `HH:mm`. */
 async function stampedCheckIn(page: Page): Promise<string> {
@@ -230,5 +246,42 @@ test.describe.serial('check in and check out', () => {
     // No requested status, so the decision is recorded and the day is left as
     // it was recorded — approving cannot invent what it should become.
     await expect(flagged.locator('td').nth(2)).toContainText('Present');
+  });
+  test('a shift running past midnight can still be closed', async () => {
+    // Check in at 23:50, then let the date roll over before checking out.
+    await page.clock.setFixedTime(istDay(0, '23:50'));
+    await resetAttendance(page);
+    await page.goto('/my-attendance');
+    await page.getByRole('button', { name: 'Check In' }).click();
+    await expect(clockCard(page)).toContainText('In 23:50');
+
+    // Midnight passes. Keyed on today alone, the shift became unreachable here:
+    // the panel offered a fresh check-in while the real day stayed open at 0h.
+    await page.clock.setFixedTime(istDay(1, '00:05'));
+    await page.reload();
+
+    const card = clockCard(page);
+    await expect(card).toContainText('Open shift');
+    await expect(card).toContainText('In 23:50');
+    await expect(page.getByRole('button', { name: 'Check Out' })).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Check Out' }).click();
+
+    // The panel now offers a fresh day, which is right — so the closed shift is
+    // asserted where it lives, in the records table.
+    await expect(card).toContainText('Not checked in yet today.');
+    const closed = page
+      .getByRole('table')
+      .first()
+      .locator('tbody tr')
+      .filter({ hasText: '23:50' });
+    await expect(closed.first()).toContainText('00:05');
+
+    // 23:50 -> 00:05 is fifteen minutes, measured across the date boundary.
+    const hours = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => /attendanceRecords/i.test(k))!;
+      return JSON.parse(localStorage[key]).find((r: any) => r.checkIn === '23:50')?.workedHours;
+    });
+    expect(hours).toBe(0.25);
   });
 });

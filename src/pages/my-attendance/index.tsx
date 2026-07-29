@@ -28,7 +28,7 @@ import {
   getAttendanceRecords,
   getCurrentWeekDates,
   getRegularizationRequestsFor,
-  getTodayRecord,
+  getActiveRecord,
   recordCheckIn,
   recordCheckOut,
   addRegularizationRequest,
@@ -37,11 +37,12 @@ import {
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
-import { getVisibleEmployees } from '@/lib/dataScope';
+import { getVisibleEmployees, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 function dayLabel(iso: string): string {
@@ -56,7 +57,12 @@ export function MyAttendancePage() {
   // the records and the flagged entries as they were at mount.
   const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
   const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
-  const directory = useMemo(() => getEmployeeDirectory(), []);
+  // The directory changes under this page — an account being linked to a
+  // record, a rename, a deletion — and every identity decision below reads it.
+  // Held with empty deps, `ownEmployee` stayed frozen at mount, so linking an
+  // account left check-in refused until the page happened to remount.
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
   // Mon–Fri of the current week, derived rather than pinned to the week the
   // seed records were written for.
   const weekDates = useMemo(() => getCurrentWeekDates(), []);
@@ -67,11 +73,16 @@ export function MyAttendancePage() {
     [profile, directory],
   );
 
-  // Match the signed-in user to an employee record by email.
-  const ownEmployee = useMemo(() => {
-    const email = (profile?.email ?? '').toLowerCase();
-    return email ? directory.find((e) => e.email.toLowerCase() === email) : undefined;
-  }, [directory, profile?.email]);
+  // The same resolver the rest of the app identifies people with: authUid
+  // first, then email, then display name. Matching on email alone — as this
+  // page did — disagrees with `dataScope` the moment somebody's work address
+  // changes, because the uid link survives a profile edit and the address does
+  // not. The effect was an employee still recognised everywhere else silently
+  // losing the ability to check in.
+  const ownEmployee = useMemo(
+    () => getCurrentEmployeeRecord(profile, directory),
+    [directory, profile],
+  );
 
   // Admins & managers can view any employee's attendance; a plain employee is
   // locked to their own record.
@@ -129,10 +140,14 @@ export function MyAttendancePage() {
   // Today's record drives the whole panel: which action is available, and what
   // has been stamped so far. Re-read on the attendance event so checking in
   // updates the card, the stat cards and the flagged-day list together.
+  // Today's record, or a shift still open from yesterday. Keyed on today alone,
+  // a shift begun at 23:50 became unreachable at midnight: the panel offered to
+  // check in again while the real day stayed open at 0h forever.
   const todayRecord = useMemo(
-    () => (targetId ? getTodayRecord(targetId) : undefined),
+    () => (targetId ? getActiveRecord(targetId) : undefined),
     [targetId, attendanceRevision],
   );
+  const openFromEarlierDay = Boolean(todayRecord && todayRecord.date !== todayIso());
   const [clockError, setClockError] = useState('');
 
   /**
@@ -147,15 +162,18 @@ export function MyAttendancePage() {
    */
   const isOwnRecord = Boolean(ownEmployee && targetId === ownEmployee.id);
 
+  // Both handlers re-check `isOwnRecord`. The buttons already hide for someone
+  // else's record, but a guard that lives only in what is rendered is one
+  // refactor away from being no guard at all.
   function handleCheckIn() {
     setClockError('');
-    if (!targetId) return;
+    if (!targetId || !isOwnRecord) return;
     recordCheckIn(targetId);
   }
 
   function handleCheckOut() {
     setClockError('');
-    if (!targetId) return;
+    if (!targetId || !isOwnRecord) return;
     if (!recordCheckOut(targetId)) {
       // Only reachable if the record changed under us; the button is disabled
       // without a check-in.
@@ -378,7 +396,11 @@ export function MyAttendancePage() {
               </div>
               <div className="text-left sm:text-right">
                 <p className="text-2xl font-bold text-ink-900">{stats.totalHours.toFixed(1)}h</p>
-                <p className="text-xs text-ink-400">worked this week</p>
+                {/* Every record held for this employee, not the current week —
+                    `records` is filtered by person only. Labelling the total
+                    "this week" reported months of seed data as seven days. The
+                    chart below is the week view; this is the running total. */}
+                <p className="text-xs text-ink-400">recorded in total</p>
               </div>
             </div>
           </Card>
@@ -387,7 +409,11 @@ export function MyAttendancePage() {
           <Card>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-semibold text-ink-900">Today · {formatDate(todayIso())}</h3>
+                <h3 className="text-base font-semibold text-ink-900">
+                  {openFromEarlierDay && todayRecord
+                    ? `Open shift · ${formatDate(todayRecord.date)}`
+                    : `Today · ${formatDate(todayIso())}`}
+                </h3>
                 {todayRecord?.checkIn ? (
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge tone={statusTone(todayRecord.status)} dot>
@@ -453,7 +479,7 @@ export function MyAttendancePage() {
             <div className="p-5 border-b border-ink-100">
               <CardHeader
                 title="Attendance Records"
-                subtitle={`${records.length} day${records.length !== 1 ? 's' : ''} this week`}
+                subtitle={`${records.length} day${records.length !== 1 ? 's' : ''} recorded`}
                 className="mb-0"
               />
             </div>

@@ -293,14 +293,20 @@ export function AttendancePage() {
         (new Date(`1970-01-01T${markCheckOut}:00`).getTime() - new Date(`1970-01-01T${markCheckIn}:00`).getTime())
         / (1000 * 60 * 60),
       );
-    const isLate = markStatus === 'Present' && isLateCheckIn(markCheckIn);
+    const checkIn = markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckIn;
+    // Lateness is about when the day started, not where it was worked. This
+    // form used to require `status === 'Present'`, so a 09:40 Work From Home
+    // was on time here while the same day in seed data — which derives from the
+    // check-in alone — was late. One rule now: a recorded arrival after
+    // LATE_AFTER is late, whatever the status; a day with no arrival cannot be.
+    const isLate = checkIn ? isLateCheckIn(checkIn) : false;
 
     const nextRecord: AttendanceRecord = {
       id: `att-manual-${markEmployeeId}-${todayIso()}`,
       employeeId: markEmployeeId,
       date: todayIso(),
       status: markStatus,
-      checkIn: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckIn,
+      checkIn,
       checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
       workedHours,
       shift: 'General (09:00 – 18:00)',

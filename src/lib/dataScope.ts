@@ -120,9 +120,9 @@ export function canViewEmployee(
  * be meaningless. Scoping needs the record regardless of role, so the same
  * uid-then-email match is applied here without that guard.
  */
-function getCurrentEmployeeRecord(
+export function getCurrentEmployeeRecord(
   profile: UserProfile | null,
-  directory: Employee[],
+  directory: Employee[] = getEmployeeDirectory(),
 ): Employee | undefined {
   if (!profile) return undefined;
 
