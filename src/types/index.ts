@@ -317,7 +317,13 @@ export interface RegularizationRequest {
   employeeId: ID;
   date: string;
   reason: string;
-  requestedStatus: AttendanceStatus;
+  /**
+   * What the employee is asking the day to become. `null` on entries the app
+   * flagged from the attendance records rather than a person raising them —
+   * what someone *wants* a day changed to is an intention, and only the person
+   * whose day it is has one.
+   */
+  requestedStatus: AttendanceStatus | null;
   status: 'Pending' | 'Approved' | 'Rejected';
 }
 

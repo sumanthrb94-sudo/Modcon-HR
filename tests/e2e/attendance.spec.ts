@@ -149,4 +149,22 @@ test.describe.serial('raising a regularization', () => {
     // The old hand-written seed reasons must be gone.
     await expect(page.getByText('Biometric device malfunction at entry gate.')).toHaveCount(0);
   });
+
+  test('a flagged day claims no requested status, a raised one does', async () => {
+    await page.goto('/attendance');
+    const flagged = page
+      .getByRole('row')
+      .filter({ hasText: /Marked absent — no check-in/ })
+      .first();
+    await expect(flagged).toBeVisible();
+    // Nobody asked for anything on a day the app flagged, so the Requested
+    // cell is empty. It used to read "Present" on every one of these.
+    await expect(flagged.getByText('—', { exact: true })).toBeVisible();
+    // The Recorded cell carries the real value off the attendance record.
+    await expect(flagged.getByText('Absent', { exact: true })).toBeVisible();
+
+    // The request raised in the first test states what its author chose.
+    const raised = page.getByRole('row').filter({ hasText: reason }).first();
+    await expect(raised.getByText('Work From Home', { exact: true })).toBeVisible();
+  });
 });
