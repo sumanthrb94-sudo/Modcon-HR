@@ -36,7 +36,7 @@ import {
   getAttendanceRecords,
   saveAttendanceRecords,
   getRegularizationRequests,
-  saveRegularizationRequests,
+  decideRegularization,
   ATTENDANCE_CHANGED_EVENT,
   REGULARIZATIONS_CHANGED_EVENT,
   getCurrentWeekDates,
@@ -97,9 +97,12 @@ export function AttendancePage() {
   const [markCheckIn, setMarkCheckIn] = useState('09:00');
   const [markCheckOut, setMarkCheckOut] = useState('18:00');
 
+  // Derived from the attendance records, so it has to re-read when *those*
+  // change too. Depending on the regularization event alone left a day marked
+  // Absent invisible in this queue until the page was reloaded.
   const regRequests = useMemo<RegularizationRequest[]>(
     () => getRegularizationRequests(),
-    [regularizationRevision],
+    [regularizationRevision, attendanceRevision],
   );
 
   // Requests raised by people outside this viewer's scope aren't theirs to see
@@ -264,10 +267,10 @@ export function AttendancePage() {
   ];
 
   // Regularization handlers
+  // Approving applies the requested status to the day itself, so this must go
+  // through the data layer rather than rewriting the list in place.
   function decideReg(id: string, status: 'Approved' | 'Rejected') {
-    saveRegularizationRequests(
-      getRegularizationRequests().map((r) => (r.id === id ? { ...r, status } : r)),
-    );
+    decideRegularization(id, status);
   }
   const approveReg = (id: string) => decideReg(id, 'Approved');
   const rejectReg = (id: string) => decideReg(id, 'Rejected');

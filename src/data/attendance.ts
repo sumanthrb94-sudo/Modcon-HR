@@ -205,7 +205,7 @@ export function regularizationId(employeeId: string, date: string): string {
  *     only exists when a human types one — see `addRegularizationRequest`.
  */
 export function deriveRegularizationRequests(
-  records: AttendanceRecord[] = attendanceRecords,
+  records: AttendanceRecord[] = getAttendanceRecords(),
 ): RegularizationRequest[] {
   return records
     .filter((record) => record.status === 'Absent' || record.isLate)
@@ -227,9 +227,10 @@ export function deriveRegularizationRequests(
     .sort((a, b) => b.date.localeCompare(a.date) || a.employeeId.localeCompare(b.employeeId));
 }
 
-// Derived from the seed records, so an empty org (mock data cleared) yields an
-// empty queue without a separate check.
-export const regularizationRequests: RegularizationRequest[] = deriveRegularizationRequests();
+// No eager module-level snapshot: `deriveRegularizationRequests` now reads the
+// attendance *store*, which is created further down, and a const evaluated here
+// would both hit the temporal dead zone and freeze the queue at import time.
+// Callers use `getRegularizationRequests()`.
 
 // ---- Aggregate helpers ------------------------------------------------------
 export function getRecordsByDate(date: string): AttendanceRecord[] {
@@ -284,16 +285,44 @@ export const ATTENDANCE_CHANGED_EVENT = attendanceStore.changedEvent;
 export const getAttendanceRecords = () => attendanceStore.get();
 export const saveAttendanceRecords = (records: AttendanceRecord[]) => attendanceStore.save(records);
 
+/**
+ * The store holds only what a *person* contributed — requests they raised and
+ * decisions they made. Everything else is derived on read.
+ *
+ * It used to hold the whole queue, seeded from the derivation. Because
+ * `persistentCollection.get()` returns the stored value in preference to the
+ * seed, the first write of any kind froze the list: approve one request and no
+ * absence marked afterwards ever appeared again. Deriving on read and layering
+ * these overrides on top means a day marked Absent this afternoon shows up, and
+ * a decision made this morning is still there.
+ *
+ * The key is deliberately new. The old one holds a frozen snapshot in the old
+ * shape — including the five invented requests this all replaced — and reading
+ * it back would resurrect exactly what was removed.
+ */
 const regularizationStore = persistentCollection<RegularizationRequest>(
-  'modcon.hr.regularizationRequests',
+  'modcon.hr.regularizationOverrides',
   'modcon-hr-regularizations-changed',
-  () => regularizationRequests,
+  () => [],
 );
 
 export const REGULARIZATIONS_CHANGED_EVENT = regularizationStore.changedEvent;
-export const getRegularizationRequests = () => regularizationStore.get();
-export const saveRegularizationRequests = (requests: RegularizationRequest[]) =>
-  regularizationStore.save(requests);
+
+export function getRegularizationRequests(): RegularizationRequest[] {
+  const overrides = regularizationStore.get();
+  const byId = new Map(overrides.map((override) => [override.id, override]));
+
+  const derived = deriveRegularizationRequests();
+  const derivedIds = new Set(derived.map((entry) => entry.id));
+
+  // A derived day a person has touched shows their version; the rest show the
+  // record's. Overrides whose day is no longer flagged — because approving the
+  // request corrected it — stay, so the decision does not vanish from history.
+  return [
+    ...overrides.filter((override) => !derivedIds.has(override.id)),
+    ...derived.map((entry) => byId.get(entry.id) ?? entry),
+  ].sort((a, b) => b.date.localeCompare(a.date) || a.employeeId.localeCompare(b.employeeId));
+}
 
 /**
  * Raise a regularization against one day, with a reason the employee typed.
@@ -316,11 +345,68 @@ export function addRegularizationRequest(input: {
     requestedStatus: input.requestedStatus,
     status: 'Pending',
   };
-  saveRegularizationRequests([
-    request,
-    ...getRegularizationRequests().filter((existing) => existing.id !== request.id),
-  ]);
+  writeOverride(request);
   return request;
+}
+
+/** Replace this id's override, keeping the rest. */
+function writeOverride(request: RegularizationRequest) {
+  regularizationStore.save([
+    request,
+    ...regularizationStore.get().filter((existing) => existing.id !== request.id),
+  ]);
+}
+
+/**
+ * Approve or reject one request.
+ *
+ * Approving a request that asks for a status **moves the day to it**. Recording
+ * the decision without touching the record left the approval meaning nothing:
+ * the queue said Approved while the attendance it was about still said Absent.
+ *
+ * Times are left exactly as they were. A day corrected to Work From Home has a
+ * status somebody vouched for and check-in/out times nobody ever recorded, and
+ * filling those in with a plausible 09:00–18:00 would be inventing the evidence
+ * for the correction. `isLate` is cleared, because that flag is the thing being
+ * excused.
+ *
+ * Entries the app flagged carry no requested status, so approving one records
+ * the decision and changes no data — there is nothing it asked to become.
+ */
+export function decideRegularization(id: string, status: 'Approved' | 'Rejected') {
+  const current = getRegularizationRequests().find((request) => request.id === id);
+  if (!current) return;
+
+  if (status === 'Approved' && current.requestedStatus) {
+    applyRequestedStatus(current.employeeId, current.date, current.requestedStatus);
+  }
+  writeOverride({ ...current, status });
+}
+
+function applyRequestedStatus(employeeId: string, date: string, status: AttendanceStatus) {
+  const records = getAttendanceRecords();
+  const existing = records.find(
+    (record) => record.employeeId === employeeId && record.date === date,
+  );
+
+  const corrected: AttendanceRecord = existing
+    ? { ...existing, status, isLate: false }
+    : {
+      id: `att-reg-${employeeId}-${date}`,
+      employeeId,
+      date,
+      status,
+      checkIn: null,
+      checkOut: null,
+      workedHours: 0,
+      shift: 'General (09:00 – 18:00)',
+      isLate: false,
+    };
+
+  saveAttendanceRecords([
+    ...records.filter((record) => !(record.employeeId === employeeId && record.date === date)),
+    corrected,
+  ]);
 }
 
 /**
