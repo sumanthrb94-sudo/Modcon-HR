@@ -93,7 +93,9 @@
       "Bash(curl -s -m 60 https://api.github.com/repos/safishamsi/graphify -H \"Accept: application/vnd.github+json\" -L)",
       "Bash(python3 -V)",
       "Bash(python3 -c \"import sysconfig,os;p=os.path.join\\(sysconfig.get_path\\('stdlib'\\),'EXTERNALLY-MANAGED'\\);print\\('EXTERNALLY-MANAGED present' if os.path.exists\\(p\\) else 'not externally managed'\\)\")",
-      "Bash(open -a Obsidian \"/Users/Dell/Modcon-HR/graphify-out\")"
+      "Bash(open -a Obsidian \"/Users/Dell/Modcon-HR/graphify-out\")",
+      "Bash(git switch *)",
+      "Bash(git branch *)"
     ],
     "additionalDirectories": [
       "/dev",
