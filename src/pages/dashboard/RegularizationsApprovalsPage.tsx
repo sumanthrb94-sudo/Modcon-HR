@@ -56,7 +56,14 @@ export function RegularizationsApprovalsPage() {
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <p className="text-sm font-semibold text-ink-900">{employee?.fullName ?? request.employeeId}</p>
-                                                <Badge tone="blue">{request.requestedStatus}</Badge>
+                                                {/* Only where somebody actually asked for a status. Rows the
+                                                    app flagged from the records carry none, and an empty
+                                                    badge here read as a blank blue pill. */}
+                                                {request.requestedStatus ? (
+                                                    <Badge tone="blue">{request.requestedStatus}</Badge>
+                                                ) : (
+                                                    <Badge tone="gray">Flagged from record</Badge>
+                                                )}
                                             </div>
                                             <p className="text-xs text-ink-500 mt-1">Attendance date: {formatDate(request.date)}</p>
                                             <p className="text-sm text-ink-700 mt-2 leading-relaxed">{request.reason}</p>

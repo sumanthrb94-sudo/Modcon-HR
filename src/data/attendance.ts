@@ -161,7 +161,14 @@ export interface RegularizationRequest {
   employeeId: string;
   date: string;
   reason: string;
-  requestedStatus: AttendanceStatus;
+  /**
+   * What the employee is asking the day to become. `null` on entries derived
+   * from the records: what someone *wants* a day changed to is an intention,
+   * and only the person whose day it is has one. It used to be hardcoded to
+   * 'Present' on every derived row, which read as twelve people having asked
+   * for something when nobody had asked for anything.
+   */
+  requestedStatus: AttendanceStatus | null;
   status: 'Pending' | 'Approved' | 'Rejected';
 }
 
@@ -191,6 +198,9 @@ export function regularizationId(employeeId: string, date: string): string {
  *   - `status` is always Pending. Whether something was once approved is an
  *     audit trail this app does not keep, and inventing one is exactly the
  *     fabrication this replaces. Real decisions are recorded in the store.
+ *   - `requestedStatus` is null. Nobody has asked for anything on these days;
+ *     the app noticed them. What the day should become is the approver's call,
+ *     or the employee's if they raise it themselves.
  *   - The reason is generic and describes the record. A specific human reason
  *     only exists when a human types one — see `addRegularizationRequest`.
  */
@@ -211,7 +221,7 @@ export function deriveRegularizationRequests(
         record.status === 'Absent'
           ? 'Marked absent — no check-in was recorded for this day.'
           : `Checked in at ${record.checkIn} and was flagged as a late arrival.`,
-      requestedStatus: 'Present' as AttendanceStatus,
+      requestedStatus: null,
       status: 'Pending' as const,
     }))
     .sort((a, b) => b.date.localeCompare(a.date) || a.employeeId.localeCompare(b.employeeId));
@@ -311,6 +321,21 @@ export function addRegularizationRequest(input: {
     ...getRegularizationRequests().filter((existing) => existing.id !== request.id),
   ]);
   return request;
+}
+
+/**
+ * The attendance record a regularization is about, if there still is one.
+ *
+ * Reads the store rather than the seed, so a day re-marked on the Attendance
+ * page shows its new value here instead of the one that raised the request.
+ */
+export function getAttendanceRecordFor(
+  employeeId: string,
+  date: string,
+): AttendanceRecord | undefined {
+  return getAttendanceRecords().find(
+    (record) => record.employeeId === employeeId && record.date === date,
+  );
 }
 
 /** The requests raised for one employee, newest day first. */

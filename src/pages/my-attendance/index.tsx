@@ -168,9 +168,35 @@ export function MyAttendancePage() {
       ),
     },
     {
+      key: 'actualStatus',
+      header: 'Recorded',
+      render: (row) => {
+        const record = records.find((item) => item.date === row.date);
+        if (!record) return <span className="text-ink-400 text-sm">No record</span>;
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge tone={statusTone(record.status)} dot>
+              {record.status}
+            </Badge>
+            {record.isLate && (
+              <Badge tone="amber" className="text-[10px] px-1.5 py-0">
+                Late
+              </Badge>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: 'requestedStatus',
-      header: 'Requested Status',
-      render: (row) => <Badge tone={statusTone(row.requestedStatus)}>{row.requestedStatus}</Badge>,
+      header: 'Requested',
+      // Empty on days the app flagged rather than the employee raising them.
+      render: (row) =>
+        row.requestedStatus ? (
+          <Badge tone={statusTone(row.requestedStatus)}>{row.requestedStatus}</Badge>
+        ) : (
+          <span className="text-ink-400 text-sm">—</span>
+        ),
     },
     {
       key: 'reason',

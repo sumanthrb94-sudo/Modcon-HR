@@ -40,6 +40,7 @@ import {
   ATTENDANCE_CHANGED_EVENT,
   REGULARIZATIONS_CHANGED_EVENT,
   getCurrentWeekDates,
+  getAttendanceRecordFor,
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployee } from '@/data/employees';
@@ -335,11 +336,41 @@ export function AttendancePage() {
       render: (row) => <span className="text-ink-700">{formatDate(row.date)}</span>,
     },
     {
+      key: 'actualStatus',
+      header: 'Recorded',
+      // What the day actually says right now. An approver deciding a
+      // regularization needs to see what they are changing *from*, and this is
+      // the one value on the row that is not somebody's assertion.
+      render: (row) => {
+        const record = getAttendanceRecordFor(row.employeeId, row.date);
+        if (!record) return <span className="text-ink-400 text-sm">No record</span>;
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge tone={statusTone(record.status)} dot>
+              {record.status}
+            </Badge>
+            {record.isLate && (
+              <Badge tone="amber" className="text-[10px] px-1.5 py-0">
+                Late
+              </Badge>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: 'requestedStatus',
-      header: 'Requested Status',
-      render: (row) => (
-        <Badge tone={statusTone(row.requestedStatus)}>{row.requestedStatus}</Badge>
-      ),
+      header: 'Requested',
+      // Blank on rows the app flagged from the records — nobody asked for
+      // anything on those, and printing a status here implied somebody had.
+      render: (row) =>
+        row.requestedStatus ? (
+          <Badge tone={statusTone(row.requestedStatus)}>{row.requestedStatus}</Badge>
+        ) : (
+          <span className="text-ink-400 text-sm" title="Flagged from the attendance record; no status requested">
+            —
+          </span>
+        ),
     },
     {
       key: 'reason',
