@@ -165,56 +165,61 @@ export interface RegularizationRequest {
   status: 'Pending' | 'Approved' | 'Rejected';
 }
 
-// The seed requests sit in the current work week rather than on fixed dates. A
-// regularization is something an employee raises about a day that has just
-// passed, so a `2026-06-08` literal presented the queue as months stale and got
-// steadily worse — see lib/today.ts on why no calendar date is written by hand.
-// `getCurrentWeekDates` is a hoisted function declaration, so calling it from
-// above its definition is fine.
-const REG_WEEK = getCurrentWeekDates();
+/** Stable id for the request covering one employee's one day. */
+export function regularizationId(employeeId: string, date: string): string {
+  return `reg-${employeeId}-${date}`;
+}
 
-export const regularizationRequests: RegularizationRequest[] = isMockDataCleared() ? [] : [
-  {
-    id: 'reg-001',
-    employeeId: 'emp-007',
-    date: REG_WEEK[0],
-    reason: 'System outage prevented check-in recording, was working from client site.',
-    requestedStatus: 'Work From Home',
-    status: 'Pending',
-  },
-  {
-    id: 'reg-002',
-    employeeId: 'emp-025',
-    date: REG_WEEK[0],
-    reason: 'Attended off-site conference, forgot to mark attendance.',
-    requestedStatus: 'Present',
-    status: 'Pending',
-  },
-  {
-    id: 'reg-003',
-    employeeId: 'emp-032',
-    date: REG_WEEK[0],
-    reason: 'Biometric device malfunction at entry gate.',
-    requestedStatus: 'Present',
-    status: 'Approved',
-  },
-  {
-    id: 'reg-004',
-    employeeId: 'emp-015',
-    date: REG_WEEK[0],
-    reason: 'Late due to metro breakdown, was in office by 09:18.',
-    requestedStatus: 'Present',
-    status: 'Approved',
-  },
-  {
-    id: 'reg-005',
-    employeeId: 'emp-035',
-    date: REG_WEEK[2],
-    reason: "Medical emergency — submitted doctor's note.",
-    requestedStatus: 'On Leave',
-    status: 'Pending',
-  },
-];
+/**
+ * The days that actually need regularizing, read off the attendance records.
+ *
+ * These five requests used to be invented — fixed employees, fixed dates and
+ * hand-written reasons ("Biometric device malfunction at entry gate") that
+ * described nothing in the data, on days whose real records said something
+ * else entirely. A regularization is raised against a specific day that is
+ * wrong, so the queue is derived from the days that *are* wrong.
+ *
+ * Two signals, both directly present on the record:
+ *   - `Absent`   nothing was recorded, so there is a day to account for.
+ *   - `isLate`   a check-in after the grace period, which is what an employee
+ *                would ask to have excused.
+ *
+ * Deliberately *not* derived:
+ *   - A missing record is not treated as an anomaly. Every employee is missing
+ *     a record for most days, so it would generate hundreds of requests and
+ *     drown the real ones.
+ *   - `status` is always Pending. Whether something was once approved is an
+ *     audit trail this app does not keep, and inventing one is exactly the
+ *     fabrication this replaces. Real decisions are recorded in the store.
+ *   - The reason is generic and describes the record. A specific human reason
+ *     only exists when a human types one — see `addRegularizationRequest`.
+ */
+export function deriveRegularizationRequests(
+  records: AttendanceRecord[] = attendanceRecords,
+): RegularizationRequest[] {
+  return records
+    .filter((record) => record.status === 'Absent' || record.isLate)
+    .map((record) => ({
+      id: regularizationId(record.employeeId, record.date),
+      employeeId: record.employeeId,
+      date: record.date,
+      // Describes the record and nothing more. Naming the 09:15 grace period
+      // here read as a falsehood on the records that carry `isLate` with an
+      // earlier check-in than that — the flag and the threshold disagree in the
+      // data, and the reason text is not the place to paper over it.
+      reason:
+        record.status === 'Absent'
+          ? 'Marked absent — no check-in was recorded for this day.'
+          : `Checked in at ${record.checkIn} and was flagged as a late arrival.`,
+      requestedStatus: 'Present' as AttendanceStatus,
+      status: 'Pending' as const,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.employeeId.localeCompare(b.employeeId));
+}
+
+// Derived from the seed records, so an empty org (mock data cleared) yields an
+// empty queue without a separate check.
+export const regularizationRequests: RegularizationRequest[] = deriveRegularizationRequests();
 
 // ---- Aggregate helpers ------------------------------------------------------
 export function getRecordsByDate(date: string): AttendanceRecord[] {
@@ -279,3 +284,38 @@ export const REGULARIZATIONS_CHANGED_EVENT = regularizationStore.changedEvent;
 export const getRegularizationRequests = () => regularizationStore.get();
 export const saveRegularizationRequests = (requests: RegularizationRequest[]) =>
   regularizationStore.save(requests);
+
+/**
+ * Raise a regularization against one day, with a reason the employee typed.
+ *
+ * Keyed on employee + date, so re-raising the same day replaces the request
+ * rather than queueing a second one for the same approver to decide twice —
+ * including replacing the derived request for a day the records already flagged.
+ */
+export function addRegularizationRequest(input: {
+  employeeId: string;
+  date: string;
+  reason: string;
+  requestedStatus: AttendanceStatus;
+}): RegularizationRequest {
+  const request: RegularizationRequest = {
+    id: regularizationId(input.employeeId, input.date),
+    employeeId: input.employeeId,
+    date: input.date,
+    reason: input.reason,
+    requestedStatus: input.requestedStatus,
+    status: 'Pending',
+  };
+  saveRegularizationRequests([
+    request,
+    ...getRegularizationRequests().filter((existing) => existing.id !== request.id),
+  ]);
+  return request;
+}
+
+/** The requests raised for one employee, newest day first. */
+export function getRegularizationRequestsFor(employeeId: string): RegularizationRequest[] {
+  return getRegularizationRequests()
+    .filter((request) => request.employeeId === employeeId)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}

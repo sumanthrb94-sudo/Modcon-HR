@@ -90,3 +90,63 @@ test.describe.serial('Mark Attendance employee list', () => {
     expect(await markAttendanceOptions(page)).toContain(label);
   });
 });
+
+/**
+ * A regularization an employee raises has to reach the approver's queue, and
+ * still be there after a refresh.
+ *
+ * The queue used to be five invented requests with hand-written reasons, and
+ * nothing in the app could add to it. Asserting only on the My Attendance page
+ * that raised the request would pass on React state alone, so the assertion
+ * that matters is made on the *other* page, after a reload.
+ */
+test.describe.serial('raising a regularization', () => {
+  let page: Page;
+  // Unique per run so a re-run never passes on the previous run's request.
+  const reason = `Client site visit ${Date.now().toString(36)} — VPN missed the check-in.`;
+
+  test.beforeAll(async ({ browser }) => {
+    page = await browser.newPage();
+    await login(page);
+  });
+
+  test.afterAll(async () => {
+    await page?.close();
+  });
+
+  test('reaches the approval queue and survives a reload', async () => {
+    await page.goto('/my-attendance');
+    await page.getByRole('button', { name: /Request Regularization/i }).click();
+
+    const dialog = page.getByRole('dialog');
+    // Date is prefilled; only the reason is required beyond it.
+    await dialog.getByPlaceholder('Why should this day be corrected?').fill(reason);
+    const statusSelect = dialog.locator('select').nth(1);
+    await statusSelect.selectOption('Work From Home');
+    await dialog.getByRole('button', { name: 'Submit Request' }).click();
+    await expect(dialog).toBeHidden();
+
+    // Listed for the employee it was raised against.
+    await expect(page.getByRole('table').getByText(reason)).toBeVisible();
+
+    // The approver's queue on a different page is the real assertion.
+    await page.goto('/attendance');
+    await expect(page.getByRole('table').getByText(reason)).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole('table').getByText(reason)).toBeVisible();
+  });
+
+  test('the queue is derived from real attendance records', async () => {
+    await page.goto('/attendance');
+    // Every derived reason quotes the record it came from, rather than the
+    // invented "Biometric device malfunction at entry gate" it replaced.
+    const derived = page.getByText(/Marked absent — no check-in|flagged as a late arrival/);
+    // toBeVisible auto-waits; `count()` does not, and the route is lazy-loaded,
+    // so counting first only ever measured the loading spinner.
+    await expect(derived.first()).toBeVisible();
+    expect(await derived.count()).toBeGreaterThan(0);
+    // The old hand-written seed reasons must be gone.
+    await expect(page.getByText('Biometric device malfunction at entry gate.')).toHaveCount(0);
+  });
+});
