@@ -42,7 +42,7 @@ import {
   getCurrentWeekDates,
   type RegularizationRequest,
 } from '@/data/attendance';
-import { employees, getEmployee } from '@/data/employees';
+import { getEmployeeDirectory, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -170,6 +170,19 @@ export function AttendancePage() {
       ...departments.map((d) => ({ label: d, value: d })),
     ],
     [departmentRevision],
+  );
+
+  // Who can be marked today. Two filters, for two different reasons:
+  // only people this viewer oversees — marking attendance for someone whose
+  // record you cannot see would be writing blind — and only people still on
+  // the books, since a resigned employee has no day to record.
+  const markEmployeeOptions = useMemo(
+    () =>
+      getEmployeeDirectory()
+        .filter((employee) => visibleEmployeeIds.has(employee.id))
+        .filter((employee) => employee.status !== 'Resigned')
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    [visibleEmployeeIds, directoryRevision],
   );
 
   // Date options
@@ -531,15 +544,11 @@ export function AttendancePage() {
             <label className="block text-sm font-medium text-ink-700 mb-1">Employee</label>
             <select className="input w-full" value={markEmployeeId} onChange={(e) => setMarkEmployeeId(e.target.value)}>
               <option value="">Select employee…</option>
-              {/* Only people this viewer oversees — marking attendance for
-                  someone whose record you cannot see would be writing blind. */}
-              {employees
-                .filter((e) => visibleEmployeeIds.has(e.id))
-                .map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.fullName} ({e.employeeCode})
-                  </option>
-                ))}
+              {markEmployeeOptions.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.fullName} ({e.employeeCode})
+                </option>
+              ))}
             </select>
           </div>
           <div>
