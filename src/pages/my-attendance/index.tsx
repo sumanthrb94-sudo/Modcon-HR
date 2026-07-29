@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Users, Monitor, Calendar, UserX, Clock, Info } from 'lucide-react';
+import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus } from 'lucide-react';
 import {
   PageHeader,
   StatCard,
@@ -21,13 +21,23 @@ import {
   type Column,
   Select,
   EmptyState,
+  Button,
+  Modal,
 } from '@/components/ui';
-import { getAttendanceRecords, getCurrentWeekDates } from '@/data/attendance';
+import {
+  getAttendanceRecords,
+  getCurrentWeekDates,
+  getRegularizationRequestsFor,
+  addRegularizationRequest,
+  REGULARIZATIONS_CHANGED_EVENT,
+  type RegularizationRequest,
+} from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
-import type { AttendanceRecord } from '@/types';
+import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees } from '@/lib/dataScope';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 function dayLabel(iso: string): string {
   return formatWeekdayLong(iso);
@@ -104,6 +114,81 @@ export function MyAttendancePage() {
     [records, weekDates],
   );
 
+  // ---- Raising a regularization ---------------------------------------------
+  // Re-read on the store's change event, so a request raised here shows up in
+  // the list below without a refresh — and so does one decided on Attendance.
+  const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
+  const ownRequests = useMemo(
+    () => getRegularizationRequestsFor(targetId),
+    [targetId, regularizationRevision],
+  );
+
+  const [raiseOpen, setRaiseOpen] = useState(false);
+  const [raiseDate, setRaiseDate] = useState('');
+  const [raiseStatus, setRaiseStatus] = useState<AttendanceStatus>('Present');
+  const [raiseReason, setRaiseReason] = useState('');
+
+  // Only days this employee actually has a record for, plus the rest of the
+  // work week. Raising against a day outside the week the page shows would
+  // produce a request nothing on this page can explain.
+  const raiseDateOptions = useMemo(() => {
+    const dates = new Set([...records.map((record) => record.date), ...weekDates]);
+    return Array.from(dates)
+      .sort((a, b) => b.localeCompare(a))
+      .map((date) => ({ label: `${formatDate(date)} · ${formatWeekdayLong(date)}`, value: date }));
+  }, [records, weekDates]);
+
+  function openRaise() {
+    setRaiseDate(raiseDateOptions[0]?.value ?? '');
+    setRaiseStatus('Present');
+    setRaiseReason('');
+    setRaiseOpen(true);
+  }
+
+  function submitRaise() {
+    if (!raiseDate || !raiseReason.trim()) return;
+    addRegularizationRequest({
+      employeeId: targetId,
+      date: raiseDate,
+      reason: raiseReason.trim(),
+      requestedStatus: raiseStatus,
+    });
+    setRaiseOpen(false);
+  }
+
+  const requestColumns: Column<RegularizationRequest>[] = [
+    {
+      key: 'date',
+      header: 'Date',
+      render: (row) => (
+        <div>
+          <p className="font-medium text-ink-900">{formatDate(row.date)}</p>
+          <p className="text-xs text-ink-400">{dayLabel(row.date)}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'requestedStatus',
+      header: 'Requested Status',
+      render: (row) => <Badge tone={statusTone(row.requestedStatus)}>{row.requestedStatus}</Badge>,
+    },
+    {
+      key: 'reason',
+      header: 'Reason',
+      className: 'max-w-md',
+      render: (row) => <span className="text-ink-600 text-sm">{row.reason}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <Badge tone={statusTone(row.status)} dot>
+          {row.status}
+        </Badge>
+      ),
+    },
+  ];
+
   const columns: Column<AttendanceRecord>[] = [
     {
       key: 'date',
@@ -170,14 +255,21 @@ export function MyAttendancePage() {
             : `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[4])}`
         }
         actions={
-          canPickAny ? (
-            <Select
-              value={targetId}
-              onChange={setSelectedId}
-              options={employeeOptions}
-              className="w-64"
-            />
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {canPickAny && (
+              <Select
+                value={targetId}
+                onChange={setSelectedId}
+                options={employeeOptions}
+                className="w-64"
+              />
+            )}
+            {targetEmployee && (
+              <Button variant="primary" icon={<FilePlus size={16} />} onClick={openRaise}>
+                Request Regularization
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -245,6 +337,23 @@ export function MyAttendancePage() {
             />
           </Card>
 
+          {/* Regularization requests raised for this employee */}
+          <Card padding={false}>
+            <div className="p-5 border-b border-ink-100">
+              <CardHeader
+                title="Regularization Requests"
+                subtitle={`${ownRequests.filter((r) => r.status === 'Pending').length} pending · ${ownRequests.length} total`}
+                className="mb-0"
+              />
+            </div>
+            <Table
+              columns={requestColumns}
+              data={ownRequests}
+              keyExtractor={(r) => r.id}
+              emptyMessage="No regularization requests for this employee."
+            />
+          </Card>
+
           {/* Worked hours chart */}
           {records.length > 0 && (
             <Card>
@@ -267,6 +376,60 @@ export function MyAttendancePage() {
           )}
         </>
       )}
+
+      <Modal
+        open={raiseOpen}
+        onClose={() => setRaiseOpen(false)}
+        title="Request Regularization"
+        subtitle={
+          targetEmployee
+            ? `Ask for a day to be corrected on ${targetEmployee.fullName}’s record`
+            : 'Ask for a day to be corrected'
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRaiseOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={submitRaise}
+              disabled={!raiseDate || !raiseReason.trim()}
+            >
+              Submit Request
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Date</label>
+            <Select value={raiseDate} onChange={setRaiseDate} options={raiseDateOptions} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Requested Status</label>
+            <Select
+              value={raiseStatus}
+              onChange={(value) => setRaiseStatus(value as AttendanceStatus)}
+              options={(['Present', 'Work From Home', 'Half Day', 'On Leave'] as AttendanceStatus[]).map(
+                (status) => ({ label: status, value: status }),
+              )}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Reason</label>
+            <textarea
+              className="input w-full h-24 resize-none"
+              placeholder="Why should this day be corrected?"
+              value={raiseReason}
+              onChange={(event) => setRaiseReason(event.target.value)}
+            />
+            {/* Required: an approver deciding a request with no stated reason is
+                the fabricated-reason problem this replaced, in another form. */}
+            <p className="text-xs text-ink-400 mt-1">A reason is required.</p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
