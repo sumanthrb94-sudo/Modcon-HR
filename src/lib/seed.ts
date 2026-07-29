@@ -23,7 +23,7 @@ import { db } from './firebase';
 
 // Static data imports
 import { employees } from '@/data/employees';
-import { attendanceRecords, regularizationRequests } from '@/data/attendance';
+import { attendanceRecords, getRegularizationRequests } from '@/data/attendance';
 import { leaveRequests, leaveBalances } from '@/data/leave';
 import { payslips, payrollRuns } from '@/data/payroll';
 import { jobOpenings, candidates } from '@/data/recruitment';
@@ -152,7 +152,7 @@ export async function seedFirestore(
         { name: 'expenses', data: expenseClaims },
         { name: 'assets', data: assets },
         { name: 'helpdesk_tickets', data: tickets },
-        { name: 'regularizations', data: regularizationRequests },
+        { name: 'regularizations', data: getRegularizationRequests() },
     ];
 
     for (const col of collections) {

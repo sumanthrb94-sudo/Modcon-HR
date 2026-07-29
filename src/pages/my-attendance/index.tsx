@@ -30,6 +30,7 @@ import {
   getRegularizationRequestsFor,
   addRegularizationRequest,
   REGULARIZATIONS_CHANGED_EVENT,
+  ATTENDANCE_CHANGED_EVENT,
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
@@ -45,6 +46,12 @@ function dayLabel(iso: string): string {
 
 export function MyAttendancePage() {
   const { profile, isAdmin, isManager } = useAuth();
+  // Both stores are read below, and the regularization list is *derived* from
+  // the attendance one — so every memo that touches either has to re-run when
+  // either changes. Marking a day elsewhere otherwise left this page showing
+  // the records and the flagged entries as they were at mount.
+  const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
+  const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
   const directory = useMemo(() => getEmployeeDirectory(), []);
   // Mon–Fri of the current week, derived rather than pinned to the week the
   // seed records were written for.
@@ -88,7 +95,7 @@ export function MyAttendancePage() {
         .filter((r) => r.employeeId === targetId)
         .slice()
         .sort((a, b) => a.date.localeCompare(b.date)),
-    [targetId],
+    [targetId, attendanceRevision],
   );
 
   const stats = useMemo(() => {
@@ -115,12 +122,9 @@ export function MyAttendancePage() {
   );
 
   // ---- Raising a regularization ---------------------------------------------
-  // Re-read on the store's change event, so a request raised here shows up in
-  // the list below without a refresh — and so does one decided on Attendance.
-  const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
   const ownRequests = useMemo(
     () => getRegularizationRequestsFor(targetId),
-    [targetId, regularizationRevision],
+    [targetId, regularizationRevision, attendanceRevision],
   );
 
   const [raiseOpen, setRaiseOpen] = useState(false);

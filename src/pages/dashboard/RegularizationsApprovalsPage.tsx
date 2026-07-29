@@ -1,31 +1,40 @@
 import { ChevronLeft, Clock } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { getRegularizationRequests } from '@/data/attendance';
-import { employees } from '@/data/employees';
+import {
+    getRegularizationRequests,
+    decideRegularization,
+    REGULARIZATIONS_CHANGED_EVENT,
+    ATTENDANCE_CHANGED_EVENT,
+} from '@/data/attendance';
+import { getEmployeeDirectory } from '@/data/employees';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { formatDate } from '@/lib/utils';
 
 export function RegularizationsApprovalsPage() {
     const navigate = useNavigate();
-    const [requestStatuses, setRequestStatuses] = useState<Record<string, 'Pending' | 'Approved' | 'Rejected'>>(() =>
-        getRegularizationRequests().reduce((acc, request) => {
-            acc[request.id] = request.status;
-            return acc;
-        }, {} as Record<string, 'Pending' | 'Approved' | 'Rejected'>),
-    );
+    // Decisions used to live in a `useState` map that nothing ever wrote back,
+    // so approving here changed this render and nothing else: the decision was
+    // gone on refresh and never reached the Attendance queue or the counts that
+    // read from it. The store is the single source now, re-read on its event.
+    const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
+    // Entries derived from attendance appear and disappear as records change.
+    const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
 
     function updateRequestStatus(requestId: string, status: 'Approved' | 'Rejected') {
-        setRequestStatuses((prev) => ({ ...prev, [requestId]: status }));
+        decideRegularization(requestId, status);
     }
 
     const pendingRegularizations = useMemo(
         () => getRegularizationRequests()
-            .filter((r) => requestStatuses[r.id] === 'Pending')
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-        [requestStatuses],
+            .filter((r) => r.status === 'Pending')
+            .sort((a, b) => b.date.localeCompare(a.date)),
+        [regularizationRevision, attendanceRevision],
     );
+
+    const employees = useMemo(() => getEmployeeDirectory(), [regularizationRevision]);
 
     return (
         <div className="space-y-6 animate-fade-in">
