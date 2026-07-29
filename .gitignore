@@ -22,6 +22,8 @@ coverage
 /playwright-report/
 /blob-report/
 /.playwright/
+# Screenshots and page snapshots from the Playwright MCP browser
+/.playwright-mcp/
 
 # Firebase CLI deploy cache (regenerated on every deploy)
 /.firebase/
