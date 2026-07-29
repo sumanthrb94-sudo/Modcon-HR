@@ -135,6 +135,18 @@ export function MyAttendancePage() {
   );
   const [clockError, setClockError] = useState('');
 
+  /**
+   * Checking in is something you do, not something done to you.
+   *
+   * An admin or manager looking at someone else's week sees the day's state but
+   * cannot stamp it: a captured time is evidence that a particular person
+   * arrived, and letting a third party produce it makes it an assertion again —
+   * exactly what these operations exist to replace. Recording a day on
+   * somebody's behalf is what Attendance → Mark Attendance is for, and that
+   * writes hand-entered times without pretending they were captured.
+   */
+  const isOwnRecord = Boolean(ownEmployee && targetId === ownEmployee.id);
+
   function handleCheckIn() {
     setClockError('');
     if (!targetId) return;
@@ -397,26 +409,33 @@ export function MyAttendancePage() {
                 )}
                 {clockError && <p className="text-sm text-rose-600 mt-2">{clockError}</p>}
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="primary"
-                  icon={<LogIn size={16} />}
-                  onClick={handleCheckIn}
-                  // The first stamp is the one that happened; re-stamping would
-                  // quietly erase a late arrival.
-                  disabled={Boolean(todayRecord?.checkIn)}
-                >
-                  Check In
-                </Button>
-                <Button
-                  variant="secondary"
-                  icon={<LogOut size={16} />}
-                  onClick={handleCheckOut}
-                  disabled={!todayRecord?.checkIn || Boolean(todayRecord?.checkOut)}
-                >
-                  Check Out
-                </Button>
-              </div>
+              {isOwnRecord ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    icon={<LogIn size={16} />}
+                    onClick={handleCheckIn}
+                    // The first stamp is the one that happened; re-stamping would
+                    // quietly erase a late arrival.
+                    disabled={Boolean(todayRecord?.checkIn)}
+                  >
+                    Check In
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon={<LogOut size={16} />}
+                    onClick={handleCheckOut}
+                    disabled={!todayRecord?.checkIn || Boolean(todayRecord?.checkOut)}
+                  >
+                    Check Out
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-ink-500 max-w-xs sm:text-right">
+                  Only {targetEmployee.fullName.split(' ')[0]} can check in and out. Record this day
+                  from Attendance → Mark Attendance.
+                </p>
+              )}
             </div>
           </Card>
 

@@ -44,6 +44,35 @@ async function login(page: Page) {
   await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
 }
 
+/**
+ * Point an employee record at the signed-in account, so the page has an
+ * employee for it to *be*.
+ *
+ * Check-in is self-only: the signed-in user stamps their own day and nobody
+ * else's. The test personas are auth accounts with no directory record, so
+ * without this there is nobody for them to check in as. Setting the address
+ * through Edit Profile is how an administrator links the two in the app.
+ *
+ * Returns the linked employee's name.
+ */
+async function linkAccountToEmployee(page: Page): Promise<string> {
+  await page.goto('/employees');
+  // The directory opens in card view; the clickable rows are in list view.
+  await page.locator('button[title="List view"]').click();
+  const firstRow = page.locator('table tbody tr').first();
+  await expect(firstRow).toBeVisible();
+  await firstRow.click();
+  await expect(page).toHaveURL(/\/employees\/emp-/);
+
+  const name = (await page.getByRole('heading').first().innerText()).trim();
+  await page.getByRole('button', { name: /Edit Profile/i }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('input[type="email"]').fill(PERSONA.email);
+  await dialog.getByRole('button', { name: 'Save Changes' }).click();
+  await expect(dialog).toBeHidden();
+  return name;
+}
+
 /** Clear stored records so each arrival scenario starts un-checked-in. */
 async function resetAttendance(page: Page) {
   await page.goto('/my-attendance');
@@ -64,12 +93,14 @@ async function stampedCheckIn(page: Page): Promise<string> {
 
 test.describe.serial('check in and check out', () => {
   let page: Page;
+  let linkedName: string;
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     // Sign in on the real clock: fixing it first risks Firebase rejecting the
     // token for an expiry that has not happened yet.
     await login(page);
+    linkedName = await linkAccountToEmployee(page);
     await page.clock.install();
   });
 
@@ -168,7 +199,26 @@ test.describe.serial('check in and check out', () => {
     await expect(flagged.first().locator('td').nth(3)).toContainText('—');
   });
 
+  test('another employee\'s day offers no check-in at all', async () => {
+    await page.goto('/my-attendance');
+    // Switch the picker to somebody who is not the signed-in account.
+    const picker = page.locator('select').first();
+    const other = await picker
+      .locator('option')
+      .filter({ hasNotText: linkedName })
+      .first()
+      .getAttribute('value');
+    await picker.selectOption(other as string);
+
+    // The day's state is still visible — it is the stamping that is refused.
+    await expect(page.getByText(/Only \w+ can check in and out/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Check In' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Check Out' })).toHaveCount(0);
+  });
+
   test('a manager can approve the day the late stamp raised', async () => {
+    // The previous spec left the browser on My Attendance.
+    await page.goto('/attendance');
     const queue = page
       .locator('table')
       .filter({ has: page.getByRole('columnheader', { name: 'Requested' }) });

@@ -22,11 +22,33 @@ const EMP_IDS = [
   'emp-031', 'emp-032', 'emp-033', 'emp-034', 'emp-035',
 ];
 
+/**
+ * A check-in at or before this IST time is on time; after it is late.
+ *
+ * Declared here, above the seed, because the seed derives from it. It used to
+ * be a `'09:15'` literal in the Mark Attendance form while seed records carried
+ * `isLate` on check-ins as early as 09:12 — so the data contradicted the only
+ * stated rule, and the derived regularization reason quoting the threshold read
+ * as a falsehood about the record it described.
+ */
+export const LATE_AFTER = '09:15';
+
+export const DEFAULT_SHIFT = 'General (09:00 – 18:00)';
+
+/** True when this `HH:mm` check-in counts as late. */
+export function isLateCheckIn(checkIn: string): boolean {
+  return checkIn > LATE_AFTER;
+}
+
 // Deterministic per-employee, per-date overrides
 type Override = { status: AttendanceStatus; checkIn: string | null; checkOut: string | null; workedHours: number; isLate: boolean };
 
-function override(status: AttendanceStatus, checkIn: string | null, checkOut: string | null, workedHours: number, isLate = false): Override {
-  return { status, checkIn, checkOut, workedHours, isLate };
+/**
+ * `isLate` is derived from the check-in rather than passed in, so no seed row
+ * can assert a lateness its own time contradicts.
+ */
+function override(status: AttendanceStatus, checkIn: string | null, checkOut: string | null, workedHours: number): Override {
+  return { status, checkIn, checkOut, workedHours, isLate: checkIn ? isLateCheckIn(checkIn) : false };
 }
 
 const OVERRIDES: Record<string, Record<string, Override>> = {
@@ -56,8 +78,8 @@ const OVERRIDES: Record<string, Record<string, Override>> = {
     '2026-06-12': override('On Leave', null, null, 0),
   },
   'emp-015': {
-    '2026-06-08': override('Present', '09:18', '18:00', 8.7, true),
-    '2026-06-09': override('Present', '09:22', '18:30', 9.1, true),
+    '2026-06-08': override('Present', '09:18', '18:00', 8.7),
+    '2026-06-09': override('Present', '09:22', '18:30', 9.1),
     '2026-06-10': override('Present', '09:05', '17:55', 8.8),
   },
   'emp-017': {
@@ -68,7 +90,7 @@ const OVERRIDES: Record<string, Record<string, Override>> = {
     '2026-06-12': override('Work From Home', '09:05', '17:55', 8.8),
   },
   'emp-020': {
-    '2026-06-10': override('Present', '09:19', '18:30', 9.1, true),
+    '2026-06-10': override('Present', '09:19', '18:30', 9.1),
     '2026-06-11': override('Half Day', '09:00', '13:00', 4.0),
   },
   'emp-022': {
@@ -80,16 +102,16 @@ const OVERRIDES: Record<string, Record<string, Override>> = {
   },
   'emp-025': {
     '2026-06-08': override('Absent', null, null, 0),
-    '2026-06-09': override('Present', '09:20', '18:00', 8.6, true),
+    '2026-06-09': override('Present', '09:20', '18:00', 8.6),
   },
   'emp-028': {
     '2026-06-10': override('On Leave', null, null, 0),
     '2026-06-11': override('On Leave', null, null, 0),
   },
   'emp-032': {
-    '2026-06-08': override('Present', '09:25', '18:00', 8.5, true),
-    '2026-06-09': override('Present', '09:17', '18:10', 8.9, true),
-    '2026-06-10': override('Present', '09:12', '18:00', 8.8, true),
+    '2026-06-08': override('Present', '09:25', '18:00', 8.5),
+    '2026-06-09': override('Present', '09:17', '18:10', 8.9),
+    '2026-06-10': override('Present', '09:12', '18:00', 8.8),
   },
   'emp-034': {
     '2026-06-08': override('Work From Home', '09:00', '18:00', 9.0),
@@ -132,7 +154,7 @@ if (!isMockDataCleared()) {
           checkIn: ov.checkIn,
           checkOut: ov.checkOut,
           workedHours: ov.workedHours,
-          shift: 'General (09:00 – 18:00)',
+          shift: DEFAULT_SHIFT,
           isLate: ov.isLate,
         });
       } else {
@@ -147,8 +169,10 @@ if (!isMockDataCleared()) {
           checkIn,
           checkOut,
           workedHours,
-          shift: 'General (09:00 – 18:00)',
-          isLate: false,
+          shift: DEFAULT_SHIFT,
+          // Derived here too, so the standard patterns cannot drift past the
+          // threshold while still claiming to be on time.
+          isLate: isLateCheckIn(checkIn),
         });
       }
     });
@@ -399,7 +423,7 @@ function applyRequestedStatus(employeeId: string, date: string, status: Attendan
       checkIn: null,
       checkOut: null,
       workedHours: 0,
-      shift: 'General (09:00 – 18:00)',
+      shift: DEFAULT_SHIFT,
       isLate: false,
     };
 
@@ -410,23 +434,6 @@ function applyRequestedStatus(employeeId: string, date: string, status: Attendan
 }
 
 // ---- Check-in / check-out ---------------------------------------------------
-
-/**
- * A check-in at or before this IST time is on time; after it is late.
- *
- * One constant, because two copies disagreed. The Mark Attendance form tested
- * `> '09:15'` while seed records carry `isLate` on check-ins as early as 09:12,
- * and the derived regularization reason used to quote the threshold — so the
- * queue asserted a rule the data it described did not follow.
- */
-export const LATE_AFTER = '09:15';
-
-export const DEFAULT_SHIFT = 'General (09:00 – 18:00)';
-
-/** True when this `HH:mm` check-in counts as late. */
-export function isLateCheckIn(checkIn: string): boolean {
-  return checkIn > LATE_AFTER;
-}
 
 /**
  * Hours between two instants, to one decimal, never negative.
