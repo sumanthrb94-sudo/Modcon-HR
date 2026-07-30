@@ -9,9 +9,9 @@ Status: **implemented** on `fix/tenant-isolation-gaps`. The data-plane half
 predates this and is documented in [multi-tenancy-spec.md](multi-tenancy-spec.md);
 this document states the guarantees as invariants, extends them to the control
 plane (seed / purge / backfill / deploy), and records the six gaps found while
-writing it (§7) — all six now closed, with the verification in §9 and the
-deploy order in §10. **The rules must be deployed before the app**; §10 says
-why the ordering is not optional this time.
+writing it (§7) — all six now closed, with the verification in §9. **The rules
+are deployed**; the app and the per-organisation backfills are not. §10 has the
+remaining steps and why the ordering was not optional.
 
 This spec does not restate the `orgId` convention, the write-split rationale, or
 the backfill asymmetry — see the multi-tenancy spec §2–§4 for those.
@@ -524,16 +524,24 @@ optimised away.
 Worth recording, because it looks like a coverage gap and is a structural one.
 
 The E2E suite signs in against **live** Firebase, so it exercises the *deployed*
-ruleset rather than the one in the working tree. A rules change therefore cannot
-be verified end-to-end before it ships, which is why the cross-machine
-configuration test in `tests/e2e/org-settings.spec.ts` is gated behind
-`E2E_ORG_SETTINGS_DEPLOYED=true`. It is the real acceptance test for G3 and is
-expected to be run once the rules are deployed.
+ruleset rather than the one in the working tree. A rules change cannot be
+verified end-to-end before it ships. That is why the cross-machine configuration
+test in `tests/e2e/org-settings.spec.ts` is gated behind
+`E2E_ORG_SETTINGS_DEPLOYED=true` — it is the real acceptance test for G3, it
+could not pass before the rules were deployed, and it passes now that they are.
+The gate stays, so the suite still runs green against a project on older rules.
 
-What does run unconditionally is the half that matters *between* the two
-deploys: the app must keep working against rules that have never heard of
-`org_settings`. A refused publish is logged and swallowed, never thrown, so a
-save cannot surface as a lost edit during the window.
+What runs unconditionally is the property that made the ordering safe: a refused
+publish is logged and swallowed, never thrown, so a save cannot surface as a
+lost edit during the window between the two deploys.
+
+**A second thing changed with G3 that is easy to miss.** Configuration used to
+be per-browser, so a test that edited it dirtied only its own throwaway context.
+It is a shared document now, and Settings offers Edit but no Delete for a leave
+type — so a test that adds one has no UI path to undo it, and every run would
+add another to the organisation's real configuration. `removeTestPolicies`
+cleans up over the Firestore REST API in an `afterAll`, which runs even on a red
+run. Any future spec that writes configuration owes the same.
 
 ---
 
@@ -574,19 +582,23 @@ save cannot surface as a lost edit during the window.
 Ordering is not optional here — **rules first**, and the gap is user-visible if
 it is reversed.
 
-1. **Deploy the rules** (`firebase deploy --only firestore:rules`). Safe against
-   the currently deployed app: the tightened reads only ever remove access the
-   old app did not depend on, except for the Admin dashboard's `users` query,
-   which the old bundle issues unfiltered and which will fail for an HR manager
-   until step 2. Platform admins are unaffected.
-2. **Deploy the app.** From here `org_settings` starts working. Before it, every
-   read and write of that collection is refused by the catch-all deny and
-   configuration silently stays local — which is why step 1 comes first.
+1. ~~**Deploy the rules** (`firebase deploy --only firestore:rules`).~~ **Done.**
+   Safe against the app that was deployed at the time: the tightened reads only
+   ever remove access the old bundle did not depend on, with one exception —
+   the Admin dashboard's `users` query, which the old bundle issues unfiltered
+   and which fails for an **HR manager** until step 2. Platform admins and super
+   admins are unaffected, and no employee-facing screen reads `users`.
+2. **Deploy the app** — merge the branch; `main` auto-deploys hosting. This
+   clears the HR-manager exception above and turns `org_settings` on.
 3. **Run the backfills, per organisation**, dry run then apply:
    Settings → Database → "Backfill organization IDs" (now also stamps the
    identity collections and publishes this browser's configuration), then
-   "Backfill employee access mapping".
-4. **Run the deploy-gated E2E test** with `E2E_ORG_SETTINGS_DEPLOYED=true`.
+   "Backfill employee access mapping". Whoever runs step 3 should be on the
+   browser holding the good copy of that organisation's configuration — it
+   publishes what is local, and never overwrites what another administrator
+   already published.
+4. ~~**Run the deploy-gated E2E test.**~~ **Done** — passing with
+   `E2E_ORG_SETTINGS_DEPLOYED=true` against the deployed rules.
 
 Step 3 matters for a reason §4 of [multi-tenancy-spec.md](multi-tenancy-spec.md)
 sets out: an un-stamped document is permitted but unreachable. Two new instances

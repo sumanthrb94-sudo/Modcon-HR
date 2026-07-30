@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { PERSONAS } from './config';
+import { FIREBASE_API_KEY, PERSONAS } from './config';
 
 /**
  * Organisation configuration, and the operations that write it.
@@ -17,22 +17,73 @@ import { PERSONAS } from './config';
  * ## What this suite can and cannot check
  *
  * The E2E suite signs in against **live** Firebase, so it runs against the
- * *deployed* ruleset, not the one in this working tree. `org_settings` does not
- * exist in the deployed rules until someone runs
- * `firebase deploy --only firestore:rules`, so until then every read and write
- * of it is refused by the catch-all deny. The cross-machine test below is
- * therefore gated behind E2E_ORG_SETTINGS_DEPLOYED — it is the real acceptance
- * test for G3 and cannot pass before the rules ship. The server behaviour it
- * would assert is covered meanwhile by tests/rules/multitenancy.rules.test.mjs.
+ * *deployed* ruleset, not the one in this working tree. A rules change
+ * therefore cannot be verified here before it ships. The cross-machine test is
+ * gated behind E2E_ORG_SETTINGS_DEPLOYED for that reason — it is the real
+ * acceptance test for G3, and it could not pass until the rules were deployed.
+ * They now are, so it should be run with the flag set; the same gate protects
+ * anyone running the suite against a project whose rules are older.
  *
- * What runs unconditionally is the half that matters between those two deploys:
- * the app must keep working against rules that have never heard of this
- * collection. That is the documented rollout order (rules first, app second),
- * and a silent failure here would mean an organisation losing its configuration
- * during the window.
+ * The other test runs unconditionally and asserts the property that made that
+ * ordering safe: a refused Firestore write is logged and swallowed, never
+ * thrown, so an organisation cannot lose an edit during the window between the
+ * two deploys.
+ *
+ * Both write to a **shared** document now, which is why `removeTestPolicies`
+ * exists — see its comment.
  */
 
 const POLICY_NAME = 'E2E Isolation Leave';
+
+/**
+ * Remove the policies this suite created, out of band.
+ *
+ * Necessary now, and it was not before: configuration used to live in the
+ * browser, so a test that added a leave policy dirtied only its own throwaway
+ * context. It is a shared Firestore document today, which means a test that
+ * does not clean up leaves a fake policy in the organisation's real
+ * configuration — and every run adds another. Settings offers Edit but no
+ * Delete for a leave type, so there is no UI path to undo it.
+ *
+ * Done over the Firestore REST API with the admin persona's own token, the same
+ * way global-setup.ts provisions the accounts. It reads and rewrites rather
+ * than restoring a snapshot, so a policy a human added while the suite was
+ * running is not thrown away.
+ */
+async function removeTestPolicies() {
+  const admin = PERSONAS.admin;
+  const base = 'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
+  const path = 'org_settings/default__leavePolicies';
+
+  const auth = await (await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: admin.email, password: admin.password, returnSecureToken: true }),
+    },
+  )).json();
+  if (!auth.idToken) return;
+
+  const headers = { Authorization: `Bearer ${auth.idToken}`, 'Content-Type': 'application/json' };
+  const res = await fetch(`${base}/${path}`, { headers });
+  // Nothing published yet — nothing to clean.
+  if (res.status !== 200) return;
+
+  const doc = await res.json();
+  const raw = doc.fields?.valueJson?.stringValue;
+  if (typeof raw !== 'string') return;
+
+  const policies = JSON.parse(raw) as Array<{ type?: string }>;
+  const kept = policies.filter((p) => !String(p.type ?? '').startsWith(POLICY_NAME));
+  if (kept.length === policies.length) return;
+
+  await fetch(`${base}/${path}?updateMask.fieldPaths=valueJson`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ fields: { valueJson: { stringValue: JSON.stringify(kept) } } }),
+  });
+}
 
 async function signIn(page: Page, persona: typeof PERSONAS.admin) {
   await page.goto('/login');
@@ -61,10 +112,18 @@ async function addLeavePolicy(page: Page, name: string) {
 }
 
 test.describe.serial('organisation configuration', () => {
-  test('editing configuration still works while the org_settings rules are undeployed', async ({ browser }) => {
-    // Rules and app deploy independently, so this window is real. The Firestore
-    // write is fire-and-forget behind the local one precisely so a refused
-    // write cannot surface as a lost edit.
+  // After both tests, not after each: they are serial and the second reads what
+  // it wrote across two contexts. Runs even if a test failed, so a red run does
+  // not leave the organisation's configuration dirty.
+  test.afterAll(removeTestPolicies);
+
+  test('an edit stands on its own, whether or not the Firestore write lands', async ({ browser }) => {
+    // Rules and the app deploy independently, so there is always a window where
+    // the app is live against rules that have never heard of a collection. The
+    // Firestore write is fire-and-forget behind the local one precisely so a
+    // refused write cannot surface as a lost edit — this asserts the local path
+    // stands alone and nothing throws, which held before org_settings was
+    // deployed and must keep holding for the next collection that is added.
     const context = await browser.newContext();
     const page = await context.newPage();
     const denials: string[] = [];
