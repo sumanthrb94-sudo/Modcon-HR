@@ -358,7 +358,16 @@ service cloud.firestore {
     // (but not modify) their org's record.
     // -------------------------------------------------------------------
     match /organizations/{orgId} {
-      allow read: if isSignedIn() && (isSuperAdmin() || myProfile().orgId == orgId);
+      // Compared against myOrgKey(), not `myProfile().orgId`: the latter errors
+      // for an account with no orgId (a missing map key is not null in rules,
+      // it fails evaluation), so every legacy account was denied rather than
+      // simply not matching. It also lets the legacy tenant read
+      // `organizations/default` if a record is ever created for it, which is
+      // where its feature flags would live — see src/lib/features.ts.
+      //
+      // The org id is the wildcard, not a field, so this is safe on a document
+      // that does not exist: nothing dereferences `resource`.
+      allow read: if isSignedIn() && (isSuperAdmin() || orgId == myOrgKey());
       allow create: if isSuperAdmin() &&
         request.resource.data.name is string &&
         request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200 &&

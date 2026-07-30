@@ -108,6 +108,15 @@ async function seed() {
     await setDoc(doc(db, 'leave_balances', 'lb-a'), { employeeId: 'emp-a', orgId: 'org-a', available: 5, managerChainIds: [] });
     await setDoc(doc(db, 'leave_balances', 'lb-b'), { employeeId: 'emp-b', orgId: 'org-b', available: 5, managerChainIds: [] });
 
+    // Organisation records, which carry the feature flags.
+    for (const org of ['org-a', 'org-b']) {
+      await setDoc(doc(db, 'organizations', org), {
+        name: `Org ${org}`, adminEmail: `hr-${org}@example.com`, createdBy: 'super-a',
+      });
+    }
+    // The legacy tenant has no organisations record at all — it predates the
+    // collection. The read of it must be a clean miss, not a denial.
+
     // Organisation configuration, keyed `<orgKey>__<setting>`.
     for (const org of ['org-a', 'org-b']) {
       await setDoc(doc(db, 'org_settings', `${org}__leavePolicies`), {
@@ -433,6 +442,63 @@ describe('multi-tenancy — organisation configuration', () => {
     );
     await assertFails(
       setDoc(doc(as(USERS.hrA), 'org_settings', 'org-a__somethingElse'), policies('org-a')),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-organisation feature flags.
+//
+// One Firebase project means a code change reaches every tenant at once, so
+// staging a rollout has to be expressed in data. The flags live on the
+// organisation record: readable by that organisation so its own sessions can
+// act on them, writable by super admins only, because which tenants a change
+// has reached is a platform decision and not a tenant preference.
+// ---------------------------------------------------------------------------
+describe('multi-tenancy — feature flags on the organisation record', () => {
+  beforeEach(seed);
+
+  it('a member reads their own organisation record', async () => {
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'organizations', 'org-a')));
+  });
+
+  it("a member cannot read another organisation's record", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'organizations', 'org-a')));
+    await assertFails(getDoc(doc(as(USERS.hrB), 'organizations', 'org-a')));
+  });
+
+  it('a legacy account is not denied outright by the org read', async () => {
+    // Was `myProfile().orgId == orgId`, which *errors* for an account with no
+    // orgId — a missing map key fails evaluation rather than reading as null —
+    // so every legacy account was refused instead of merely not matching.
+    // Nothing here dereferences `resource`, so an absent record is a clean miss.
+    await assertSucceeds(getDoc(doc(as(USERS.legacyEmployee), 'organizations', 'default')));
+    await assertFails(getDoc(doc(as(USERS.legacyEmployee), 'organizations', 'org-a')));
+  });
+
+  it('HR cannot turn a feature on, even for their own organisation', async () => {
+    // Which tenants a change has reached is not theirs to decide.
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'organizations', 'org-a'),
+        { features: { somethingNew: true } }, { merge: true }),
+    );
+  });
+
+  it('an employee cannot turn a feature on', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'organizations', 'org-a'),
+        { features: { somethingNew: true } }, { merge: true }),
+    );
+  });
+
+  it('a super admin sets a flag on any organisation', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.superA), 'organizations', 'org-a'),
+        { features: { somethingNew: true } }, { merge: true }),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.superA), 'organizations', 'org-b'),
+        { features: { somethingNew: false } }, { merge: true }),
     );
   });
 });

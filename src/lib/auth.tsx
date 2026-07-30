@@ -32,6 +32,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
 import { startOrgSettingsSync } from './orgSettings';
+import { startOrgFeatureSync } from './features';
 import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
 
 // ---------------------------------------------------------------------------
@@ -269,7 +270,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // organisation's rather than the browser's. See src/lib/orgSettings.ts.
     useEffect(() => {
         if (!profile) return;
-        return startOrgSettingsSync(profile);
+        const stopSettings = startOrgSettingsSync(profile);
+        // Per-organisation feature flags, from the same resolved profile. A
+        // separate subscription because it is a different thing with different
+        // rules: configuration the organisation owns, versus a platform
+        // decision about which tenants a change has reached yet.
+        const stopFeatures = startOrgFeatureSync(profile);
+        return () => {
+            stopSettings();
+            stopFeatures();
+        };
     }, [profile?.uid, profile?.orgId]);
 
     const clearError = () => setError('');

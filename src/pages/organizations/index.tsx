@@ -8,9 +8,11 @@ import {
     findOrgAdminsToMigrate,
     migrateOrgAdminsToHr,
     setOrgHrAdministrator,
+    setOrgFeature,
     type CreateOrganizationResult,
     type OrgAdminMigrationCandidate,
 } from '@/lib/organizations';
+import { FEATURE_FLAGS } from '@/lib/features';
 import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import {
     PageHeader,
@@ -39,6 +41,16 @@ function formatCreatedAt(value: unknown): string {
     });
 }
 
+/**
+ * The flags a super admin may toggle, in declaration order.
+ *
+ * Empty between rollouts, which is the correct state — the mechanism exists so
+ * the next change that must not reach every tenant at once has somewhere to go.
+ * The Features control hides itself when there is nothing to show rather than
+ * offering an empty dialog.
+ */
+const FLAG_LIST = Object.values(FEATURE_FLAGS);
+
 export function OrganizationsPage() {
     const { profile } = useAuth();
     const { data: organizations, loading } = useOrganizations();
@@ -51,6 +63,33 @@ export function OrganizationsPage() {
     const [adminEmail, setAdminEmail] = useState('');
     const [result, setResult] = useState<CreateOrganizationResult | null>(null);
     const [copied, setCopied] = useState(false);
+
+    // Per-organisation feature flags: which tenants a change has reached. One
+    // Firebase project means code ships to everyone at once, so staging a
+    // rollout is data, not deployment — see src/lib/features.ts.
+    const [featuresOrg, setFeaturesOrg] = useState<Organization | null>(null);
+    const [featureSaving, setFeatureSaving] = useState('');
+    const [featureError, setFeatureError] = useState('');
+
+    function openFeatures(org: Organization) {
+        setFeaturesOrg(org);
+        setFeatureError('');
+    }
+
+    async function toggleFeature(org: Organization, key: string, enabled: boolean) {
+        if (!org.id) return;
+        setFeatureSaving(key);
+        setFeatureError('');
+        try {
+            await setOrgFeature({ orgId: org.id, feature: key, enabled });
+        } catch (err) {
+            setFeatureError(
+                `Could not update "${key}": ${(err as Error)?.message ?? 'unknown error'}`,
+            );
+        } finally {
+            setFeatureSaving('');
+        }
+    }
 
     // Migration for organisations created before the first account became an
     // HR administrator. Two stages on purpose: this revokes the Admin role from
@@ -125,6 +164,15 @@ export function OrganizationsPage() {
             setMigrateRunning(false);
         }
     }
+
+    // The captured `featuresOrg` is a snapshot from the moment the dialog
+    // opened, so a toggle would not re-render against it. `useOrganizations` is
+    // a live subscription — resolve through it so the switch shows the value
+    // that actually landed, and falls back to the capture only if the row is
+    // gone.
+    const liveFeaturesOrg = featuresOrg
+        ? organizations.find((o) => o.id === featuresOrg.id) ?? featuresOrg
+        : null;
 
     const activeOrgKey = getActiveOrgKey();
     const activeOrgName = organizations.find((o) => o.id === activeOrgKey)?.name;
@@ -213,6 +261,11 @@ export function OrganizationsPage() {
                 const isActive = o.id === getActiveOrgKey();
                 return (
                     <div className="flex items-center gap-2">
+                    {FLAG_LIST.length > 0 && (
+                        <Button variant="secondary" size="sm" onClick={() => openFeatures(o)}>
+                            Features
+                        </Button>
+                    )}
                     <Button variant="secondary" size="sm" onClick={() => openAssign(o)}>
                         Set HR admin
                     </Button>
@@ -506,6 +559,57 @@ export function OrganizationsPage() {
                         </div>
                     </div>
                 )}
+            </Modal>
+
+            <Modal
+                open={featuresOrg !== null}
+                onClose={() => setFeaturesOrg(null)}
+                title="Feature rollout"
+                subtitle={`Which changes ${liveFeaturesOrg?.name ?? 'this organization'} has been given.`}
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-ink-500">
+                        The app is one deployment for every organization, so a change reaches all of
+                        them the moment it ships. These decide who it is <em>on</em> for. They gate
+                        behaviour only — never who may read or write anything, which stays with the
+                        security rules and is the same for every tenant.
+                    </p>
+
+                    {featureError ? (
+                        <p className="text-sm text-red-600">{featureError}</p>
+                    ) : null}
+
+                    <div className="divide-y divide-ink-100 rounded-xl border border-ink-100">
+                        {FLAG_LIST.map((flag) => {
+                            const enabled = liveFeaturesOrg?.features?.[flag.key] ?? flag.defaultValue;
+                            return (
+                                <div key={flag.key} className="flex items-start justify-between gap-4 px-4 py-3">
+                                    <div>
+                                        <p className="text-sm font-medium text-ink-900">{flag.key}</p>
+                                        <p className="text-xs text-ink-500">{flag.description}</p>
+                                    </div>
+                                    <Button
+                                        variant={enabled ? 'primary' : 'secondary'}
+                                        size="sm"
+                                        disabled={featureSaving === flag.key}
+                                        onClick={() => liveFeaturesOrg && toggleFeature(liveFeaturesOrg, flag.key, !enabled)}
+                                    >
+                                        {featureSaving === flag.key ? '…' : enabled ? 'On' : 'Off'}
+                                    </Button>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <p className="text-xs text-ink-400">
+                        Takes effect for that organization&rsquo;s signed-in users without a redeploy —
+                        each session is subscribed to its own organization record.
+                    </p>
+
+                    <div className="flex justify-end">
+                        <Button variant="secondary" onClick={() => setFeaturesOrg(null)}>Done</Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

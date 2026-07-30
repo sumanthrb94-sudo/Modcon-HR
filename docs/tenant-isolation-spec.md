@@ -238,13 +238,37 @@ otherwise would be false, and designing against a guarantee the platform does
 not provide is how isolation bugs get written.
 
 **Per-tenant containment of a behaviour change therefore has to be expressed in
-data, not in deployment.** The proportionate mechanism is a feature map on the
-tenant record — `organizations/{orgId}.features` — read client-side for UI
-gating and, where a rule must vary, read in `firestore.rules` via the existing
-`myProfile().orgId` hop. The alternatives (a Firebase project per tenant, or
-hosting multi-site) buy true deploy isolation at a cost this application does
-not currently justify. **No feature-flag mechanism exists today**; a change that
-must not reach every tenant at once needs one built first.
+data, not in deployment.** The alternatives that would give true deploy
+isolation — a Firebase project per tenant, or hosting multi-site — buy it at a
+cost this application does not justify.
+
+The mechanism is `organizations/{orgId}.features`, a map of flags on the tenant
+record, with [src/lib/features.ts](../src/lib/features.ts) subscribing each
+session to its own organisation and Organizations → **Features** letting a super
+admin toggle them. The code ships to everyone; the flag decides who runs it.
+
+Three constraints on it, and the second corrects an earlier draft of this
+section:
+
+1. **Super admins set them, not the organisation.** `organizations/{orgId}` is
+   super-admin-writable only, which is right: which tenants a change has reached
+   is a platform decision about a rollout, not a preference the tenant
+   configures. An organisation's *own* configuration is `org_settings` (§3.4) —
+   a different collection with different rules, and the distinction is worth
+   keeping sharp.
+2. **A flag gates behaviour, never authorization.** An earlier draft said a rule
+   could read one "where a rule must vary". It should not. `firestore.rules` is
+   a single global ruleset, and per-tenant authorization means tenants running
+   security models that cannot be held in one head or tested together — quite
+   apart from the `get()` per evaluation it would cost, and from making "may I
+   read this?" depend on a field an administrator can edit. Whatever a flag
+   turns on must be safe for every tenant to have *reached*, because the rules
+   will not stop them.
+3. **The registry is the source of truth.** `FEATURE_FLAGS` declares each flag
+   with its default and its meaning; an undeclared key stored on an organisation
+   is ignored, which is what makes deleting a finished rollout safe. Empty
+   between rollouts is the correct state — the point is that the next change
+   which must not reach everyone at once has somewhere to go.
 
 ### 4.2 What is contained, and must stay that way
 
@@ -331,8 +355,15 @@ A change satisfies this specification only if all of these hold.
 12. Is gated in the UI by role *and* by rule — never by rule alone if it has any
     client-side effect (G5), and never by UI alone.
 
+**Any change that should not reach every tenant at once**
+13. Declared in `FEATURE_FLAGS` ([features.ts](../src/lib/features.ts)) and read
+    through `useFeature`/`isFeatureEnabled` — there is no deployment-level way
+    to stage a rollout (§4.1).
+14. Gates behaviour only. A flag must never appear in `firestore.rules`, and
+    whatever it turns on must be safe for a tenant to reach with it off.
+
 **Any change touching roles, `orgId`, or the access mappings**
-13. Ships a `tests/rules/` case. The E2E suite drives the UI and never exercises
+15. Ships a `tests/rules/` case. The E2E suite drives the UI and never exercises
     the rules, so a permission change with only an E2E test is untested
     (`CLAUDE.md`, *Commands*).
 
@@ -527,6 +558,14 @@ save cannot surface as a lost edit during the window.
   rendered a `<label>` that neither wrapped its input nor carried `htmlFor`, so
   every field in Settings had no accessible name. It now associates them with
   `useId`.
+- The feature-flag mechanism (§4.1) ships with its own rules cases: a member
+  reads their own organisation record, another organisation's is denied, HR and
+  employees cannot set a flag, a super admin can set one on any organisation.
+  One of them pins a bug the change fixed on the way past — `organizations`
+  compared `myProfile().orgId == orgId`, which *errors* for an account with no
+  `orgId` (a missing map key fails evaluation rather than reading as null), so
+  every legacy account was refused the read outright rather than simply not
+  matching.
 
 ---
 

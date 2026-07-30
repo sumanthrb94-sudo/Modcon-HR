@@ -265,6 +265,30 @@ export async function setOrgHrAdministrator(
     };
 }
 
+/**
+ * Turn a feature flag on or off for one organisation.
+ *
+ * Super-admin only, enforced by `firestore.rules` on `/organizations` — this is
+ * a platform decision about which tenants a change has reached, not something
+ * an organisation configures for itself. Written with dotted-path `updateDoc`
+ * so two flags flipped from two tabs do not overwrite each other's key, which
+ * a whole-map write would.
+ *
+ * See src/lib/features.ts for what a flag may gate, and why it is never
+ * authorization.
+ */
+export async function setOrgFeature(params: {
+    orgId: string;
+    feature: string;
+    enabled: boolean;
+}): Promise<void> {
+    const key = params.feature.trim();
+    if (!params.orgId || !key) return;
+    await updateDoc(doc(db, 'organizations', params.orgId), {
+        [`features.${key}`]: params.enabled,
+    });
+}
+
 export function friendlyOrgError(err: unknown): string {
     const code = (err as { code?: string })?.code ?? '';
     const map: Record<string, string> = {
