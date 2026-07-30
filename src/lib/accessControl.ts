@@ -82,33 +82,56 @@ export function isModuleExcluded(module: AppModule, role: AppRole): boolean {
   return MODULE_ROLE_EXCLUSIONS[module]?.includes(role) ?? false;
 }
 
+/**
+ * Cells whose level the app fixes, whatever the stored matrix says.
+ *
+ * Distinct from MODULE_ROLE_EXCLUSIONS: an excluded pair is *unavailable*
+ * ("n/a"), a pinned pair has a real level that simply cannot be changed.
+ *
+ * `Documents` is pinned in full because the handbook's access model is enforced
+ * in firestore.rules, and the matrix must not be able to promise something the
+ * server will refuse. Granting a Manager 'full' here would render the upload
+ * panel for someone `isOrgAdmin()` then denies; withdrawing an Employee's 'view'
+ * would hide company policy the rules still serve. Publish is HR + Admin
+ * because that is what the rules say, so the cell is not a choice.
+ *
+ * The other two entries predate this and were previously enforced silently on
+ * read — the Settings cell cycled, appeared to save, and reverted. Listing them
+ * here is what lets the UI lock them instead.
+ */
+export const PINNED_PERMISSIONS: Partial<
+  Record<AppModule, Partial<Record<AppRole, PermissionLevel>>>
+> = {
+  'Employee Directory': { Employee: 'view' },
+  Documents: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
+  Admin: { Admin: 'full' },
+};
+
+/** The fixed level for a cell, or undefined when it is configurable. */
+export function pinnedPermission(
+  module: AppModule,
+  role: AppRole,
+): PermissionLevel | undefined {
+  return PINNED_PERMISSIONS[module]?.[role];
+}
+
 function notifyPermissionsChanged() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(ACCESS_CONTROL_CHANGED_EVENT));
 }
 
 function enforceRequiredPermissions(matrix: PermissionMatrix): PermissionMatrix {
-  const enforced: PermissionMatrix = {
-    ...matrix,
-    'Employee Directory': {
-      ...matrix['Employee Directory'],
-      Employee: 'view',
-    },
-    // Every role reads the handbook. Left as a plain default, toggling the cell
-    // in Settings → Roles & Permissions would quietly withdraw company policy
-    // from a whole role, so the read floor is pinned here instead and only the
-    // publish right ('full' vs 'view') remains configurable.
-    Documents: Object.fromEntries(
-      APP_ROLES.map((role) => [role, matrix.Documents?.[role] === 'full' ? 'full' : 'view']),
-    ) as Record<AppRole, PermissionLevel>,
-    Admin: {
-      ...matrix.Admin,
-      Admin: 'full',
-    },
-  };
+  const enforced: PermissionMatrix = { ...matrix };
+
+  // Pinned cells overwrite whatever was stored — see PINNED_PERMISSIONS.
+  (Object.keys(PINNED_PERMISSIONS) as AppModule[]).forEach((module) => {
+    const pins = PINNED_PERMISSIONS[module];
+    if (!pins) return;
+    enforced[module] = { ...enforced[module], ...pins };
+  });
 
   // Excluded pairs are pinned closed last, so neither a stored matrix nor the
-  // floors above can hand a role a module it is structurally barred from.
+  // pins above can hand a role a module it is structurally barred from.
   (Object.keys(MODULE_ROLE_EXCLUSIONS) as AppModule[]).forEach((module) => {
     MODULE_ROLE_EXCLUSIONS[module]?.forEach((role) => {
       enforced[module] = { ...enforced[module], [role]: 'none' };

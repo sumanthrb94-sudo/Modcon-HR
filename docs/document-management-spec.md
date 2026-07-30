@@ -506,9 +506,23 @@ project to the Blaze plan.
 - **Size ceiling is 720 KB**, not 20 MB — derived from Firestore's 1 MiB
   document limit and base64's 4/3 inflation. The 20 MB figure in §6 applies
   once the bytes move to Cloud Storage.
-- **`Documents.Employee` is not merely floored at `view`** — every role is,
-  because withdrawing company policy from managers or admins is as wrong as
-  withdrawing it from employees. Only the publish right stays configurable.
+- **The whole `Documents` row is pinned, not just the read floor.** Publish is
+  `isOrgAdmin()` in the rules, so a Settings toggle granting a Manager 'full'
+  could only ever render an upload panel the server then refuses. The row is
+  fixed in `PINNED_PERMISSIONS` and `canPublishHandbook()` reads the matrix, so
+  the client and the rules have one definition of who publishes rather than two
+  that can drift.
+
+### A third problem, found when pinning the matrix
+
+**Pinned permission cells silently reverted.** `Employee Directory`/Employee and
+`Admin`/Admin were enforced on read but left clickable in Settings → Roles &
+Permissions: the cell cycled, looked saved, and came back unchanged on the next
+read — exactly the failure the code comment there warns about for *excluded*
+pairs. Pinning is now a first-class concept (`PINNED_PERMISSIONS` +
+`pinnedPermission()`), and the UI locks pinned cells showing their fixed value,
+distinct from excluded cells which show "n/a". This fixes the two pre-existing
+cells as well as the new `Documents` row.
 
 ### Two problems found while building, both fixed
 

@@ -30,6 +30,7 @@ import {
   savePermissionMatrix,
   getPermissionMatrix,
   isModuleExcluded,
+  pinnedPermission,
 } from '@/lib/accessControl';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 import { getHolidayDirectory, saveHolidayDirectory } from '@/data/holidays';
@@ -1217,17 +1218,28 @@ function RolesPermissions() {
                 <tr key={module} className="hover:bg-ink-50">
                   <td className="px-5 py-3 font-medium text-ink-800">{module}</td>
                   {APP_ROLES.map((role) => {
-                    // Some pairs are not a permission anyone can grant — see
-                    // MODULE_ROLE_EXCLUSIONS. Cycling them would appear to work
-                    // and then be overridden on read, so they are locked.
-                    const locked = isModuleExcluded(module, role);
+                    // Two kinds of cell cannot be configured, and they read
+                    // differently. An excluded pair is not a permission anyone
+                    // can grant (MODULE_ROLE_EXCLUSIONS) and shows as "n/a". A
+                    // pinned pair has a real level the app fixes
+                    // (PINNED_PERMISSIONS) and shows that level.
+                    //
+                    // Both are locked because both are overridden on read:
+                    // cycling them would appear to work and then silently
+                    // revert, which is what the pinned cells used to do.
+                    const excluded = isModuleExcluded(module, role);
+                    const pinned = pinnedPermission(module, role);
+                    const locked = excluded || pinned !== undefined;
+                    const title = excluded
+                      ? `${module} is not available to ${role}`
+                      : pinned !== undefined
+                        ? `${module} / ${role} is fixed at ${pinned} and cannot be changed`
+                        : `${module} / ${role}: ${perms[module][role]} - click to change`;
                     return (
                       <td key={role} className="px-4 py-3 text-center">
                         <button
                           disabled={locked}
-                          title={locked
-                            ? `${module} is not available to ${role}`
-                            : `${module} / ${role}: ${perms[module][role]} - click to change`}
+                          title={title}
                           onClick={() => cycle(module, role)}
                           className={cn(
                             'inline-flex items-center justify-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors',
@@ -1236,7 +1248,7 @@ function RolesPermissions() {
                           )}
                         >
                           <PermIcon level={perms[module][role]} />
-                          <span className="capitalize">{locked ? 'n/a' : perms[module][role]}</span>
+                          <span className="capitalize">{excluded ? 'n/a' : perms[module][role]}</span>
                         </button>
                       </td>
                     );

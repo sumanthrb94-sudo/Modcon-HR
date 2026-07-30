@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { Collections } from '@/lib/db';
-import { resolveAppRole } from '@/lib/accessControl';
+import { getPermissionLevel, resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { nowInstant } from '@/lib/today';
 import { encodeUpload, HANDBOOK_CONTENT_TYPE } from '@/lib/handbookStorage';
@@ -45,15 +45,16 @@ export function handbookOrgId(profile: UserProfile | null): string | null {
 /**
  * Whether to offer the upload control. Presentation only — see the file header.
  *
- * Organisation administrators: HR managers and platform admins, mirroring
- * `isOrgAdmin()` in firestore.rules. HR owns the handbook in practice, but
- * organisations created before the HR role existed hold an `admin` account
- * rather than an `hr` one, and excluding admins would leave them with nobody
- * able to publish.
+ * Reads the permission matrix rather than testing the role directly, so there
+ * is one definition of who publishes instead of two that can drift. The
+ * `Documents` row is pinned in `PINNED_PERMISSIONS`, so 'full' resolves to
+ * exactly HR Manager and Admin however the stored matrix has been edited —
+ * which is what keeps this in step with `isOrgAdmin()` in firestore.rules. An
+ * unpinned row would let Settings offer a Manager the panel and leave the
+ * server to refuse them.
  */
 export function canPublishHandbook(profile: UserProfile | null): boolean {
-  const role = resolveAppRole(profile);
-  return role === 'HR Manager' || role === 'Admin';
+  return getPermissionLevel('Documents', resolveAppRole(profile)) === 'full';
 }
 
 interface UseHandbookResult {
