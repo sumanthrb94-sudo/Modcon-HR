@@ -75,8 +75,8 @@ async function seed() {
         ...(user.superAdmin ? { superAdmin: true } : {}),
       });
     }
-    await setDoc(doc(db, 'employees', 'emp-001'), { fullName: 'Seed Person' });
-    await setDoc(doc(db, 'employee_compensation', 'emp-001'), { employeeId: 'emp-001', ctc: 100 });
+    await setDoc(doc(db, 'employees', 'emp-001'), { fullName: 'Seed Person', orgId: 'org-a' });
+    await setDoc(doc(db, 'employee_compensation', 'emp-001'), { employeeId: 'emp-001', orgId: 'org-a', ctc: 100 });
   });
 }
 
@@ -207,13 +207,13 @@ describe('HR data collections', () => {
 
   it('HR can write the employee directory — the access the app depends on', async () => {
     await assertSucceeds(
-      setDoc(doc(as(USERS.hrA), 'employees', 'emp-002'), { fullName: 'Added by HR' }),
+      setDoc(doc(as(USERS.hrA), 'employees', 'emp-002'), { fullName: 'Added by HR', orgId: 'org-a' }),
     );
   });
 
   it('an employee still cannot write the employee directory', async () => {
     await assertFails(
-      setDoc(doc(as(USERS.employeeA), 'employees', 'emp-003'), { fullName: 'Nope' }),
+      setDoc(doc(as(USERS.employeeA), 'employees', 'emp-003'), { fullName: 'Nope', orgId: 'org-a' }),
     );
   });
 

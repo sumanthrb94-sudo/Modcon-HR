@@ -96,27 +96,27 @@ async function seed() {
       }
     }
 
-    await setDoc(doc(db, 'employee_compensation', 'emp-001'), { employeeId: 'emp-001', ctc: 1200000 });
-    await setDoc(doc(db, 'employee_compensation', 'emp-002'), { employeeId: 'emp-002', ctc: 900000 });
+    await setDoc(doc(db, 'employee_compensation', 'emp-001'), { employeeId: 'emp-001', orgId: 'org-a', ctc: 1200000 });
+    await setDoc(doc(db, 'employee_compensation', 'emp-002'), { employeeId: 'emp-002', orgId: 'org-a', ctc: 900000 });
 
     await setDoc(doc(db, 'payslips', 'emp-001_2026-05'), {
-      employeeId: 'emp-001', month: '2026-05', netPay: 82000,
+      employeeId: 'emp-001', orgId: 'org-a', month: '2026-05', netPay: 82000,
     });
     await setDoc(doc(db, 'payslips', 'emp-002_2026-05'), {
-      employeeId: 'emp-002', month: '2026-05', netPay: 61000,
+      employeeId: 'emp-002', orgId: 'org-a', month: '2026-05', netPay: 61000,
     });
 
     await setDoc(doc(db, 'leave_requests', 'lr-001'), {
-      employeeId: 'emp-001', type: 'Casual', status: 'Pending', days: 2,
+      employeeId: 'emp-001', orgId: 'org-a', type: 'Casual', status: 'Pending', days: 2,
       managerChainIds: CHAIN_001,
     });
     await setDoc(doc(db, 'leave_requests', 'lr-002'), {
-      employeeId: 'emp-002', type: 'Sick', status: 'Pending', days: 1,
+      employeeId: 'emp-002', orgId: 'org-a', type: 'Sick', status: 'Pending', days: 1,
       managerChainIds: [],
     });
 
     await setDoc(doc(db, 'leave_balances', 'emp-001_Casual'), {
-      employeeId: 'emp-001', type: 'Casual', total: 12, used: 2, available: 10,
+      employeeId: 'emp-001', orgId: 'org-a', type: 'Casual', total: 12, used: 2, available: 10,
       managerChainIds: CHAIN_001,
     });
   });
@@ -223,7 +223,11 @@ describe('salary — compensation and payslips', () => {
 
   it('an employee lists their own payslips, filtered', async () => {
     await assertSucceeds(
-      getDocs(query(collection(as(USERS.employeeA), 'payslips'), where('employeeId', '==', 'emp-001'))),
+      getDocs(query(
+        collection(as(USERS.employeeA), 'payslips'),
+        where('orgId', '==', 'org-a'),
+        where('employeeId', '==', 'emp-001'),
+      )),
     );
   });
 
@@ -235,7 +239,11 @@ describe('salary — compensation and payslips', () => {
 
   it('an employee cannot list a colleague’s payslips by filtering for them', async () => {
     await assertFails(
-      getDocs(query(collection(as(USERS.employeeA), 'payslips'), where('employeeId', '==', 'emp-002'))),
+      getDocs(query(
+        collection(as(USERS.employeeA), 'payslips'),
+        where('orgId', '==', 'org-a'),
+        where('employeeId', '==', 'emp-002'),
+      )),
     );
   });
 
@@ -243,14 +251,16 @@ describe('salary — compensation and payslips', () => {
     await assertFails(getDocs(collection(as(USERS.managerA), 'payslips')));
   });
 
-  it('HR lists all payslips', async () => {
-    await assertSucceeds(getDocs(collection(as(USERS.hrA), 'payslips')));
+  it('HR lists all payslips in their organisation', async () => {
+    await assertSucceeds(
+      getDocs(query(collection(as(USERS.hrA), 'payslips'), where('orgId', '==', 'org-a'))),
+    );
   });
 
   it('an employee cannot write their own compensation', async () => {
     await assertFails(
       setDoc(doc(as(USERS.employeeA), 'employee_compensation', 'emp-001'), {
-        employeeId: 'emp-001', ctc: 9999999,
+        employeeId: 'emp-001', orgId: 'org-a', ctc: 9999999,
       }),
     );
   });
@@ -258,7 +268,7 @@ describe('salary — compensation and payslips', () => {
   it('a manager cannot write compensation', async () => {
     await assertFails(
       setDoc(doc(as(USERS.managerA), 'employee_compensation', 'emp-001'), {
-        employeeId: 'emp-001', ctc: 9999999,
+        employeeId: 'emp-001', orgId: 'org-a', ctc: 9999999,
       }),
     );
   });
@@ -266,7 +276,7 @@ describe('salary — compensation and payslips', () => {
   it('HR writes compensation', async () => {
     await assertSucceeds(
       setDoc(doc(as(USERS.hrA), 'employee_compensation', 'emp-001'), {
-        employeeId: 'emp-001', ctc: 1300000,
+        employeeId: 'emp-001', orgId: 'org-a', ctc: 1300000,
       }),
     );
   });
@@ -307,6 +317,7 @@ describe('leave — own records, and a manager’s own reports', () => {
     await assertSucceeds(
       getDocs(query(
         collection(as(USERS.managerA), 'leave_requests'),
+        where('orgId', '==', 'org-a'),
         where('managerChainIds', 'array-contains', 'emp-mgr'),
       )),
     );
@@ -318,7 +329,11 @@ describe('leave — own records, and a manager’s own reports', () => {
 
   it('an employee lists their own requests, filtered', async () => {
     await assertSucceeds(
-      getDocs(query(collection(as(USERS.employeeA), 'leave_requests'), where('employeeId', '==', 'emp-001'))),
+      getDocs(query(
+        collection(as(USERS.employeeA), 'leave_requests'),
+        where('orgId', '==', 'org-a'),
+        where('employeeId', '==', 'emp-001'),
+      )),
     );
   });
 
@@ -326,15 +341,17 @@ describe('leave — own records, and a manager’s own reports', () => {
     await assertFails(getDocs(collection(as(USERS.employeeA), 'leave_requests')));
   });
 
-  it('HR lists every leave request', async () => {
-    await assertSucceeds(getDocs(collection(as(USERS.hrA), 'leave_requests')));
+  it('HR lists every leave request in their organisation', async () => {
+    await assertSucceeds(
+      getDocs(query(collection(as(USERS.hrA), 'leave_requests'), where('orgId', '==', 'org-a'))),
+    );
   });
 
   it('an employee reads their own leave balance, not a colleague’s', async () => {
     await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'leave_balances', 'emp-001_Casual')));
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'leave_balances', 'emp-002_Casual'), {
-        employeeId: 'emp-002', type: 'Casual', total: 12, used: 0, available: 12, managerChainIds: [],
+        employeeId: 'emp-002', orgId: 'org-a', type: 'Casual', total: 12, used: 0, available: 12, managerChainIds: [],
       });
     });
     await assertFails(getDoc(doc(as(USERS.employeeA), 'leave_balances', 'emp-002_Casual')));
@@ -343,7 +360,7 @@ describe('leave — own records, and a manager’s own reports', () => {
   it('an employee cannot grant themselves leave days', async () => {
     await assertFails(
       setDoc(doc(as(USERS.employeeA), 'leave_balances', 'emp-001_Casual'), {
-        employeeId: 'emp-001', type: 'Casual', total: 99, used: 0, available: 99, managerChainIds: CHAIN_001,
+        employeeId: 'emp-001', orgId: 'org-a', type: 'Casual', total: 99, used: 0, available: 99, managerChainIds: CHAIN_001,
       }),
     );
   });
@@ -351,7 +368,7 @@ describe('leave — own records, and a manager’s own reports', () => {
   it('a manager cannot write a leave balance', async () => {
     await assertFails(
       setDoc(doc(as(USERS.managerA), 'leave_balances', 'emp-001_Casual'), {
-        employeeId: 'emp-001', type: 'Casual', total: 99, used: 0, available: 99, managerChainIds: CHAIN_001,
+        employeeId: 'emp-001', orgId: 'org-a', type: 'Casual', total: 99, used: 0, available: 99, managerChainIds: CHAIN_001,
       }),
     );
   });
@@ -359,7 +376,7 @@ describe('leave — own records, and a manager’s own reports', () => {
   it('HR writes a leave balance', async () => {
     await assertSucceeds(
       setDoc(doc(as(USERS.hrA), 'leave_balances', 'emp-001_Casual'), {
-        employeeId: 'emp-001', type: 'Casual', total: 15, used: 2, available: 13, managerChainIds: CHAIN_001,
+        employeeId: 'emp-001', orgId: 'org-a', type: 'Casual', total: 15, used: 2, available: 13, managerChainIds: CHAIN_001,
       }),
     );
   });
@@ -372,12 +389,10 @@ describe('leave — own records, and a manager’s own reports', () => {
 describe('salary and leave — organisation isolation', () => {
   beforeEach(seed);
 
-  it("KNOWN GAP: another org's HR can still read this org's compensation", async () => {
-    // Asserted as it actually behaves, not as it should, so the gap is a
-    // recorded decision rather than a surprise. These records carry no orgId,
-    // so isOrgAdmin() alone admits any organisation's HR. Backfilling orgId is
-    // out of scope here (rollout step 2 in the spec) — when it lands, this
-    // test flips to assertFails and the rules gain the orgId comparison.
-    await assertSucceeds(getDoc(doc(as(USERS.hrB), 'employee_compensation', 'emp-001')));
+  it("another org's HR can no longer read this org's compensation", async () => {
+    // Previously recorded here as a KNOWN GAP: these records carried no orgId,
+    // so isOrgAdmin() alone admitted any organisation's HR. Closed by the
+    // org-scoped rules — see tests/rules/multitenancy.rules.test.mjs.
+    await assertFails(getDoc(doc(as(USERS.hrB), 'employee_compensation', 'emp-001')));
   });
 });

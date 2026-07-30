@@ -9,9 +9,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { type CollectionReference, type DocumentData, type QueryConstraint } from 'firebase/firestore';
+import { where, type CollectionReference, type DocumentData, type QueryConstraint } from 'firebase/firestore';
 import { subscribe } from './db';
 import { Collections } from './db';
+import { useAuth } from './auth';
+import { resolveOrgKeyForProfile } from './orgScope';
 import type {
     Employee,
     EmployeeCompensation,
@@ -38,26 +40,44 @@ interface UseCollectionResult<T> {
     error: Error | null;
 }
 
+/**
+ * Subscribe to a collection, scoped to the caller's organisation.
+ *
+ * The `where('orgId','==',orgKey)` filter is not an optimisation — it is what
+ * makes the query legal. `firestore.rules` evaluates a list against every
+ * document it returns and fails the whole query if any one is disallowed, so an
+ * unfiltered read of an org-scoped collection is rejected outright the moment a
+ * second tenant has data. Filtering here is the client half of the same rule.
+ *
+ * Consequence worth knowing: documents written before multi-tenancy carry no
+ * `orgId` at all, and Firestore equality filters do not match a missing field,
+ * so those records are invisible to every hook here until the backfill has run
+ * (src/lib/orgBackfill.ts).
+ */
 function useCollection<T extends { id?: string }>(
     colRef: CollectionReference<T>,
     ...constraints: QueryConstraint[]
 ): UseCollectionResult<T> {
+    const { profile } = useAuth();
+    const orgKey = resolveOrgKeyForProfile(profile);
     const [data, setData] = useState<T[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
+        setLoading(true);
         const unsub = subscribe(
             colRef,
             (docs) => {
                 setData(docs);
                 setLoading(false);
             },
+            where('orgId', '==', orgKey),
             ...constraints,
         );
         return unsub;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [orgKey]);
 
     return { data, loading, error };
 }

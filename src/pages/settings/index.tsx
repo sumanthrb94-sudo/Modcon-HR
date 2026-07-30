@@ -52,6 +52,7 @@ import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
 import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
+import { backfillOrgIds } from '@/lib/orgBackfill';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
 import { belongsToActiveOrg, getActiveOrgKey, orgScopedKey, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import type { Holiday } from '@/types';
@@ -2375,12 +2376,36 @@ function DatabaseSection() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetStatus, setResetStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [resetLogs, setResetLogs] = useState<string[]>([]);
+  const [backfillStatus, setBackfillStatus] = useState<'idle' | 'running' | 'dry-run' | 'done' | 'error'>('idle');
+  const [backfillLogs, setBackfillLogs] = useState<string[]>([]);
+
+  // Two-stage on purpose: this writes to every tenant collection in the
+  // database, so the count is shown before anything is changed. Same shape as
+  // Organizations -> "Review admin roles".
+  async function handleBackfill(dryRun: boolean) {
+    setBackfillStatus('running');
+    setBackfillLogs([]);
+    try {
+      await backfillOrgIds({
+        orgKey: getActiveOrgKey(),
+        dryRun,
+        onProgress: (msg) => setBackfillLogs((prev) => [...prev, msg]),
+      });
+      setBackfillStatus(dryRun ? 'dry-run' : 'done');
+    } catch (err) {
+      setBackfillLogs((prev) => [...prev, `Error: ${String(err)}`]);
+      setBackfillStatus('error');
+    }
+  }
 
   async function handleSeed() {
     setStatus('running');
     setLogs([]);
     try {
-      await seedFirestore((msg) => setLogs((prev) => [...prev, msg]));
+      // Seeded into the active organisation, so a company seeding a demo
+              // dataset gets its own copy rather than writing into the shared
+              // default-org records.
+              await seedFirestore((msg) => setLogs((prev) => [...prev, msg]), getActiveOrgKey());
       // Seeding is the natural "undo" for a prior Delete Mock Data — lift the
       // local suppression flag so the static seed layer renders again too
       // (takes effect on next reload, same as the flag itself).
@@ -2396,17 +2421,16 @@ function DatabaseSection() {
     setResetStatus('running');
     setResetLogs([]);
     try {
-      // Firestore's employees/jobs/payroll/expenses collections aren't
-      // org-scoped — they still belong solely to the default/legacy org.
-      // A non-default org (created via super-admin Organizations) doesn't
-      // own that data, so purging it here would destroy someone else's real
-      // records. Only the default org's admin can trigger the Firestore purge;
-      // every org still gets its own local-overlay reset.
-      if (getActiveOrgKey() === DEFAULT_ORG_KEY) {
-        await purgeSeededFirestoreData((msg) => setResetLogs((prev) => [...prev, msg]));
-      } else {
-        setResetLogs((prev) => [...prev, 'Skipped Firestore purge — this organization does not own the shared Firestore collections.']);
-      }
+      // The purge is org-scoped now (see batchDeleteCollection in lib/seed.ts),
+      // so every organisation can clear its own Firestore data. It previously
+      // deleted the collections wholesale, which is why it had to be limited to
+      // the default org: one company's reset took every tenant's data with it.
+      // Records predating multi-tenancy carry no orgId and match no filter, so
+      // they are left untouched until the backfill has stamped them.
+      await purgeSeededFirestoreData(
+        (msg) => setResetLogs((prev) => [...prev, msg]),
+        getActiveOrgKey(),
+      );
       const keysToRemove = Object.keys(window.localStorage).filter(
         (key) => key.startsWith('modcon.hr.') && belongsToActiveOrg(key),
       );
@@ -2428,6 +2452,46 @@ function DatabaseSection() {
       title="Firestore Database"
       subtitle="Seed Firestore with the built-in mock data. Safe to re-run — existing documents are overwritten."
     >
+      <Card className="mb-4">
+        <CardHeader
+          title="Backfill organization IDs"
+          subtitle="Assigns documents written before multi-tenancy to this organization"
+        />
+        <div className="space-y-4">
+          <p className="text-sm text-ink-500">
+            Records created before organization scoping carry no <code>orgId</code>. The security
+            rules still treat them as the default organization, so nothing is exposed — but
+            Firestore equality filters never match a missing field, so those documents drop out of
+            every org-scoped query until they are stamped. Run the dry run first; it changes
+            nothing and reports the count.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="secondary"
+              icon={<Database size={15} />}
+              onClick={() => handleBackfill(true)}
+              disabled={backfillStatus === 'running'}
+            >
+              {backfillStatus === 'running' ? 'Scanning…' : 'Dry run'}
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Database size={15} />}
+              onClick={() => handleBackfill(false)}
+              disabled={backfillStatus === 'running' || backfillStatus === 'idle'}
+              title={backfillStatus === 'idle' ? 'Run the dry run first' : undefined}
+            >
+              Apply backfill
+            </Button>
+          </div>
+          {backfillLogs.length > 0 && (
+            <pre className="max-h-56 overflow-auto rounded-lg bg-ink-900 p-3 text-xs text-ink-100">
+              {backfillLogs.join('\n')}
+            </pre>
+          )}
+        </div>
+      </Card>
+
       <Card>
         <CardHeader title="Seed Collections" subtitle="Pushes all static mock data into Firestore in bulk" />
         <div className="space-y-4">

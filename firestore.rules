@@ -93,6 +93,42 @@ service cloud.firestore {
         myEmployeeId() in record.get('managerChainIds', []);
     }
 
+    // -------------------------------------------------------------------
+    // Multi-tenancy.
+    //
+    // Every data document carries an `orgId`, and every read and write is
+    // scoped to the caller's own organisation. Before this, most collections
+    // were `allow read: if isSignedIn()` with no orgId at all, so one company's
+    // HR could read another company's employees, payroll and expenses.
+    //
+    // The key is a string, never null: accounts with no `orgId` — super admins
+    // and the accounts predating multi-org support — resolve to 'default',
+    // matching DEFAULT_ORG_KEY in src/lib/orgScope.ts and the same convention
+    // the handbook already uses. A string is required because Firestore
+    // equality filters do not match documents that are missing the field, so
+    // `where('orgId','==',null)` would return nothing for un-backfilled data;
+    // see the backfill in src/lib/orgBackfill.ts.
+    // -------------------------------------------------------------------
+    function myOrgKey() {
+      return myOrgId() == null ? 'default' : myOrgId();
+    }
+
+    /**
+     * True when the stored document belongs to the caller's organisation.
+     *
+     * Documents missing `orgId` are read as 'default' so legacy data stays
+     * readable by the legacy org while the backfill runs, rather than every
+     * existing record vanishing the moment these rules deploy.
+     */
+    function inMyOrg() {
+      return isSuperAdmin() || resource.data.get('orgId', 'default') == myOrgKey();
+    }
+
+    /** True when the document being written is stamped with the caller's org. */
+    function writingToMyOrg() {
+      return isSuperAdmin() || request.resource.data.get('orgId', 'default') == myOrgKey();
+    }
+
     // Managers, HR and admins can act on approval workflows.
     function isManager() {
       return isSignedIn() &&
@@ -293,8 +329,13 @@ service cloud.firestore {
     // actions (e.g. submitting their own leave/expense requests).
     // -------------------------------------------------------------------
     match /employees/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     // Salary data lives in its own collection, split out of the
@@ -303,14 +344,24 @@ service cloud.firestore {
     // Listing stays administrators-only: there is no per-employee compensation
     // query the app needs, and an employee reads their own by id.
     match /employee_compensation/{employeeId} {
-      allow get: if isOrgAdmin() || isSelf(employeeId);
-      allow list: if isOrgAdmin();
-      allow write: if isOrgAdmin();
+      allow get: if inMyOrg() && (isOrgAdmin() || isSelf(employeeId));
+      allow list: if isOrgAdmin() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /attendance/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     // -------------------------------------------------------------------
@@ -329,28 +380,34 @@ service cloud.firestore {
     // where('managerChainIds','array-contains',...).
     // -------------------------------------------------------------------
     match /leave_requests/{docId} {
-      allow get: if isOrgAdmin() ||
+      allow get: if inMyOrg() && (isOrgAdmin() ||
         isSelf(resource.data.employeeId) ||
-        managesSubject(resource.data);
-      allow list: if isOrgAdmin() ||
+        managesSubject(resource.data));
+      allow list: if inMyOrg() && (isOrgAdmin() ||
         isSelf(resource.data.employeeId) ||
-        managesSubject(resource.data);
+        managesSubject(resource.data));
 
       // Employees can create/update their own leave requests; managers and
       // administrators decide them.
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isOrgAdmin();
+      allow create: if isSignedIn() && writingToMyOrg();
+      allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
+        (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /leave_balances/{docId} {
-      allow get: if isOrgAdmin() ||
+      allow get: if inMyOrg() && (isOrgAdmin() ||
         isSelf(resource.data.employeeId) ||
-        managesSubject(resource.data);
-      allow list: if isOrgAdmin() ||
+        managesSubject(resource.data));
+      allow list: if inMyOrg() && (isOrgAdmin() ||
         isSelf(resource.data.employeeId) ||
-        managesSubject(resource.data);
-      allow write: if isOrgAdmin();
+        managesSubject(resource.data));
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     // -------------------------------------------------------------------
@@ -366,77 +423,132 @@ service cloud.firestore {
     // payslips carry the same figures per month and had been left open.
     // -------------------------------------------------------------------
     match /payslips/{docId} {
-      allow get: if isOrgAdmin() || isSelf(resource.data.employeeId);
-      allow list: if isOrgAdmin() || isSelf(resource.data.employeeId);
-      allow write: if isOrgAdmin();
+      allow get: if inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId));
+      allow list: if inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId));
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /payroll_runs/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /jobs/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /candidates/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /onboarding/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /goals/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /performance_reviews/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /expenses/{docId} {
-      allow read: if isSignedIn();
+      allow get, list: if isSignedIn() && inMyOrg();
       // Employees can submit/edit their own expense claims; admins manage all.
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isOrgAdmin();
+      allow create: if isSignedIn() && writingToMyOrg();
+      allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
+        (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /assets/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /billing_preferences/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow get, list: if isSignedIn() && inMyOrg();
+      // Billing is company configuration, not per-user state.
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /billing_invoices/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow get, list: if isSignedIn() && inMyOrg();
+      // Billing is company configuration, not per-user state.
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      // update/delete additionally check the stored document: without
+      // inMyOrg() here, overwriting another org's record while stamping
+      // your own orgId would be allowed, which is a takeover, not a write.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /helpdesk_tickets/{docId} {
-      allow read: if isSignedIn();
+      allow get, list: if isSignedIn() && inMyOrg();
       // Employees can raise/update their own tickets; admins manage all.
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isOrgAdmin());
-      allow delete: if isOrgAdmin();
+      allow create: if isSignedIn() && writingToMyOrg();
+      allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
+        (resource.data.raisedById == request.auth.uid || isOrgAdmin());
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     match /regularizations/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow delete: if isOrgAdmin();
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create: if isSignedIn() && writingToMyOrg();
+      allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
+        (resource.data.employeeId == request.auth.uid || isManager());
+      allow delete: if isOrgAdmin() && inMyOrg();
     }
 
     // -------------------------------------------------------------------
@@ -459,10 +571,6 @@ service cloud.firestore {
     // upload panel and reads a localStorage-backed directory to do it, so it
     // is an affordance, not a gate.
     // -------------------------------------------------------------------
-    function handbookOrgKey() {
-      return myOrgId() == null ? 'default' : myOrgId();
-    }
-
     match /handbook_versions/{versionId} {
       allow read: if isSignedIn();
       allow create: if isOrgAdmin() &&
@@ -496,7 +604,7 @@ service cloud.firestore {
     match /handbook/{orgKey} {
       allow read: if isSignedIn();
       allow create, update: if isOrgAdmin() &&
-        orgKey == handbookOrgKey() &&
+        orgKey == myOrgKey() &&
         request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.currentVersionId is string &&
         // The pointer may only name a version that exists and belongs to my

@@ -18,8 +18,9 @@
  *   seedFirestore().then(() => console.log('done'));
  */
 
-import { writeBatch, doc, collection, getDocs } from 'firebase/firestore';
+import { writeBatch, doc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase';
+import { DEFAULT_ORG_KEY } from './orgScope';
 
 // Static data imports
 import { employees } from '@/data/employees';
@@ -79,8 +80,19 @@ const SEEDED_COLLECTION_NAMES = [
     'regularizations',
 ];
 
-async function batchDeleteCollection(collectionPath: string): Promise<number> {
-    const snap = await getDocs(collection(db, collectionPath));
+/**
+ * Deletes one organisation's documents from a collection.
+ *
+ * Org-scoped rather than wholesale: an unfiltered delete here wiped every
+ * organisation's data, so one company clearing its demo dataset took the rest
+ * of the tenants with it. Documents written before multi-tenancy carry no
+ * `orgId` and match no equality filter, so they are invisible to this and must
+ * be given one first — see backfillOrgIds in ./orgBackfill.ts.
+ */
+async function batchDeleteCollection(collectionPath: string, orgKey: string): Promise<number> {
+    const snap = await getDocs(
+        query(collection(db, collectionPath), where('orgId', '==', orgKey)),
+    );
     const refs = snap.docs.map((d) => d.ref);
     for (let i = 0; i < refs.length; i += BATCH_SIZE) {
         const chunk = refs.slice(i, i + BATCH_SIZE);
@@ -97,6 +109,7 @@ async function batchDeleteCollection(collectionPath: string): Promise<number> {
  */
 export async function purgeSeededFirestoreData(
     onProgress?: (msg: string) => void,
+    orgKey: string = DEFAULT_ORG_KEY,
 ): Promise<void> {
     const log = (msg: string) => {
         console.log(`[purge] ${msg}`);
@@ -106,7 +119,7 @@ export async function purgeSeededFirestoreData(
     for (const name of SEEDED_COLLECTION_NAMES) {
         try {
             log(`Deleting ${name}…`);
-            const count = await batchDeleteCollection(name);
+            const count = await batchDeleteCollection(name, orgKey);
             log(`Deleted ${count} document(s) from ${name}.`);
         } catch (err) {
             log(`⚠️  Skipped ${name}: ${String(err)}`);
@@ -155,6 +168,7 @@ function buildManagerChains(): Map<string, string[]> {
 
 export async function seedFirestore(
     onProgress?: (msg: string) => void,
+    orgKey: string = DEFAULT_ORG_KEY,
 ): Promise<void> {
     const log = (msg: string) => {
         console.log(`[seed] ${msg}`);
@@ -204,13 +218,20 @@ export async function seedFirestore(
     for (const col of collections) {
         try {
             log(`Seeding ${col.name}…`);
+            // Every seeded document is stamped with the organisation it belongs
+            // to. Without this the records carry no orgId and the rules read
+            // them as the default org, which is right for the legacy dataset
+            // and wrong for anyone who seeds a demo into their own company.
+            const scoped = (col.data as Array<{ id?: string } & Record<string, unknown>>).map(
+                (item) => ({ ...item, orgId: orgKey }),
+            );
             // `collections` mixes several unrelated record shapes (Employee, Payslip,
             // Ticket, ...) in one array literal, so TS can't unify a single element
             // type across them. Every item does carry an `id` plus arbitrary other
             // fields though, which is exactly what `batchWrite` needs — expressing
             // that narrows the escape hatch from a bare `any` to a shape that still
             // catches obvious mistakes (e.g. passing a non-object).
-            await batchWrite(col.name, col.data as Array<{ id?: string } & Record<string, unknown>>);
+            await batchWrite(col.name, scoped);
         } catch (err) {
             log(`⚠️  Skipped ${col.name}: ${String(err)}`);
         }
