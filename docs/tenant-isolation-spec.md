@@ -9,9 +9,10 @@ Status: **implemented** on `fix/tenant-isolation-gaps`. The data-plane half
 predates this and is documented in [multi-tenancy-spec.md](multi-tenancy-spec.md);
 this document states the guarantees as invariants, extends them to the control
 plane (seed / purge / backfill / deploy), and records the six gaps found while
-writing it (§7) — all six now closed, with the verification in §9. **The rules
-are deployed**; the app and the per-organisation backfills are not. §10 has the
-remaining steps and why the ordering was not optional.
+writing it (§7) — all now closed, with the verification in §9. G7 was found
+while running the rollout and is the most serious of them: **a public sign-up
+read the default organisation.** §10 has the deploy state and why the ordering
+was not optional.
 
 This spec does not restate the `orgId` convention, the write-split rationale, or
 the backfill asymmetry — see the multi-tenancy spec §2–§4 for those.
@@ -106,6 +107,12 @@ client-owned. Nothing security-relevant may depend on it — the rule the projec
 already applies to the employee directory
 (`CLAUDE.md`, *Auth & roles*) and to handbook upload
 ([document-management-spec.md §1.1](document-management-spec.md)).
+
+**I9 — An account with no organisation is nobody.** A signed-in principal whose
+`users/{uid}` carries no `orgId` reads and writes nothing: not the default
+tenant, not any other. "Unassigned" and "the incumbent tenant" must never be the
+same value. Super admins are the exemption, as everywhere
+([firestore.rules `myOrgKey`](../firestore.rules)).
 
 ---
 
@@ -402,10 +409,12 @@ verification does this and the practice is required going forward: neutralising
 
 ---
 
-## 7. The six gaps, and how each was closed
+## 7. The gaps, and how each was closed
 
-Found while writing this against the code, then fixed on the same branch. Each
-entry states what was wrong, the change, and the test that fails without it.
+G1–G6 were found while writing this against the code. G7 was found while
+running the rollout for them, and is the most serious: it is not one tenant
+reading another, it is anyone at all reading the incumbent one. Each entry
+states what was wrong, the change, and the test that fails without it.
 
 **G1 — The handbook was readable across tenants. (I2, high.) — CLOSED.**
 `allow read: if isSignedIn()` on both `handbook_versions` and `handbook`, and
@@ -511,6 +520,49 @@ recomputing from Firestore would rewrite the stale chain and report success.
 Best-effort like the HR role sync beside it; the Settings backfill still repairs
 anything missed.
 
+**G7 — A public sign-up read the default organisation. (I9, critical.) —
+CLOSED.**
+Found while running the rollout, not while writing this. The login page offered
+self-registration (`signUpEmail`), a new account got `role: 'employee'` and **no
+`orgId`**, and `myOrgKey()` defined "no orgId" as `'default'`. So anyone who
+signed up landed inside the incumbent tenant. Confirmed against the live
+project with a throwaway account, since created and deleted: `employees`
+returned rows, `org_settings` returned rows. Everything on the
+`isSignedIn() && inMyOrg()` tier was exposed — directory, attendance, jobs,
+candidates, expenses, assets, goals, reviews, onboarding, payroll runs,
+helpdesk, billing. `payslips` correctly returned 403, so the per-employee tier
+from the salary/leave spec held.
+
+This is not one tenant reading another. It is the failure mode the whole
+document is about, reached by the front door.
+
+The root cause is the `'default'` sentinel doing two jobs. For a **document** it
+is right: one written before multi-tenancy is legacy data belonging to the
+legacy org, which is what `orgKeyOf` encodes and what kept the migration from
+breaking every existing record. For a **person** it is wrong: a document with no
+orgId is legacy data, an account with no orgId is a stranger.
+
+*Fix, both halves.*
+  - `myOrgKey()` resolves an unassigned account to a sentinel that matches
+    nothing. Safe only because the identity backfill had already stamped every
+    legitimate default-org account — the sequencing was luck, and §10 now states
+    the dependency so it cannot be run the other way round. Super admins keep
+    `'default'`: they deliberately carry no `orgId`, `isSuperAdmin()`
+    short-circuits the checks that matter, and a few rules compare the value
+    directly, so changing it for them would revoke capabilities unrelated to
+    this. The sentinel contains no `__`, because the `org_settings` rule splits
+    a document id on that separator.
+  - Self-registration is gone — the form, and `signUpEmail` from the auth
+    context, so there is no callable path left. Accounts are created the way
+    every other account already is: super-admin org provisioning, or an
+    administrator attaching an existing one. Closing the door as well as the
+    room behind it, because the rules fix protects against the next way in and
+    the removal protects against this one.
+
+*Discriminates:* 3 failures in `multitenancy.rules.test.mjs`. One of those
+asserts sign-in still works — an account that fails closed must still read its
+own profile, or it is broken rather than merely unauthorised.
+
 **Residual, not a gap: super-admin exemption.** A super admin bypasses
 `inMyOrg()` and `writingToMyOrg()` by design, so their client-side active tenant
 key is the only thing keeping their writes in the right namespace. The
@@ -547,8 +599,9 @@ run. Any future spec that writes configuration owes the same.
 
 ## 9. Verification
 
-- `npm run build` clean. **272/272** rules tests. **92 passed, 1 skipped** across
-  the Chromium E2E projects (the skip is the deploy-gated test above).
+- `npm run build` clean. **284/284** rules tests. **93 passed** across the
+  Chromium E2E projects, the deploy-gated test included now that the rules are
+  out.
 - Every fix shown to discriminate by neutralising it and re-running:
 
   | Neutralised | Failures |
@@ -557,6 +610,7 @@ run. Any future spec that writes configuration owes the same.
   | `users` read → `isSignedIn()` | 6 |
   | `org_settings` read → `isSignedIn()` | 3 |
   | identity keys → `myOrgId()` | 1 |
+  | unassigned account → `'default'` | 3 |
   | `DatabaseSection` gate → always true | the E2E forged-grant test |
 
 - G5 verified in the real app: an employee persona writes a permission matrix
@@ -588,8 +642,8 @@ it is reversed.
    the Admin dashboard's `users` query, which the old bundle issues unfiltered
    and which fails for an **HR manager** until step 2. Platform admins and super
    admins are unaffected, and no employee-facing screen reads `users`.
-2. **Deploy the app** — merge the branch; `main` auto-deploys hosting. This
-   clears the HR-manager exception above and turns `org_settings` on.
+2. ~~**Deploy the app**~~ **Done** — merged; `main` auto-deployed hosting. This
+   cleared the HR-manager exception above and turned `org_settings` on.
 3. **Run the backfills, per organisation**, dry run then apply:
    Settings → Database → "Backfill organization IDs" (now also stamps the
    identity collections and publishes this browser's configuration), then
@@ -599,6 +653,12 @@ it is reversed.
    already published.
 4. ~~**Run the deploy-gated E2E test.**~~ **Done** — passing with
    `E2E_ORG_SETTINGS_DEPLOYED=true` against the deployed rules.
+5. **Deploy the rules again for G7, and only after step 3.** This is a hard
+   dependency, not a preference: the G7 rule tells a legitimate default-org
+   account apart from a stranger *by the stamp the identity backfill writes*.
+   Deploy it against un-stamped accounts and you lock out every one of them.
+   Step 3 has been run for the default organisation; any organisation whose
+   accounts have not been stamped must be done first.
 
 Step 3 matters for a reason §4 of [multi-tenancy-spec.md](multi-tenancy-spec.md)
 sets out: an un-stamped document is permitted but unreachable. Two new instances

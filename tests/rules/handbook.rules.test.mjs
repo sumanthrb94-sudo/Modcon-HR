@@ -39,8 +39,11 @@ const USERS = {
   managerA: { uid: 'manager-a', email: 'manager-a@example.com', role: 'manager', orgId: 'org-a' },
   employeeA: { uid: 'employee-a', email: 'employee-a@example.com', role: 'employee', orgId: 'org-a' },
   employeeB: { uid: 'employee-b', email: 'employee-b@example.com', role: 'employee', orgId: 'org-b' },
-  // No orgId: predates multi-org support, resolves to the 'default' org key.
-  legacyEmployee: { uid: 'legacy-employee', email: 'legacy-employee@example.com', role: 'employee' },
+  // Predates multi-org support, shown as it looks *after* the identity
+  // backfill: stamped with the 'default' sentinel explicitly. An account with
+  // no orgId at all is now unassigned and reads nothing — see G7 in
+  // docs/tenant-isolation-spec.md.
+  legacyEmployee: { uid: 'legacy-employee', email: 'legacy-employee@example.com', role: 'employee', orgId: 'default' },
 };
 
 let testEnv;

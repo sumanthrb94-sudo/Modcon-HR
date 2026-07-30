@@ -109,8 +109,37 @@ service cloud.firestore {
     // `where('orgId','==',null)` would return nothing for un-backfilled data;
     // see the backfill in src/lib/orgBackfill.ts.
     // -------------------------------------------------------------------
+    /**
+     * The caller's organisation key.
+     *
+     * An account with no `orgId` is **unassigned**, and unassigned matches
+     * nothing. It used to resolve to 'default', which made "not yet given an
+     * organisation" and "a member of the incumbent organisation" the same
+     * value — so a self-registered account landed inside the default tenant and
+     * read its directory, attendance, jobs, expenses and assets. That sentinel
+     * is right for a *document* written before multi-tenancy (see orgKeyOf) and
+     * wrong for a *person*: a document with no orgId is legacy data, an account
+     * with no orgId is a stranger.
+     *
+     * Safe to fail closed only because every legitimate default-org account now
+     * carries `orgId: 'default'` explicitly — backfillIdentityOrgIds in
+     * src/lib/orgBackfill.ts stamps them, and it must be run before this
+     * deploys or those accounts lose access. See G7 in
+     * docs/tenant-isolation-spec.md.
+     *
+     * Super admins keep 'default'. They deliberately carry no orgId — they
+     * administer every organisation rather than belonging to one — and
+     * isSuperAdmin() short-circuits the checks that matter, but a handful of
+     * rules compare this value directly, and changing it for them would revoke
+     * capabilities that have nothing to do with this.
+     *
+     * The sentinel contains no '__': the org_settings rule splits a document id
+     * on that separator, and a sentinel containing it would compare as ''.
+     */
     function myOrgKey() {
-      return myOrgId() == null ? 'default' : myOrgId();
+      return myOrgId() != null
+        ? myOrgId()
+        : (isSuperAdmin() ? 'default' : '~unassigned~');
     }
 
     /**

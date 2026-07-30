@@ -6,10 +6,8 @@ import { useAuth } from '@/lib/auth';
 
 export function LoginPage() {
     const navigate = useNavigate();
-    const { user, loading, error, clearError, signInEmail, signUpEmail } = useAuth();
+    const { user, loading, error, clearError, signInEmail } = useAuth();
 
-    const [isSignUp, setIsSignUp] = useState(false);
-    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -24,11 +22,7 @@ export function LoginPage() {
         event.preventDefault();
         setSubmitting(true);
         try {
-            if (isSignUp) {
-                await signUpEmail(name, email, password);
-            } else {
-                await signInEmail(email, password);
-            }
+            await signInEmail(email, password);
         } catch {
             // error surfaced via context
         } finally {
@@ -46,24 +40,10 @@ export function LoginPage() {
                         </div>
                         <p className="font-bold text-ink-900">ModCon HR</p>
                     </div>
-                    <h1 className="text-2xl font-bold text-ink-900">
-                        {isSignUp ? 'Create your account' : 'Sign in to continue'}
-                    </h1>
+                    <h1 className="text-2xl font-bold text-ink-900">Sign in to continue</h1>
                     <p className="mt-1 text-sm text-ink-500">Use your work email and password.</p>
 
                     <form className="mt-6 space-y-4" onSubmit={handlePasswordSubmit}>
-                        {isSignUp && (
-                            <div>
-                                <label className="label" htmlFor="name">Full name</label>
-                                <input
-                                    id="name"
-                                    className="input"
-                                    placeholder="Your name"
-                                    value={name}
-                                    onChange={(event) => { setName(event.target.value); if (error) clearError(); }}
-                                />
-                            </div>
-                        )}
                         <div>
                             <label className="label" htmlFor="username">
                                 Email
@@ -92,7 +72,7 @@ export function LoginPage() {
                                 type="password"
                                 className="input"
                                 placeholder="Enter password"
-                                autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                                autoComplete="current-password"
                                 value={password}
                                 onChange={(event) => {
                                     setPassword(event.target.value);
@@ -106,7 +86,7 @@ export function LoginPage() {
                         {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
 
                         <Button type="submit" className="w-full justify-center" disabled={submitting}>
-                            {submitting ? <Loader2 className="animate-spin" size={16} /> : isSignUp ? 'Create account' : 'Sign In'}
+                            {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Sign In'}
                         </Button>
 
                         {/*
@@ -129,8 +109,7 @@ export function LoginPage() {
                           * bundle, so this only keeps the secret out of git, not out of
                           * the shipped app.
                           */}
-                        {!isSignUp && (
-                            <>
+                        <>
                                 <div className="relative flex py-2 items-center">
                                     <div className="flex-grow border-t border-ink-150"></div>
                                     <span className="flex-shrink mx-3 text-[10px] uppercase tracking-wider text-ink-400 font-semibold">Quick Demo Login</span>
@@ -157,18 +136,24 @@ export function LoginPage() {
                                         Employee Profile
                                     </Button>
                                 </div>
-                            </>
-                        )}
+                        </>
 
+                        {/*
+                          * No self-registration. An account created here carried no
+                          * `orgId`, and "no orgId" used to mean the default organisation —
+                          * so anyone who signed up landed inside ModCon Builders' tenant
+                          * and could read its directory, attendance, jobs, expenses and
+                          * assets. Verified against production before this was removed.
+                          *
+                          * The rules now fail closed for an unassigned account as well
+                          * (myOrgKey in firestore.rules), so this is the outer of two
+                          * doors rather than the only one. Accounts are created the way
+                          * every other account in the system already is: super-admin org
+                          * provisioning, or an administrator attaching an existing one.
+                          * See G7 in docs/tenant-isolation-spec.md.
+                          */}
                         <p className="text-center text-sm text-ink-500">
-                            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-                            <button
-                                type="button"
-                                className="font-semibold text-brand-600 hover:underline"
-                                onClick={() => { setIsSignUp((v) => !v); clearError(); }}
-                            >
-                                {isSignUp ? 'Sign in' : 'Sign up'}
-                            </button>
+                            No account? Your organization&rsquo;s administrator creates one for you.
                         </p>
                     </form>
                 </section>
