@@ -53,6 +53,8 @@ import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { backfillOrgIds } from '@/lib/orgBackfill';
+import { backfillEmployeeLinks, backfillManagerChains } from '@/lib/accessBackfill';
+import { useAuth } from '@/lib/auth';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
 import { belongsToActiveOrg, getActiveOrgKey, orgScopedKey, DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import type { Holiday } from '@/types';
@@ -2378,6 +2380,32 @@ function DatabaseSection() {
   const [resetLogs, setResetLogs] = useState<string[]>([]);
   const [backfillStatus, setBackfillStatus] = useState<'idle' | 'running' | 'dry-run' | 'done' | 'error'>('idle');
   const [backfillLogs, setBackfillLogs] = useState<string[]>([]);
+  const [accessStatus, setAccessStatus] = useState<'idle' | 'running' | 'dry-run' | 'done' | 'error'>('idle');
+  const [accessLogs, setAccessLogs] = useState<string[]>([]);
+  const { profile } = useAuth();
+
+  // Links accounts to employee records and refreshes the reporting chains on
+  // leave documents. Both grant access the rules currently withhold — they fail
+  // closed — so both are dry-run first, like the orgId backfill above.
+  async function handleAccessBackfill(dryRun: boolean) {
+    setAccessStatus('running');
+    setAccessLogs([]);
+    const onProgress = (msg: string) => setAccessLogs((prev) => [...prev, msg]);
+    try {
+      await backfillEmployeeLinks({
+        orgKey: getActiveOrgKey(),
+        dryRun,
+        linkedBy: profile?.uid ?? 'backfill',
+        onProgress,
+      });
+      onProgress('---');
+      await backfillManagerChains({ orgKey: getActiveOrgKey(), dryRun, onProgress });
+      setAccessStatus(dryRun ? 'dry-run' : 'done');
+    } catch (err) {
+      onProgress(`Error: ${String(err)}`);
+      setAccessStatus('error');
+    }
+  }
 
   // Two-stage on purpose: this writes to every tenant collection in the
   // database, so the count is shown before anything is changed. Same shape as
@@ -2452,6 +2480,48 @@ function DatabaseSection() {
       title="Firestore Database"
       subtitle="Seed Firestore with the built-in mock data. Safe to re-run — existing documents are overwritten."
     >
+      <Card className="mb-4">
+        <CardHeader
+          title="Backfill employee access mapping"
+          subtitle="Links accounts to employee records, and refreshes reporting chains on leave"
+        />
+        <div className="space-y-4">
+          <p className="text-sm text-ink-500">
+            Employees read their own payslips and leave through an
+            administrator-authored <code>employee_links</code> record, and managers read their
+            reports&rsquo; leave through the reporting chain stored on each leave document. Both
+            fail closed: without them nobody sees their own salary and no manager sees their
+            team&rsquo;s leave. Accounts are matched to employee records <strong>by email, and only
+            when exactly one employee carries that address</strong> — anything ambiguous is skipped
+            and listed rather than guessed.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="secondary"
+              icon={<Database size={15} />}
+              onClick={() => handleAccessBackfill(true)}
+              disabled={accessStatus === 'running'}
+            >
+              {accessStatus === 'running' ? 'Scanning…' : 'Dry run'}
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Database size={15} />}
+              onClick={() => handleAccessBackfill(false)}
+              disabled={accessStatus === 'running' || accessStatus === 'idle'}
+              title={accessStatus === 'idle' ? 'Run the dry run first' : undefined}
+            >
+              Apply mapping
+            </Button>
+          </div>
+          {accessLogs.length > 0 && (
+            <pre className="max-h-56 overflow-auto rounded-lg bg-ink-900 p-3 text-xs text-ink-100">
+              {accessLogs.join('\n')}
+            </pre>
+          )}
+        </div>
+      </Card>
+
       <Card className="mb-4">
         <CardHeader
           title="Backfill organization IDs"
