@@ -104,12 +104,30 @@
       "Bash(E2E_BROWSERS=chromium npx playwright test tests/e2e/attendance.spec.ts --project=app)",
       "Bash(E2E_BROWSERS=chromium npx playwright test --project=app)",
       "Bash(git merge *)",
-      "mcp__playwright__browser_take_screenshot"
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(E2E_BROWSERS=chromium npx playwright test tests/e2e/regularizations.spec.ts --project=app --workers=1)",
+      "Bash(E2E_BROWSERS=chromium npx playwright test tests/e2e/check-in-out.spec.ts --project=app --workers=1)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(node --experimental-strip-types -e ' *)",
+      "Bash(npx tsx *)",
+      "Bash(PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test tests/e2e/documents.spec.ts --project=role-employee --project=role-manager --project=role-admin)",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_snapshot",
+      "Bash(python3 -c *)",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_type",
+      "Bash(pkill -f \"firebase-tools\")",
+      "Bash(pkill -f \"emulators:start\")",
+      "Bash(graphify update *)",
+      "Bash(npx --yes firebase-tools@13 deploy --only firestore:rules --project modcon-hr)",
+      "Bash(pkill -f vite)"
     ],
     "additionalDirectories": [
       "/dev",
       "/private/tmp",
-      "/tmp"
+      "/tmp",
+      "/Users/Dell/Modcon-HR/src/data"
     ]
   }
 }
