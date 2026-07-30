@@ -281,15 +281,26 @@ service cloud.firestore {
       // write an orgId — including onto their own profile, which would
       // otherwise move them into another company's data namespace and grant
       // read of its /organizations record.
+      // An administrator creating an account for someone else must stamp it
+      // with an organisation. Without that clause the invite flow could mint an
+      // account that belongs to nobody — the exact shape G7 was about, arriving
+      // by a different route. A self-create still carries no orgId, and must
+      // not: naming your own organisation would be a self-service tenant
+      // switch. That account simply reads nothing until an administrator
+      // assigns it.
       allow create: if isSignedIn() && (
         (request.auth.uid == uid &&
           selfCreateRoleIsValid(request.resource.data) &&
           !('orgId' in request.resource.data)) ||
-        (isAdmin() && (request.resource.data.get('superAdmin', false) == false || isSuperAdmin())) ||
+        (isAdmin() &&
+          (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()) &&
+          request.resource.data.orgId is string &&
+          request.resource.data.orgId.size() > 0) ||
         (isHR() &&
           request.resource.data.role != 'admin' &&
           request.resource.data.get('superAdmin', false) == false &&
-          request.resource.data.get('orgId', null) == myOrgId())
+          orgKeyOf(request.resource.data) == myOrgKey() &&
+          request.resource.data.orgId is string)
       );
       allow update: if isSignedIn() && (
         (request.auth.uid == uid &&

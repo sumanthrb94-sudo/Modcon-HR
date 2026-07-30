@@ -563,6 +563,42 @@ orgId is legacy data, an account with no orgId is a stranger.
 asserts sign-in still works — an account that fails closed must still read its
 own profile, or it is broken rather than merely unauthorised.
 
+**G8 — Removing self-registration left no way to onboard anyone. (Product gap
+created by G7.) — CLOSED.**
+Not an isolation defect; the consequence of fixing one. Org provisioning mints
+exactly one HR administrator per organisation and "Set HR admin" attaches an
+account that already exists, so with sign-up gone an ordinary employee could
+only be created from the Firebase console.
+
+*Fix.* Admin dashboard → **Create account**
+([accountInvites.ts](../src/lib/accountInvites.ts)). It is the shape G7's fix
+implied all along: an account is created **by someone who already holds the
+privilege**, and stamped with their organisation at the moment of creation, so
+an unassigned account never comes into existence rather than being tolerated and
+then denied. The rules now require that stamp — an administrator cannot create a
+profile with no `orgId` — so the route that replaced self-registration cannot
+recreate what self-registration did.
+
+Same secondary-`FirebaseApp` trick as org provisioning, because
+`createUserWithEmailAndPassword` signs the client in as whoever it just created
+and the inviter's session has to survive. `admin` is not offered: it is granted
+on an existing profile by an existing admin, never handed out at creation.
+
+It also closes the hook `docs/multi-tenancy-spec.md` §8 recorded as missing —
+"`employee_links` is not populated automatically… new joiners still need linking
+as they are hired". An invite links the account to its employee record when
+exactly one in that organisation carries the address, and reports rather than
+guesses otherwise, matching the backfill it mirrors. Without it every invite
+would have needed a follow-up backfill before the person could see their own
+payslip.
+
+The temporary password is shown once and never stored. Nothing emails it —
+there is no mail delivery in this app, and the dialog says so rather than
+implying one.
+
+*Discriminates:* 1 failure in `multitenancy.rules.test.mjs` — "nobody can create
+an account with no organisation".
+
 **Residual, not a gap: super-admin exemption.** A super admin bypasses
 `inMyOrg()` and `writingToMyOrg()` by design, so their client-side active tenant
 key is the only thing keeping their writes in the right namespace. The
@@ -599,7 +635,7 @@ run. Any future spec that writes configuration owes the same.
 
 ## 9. Verification
 
-- `npm run build` clean. **284/284** rules tests. **93 passed** across the
+- `npm run build` clean. **291/291** rules tests. **93 passed** across the
   Chromium E2E projects, the deploy-gated test included now that the rules are
   out.
 - Every fix shown to discriminate by neutralising it and re-running:
@@ -611,6 +647,7 @@ run. Any future spec that writes configuration owes the same.
   | `org_settings` read → `isSignedIn()` | 3 |
   | identity keys → `myOrgId()` | 1 |
   | unassigned account → `'default'` | 3 |
+  | invite org-stamp requirement removed | 1 |
   | `DatabaseSection` gate → always true | the E2E forged-grant test |
 
 - G5 verified in the real app: an employee persona writes a permission matrix

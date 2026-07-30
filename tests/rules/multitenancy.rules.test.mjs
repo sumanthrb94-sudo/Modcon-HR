@@ -515,6 +515,64 @@ describe('multi-tenancy — an unassigned account is nobody', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Creating an account for a colleague (the invite flow, src/lib/accountInvites.ts).
+//
+// The counterpart to G7: removing self-registration left no way to onboard an
+// employee, and the way that replaces it must not be able to recreate the
+// problem. An administrator creating a profile has to stamp an organisation on
+// it — an account belonging to nobody is exactly what G7 was.
+// ---------------------------------------------------------------------------
+describe('multi-tenancy — an administrator creates accounts in their own org', () => {
+  beforeEach(seed);
+
+  const invitee = (over = {}) => ({
+    uid: 'invited-1', email: 'invited@example.com', displayName: 'Invited',
+    role: 'employee', orgId: 'org-a', superAdmin: false, ...over,
+  });
+
+  it('HR creates an account in their own organisation', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'users', 'invited-1'), invitee()));
+  });
+
+  it('HR cannot create one in another organisation', async () => {
+    await assertFails(setDoc(doc(as(USERS.hrB), 'users', 'invited-1'), invitee({ orgId: 'org-a' })));
+  });
+
+  it('nobody can create an account with no organisation', async () => {
+    // The G7 shape, arriving by a different route.
+    const { orgId, ...noOrg } = invitee();
+    await assertFails(setDoc(doc(as(USERS.hrA), 'users', 'invited-1'), noOrg));
+    await assertFails(setDoc(doc(as(USERS.superA), 'users', 'invited-1'), noOrg));
+  });
+
+  it('HR cannot mint an admin or a super admin', async () => {
+    await assertFails(setDoc(doc(as(USERS.hrA), 'users', 'invited-1'), invitee({ role: 'admin' })));
+    await assertFails(setDoc(doc(as(USERS.hrA), 'users', 'invited-1'), invitee({ superAdmin: true })));
+  });
+
+  it('a manager or employee cannot create an account at all', async () => {
+    await assertFails(setDoc(doc(as(USERS.managerA), 'users', 'invited-1'), invitee()));
+    await assertFails(setDoc(doc(as(USERS.employeeA), 'users', 'invited-1'), invitee()));
+  });
+
+  it('the invite links the account to an employee record in the same org', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'employee_links', 'invited-1'), {
+      uid: 'invited-1', employeeId: 'emp-a', orgId: 'org-a', linkedBy: USERS.hrA.uid,
+    }));
+  });
+
+  it('a self-created profile still carries no organisation, and still may not', async () => {
+    // Sign-in's own upsert. It must not name an org — that would be a
+    // self-service tenant switch — and the account reads nothing until an
+    // administrator assigns it.
+    await assertFails(setDoc(doc(as(UNASSIGNED), 'users', UNASSIGNED.uid), {
+      uid: UNASSIGNED.uid, email: UNASSIGNED.email, displayName: 'x',
+      role: 'employee', orgId: 'org-a',
+    }));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Per-organisation feature flags.
 //
 // One Firebase project means a code change reaches every tenant at once, so
