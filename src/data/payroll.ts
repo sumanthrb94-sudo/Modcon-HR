@@ -4,6 +4,7 @@ import { employees } from '@/data/employees';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
+import { getAttendanceRecords } from '@/data/attendance';
 
 // ---------------------------------------------------------------------------
 // Salary component builder
@@ -18,9 +19,45 @@ export interface PayslipComponents {
   pf: number;
   tax: number;
   otherDeductions: number;
+  /** Loss of pay for unpaid absence — see `lossOfPayDays`. */
+  lossOfPay: number;
+  /** Days of unpaid absence the deduction was calculated from. */
+  lopDays: number;
+  /** Working days in the month, the divisor for the per-day rate. */
+  payableDays: number;
   grossEarnings: number;
   totalDeductions: number;
   netPay: number;
+}
+
+/** Days in a `YYYY-MM` month. */
+function daysInMonth(month: string): number {
+  const year = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  return new Date(Date.UTC(year, m, 0)).getUTCDate();
+}
+
+/**
+ * Unpaid absence for an employee in a month, read from attendance.
+ *
+ * Attendance is the single source for pay deductions: a day is deducted
+ * because the attendance record says the person was absent, never because a
+ * leave balance went negative or someone keyed a number into payroll. That
+ * keeps one register authoritative — if a day is wrong, it is fixed on the
+ * attendance sheet (or via a regularization) and payroll follows.
+ *
+ * Only `Absent` counts. `On Leave` is approved and paid, `Holiday` and
+ * `Weekend` are not working days, and `Half Day` deducts half.
+ */
+export function lossOfPayDays(employeeId: string, month: string): number {
+  const records = getAttendanceRecords().filter(
+    (r) => r.employeeId === employeeId && r.date.startsWith(month),
+  );
+  return records.reduce((days, r) => {
+    if (r.status === 'Absent') return days + 1;
+    if (r.status === 'Half Day') return days + 0.5;
+    return days;
+  }, 0);
 }
 
 function computeTax(grossAnnual: number): number {
@@ -33,7 +70,10 @@ function computeTax(grossAnnual: number): number {
   return 140000 + Math.round((grossAnnual - 1500000) * 0.3);
 }
 
-export function buildPayslipComponents(employee: Employee): PayslipComponents {
+export function buildPayslipComponents(
+  employee: Employee,
+  month: string = currentMonthIso(),
+): PayslipComponents {
   const monthly = Math.round(employee.ctc / 12);
   const basic = Math.round(monthly * 0.4);
   const hra = Math.round(monthly * 0.2);
@@ -47,14 +87,26 @@ export function buildPayslipComponents(employee: Employee): PayslipComponents {
   const tax = Math.round(annualTax / 12);
   const otherDeductions = employee.ctc >= 5000000 ? Math.round(monthly * 0.005) : 0;
 
-  const totalDeductions = pf + tax + otherDeductions;
+  // Attendance-driven loss of pay. PF and income tax are statutory and are not
+  // absence deductions, so they stand alongside this rather than being
+  // replaced by it — "deductions based on attendance" governs pay withheld for
+  // not working, not the employee's tax liability.
+  const payableDays = daysInMonth(month);
+  const lopDays = lossOfPayDays(employee.id, month);
+  const lossOfPay = Math.round((grossEarnings / payableDays) * lopDays);
+
+  const totalDeductions = pf + tax + otherDeductions + lossOfPay;
   const netPay = grossEarnings - totalDeductions;
 
-  return { monthly, basic, hra, specialAllowance, bonus, pf, tax, otherDeductions, grossEarnings, totalDeductions, netPay };
+  return {
+    monthly, basic, hra, specialAllowance, bonus,
+    pf, tax, otherDeductions, lossOfPay, lopDays, payableDays,
+    grossEarnings, totalDeductions, netPay,
+  };
 }
 
 export function buildPayslip(employee: Employee, month = currentMonthIso(), status: PayrollRunStatus = 'Paid'): Payslip {
-  const c = buildPayslipComponents(employee);
+  const c = buildPayslipComponents(employee, month);
   return {
     id: `ps-${employee.id}-${month}`,
     employeeId: employee.id,
@@ -65,7 +117,11 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     bonus: c.bonus,
     pf: c.pf,
     tax: c.tax,
-    otherDeductions: c.otherDeductions,
+    // Loss of pay is folded into otherDeductions on the stored payslip: the
+    // Payslip type is the shared shape and gaining a field would ripple through
+    // Firestore documents and the seed. The breakdown stays available from
+    // buildPayslipComponents for the payslip view.
+    otherDeductions: c.otherDeductions + c.lossOfPay,
     grossEarnings: c.grossEarnings,
     totalDeductions: c.totalDeductions,
     netPay: c.netPay,
@@ -111,7 +167,9 @@ function endOfMonth(month: string): Date {
 export const payrollRuns: PayrollRun[] = isMockDataCleared() ? [] : runMonths.map((rm) => {
   const asOf = endOfMonth(rm.month);
   const onRoll = employees.filter((employee) => new Date(employee.dateOfJoining) <= asOf);
-  const components = onRoll.map(buildPayslipComponents);
+  // Wrapped, not passed by reference: map()'s index argument would otherwise
+  // arrive as `month` and silently mis-scope the attendance lookup.
+  const components = onRoll.map((employee) => buildPayslipComponents(employee, rm.month));
 
   return {
     id: `pr-${rm.month}`,

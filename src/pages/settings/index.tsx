@@ -17,7 +17,7 @@ import { getCompanyProfile, saveCompanyProfile, type CompanyProfile as CompanyPr
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
-import { getLeavePolicies, saveLeavePolicies, type LeavePolicy } from '@/data/leavePolicies';
+import { getLeavePolicies, saveLeavePolicies, isMonthlyPolicy, type LeavePolicy, type LeaveAccrual } from '@/data/leavePolicies';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import {
   APP_MODULES,
@@ -822,6 +822,9 @@ function LeavePolicies() {
   const [editingPolicyId, setEditingPolicyId] = useState('');
   const [editingType, setEditingType] = useState('');
   const [editingAnnual, setEditingAnnual] = useState('12');
+  const [editingAccrual, setEditingAccrual] = useState<LeaveAccrual>('monthly');
+  const [editingMonthlyAccrual, setEditingMonthlyAccrual] = useState('1');
+  const [editingMinTenure, setEditingMinTenure] = useState('0');
   const [editingApplicable, setEditingApplicable] = useState('All employees');
   const [editingCarryForward, setEditingCarryForward] = useState(false);
   const [editingEncashment, setEditingEncashment] = useState(false);
@@ -830,6 +833,9 @@ function LeavePolicies() {
   const [newAnnual, setNewAnnual] = useState('12');
   const [newApplicable, setNewApplicable] = useState('All employees');
   const [newCarryForward, setNewCarryForward] = useState(false);
+  const [newAccrual, setNewAccrual] = useState<LeaveAccrual>('monthly');
+  const [newMonthlyAccrual, setNewMonthlyAccrual] = useState(1);
+  const [newMinTenureMonths, setNewMinTenureMonths] = useState(0);
   const [newEncashment, setNewEncashment] = useState(false);
   const [newHalfDay, setNewHalfDay] = useState(true);
   const [addError, setAddError] = useState('');
@@ -853,6 +859,9 @@ function LeavePolicies() {
     setEditingPolicyId('');
     setEditingType('');
     setEditingAnnual('12');
+    setEditingAccrual('monthly');
+    setEditingMonthlyAccrual('1');
+    setEditingMinTenure('0');
     setEditingApplicable('All employees');
     setEditingCarryForward(false);
     setEditingEncashment(false);
@@ -864,6 +873,9 @@ function LeavePolicies() {
     setEditingPolicyId(policy.id);
     setEditingType(policy.type);
     setEditingAnnual(String(policy.annual));
+    setEditingAccrual(policy.accrual);
+    setEditingMonthlyAccrual(String(policy.monthlyAccrual));
+    setEditingMinTenure(String(policy.minTenureMonths));
     setEditingApplicable(policy.applicable);
     setEditingCarryForward(policy.carryForward);
     setEditingEncashment(policy.encashment);
@@ -892,10 +904,16 @@ function LeavePolicies() {
     const next: LeavePolicy = {
       id: `lp${Date.now()}`,
       type: leaveType,
-      annual: annualQuota,
+      annual: newAccrual === 'monthly' ? newMonthlyAccrual * 12 : annualQuota,
+      accrual: newAccrual,
+      monthlyAccrual: newAccrual === 'monthly' ? newMonthlyAccrual : 0,
       carryForward: newCarryForward,
+      // Monthly accrual carries within the year by construction; surviving the
+      // year-end is the separate switch, and defaults off to match the policy.
+      carryForwardBeyondYear: newAccrual === 'monthly' ? false : newCarryForward,
       encashment: newEncashment,
       halfDay: newHalfDay,
+      minTenureMonths: newMinTenureMonths,
       applicable: newApplicable.trim() || 'All employees',
     };
     const updated = [...policies, next];
@@ -923,7 +941,14 @@ function LeavePolicies() {
         ? {
             ...policy,
             type: leaveType,
-            annual: annualQuota,
+            // A monthly policy's yearly figure is always derived, never typed —
+            // see normalizePolicy in data/leavePolicies.ts.
+            annual: editingAccrual === 'monthly'
+              ? Number(editingMonthlyAccrual) * 12
+              : annualQuota,
+            accrual: editingAccrual,
+            monthlyAccrual: editingAccrual === 'monthly' ? Number(editingMonthlyAccrual) : 0,
+            minTenureMonths: Math.max(0, Number(editingMinTenure) || 0),
             applicable: editingApplicable.trim() || 'All employees',
             carryForward: editingCarryForward,
             encashment: editingEncashment,
@@ -951,11 +976,15 @@ function LeavePolicies() {
     },
     {
       key: 'annual',
-      header: 'Annual Quota',
-      align: 'center',
-      render: (r) => (
-        <span className="font-semibold text-ink-800">
-          {r.annual === 0 ? 'Unlimited' : `${r.annual} days`}
+      header: 'Entitlement',
+      // Monthly policies deliberately never show an annual figure — the
+      // organisation grants Casual and Sick a month at a time, and displaying
+      // "12 days a year" invites someone to take twelve in April.
+      render: (r: LeavePolicy) => (
+        <span className="text-ink-700">
+          {isMonthlyPolicy(r)
+            ? `${r.monthlyAccrual} day${r.monthlyAccrual === 1 ? '' : 's'}/month`
+            : r.annual === 0 ? 'Unlimited' : `${r.annual} days/year`}
         </span>
       ),
     },
@@ -1060,6 +1089,35 @@ function LeavePolicies() {
               setAddError('');
             }}
             hint="Use 0 for unlimited"
+            disabled={newAccrual === 'monthly'}
+          />
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Accrual</label>
+            <Select
+              ariaLabel="Accrual"
+              value={newAccrual}
+              onChange={(v) => setNewAccrual(v as LeaveAccrual)}
+              options={[
+                { label: 'Monthly — accrues each month, resets 1 April', value: 'monthly' },
+                { label: 'Annual — granted in full each year', value: 'annual' },
+              ]}
+            />
+          </div>
+          {newAccrual === 'monthly' && (
+            <Field
+              label="Days per month"
+              type="number"
+              value={String(newMonthlyAccrual)}
+              onChange={(v) => setNewMonthlyAccrual(Math.max(0, Number(v) || 0))}
+              hint="Unused days carry into the next month, within the financial year"
+            />
+          )}
+          <Field
+            label="Minimum service (months)"
+            type="number"
+            value={String(newMinTenureMonths)}
+            onChange={(v) => setNewMinTenureMonths(Math.max(0, Number(v) || 0))}
+            hint="0 applies from day one; 12 means after a year of service"
           />
           <Field
             label="Applicable To"
@@ -1116,6 +1174,7 @@ function LeavePolicies() {
           <Field
             label="Annual Quota"
             type="number"
+            disabled={editingAccrual === 'monthly'}
             value={editingAnnual}
             onChange={(v) => {
               setEditingAnnual(v);
