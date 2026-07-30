@@ -1,7 +1,8 @@
 /**
  * Authentication context & hooks.
  *
- * Supports email + password sign-in / sign-up only.
+ * Supports email + password sign-in. There is no sign-up: see the note
+ * where signUpEmail used to be.
  *
  * On every successful sign-in, a profile document is upserted at
  * `users/{uid}` in Firestore with a `role` field. Emails present in
@@ -22,10 +23,8 @@ import {
 import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
     isSignInWithEmailLink,
     signOut,
-    updateProfile,
     type User,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -192,7 +191,6 @@ interface AuthContextValue {
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
-    signUpEmail: (name: string, email: string, password: string) => Promise<void>;
     signOutUser: () => Promise<void>;
 }
 
@@ -294,18 +292,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
-    async function signUpEmail(name: string, email: string, password: string) {
-        setError('');
-        try {
-            const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-            if (name.trim()) {
-                await updateProfile(cred.user, { displayName: name.trim() });
-            }
-        } catch (err) {
-            setError(friendlyAuthError(err));
-            throw err;
-        }
-    }
+    // No signUpEmail. Self-registration created an account with no `orgId`,
+    // and "no orgId" resolved to the default organisation — so anyone who
+    // signed up could read the default tenant's directory, attendance, jobs,
+    // expenses and assets. The rules now fail closed for an unassigned account
+    // (myOrgKey in firestore.rules) and this removes the way to make one.
+    //
+    // Accounts are created by super-admin org provisioning
+    // (src/lib/organizations.ts, on a throwaway secondary FirebaseApp so the
+    // caller's own session survives) or by an administrator attaching an
+    // existing one. See G7 in docs/tenant-isolation-spec.md.
 
     async function signOutUser() {
         await signOut(auth);
@@ -329,7 +325,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 error,
                 clearError,
                 signInEmail,
-                signUpEmail,
                 signOutUser,
             }}
         >

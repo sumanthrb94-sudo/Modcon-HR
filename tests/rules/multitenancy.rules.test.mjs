@@ -38,11 +38,22 @@ const USERS = {
   managerA: { uid: 'manager-a', email: 'manager-a@example.com', role: 'manager', orgId: 'org-a' },
   employeeA: { uid: 'employee-a', email: 'employee-a@example.com', role: 'employee', orgId: 'org-a' },
   employeeB: { uid: 'employee-b', email: 'employee-b@example.com', role: 'employee', orgId: 'org-b' },
-  // No orgId: the accounts that predate multi-org support. They resolve to
-  // the 'default' org key.
-  legacyAdmin: { uid: 'legacy-admin', email: 'legacy-admin@example.com', role: 'hr' },
-  legacyEmployee: { uid: 'legacy-employee', email: 'legacy-employee@example.com', role: 'employee' },
+  // The accounts that predate multi-org support, as they look *after* the
+  // identity backfill: stamped with the 'default' sentinel explicitly. They
+  // used to carry no orgId at all and be recognised by its absence — which is
+  // exactly what made a self-registered stranger indistinguishable from them.
+  // See UNASSIGNED below and G7 in docs/tenant-isolation-spec.md.
+  legacyAdmin: { uid: 'legacy-admin', email: 'legacy-admin@example.com', role: 'hr', orgId: 'default' },
+  legacyEmployee: { uid: 'legacy-employee', email: 'legacy-employee@example.com', role: 'employee', orgId: 'default' },
 };
+
+/**
+ * A freshly self-registered account: role 'employee', no orgId, no employee
+ * record, nobody's colleague. Kept out of USERS because `seed()` stamps every
+ * entry there with an orgId when it has one, and the whole point of this one is
+ * that it has none.
+ */
+const UNASSIGNED = { uid: 'unassigned', email: 'stranger@example.com', role: 'employee' };
 
 /** Collections that are plain org-scoped tenant data. */
 const PLAIN = [
@@ -80,7 +91,7 @@ async function seed() {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
 
-    for (const user of Object.values(USERS)) {
+    for (const user of [...Object.values(USERS), UNASSIGNED]) {
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
         email: user.email,
@@ -443,6 +454,63 @@ describe('multi-tenancy — organisation configuration', () => {
     await assertFails(
       setDoc(doc(as(USERS.hrA), 'org_settings', 'org-a__somethingElse'), policies('org-a')),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An account with no organisation (G7).
+//
+// The login page offered self-registration, and a new account carried no
+// `orgId`. `myOrgKey()` resolved "no orgId" to 'default', which made "not yet
+// given an organisation" and "a member of the incumbent organisation" the same
+// value — so anyone who signed up read the default tenant's directory,
+// attendance, jobs, expenses and assets. Confirmed against the live project
+// before it was closed.
+//
+// The sentinel is still right for a *document*: one written before
+// multi-tenancy is legacy data belonging to the default org (orgKeyOf). It was
+// wrong for a *person*.
+// ---------------------------------------------------------------------------
+describe('multi-tenancy — an unassigned account is nobody', () => {
+  beforeEach(seed);
+
+  it('cannot read the default organisation, which is what it used to resolve to', async () => {
+    await assertFails(getDoc(doc(as(UNASSIGNED), 'employees', 'doc-legacy')));
+    await assertFails(
+      getDocs(query(collection(as(UNASSIGNED), 'employees'), where('orgId', '==', 'default'))),
+    );
+  });
+
+  it('cannot read any real organisation either', async () => {
+    await assertFails(getDoc(doc(as(UNASSIGNED), 'employees', 'doc-a')));
+    await assertFails(
+      getDocs(query(collection(as(UNASSIGNED), 'employees'), where('orgId', '==', 'org-a'))),
+    );
+  });
+
+  it('cannot read configuration or the handbook', async () => {
+    await assertFails(getDoc(doc(as(UNASSIGNED), 'org_settings', 'default__leavePolicies')));
+    await assertFails(getDoc(doc(as(UNASSIGNED), 'organizations', 'default')));
+  });
+
+  it('cannot write anything into the default organisation', async () => {
+    await assertFails(
+      setDoc(doc(as(UNASSIGNED), 'expenses', 'new-doc'),
+        { employeeId: UNASSIGNED.uid, orgId: 'default', amount: 1 }),
+    );
+  });
+
+  it('still reads its own profile, so sign-in works', async () => {
+    // Failing closed must not mean failing to sign in: the upsert reads and
+    // writes its own users document, and an account that cannot do that is
+    // broken rather than merely unauthorised.
+    await assertSucceeds(getDoc(doc(as(UNASSIGNED), 'users', UNASSIGNED.uid)));
+  });
+
+  it('a stamped default-org account is unaffected', async () => {
+    // Why the identity backfill has to run before this rule deploys: these
+    // accounts are only distinguishable from a stranger by the stamp.
+    await assertSucceeds(getDoc(doc(as(USERS.legacyEmployee), 'employees', 'doc-legacy')));
   });
 });
 
