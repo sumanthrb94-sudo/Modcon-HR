@@ -183,7 +183,16 @@ the old rules.
 ## 8. Known limits
 
 - **`managerChainIds` is a write-time snapshot.** It goes stale when someone
-  changes reporting line; whatever rewrites reporting lines must rewrite these.
+  changes reporting line. `backfillManagerChains` in `src/lib/accessBackfill.ts`
+  recomputes it from the stored `employees` records — surfaced as Settings →
+  Database → "Backfill employee access mapping", and safe to re-run after any
+  reorganisation.
+- **`employee_links` is not populated automatically.** `backfillEmployeeLinks`
+  in the same module matches accounts to employee records **by email, and only
+  when exactly one employee carries that address**; anything ambiguous is
+  skipped and listed rather than guessed, because a wrong link hands someone
+  another employee's salary. New joiners still need linking as they are hired —
+  there is no hook on account creation yet.
 - **The purge skips un-backfilled documents.** It filters by `orgId`, so legacy
   records match nothing and survive Delete Mock Data until stamped. Safer than
   the previous behaviour, which deleted every tenant's data.
