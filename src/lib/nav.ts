@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   CalendarClock,
   Building2,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { canAccessModule, type AppModule, type AppRole } from '@/lib/accessControl';
@@ -51,6 +52,9 @@ export const navItems: NavItem[] = [
   { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'Operations', module: 'Helpdesk' },
   { label: 'Approvals', path: '/approvals', icon: ClipboardCheck, group: 'Operations', module: 'Dashboard', managerOnly: true },
   { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Operations', module: 'Reports & Analytics' },
+  // No adminOnly/managerOnly flag: the handbook is readable by every role, and
+  // only the upload panel inside the page is HR-gated.
+  { label: 'Documents', path: '/documents', icon: BookOpen, group: 'Main', module: 'Documents' },
   { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Operations', module: 'Admin', adminOnly: true },
   { label: 'Organizations', path: '/organizations', icon: Building2, group: 'Operations', module: 'Admin', adminOnly: true, superAdminOnly: true },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Operations', module: 'Settings' },

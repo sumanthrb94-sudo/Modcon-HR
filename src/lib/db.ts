@@ -38,6 +38,8 @@ import type {
     Asset,
     Ticket,
     Organization,
+    HandbookVersion,
+    HandbookPointer,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -73,6 +75,10 @@ export const Collections = {
     helpdeskTickets: col<Ticket>('helpdesk_tickets'),
     regularizations: col<RegularizationRequest>('regularizations'),
     organizations: col<Organization>('organizations'),
+    // Employee handbook: append-only versions, plus one current-version
+    // pointer per org keyed by org id. See src/lib/handbook.ts.
+    handbookVersions: col<HandbookVersion>('handbook_versions'),
+    handbook: col<HandbookPointer>('handbook'),
 } as const;
 
 // ---------------------------------------------------------------------------

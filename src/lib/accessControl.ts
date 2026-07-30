@@ -19,6 +19,7 @@ export const APP_MODULES = [
   'Assets',
   'Helpdesk',
   'Reports & Analytics',
+  'Documents',
   'Settings',
   'Admin',
 ] as const;
@@ -52,6 +53,10 @@ export const defaultPermissions: PermissionMatrix = {
   Assets: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
   Helpdesk: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'full' },
   'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
+  // The employee handbook is company policy every employee must be able to
+  // read, so no role is ever 'none' here — the Employee floor is additionally
+  // pinned in enforceRequiredPermissions. Only HR gets 'full' (= publish).
+  Documents: { Admin: 'view', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Settings: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
   Admin: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
 };
@@ -87,6 +92,13 @@ function enforceRequiredPermissions(matrix: PermissionMatrix): PermissionMatrix 
       ...matrix['Employee Directory'],
       Employee: 'view',
     },
+    // Every role reads the handbook. Left as a plain default, toggling the cell
+    // in Settings → Roles & Permissions would quietly withdraw company policy
+    // from a whole role, so the read floor is pinned here instead and only the
+    // publish right ('full' vs 'view') remains configurable.
+    Documents: Object.fromEntries(
+      APP_ROLES.map((role) => [role, matrix.Documents?.[role] === 'full' ? 'full' : 'view']),
+    ) as Record<AppRole, PermissionLevel>,
     Admin: {
       ...matrix.Admin,
       Admin: 'full',
