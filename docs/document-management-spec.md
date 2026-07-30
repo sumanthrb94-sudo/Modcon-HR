@@ -38,9 +38,9 @@ and deliberately avoided for role grants (`CLAUDE.md`, *Auth & roles*):
 > is localStorage-backed and therefore client-controlled, so trusting it would let
 > anyone edit their own designation and become an admin.
 
-**Correction.** The authority for upload is the server-side `isHR()` helper in
-[firestore.rules:36](../firestore.rules#L36) — `users/{uid}.role == 'hr'`, a
-document only an administrator can write. `getCurrentEmployeeRecord` and
+**Correction.** The authority for upload is the server-side `isOrgAdmin()`
+helper in [firestore.rules:42](../firestore.rules#L42) — `users/{uid}.role` being
+`hr` or `admin`, a document only an administrator can write. `getCurrentEmployeeRecord` and
 `dataScope` are used **for presentation only**: deciding whether to render the
 upload control, and stamping the uploader's name/employee id onto the metadata
 record. Neither is ever the last line of defence. Same split the rest of the app
@@ -73,7 +73,7 @@ to stop a future change from routing handbook reads through
 
 ## 2. Scope
 
-**In scope.** One handbook artifact per organisation; HR-only upload/replace;
+**In scope.** One handbook artifact per organisation; administrator-only upload/replace;
 universal authenticated read; immutable version history with a "current" pointer;
 audit metadata; nav + route + permission-matrix wiring.
 
@@ -166,7 +166,7 @@ Role must therefore reach Storage some other way. Three viable options:
 |---|---|---|---|
 | **A** *(recommended)* | Cloud Function sets an `hr` **custom claim** on the ID token when a role changes; Storage rules read `request.auth.token.hr == true` | Requires Cloud Functions + Blaze plan; claim refresh lag on role change (~1h, or force `getIdToken(true)`) | Production-correct |
 | **B** | Upload via an authenticated **callable Function** that checks Firestore role and writes with the Admin SDK; Storage stays closed to all clients | Requires Functions + Blaze; upload path is server code | Production-correct, no claim lag |
-| **C** | No Storage. Handbook PDF stored **base64 in the Firestore version doc**, gated by the existing `isHR()` rule | Free, no new infra, ships today. Hard ceiling: Firestore's 1 MiB/doc, and base64 inflates ~33% → **~740 KB max PDF** | Demo-grade only |
+| **C** | No Storage. Handbook PDF stored **base64 in the Firestore version doc**, gated by the existing `isOrgAdmin()` rule | Free, no new infra, ships today. Hard ceiling: Firestore's 1 MiB/doc, and base64 inflates ~33% → **~740 KB max PDF** | Demo-grade only |
 
 **Recommendation: B.** It puts the role check in the one place that can read the
 role, avoids the custom-claim staleness window entirely, and keeps Storage
@@ -195,7 +195,7 @@ Two layers, and only one of them is trusted.
 │  Purpose: affordance + attribution. Never a security boundary.│
 └───────────────────────────────────────────────────────────────┘
 ┌─ Enforcement (firestore.rules / callable, trusted) ───────────┐
-│  isHR()  →  users/{uid}.role == 'hr'                          │
+│  isOrgAdmin() → users/{uid}.role in ('hr', 'admin')           │
 │  Purpose: the actual gate. Assume the client is hostile.      │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -212,21 +212,27 @@ must be covered by a rules test (§8, W4).
 | Employee | ✓ | ✓ | ✗ |
 | Manager | ✓ | ✓ | ✗ |
 | **HR (`hr`)** | ✓ | ✓ | **✓** |
-| Admin (`admin`) | ✓ | ✓ | see below |
+| **Admin (`admin`)** | ✓ | ✓ | **✓** |
 | Super admin | ✓ | ✓ | ✗ (no org context) |
 
-**Admin write — flagging a deviation.** The brief says HR *only*. Every existing
-write rule in `firestore.rules` uses `isOrgAdmin() = isAdmin() || isHR()`; an
-HR-only write would make this the first collection a platform admin cannot write.
-The practical consequence: organisations created before the HR-role change still
-hold a platform `admin` account rather than an `hr` one (`CLAUDE.md`,
-*Organizations → Review admin roles*), so those orgs would have **nobody** able to
-upload a handbook until their admin is converted.
+**Admin write — resolved.** The brief said HR *only*. That was raised as a
+deviation, because every other write rule in `firestore.rules` uses
+`isOrgAdmin() = isAdmin() || isHR()`, and an HR-only write would make this the
+first collection a platform admin cannot write. The practical consequence:
+organisations created before the HR-role change still hold a platform `admin`
+account rather than an `hr` one (`CLAUDE.md`, *Organizations → Review admin
+roles*), so those orgs would have had **nobody** able to upload a handbook until
+their admin was converted.
 
-This spec implements **HR-only, as specified**, and treats the legacy-org gap as
-a migration prerequisite: run *Organizations → Review admin roles* before enabling
-the module. If you would rather not couple the two, change `isHR()` to
-`isOrgAdmin()` in §6 — a one-token edit, and the only change required.
+**Decision: `isOrgAdmin()`.** HR and platform admins can both publish. This
+removes the legacy-org gap entirely — no migration is required before the module
+is enabled. HR remains the role that owns the handbook in practice; admins are
+included so no organisation can end up with an unpublishable handbook.
+
+Super admins hold `role: 'admin'` and so satisfy `isOrgAdmin()`, but they carry
+no `orgId`, so `handbookOrgKey()` resolves them to `default` and they cannot
+write another org's pointer. Without that the widening would have handed every
+organisation's handbook to the super admin; it is asserted in the rules tests.
 
 Read history is granted to everyone alongside read-current. Restricting history
 while publishing the current file to all would protect nothing: prior versions
@@ -242,8 +248,7 @@ were themselves universally readable when current.
     // -------------------------------------------------------------------
     // Employee handbook. Read: any signed-in user — the handbook is
     // org-wide policy, deliberately not narrowed by dataScope visibility.
-    // Write: HR only (see docs/document-management-spec.md §5 on why admin
-    // is excluded). Versions are append-only; superseding is a new version
+    // Write: organisation administrators, HR and Admin (see §5). Versions are append-only; superseding is a new version
     // plus a pointer update, never an edit.
     // -------------------------------------------------------------------
     function handbookOrgKey() {
@@ -252,7 +257,7 @@ were themselves universally readable when current.
 
     match /handbook_versions/{versionId} {
       allow read: if isSignedIn();
-      allow create: if isHR() &&
+      allow create: if isOrgAdmin() &&
         // Attribution cannot be forged: the uploader is the caller.
         request.resource.data.uploadedByUid == request.auth.uid &&
         // The client never names its own org.
@@ -271,7 +276,7 @@ were themselves universally readable when current.
 
     match /handbook/{orgKey} {
       allow read: if isSignedIn();
-      allow create, update: if isHR() &&
+      allow create, update: if isOrgAdmin() &&
         orgKey == handbookOrgKey() &&
         request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.currentVersionId is string &&
@@ -363,7 +368,7 @@ Version history
   v3  04 Jan 2026  Priya Raman                            [Download]
   …
 
-┌─ Upload new version ──────────────── (HR only) ─┐
+┌─ Upload new version ───────────── (HR + Admin) ─┐
 │  [Choose PDF]  Notes: [_______________]         │
 │  [Publish as v5]                                │
 └─────────────────────────────────────────────────┘
@@ -401,7 +406,7 @@ authorization model.
 | W3 | HR of org A points org A's handbook at an org B version | deny |
 | W4 | Employee creates a version doc | deny — *the forged-localStorage case* |
 | W5 | Manager creates a version doc | deny |
-| W6 | Admin creates a version doc | deny — *pins the §5 deviation; flip if `isOrgAdmin()` is chosen* |
+| W6 | Admin creates a version doc | allow — *§5: admins publish too, so legacy orgs are never stranded* |
 | W7 | HR updates an existing version doc | deny (append-only) |
 | W8 | HR deletes a version doc | deny |
 | W9 | Version doc over the size ceiling / wrong content type | deny |
@@ -471,8 +476,8 @@ project to the Blaze plan.
 1. **§4 — storage option A, B, or C.** Shipped as **C** behind an adapter, since
    A and B both need Cloud Functions and the Blaze plan, which is a billing
    decision. Recommendation stands: move to **B**.
-2. **§5 — admin write.** Implemented HR-only as requested; confirm the
-   legacy-org migration runs first, or switch `isHR()` → `isOrgAdmin()`.
+2. **§5 — admin write.** ~~Open.~~ **Resolved: `isOrgAdmin()`** — HR and platform
+   admins both publish, so no legacy-org migration is required first.
 3. **§3 — retention.** History is unbounded and append-only. Confirm that is
    wanted; a policy document arguably should never lose a version.
 
@@ -523,12 +528,15 @@ project to the Blaze plan.
 
 - `npm run build` (the type-check gate) — clean.
 - `npm run test:rules` — 71/71, stable across three consecutive runs.
-- **Rules tests proved to discriminate:** weakening `isHR()` to `isSignedIn()`
-  on the version create rule fails exactly the three tests that assert employee,
-  manager and admin cannot publish, and nothing else.
+- **Rules tests proved to discriminate:** weakening the version create rule to
+  `isSignedIn()` fails exactly the tests asserting that an employee and a manager
+  cannot publish, and nothing else.
 - `documents.spec.ts` — 12/12 across all three personas, against live Firebase
   Auth. **Proved to discriminate:** adding `adminOnly: true` to the nav item
   fails the employee and manager runs.
+- **Rules deployed to production and re-verified in the browser:** `/documents`
+  as an employee against live Firestore renders the empty state with no console
+  errors, where before the deploy it showed "Could not load the handbook".
 - **End-to-end against the real rules in the emulator:** signed in with
   `users/{uid}.role = 'hr'`, published a PDF, confirmed the version document and
   pointer were written, the PDF rendered, and history showed v1 as current.
@@ -544,8 +552,12 @@ a real `role_assignments` document. The write path is therefore proved in the
 rules tests and in the emulator run above, not in CI. `tests/e2e/documents.spec.ts`
 says the same thing in its header.
 
-### Before this ships
+### Deploy status
 
-`firebase deploy --only firestore:rules` **must run before** the app deploys, or
-every user gets the "Could not load the handbook" card — pushing to `main`
-auto-deploys hosting but never rules.
+`firebase deploy --only firestore:rules` **has been run** against `modcon-hr` —
+the handbook rules are live, verified by loading `/documents` against production
+Firestore as an employee and getting the empty state rather than the permission
+error. The app can now merge in any order.
+
+Future rules changes keep the same hazard: pushing to `main` auto-deploys hosting
+but never rules, so a change touching both must deploy rules first.

@@ -183,13 +183,20 @@ describe('handbook — who may publish', () => {
     );
   });
 
-  it('a platform admin cannot create a version', async () => {
-    // Pins the deliberate deviation from isOrgAdmin() documented in the rules
-    // and in spec §5. If admin publishing is ever wanted, this test is the one
-    // that must be changed on purpose rather than silently passing.
-    await assertFails(
+  it('a platform admin can create a version', async () => {
+    // Publishing is isOrgAdmin(), not isHR(): organisations created before the
+    // HR role existed hold an `admin` account, and excluding admins would leave
+    // them unable to publish at all. See spec §5.
+    await assertSucceeds(
       setDoc(doc(as(USERS.adminA), 'handbook_versions', 'v2-doc'),
         version({ id: 'v2-doc', version: 2, uploadedByUid: USERS.adminA.uid })),
+    );
+  });
+
+  it('a platform admin can move the pointer', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.adminA), 'handbook', 'org-a'),
+        pointer({ updatedByUid: USERS.adminA.uid })),
     );
   });
 
@@ -272,6 +279,16 @@ describe('handbook — organisation isolation', () => {
   it("HR cannot write another organisation's pointer document", async () => {
     await assertFails(
       setDoc(doc(as(USERS.hrB), 'handbook', 'org-a'), pointer({ orgId: 'org-b', updatedByUid: USERS.hrB.uid })),
+    );
+  });
+
+  it("a super admin cannot publish into a specific org's handbook", async () => {
+    // Super admins carry role 'admin' and so satisfy isOrgAdmin(), but they
+    // have no orgId of their own — handbookOrgKey() resolves to 'default' for
+    // them, so they cannot write org-a's pointer. Without this the widening to
+    // isOrgAdmin() would have handed every org's handbook to the super admin.
+    await assertFails(
+      setDoc(doc(as(USERS.superA), 'handbook', 'org-a'), pointer({ updatedByUid: USERS.superA.uid })),
     );
   });
 

@@ -54,9 +54,11 @@ export const defaultPermissions: PermissionMatrix = {
   Helpdesk: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'full' },
   'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
   // The employee handbook is company policy every employee must be able to
-  // read, so no role is ever 'none' here — the Employee floor is additionally
-  // pinned in enforceRequiredPermissions. Only HR gets 'full' (= publish).
-  Documents: { Admin: 'view', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
+  // read, so no role is ever 'none' here — the read floor is pinned for every
+  // role in enforceRequiredPermissions. 'full' means publish, and goes to the
+  // organisation's administrators (HR and Admin), matching isOrgAdmin() in
+  // firestore.rules.
+  Documents: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Settings: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
   Admin: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
 };

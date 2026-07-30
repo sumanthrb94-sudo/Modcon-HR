@@ -20,7 +20,7 @@
  *   Cloud Function to mint it, plus the Blaze plan) or the upload would have to
  *   run server-side in a callable Function (same dependency).
  *
- * So the bytes go in Firestore, where the existing `isHR()` rule already works.
+ * So the bytes go in Firestore, where the existing `isOrgAdmin()` rule works.
  * The cost is Firestore's hard 1 MiB per-document ceiling: base64 inflates by
  * ~4/3, and the metadata fields need room, so the usable PDF ceiling is
  * `HANDBOOK_MAX_BYTES` below — well under what a real handbook will be.

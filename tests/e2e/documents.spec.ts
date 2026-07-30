@@ -6,19 +6,19 @@ import { type Persona } from './config';
  *
  * This runs once per role project (role-employee / role-manager / role-admin)
  * and asserts the half of the module the UI is actually responsible for:
- * everybody can reach the handbook, and nobody who isn't HR is offered the
- * upload panel.
+ * everybody can reach the handbook, and only an organisation's administrators
+ * are offered the upload panel.
  *
  * What this spec deliberately does NOT cover, and where that coverage lives:
  *
- *   A successful HR publish. There is no `hr` persona, and adding one would not
- *   help: firestore.rules mirrors ADMIN_EMAILS but pointedly does not trust the
- *   E2E allow-list ("E2E test emails are a client-side-only gate and are never
- *   trusted here"), so an E2E account's own sign-in write cannot set
- *   `users/{uid}.role = 'hr'` without a real `role_assignments` document
- *   authored by an administrator. An E2E HR persona would therefore see the
- *   upload panel and then be denied by the server — which is the security model
- *   working, not a bug, but it makes the happy path untestable here.
+ *   A successful publish. Even for the admin persona, whose panel does render,
+ *   the write itself would be denied: firestore.rules mirrors ADMIN_EMAILS but
+ *   pointedly does not trust the E2E allow-list ("E2E test emails are a
+ *   client-side-only gate and are never trusted here"), so the E2E admin's
+ *   stored `users/{uid}.role` is `employee`, not `admin`. The panel it sees is
+ *   the client-side affordance; the server would refuse the write — which is
+ *   the security model working exactly as intended, and precisely why the panel
+ *   rendering is not evidence that publishing is permitted.
  *
  *   So the write side is proved in tests/rules/handbook.rules.test.mjs, against
  *   the emulator, where roles can be seeded directly. That file is the
@@ -81,12 +81,13 @@ test.describe.serial('employee handbook', () => {
     await expect(page.getByText('Access Restricted')).toHaveCount(0);
   });
 
-  test('no upload control is offered to a non-HR role', async () => {
-    // Every persona in this suite is employee, manager or admin. Admin is
-    // included on purpose: publishing is HR-only by specification, so an admin
-    // seeing this panel is a defect even though admin outranks HR elsewhere.
-    await expect(page.getByTestId('handbook-publish')).toHaveCount(0);
-    await expect(page.getByText('Publish a new version')).toHaveCount(0);
-    await expect(page.locator('#handbook-file')).toHaveCount(0);
+  test('the upload control is offered to administrators only', async () => {
+    // Publishing is isOrgAdmin() — HR and platform admins. Of the three
+    // personas here only admin qualifies; employee and manager must not be
+    // offered the control at all.
+    const expected = persona().role === 'admin' ? 1 : 0;
+    await expect(page.getByTestId('handbook-publish')).toHaveCount(expected);
+    await expect(page.getByText('Publish a new version')).toHaveCount(expected);
+    await expect(page.locator('#handbook-file')).toHaveCount(expected);
   });
 });

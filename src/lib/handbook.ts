@@ -9,7 +9,7 @@
  * `src/data/employees.ts`. A user who forges `role: 'hr'` locally gets the
  * button and then a `permission-denied` from the server.
  *
- * The actual gate is `isHR()` in firestore.rules, reading `users/{uid}.role`,
+ * The actual gate is `isOrgAdmin()` in firestore.rules, on `users/{uid}.role`,
  * a document only an administrator can write. Same split the rest of the app
  * uses; see docs/document-management-spec.md §5.
  */
@@ -44,11 +44,16 @@ export function handbookOrgId(profile: UserProfile | null): string | null {
 
 /**
  * Whether to offer the upload control. Presentation only — see the file header.
- * HR only, deliberately excluding platform Admin: see the spec §5 on the legacy
- * organisations this leaves without an uploader until their admin is converted.
+ *
+ * Organisation administrators: HR managers and platform admins, mirroring
+ * `isOrgAdmin()` in firestore.rules. HR owns the handbook in practice, but
+ * organisations created before the HR role existed hold an `admin` account
+ * rather than an `hr` one, and excluding admins would leave them with nobody
+ * able to publish.
  */
 export function canPublishHandbook(profile: UserProfile | null): boolean {
-  return resolveAppRole(profile) === 'HR Manager';
+  const role = resolveAppRole(profile);
+  return role === 'HR Manager' || role === 'Admin';
 }
 
 interface UseHandbookResult {

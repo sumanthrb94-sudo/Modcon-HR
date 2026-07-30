@@ -333,12 +333,12 @@ service cloud.firestore {
     // src/lib/dataScope.ts — an employee who can see nobody else's records
     // still reads it.
     //
-    // Write: HR only. Note this is `isHR()` and not the `isOrgAdmin()` used by
-    // every other collection here, so a platform admin cannot publish. That is
-    // the requirement as specified; the consequence is that organisations
-    // created before the HR role existed hold an `admin` rather than an `hr`
-    // account and have no one who can publish until Organizations → "Review
-    // admin roles" converts them. See docs/document-management-spec.md §5.
+    // Write: organisation administrators — HR managers and platform admins,
+    // the same `isOrgAdmin()` every other collection here uses. HR is the role
+    // that owns the handbook in practice, but confining the write to `isHR()`
+    // would leave organisations created before the HR role existed — which
+    // hold an `admin` rather than an `hr` account — with nobody able to publish
+    // at all. See docs/document-management-spec.md §5.
     //
     // These rules are the actual authorization boundary for the module. The
     // client-side check in src/lib/handbook.ts decides whether to draw the
@@ -351,7 +351,7 @@ service cloud.firestore {
 
     match /handbook_versions/{versionId} {
       allow read: if isSignedIn();
-      allow create: if isHR() &&
+      allow create: if isOrgAdmin() &&
         // Attribution cannot be forged: the uploader is always the caller.
         request.resource.data.uploadedByUid == request.auth.uid &&
         // The client never names its own org.
@@ -381,13 +381,13 @@ service cloud.firestore {
 
     match /handbook/{orgKey} {
       allow read: if isSignedIn();
-      allow create, update: if isHR() &&
+      allow create, update: if isOrgAdmin() &&
         orgKey == handbookOrgKey() &&
         request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.currentVersionId is string &&
         // The pointer may only name a version that exists and belongs to my
-        // org — otherwise HR in org A could publish org B's handbook to their
-        // own employees.
+        // org — otherwise an administrator of org A could publish org B's
+        // handbook to their own employees.
         exists(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId)) &&
         get(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId))
           .data.get('orgId', null) == myOrgId();

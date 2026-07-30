@@ -30,10 +30,11 @@ import { formatDate } from '@/lib/utils';
 /**
  * Employee handbook.
  *
- * Every signed-in user reads the current version and the history; only HR sees
- * the upload panel. That split is presentation — the enforcement is the `isHR()`
- * check on `handbook_versions` and `handbook` in firestore.rules, and a user who
- * forges their local role gets the panel and then a permission error on submit.
+ * Every signed-in user reads the current version and the history; only an
+ * organisation's administrators (HR and Admin) see the upload panel. That split
+ * is presentation — the enforcement is the `isOrgAdmin()` check on
+ * `handbook_versions` and `handbook` in firestore.rules, and a user who forges
+ * their local role gets the panel and then a permission error on submit.
  */
 export function DocumentsPage() {
   const { profile } = useAuth();
@@ -159,7 +160,7 @@ function CurrentHandbook({
 }
 
 // ---------------------------------------------------------------------------
-// Upload (HR only)
+// Upload (organisation administrators only)
 // ---------------------------------------------------------------------------
 
 function UploadPanel({
@@ -217,7 +218,7 @@ function UploadPanel({
     <Card>
       <CardHeader
         title="Publish a new version"
-        subtitle="HR only. The previous version stays in the history — publishing never overwrites it."
+        subtitle="HR and administrators. The previous version stays in the history — publishing never overwrites it."
       />
       <div className="px-6 pb-6 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
