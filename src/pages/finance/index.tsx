@@ -130,9 +130,9 @@ function EmployeeFinancePage() {
       y += 2;
 
       writeLine('Deductions', { bold: true, size: 11 });
-      writeLine(`Provident Fund: ${formatINR(payslip.pf)}`);
-      writeLine(`Income Tax (TDS): ${formatINR(payslip.tax)}`);
-      writeLine(`Other Deductions: ${formatINR(payslip.otherDeductions)}`);
+      // Attendance is the only basis for deduction, so the payslip PDF lists
+      // loss of pay alone rather than statutory heads that are never withheld.
+      writeLine(`Loss of Pay (unpaid absence): ${formatINR(payslip.otherDeductions)}`);
       writeLine(`Total Deductions: ${formatINR(payslip.totalDeductions)}`, { bold: true });
       y += 2;
 
@@ -280,12 +280,12 @@ function EmployeeFinancePage() {
         </Card>
 
         <Card>
-          <CardHeader title="Deductions" subtitle="Monthly contributions and tax deductions" />
+          <CardHeader title="Deductions" subtitle="Pay withheld for unpaid absence" />
           <div className="space-y-3">
+            {/* Attendance is the only basis for deduction, so PF and TDS are
+                not withheld and are not shown — see buildPayslipComponents. */}
             {[
-              { label: 'Provident Fund', value: salary.pf },
-              { label: 'Income Tax (TDS)', value: salary.tax },
-              { label: 'Other Deductions', value: salary.otherDeductions },
+              { label: 'Loss of Pay (unpaid absence)', value: salary.otherDeductions },
             ].map((item) => (
               <div key={item.label} className="flex items-center justify-between text-sm">
                 <span className="text-ink-600">{item.label}</span>

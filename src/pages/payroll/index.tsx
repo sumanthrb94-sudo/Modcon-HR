@@ -119,10 +119,12 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
         <div>
           <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-3">Deductions</p>
           <div className="space-y-2.5">
+            {/* Deductions come exclusively from attendance (see
+                buildPayslipComponents), so Provident Fund and TDS are not
+                withheld and are not listed — a row reading "PF ₹0" would
+                suggest a contribution was calculated and came to nothing. */}
             {[
-              { label: 'Provident Fund (12%)', value: payslip.pf },
-              { label: 'Income Tax (TDS)', value: payslip.tax },
-              { label: 'Other Deductions', value: payslip.otherDeductions },
+              { label: 'Loss of Pay (unpaid absence)', value: payslip.otherDeductions },
             ].map((row) => (
               <div key={row.label} className="flex items-center justify-between">
                 <span className="text-sm text-ink-600">{row.label}</span>

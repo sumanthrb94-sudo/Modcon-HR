@@ -60,7 +60,16 @@ export function lossOfPayDays(employeeId: string, month: string): number {
   }, 0);
 }
 
-function computeTax(grossAnnual: number): number {
+/**
+ * New-regime slab calculation.
+ *
+ * Retained but **not applied**: the organisation's policy is that salary
+ * deductions derive exclusively from attendance, so income tax is not withheld
+ * on the payslip. Kept rather than deleted because reinstating TDS is a policy
+ * decision, not a rewrite — wire it back into `buildPayslipComponents` and add
+ * it to `totalDeductions`.
+ */
+export function computeTax(grossAnnual: number): number {
   // Simplified new-regime slab for demo
   if (grossAnnual <= 300000) return 0;
   if (grossAnnual <= 700000) return Math.round((grossAnnual - 300000) * 0.05);
@@ -81,21 +90,23 @@ export function buildPayslipComponents(
   const bonus = 0; // no bonus in regular month
   const grossEarnings = basic + hra + specialAllowance + bonus;
 
-  const pf = Math.round(basic * 0.12);
-  const annualGross = grossEarnings * 12;
-  const annualTax = computeTax(annualGross);
-  const tax = Math.round(annualTax / 12);
-  const otherDeductions = employee.ctc >= 5000000 ? Math.round(monthly * 0.005) : 0;
+  // Deductions derive exclusively from attendance, by policy. PF, income tax
+  // and the high-CTC levy are therefore not withheld, and are reported as zero
+  // rather than removed from the type — those fields are part of the shared
+  // Payslip shape and of documents already written to Firestore.
+  //
+  // The consequence is deliberate and worth being explicit about: net pay is
+  // gross minus unpaid absence and nothing else, so these payslips do not model
+  // statutory withholding. `computeTax` above is intact for when that changes.
+  const pf = 0;
+  const tax = 0;
+  const otherDeductions = 0;
 
-  // Attendance-driven loss of pay. PF and income tax are statutory and are not
-  // absence deductions, so they stand alongside this rather than being
-  // replaced by it — "deductions based on attendance" governs pay withheld for
-  // not working, not the employee's tax liability.
   const payableDays = daysInMonth(month);
   const lopDays = lossOfPayDays(employee.id, month);
   const lossOfPay = Math.round((grossEarnings / payableDays) * lopDays);
 
-  const totalDeductions = pf + tax + otherDeductions + lossOfPay;
+  const totalDeductions = lossOfPay;
   const netPay = grossEarnings - totalDeductions;
 
   return {
@@ -117,11 +128,12 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     bonus: c.bonus,
     pf: c.pf,
     tax: c.tax,
-    // Loss of pay is folded into otherDeductions on the stored payslip: the
-    // Payslip type is the shared shape and gaining a field would ripple through
-    // Firestore documents and the seed. The breakdown stays available from
-    // buildPayslipComponents for the payslip view.
-    otherDeductions: c.otherDeductions + c.lossOfPay,
+    // Loss of pay rides in otherDeductions on the stored payslip: the Payslip
+    // type is the shared shape and gaining a field would ripple through
+    // Firestore documents and the seed. It is the only deduction there is, so
+    // otherDeductions and totalDeductions agree. The day count stays available
+    // from buildPayslipComponents for the payslip view.
+    otherDeductions: c.lossOfPay,
     grossEarnings: c.grossEarnings,
     totalDeductions: c.totalDeductions,
     netPay: c.netPay,
