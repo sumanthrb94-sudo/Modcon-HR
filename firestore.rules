@@ -51,6 +51,48 @@ service cloud.firestore {
       return myProfile().get('orgId', null);
     }
 
+    // -------------------------------------------------------------------
+    // Which employee record a signed-in account *is*.
+    //
+    // Salary and leave documents are keyed by employeeId (`emp-001`), while
+    // rules only ever see `request.auth.uid`. Nothing connected the two, which
+    // is why the `resource.data.employeeId == request.auth.uid` checks written
+    // elsewhere in this file have never once evaluated true — they compare
+    // `emp-009` to a Firebase uid.
+    //
+    // Employee.authUid exists but lives in localStorage, so it is a claim the
+    // client controls and could not be trusted here. The link is therefore an
+    // administrator-authored document, exactly like /role_assignments: the
+    // client does not say who it is, it discovers who an administrator said it
+    // is. See /employee_links below and docs/salary-leave-access-spec.md §3.
+    // -------------------------------------------------------------------
+    function myEmployeeId() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/employee_links/$(request.auth.uid))
+          ? get(/databases/$(database)/documents/employee_links/$(request.auth.uid)).data.employeeId
+          : null;
+    }
+
+    /** True when `employeeId` is the caller's own employee record. */
+    function isSelf(employeeId) {
+      return employeeId != null && employeeId == myEmployeeId();
+    }
+
+    /**
+     * True when the caller is above `record` in the reporting tree.
+     *
+     * `managerChainIds` is denormalised onto the record at write time (see
+     * src/lib/seed.ts): rules cannot walk `reportingManagerId`, because the
+     * employee directory it lives in is localStorage-backed and unreadable
+     * here. Without this, the only expressible tiers would be "own record" and
+     * "any manager in the company", the latter being far wider than the
+     * visibility rule in src/lib/dataScope.ts.
+     */
+    function managesSubject(record) {
+      return myEmployeeId() != null &&
+        myEmployeeId() in record.get('managerChainIds', []);
+    }
+
     // Managers, HR and admins can act on approval workflows.
     function isManager() {
       return isSignedIn() &&
@@ -202,6 +244,35 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Employee links — which employee record an account is, keyed by uid.
+    // Consulted by myEmployeeId() above, which is what makes "only your own
+    // salary" mean anything.
+    //
+    // The write rule here is the whole security model: a user who could author
+    // their own link would point it at the CEO's employeeId and read that
+    // salary. So it is administrator-authored only, never self-written, and an
+    // HR manager may only link accounts inside their own organisation.
+    // -------------------------------------------------------------------
+    match /employee_links/{uid} {
+      // Your own link (so a client can resolve its own employeeId), or an
+      // administrator's. Not isSignedIn(): the collection maps every colleague
+      // to their employee record, and that is not a directory to hand out.
+      allow read: if isOrgAdmin() || (isSignedIn() && uid == request.auth.uid);
+      // Self-linking by an administrator is deliberately allowed: a link only
+      // ever grants reads of one employee's own salary and leave, and an
+      // administrator already reads every record in the org, so it escalates
+      // nothing. Forbidding it would only strand a new organisation's first HR
+      // account, which is the sole administrator able to link anyone.
+      allow create, update: if isOrgAdmin() &&
+        request.resource.data.uid == uid &&
+        request.resource.data.employeeId is string &&
+        request.resource.data.employeeId.size() > 0 &&
+        (isAdmin() || request.resource.data.get('orgId', null) == myOrgId());
+      allow delete: if isOrgAdmin() &&
+        (isAdmin() || resource.data.get('orgId', null) == myOrgId());
+    }
+
+    // -------------------------------------------------------------------
     // Organizations — super-admin managed. Each org's own admin can read
     // (but not modify) their org's record.
     // -------------------------------------------------------------------
@@ -226,10 +297,14 @@ service cloud.firestore {
       allow write: if isOrgAdmin();
     }
 
-    // Salary data lives in its own admin-only collection, split out of the
-    // broadly-readable `employees` directory (see src/lib/seed.ts).
-    match /employee_compensation/{docId} {
-      allow read: if isOrgAdmin();
+    // Salary data lives in its own collection, split out of the
+    // broadly-readable `employees` directory (see src/lib/seed.ts). The
+    // document id is the employeeId, so `get` needs no field lookup.
+    // Listing stays administrators-only: there is no per-employee compensation
+    // query the app needs, and an employee reads their own by id.
+    match /employee_compensation/{employeeId} {
+      allow get: if isOrgAdmin() || isSelf(employeeId);
+      allow list: if isOrgAdmin();
       allow write: if isOrgAdmin();
     }
 
@@ -238,22 +313,61 @@ service cloud.firestore {
       allow write: if isOrgAdmin();
     }
 
+    // -------------------------------------------------------------------
+    // Leave. Read: your own, your reports', or an organisation administrator's
+    // (HR is the organisation administrator — isOrgAdmin, not isHR, so an org
+    // whose administrator predates the `hr` role is not locked out; see
+    // docs/document-management-spec.md §5).
+    //
+    // `read` is split into `get` and `list` throughout this block. Firestore
+    // evaluates a list against every document the query returns and fails the
+    // whole query if any one of them is disallowed, so a rule that depends on
+    // `resource.data` only permits a query already filtered the same way. The
+    // split makes that explicit instead of leaving an employee's own-records
+    // query to fail mysteriously: list your own with
+    // where('employeeId','==',...), your reports' with
+    // where('managerChainIds','array-contains',...).
+    // -------------------------------------------------------------------
     match /leave_requests/{docId} {
-      allow read: if isSignedIn();
-      // Employees can create/update their own leave requests; admins can
-      // manage all of them (e.g. approve/reject).
+      allow get: if isOrgAdmin() ||
+        isSelf(resource.data.employeeId) ||
+        managesSubject(resource.data);
+      allow list: if isOrgAdmin() ||
+        isSelf(resource.data.employeeId) ||
+        managesSubject(resource.data);
+
+      // Employees can create/update their own leave requests; managers and
+      // administrators decide them.
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManager());
       allow delete: if isOrgAdmin();
     }
 
     match /leave_balances/{docId} {
-      allow read: if isSignedIn();
+      allow get: if isOrgAdmin() ||
+        isSelf(resource.data.employeeId) ||
+        managesSubject(resource.data);
+      allow list: if isOrgAdmin() ||
+        isSelf(resource.data.employeeId) ||
+        managesSubject(resource.data);
       allow write: if isOrgAdmin();
     }
 
+    // -------------------------------------------------------------------
+    // Salary. Read: the employee it belongs to, and organisation
+    // administrators. Deliberately NOT managers — having reports does not
+    // entitle someone to their pay, which is why `managesSubject` is absent
+    // here and present on leave.
+    //
+    // Replaces `allow read: if isSignedIn()`, under which every signed-in
+    // employee could read every colleague's gross, deductions and net pay.
+    // `employee_compensation` was split out of `employees` precisely so the
+    // broadly-readable directory would not carry salary (see src/lib/seed.ts);
+    // payslips carry the same figures per month and had been left open.
+    // -------------------------------------------------------------------
     match /payslips/{docId} {
-      allow read: if isSignedIn();
+      allow get: if isOrgAdmin() || isSelf(resource.data.employeeId);
+      allow list: if isOrgAdmin() || isSelf(resource.data.employeeId);
       allow write: if isOrgAdmin();
     }
 
