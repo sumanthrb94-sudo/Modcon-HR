@@ -336,6 +336,50 @@ export interface RegularizationRequest {
   status: 'Pending' | 'Approved' | 'Rejected';
 }
 
+// ---- Employee handbook (document management) ------------------------------------
+// One org-wide handbook: HR publishes versions, every signed-in user reads the
+// current one. Versions are immutable and append-only — superseding a handbook
+// is publishing a new version and repointing `HandbookPointer`, never editing
+// or deleting what came before, so the audit trail cannot be rewritten and a
+// bad upload is reverted by pointing back at the previous version.
+export interface HandbookVersion {
+  id: ID;
+  /** `null` for the default/legacy org, matching `users.orgId`. */
+  orgId: string | null;
+  /** 1-based, monotonic within an org. */
+  version: number;
+  /** Original upload name, used as the download filename. */
+  fileName: string;
+  contentType: 'application/pdf';
+  sizeBytes: number;
+  /**
+   * The PDF itself, base64-encoded (no data-URL prefix).
+   *
+   * See `src/lib/handbookStorage.ts` — the binary lives in the version document
+   * because this project has no Cloud Storage bucket provisioned. Firestore's
+   * 1 MiB document ceiling is what bounds `HANDBOOK_MAX_BYTES`.
+   */
+  contentBase64: string;
+  uploadedAt: string;
+  /** Always the caller's own uid — the rules refuse any other value. */
+  uploadedByUid: ID;
+  /** Display only, resolved from the local directory at upload time. */
+  uploadedByName: string;
+  uploadedByEmployeeId: ID | null;
+  /** Optional "what changed" note. */
+  notes: string;
+}
+
+/** One per org: which version is currently published. */
+export interface HandbookPointer {
+  id?: ID; // the org key — `default` for the legacy org
+  orgId: string | null;
+  currentVersionId: ID;
+  currentVersion: number;
+  updatedAt: string;
+  updatedByUid: ID;
+}
+
 // ---- Organizations (multi-tenant, super-admin managed) --------------------------
 export interface Organization {
   id?: ID; // Firestore-assigned on create; always present once fetched

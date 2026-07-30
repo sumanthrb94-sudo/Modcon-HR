@@ -27,6 +27,7 @@ const ExpensesPage = lazy(() => import('@/pages/expenses').then((m) => ({ defaul
 const AssetsPage = lazy(() => import('@/pages/assets').then((m) => ({ default: m.AssetsPage })));
 const HelpdeskPage = lazy(() => import('@/pages/helpdesk').then((m) => ({ default: m.HelpdeskPage })));
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })));
+const DocumentsPage = lazy(() => import('@/pages/documents').then((m) => ({ default: m.DocumentsPage })));
 const SettingsPage = lazy(() => import('@/pages/settings').then((m) => ({ default: m.SettingsPage })));
 const AdminDashboardPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminDashboardPage })));
 const OrganizationsPage = lazy(() => import('@/pages/organizations').then((m) => ({ default: m.OrganizationsPage })));
@@ -176,6 +177,10 @@ function AppRoutes() {
         <Route path="assets" element={<RequireModuleAccess module="Assets"><AssetsPage /></RequireModuleAccess>} />
         <Route path="helpdesk" element={<RequireModuleAccess module="Helpdesk"><HelpdeskPage /></RequireModuleAccess>} />
         <Route path="reports" element={<RequireModuleAccess module="Reports & Analytics"><ReportsPage /></RequireModuleAccess>} />
+        {/* RequireAuth only — no role guard. The handbook is deliberately
+            readable by every signed-in user; publishing is gated inside the
+            page and, decisively, in firestore.rules. */}
+        <Route path="documents" element={<RequireModuleAccess module="Documents"><DocumentsPage /></RequireModuleAccess>} />
         <Route path="settings" element={<RequireModuleAccess module="Settings"><SettingsPage /></RequireModuleAccess>} />
         {/* RequireOrgAdmin is outermost so a non-administrator is redirected
             away rather than shown the in-place "Access Restricted" card,

@@ -19,6 +19,7 @@ export const APP_MODULES = [
   'Assets',
   'Helpdesk',
   'Reports & Analytics',
+  'Documents',
   'Settings',
   'Admin',
 ] as const;
@@ -52,6 +53,12 @@ export const defaultPermissions: PermissionMatrix = {
   Assets: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
   Helpdesk: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'full' },
   'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
+  // The employee handbook is company policy every employee must be able to
+  // read, so no role is ever 'none' here — the read floor is pinned for every
+  // role in enforceRequiredPermissions. 'full' means publish, and goes to the
+  // organisation's administrators (HR and Admin), matching isOrgAdmin() in
+  // firestore.rules.
+  Documents: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Settings: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
   Admin: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
 };
@@ -75,26 +82,56 @@ export function isModuleExcluded(module: AppModule, role: AppRole): boolean {
   return MODULE_ROLE_EXCLUSIONS[module]?.includes(role) ?? false;
 }
 
+/**
+ * Cells whose level the app fixes, whatever the stored matrix says.
+ *
+ * Distinct from MODULE_ROLE_EXCLUSIONS: an excluded pair is *unavailable*
+ * ("n/a"), a pinned pair has a real level that simply cannot be changed.
+ *
+ * `Documents` is pinned in full because the handbook's access model is enforced
+ * in firestore.rules, and the matrix must not be able to promise something the
+ * server will refuse. Granting a Manager 'full' here would render the upload
+ * panel for someone `isOrgAdmin()` then denies; withdrawing an Employee's 'view'
+ * would hide company policy the rules still serve. Publish is HR + Admin
+ * because that is what the rules say, so the cell is not a choice.
+ *
+ * The other two entries predate this and were previously enforced silently on
+ * read — the Settings cell cycled, appeared to save, and reverted. Listing them
+ * here is what lets the UI lock them instead.
+ */
+export const PINNED_PERMISSIONS: Partial<
+  Record<AppModule, Partial<Record<AppRole, PermissionLevel>>>
+> = {
+  'Employee Directory': { Employee: 'view' },
+  Documents: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
+  Admin: { Admin: 'full' },
+};
+
+/** The fixed level for a cell, or undefined when it is configurable. */
+export function pinnedPermission(
+  module: AppModule,
+  role: AppRole,
+): PermissionLevel | undefined {
+  return PINNED_PERMISSIONS[module]?.[role];
+}
+
 function notifyPermissionsChanged() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(ACCESS_CONTROL_CHANGED_EVENT));
 }
 
 function enforceRequiredPermissions(matrix: PermissionMatrix): PermissionMatrix {
-  const enforced: PermissionMatrix = {
-    ...matrix,
-    'Employee Directory': {
-      ...matrix['Employee Directory'],
-      Employee: 'view',
-    },
-    Admin: {
-      ...matrix.Admin,
-      Admin: 'full',
-    },
-  };
+  const enforced: PermissionMatrix = { ...matrix };
+
+  // Pinned cells overwrite whatever was stored — see PINNED_PERMISSIONS.
+  (Object.keys(PINNED_PERMISSIONS) as AppModule[]).forEach((module) => {
+    const pins = PINNED_PERMISSIONS[module];
+    if (!pins) return;
+    enforced[module] = { ...enforced[module], ...pins };
+  });
 
   // Excluded pairs are pinned closed last, so neither a stored matrix nor the
-  // floors above can hand a role a module it is structurally barred from.
+  // pins above can hand a role a module it is structurally barred from.
   (Object.keys(MODULE_ROLE_EXCLUSIONS) as AppModule[]).forEach((module) => {
     MODULE_ROLE_EXCLUSIONS[module]?.forEach((role) => {
       enforced[module] = { ...enforced[module], [role]: 'none' };

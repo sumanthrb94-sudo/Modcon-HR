@@ -326,6 +326,75 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Employee handbook.
+    //
+    // Read: any signed-in user. The handbook is organisation-wide policy and
+    // is deliberately NOT narrowed by the per-employee visibility rules in
+    // src/lib/dataScope.ts — an employee who can see nobody else's records
+    // still reads it.
+    //
+    // Write: organisation administrators — HR managers and platform admins,
+    // the same `isOrgAdmin()` every other collection here uses. HR is the role
+    // that owns the handbook in practice, but confining the write to `isHR()`
+    // would leave organisations created before the HR role existed — which
+    // hold an `admin` rather than an `hr` account — with nobody able to publish
+    // at all. See docs/document-management-spec.md §5.
+    //
+    // These rules are the actual authorization boundary for the module. The
+    // client-side check in src/lib/handbook.ts decides whether to draw the
+    // upload panel and reads a localStorage-backed directory to do it, so it
+    // is an affordance, not a gate.
+    // -------------------------------------------------------------------
+    function handbookOrgKey() {
+      return myOrgId() == null ? 'default' : myOrgId();
+    }
+
+    match /handbook_versions/{versionId} {
+      allow read: if isSignedIn();
+      allow create: if isOrgAdmin() &&
+        // Attribution cannot be forged: the uploader is always the caller.
+        request.resource.data.uploadedByUid == request.auth.uid &&
+        // The client never names its own org.
+        request.resource.data.get('orgId', null) == myOrgId() &&
+        request.resource.data.id == versionId &&
+        request.resource.data.contentType == 'application/pdf' &&
+        request.resource.data.version is int &&
+        request.resource.data.version > 0 &&
+        request.resource.data.sizeBytes is int &&
+        request.resource.data.sizeBytes > 0 &&
+        // Mirrors HANDBOOK_MAX_BYTES in src/lib/handbookStorage.ts. The bytes
+        // live in this document because no Cloud Storage bucket is provisioned
+        // and Storage rules cannot read Firestore to check a role — see that
+        // file's header. Firestore's own 1 MiB document ceiling is the
+        // backstop; this keeps the payload clear of it.
+        request.resource.data.sizeBytes <= 737280 &&
+        request.resource.data.contentBase64 is string &&
+        request.resource.data.contentBase64.size() <= 1000000 &&
+        request.resource.data.fileName is string &&
+        request.resource.data.fileName.size() > 0 &&
+        request.resource.data.fileName.size() <= 200 &&
+        request.resource.data.notes.size() <= 500;
+      // Append-only. An audit trail that can be rewritten is not one, and
+      // reverting a bad version is a pointer move, never a deletion.
+      allow update, delete: if false;
+    }
+
+    match /handbook/{orgKey} {
+      allow read: if isSignedIn();
+      allow create, update: if isOrgAdmin() &&
+        orgKey == handbookOrgKey() &&
+        request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.currentVersionId is string &&
+        // The pointer may only name a version that exists and belongs to my
+        // org — otherwise an administrator of org A could publish org B's
+        // handbook to their own employees.
+        exists(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId)) &&
+        get(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId))
+          .data.get('orgId', null) == myOrgId();
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------
     // Deny everything else by default.
     // -------------------------------------------------------------------
     match /{document=**} {
