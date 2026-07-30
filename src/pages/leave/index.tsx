@@ -35,6 +35,8 @@ import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies'
 import { getHolidayDirectory } from '@/data/holidays';
 import { employees, getEmployee, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
+import { financialYearLabel } from '@/lib/financialYear';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
@@ -305,17 +307,24 @@ export function LeavePage() {
   ];
 
   // ---- Balances Tab ----
-  type BalanceViewItem = { emp: NonNullable<ReturnType<typeof getEmployee>>; balances: ReturnType<typeof getEmployeeBalances> };
+  // Entitlements are derived from the policy and the date rather than read
+  // from the stored balance seeds, so monthly accrual, carry-forward within the
+  // financial year, the April reset and the one-year Earned Leave gate all fall
+  // out of one calculation. See data/leaveEntitlements.ts.
+  type BalanceViewItem = { emp: NonNullable<ReturnType<typeof getEmployee>>; balances: Entitlement[] };
   const balancesView = useMemo((): BalanceViewItem[] => {
     if (isEmployee) {
       if (!currentEmployee) return [];
-      return [{ emp: currentEmployee, balances: getEmployeeBalances(currentEmployee.id, scopedRequests) }];
+      return [{ emp: currentEmployee, balances: getEntitlements(currentEmployee, scopedRequests) }];
     }
 
     return balanceEmployeeIds
       .filter((empId) => visibleEmployeeIds.has(empId))
-      .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId, scopedRequests) }))
-      .filter((b): b is BalanceViewItem => b.emp !== undefined);
+      .map((empId) => {
+        const emp = getEmployee(empId);
+        return emp ? { emp, balances: getEntitlements(emp, scopedRequests) } : undefined;
+      })
+      .filter((b): b is BalanceViewItem => b !== undefined);
   }, [scopedRequests, isEmployee, currentEmployee, visibleEmployeeIds]);
 
   // ---- Who's Off Tab ----
@@ -422,6 +431,13 @@ export function LeavePage() {
         {/* BALANCES TAB */}
         {activeTab === 'balances' && (
           <div className="p-5">
+            {/* Balances are per financial year (April-March): monthly days
+                accumulate within it and reset when it turns over, so the year
+                being shown is not incidental. */}
+            <p className="mb-4 text-xs text-ink-400">
+              {financialYearLabel()} · Casual and Sick accrue 1 day per month and carry forward
+              within the year; unused days do not survive 1 April.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {balancesView.map(({ emp, balances }) => (
                 <div
@@ -443,14 +459,26 @@ export function LeavePage() {
                             <Badge tone={leaveTypeTone(b.type)} className="text-[10px]">
                               {b.type}
                             </Badge>
+                            {/* The rate, never an annual quota, for accrued
+                                types — what the employee has is what has
+                                accrued so far, not a yearly allowance. */}
+                            {b.monthly && (
+                              <span className="text-[10px] text-ink-400">
+                                {b.policy.monthlyAccrual}/month
+                              </span>
+                            )}
                           </div>
-                          <span className="text-xs text-ink-500">
-                            <span className="font-semibold text-ink-800">{b.available}</span>/{b.total} available
-                          </span>
+                          {b.withheldReason ? (
+                            <span className="text-[10px] text-ink-400">{b.withheldReason}</span>
+                          ) : (
+                            <span className="text-xs text-ink-500">
+                              <span className="font-semibold text-ink-800">{b.available}</span>/{b.granted} available
+                            </span>
+                          )}
                         </div>
                         <ProgressBar
-                          value={pct(b.used, b.total)}
-                          tone={pct(b.used, b.total) > 75 ? 'amber' : 'brand'}
+                          value={pct(b.used, b.granted)}
+                          tone={pct(b.used, b.granted) > 75 ? 'amber' : 'brand'}
                           size="sm"
                         />
                       </div>

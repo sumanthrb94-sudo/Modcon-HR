@@ -78,7 +78,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
 // documents.spec.ts belongs here rather than with the app specs: what it checks
 // is which controls a given role is offered, which is meaningless without a
 // persona and identical across browser engines.
-const ROLE_SPECS = /(roles|documents)\.spec\.ts$/;
+const ROLE_SPECS = /(roles|documents|leave-policy)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
