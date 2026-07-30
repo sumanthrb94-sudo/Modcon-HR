@@ -73,11 +73,16 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|org-settings)\.spec\.ts$/;
 // Specs that assert per-persona access control, run once per role project.
 // documents.spec.ts belongs here rather than with the app specs: what it checks
 // is which controls a given role is offered, which is meaningless without a
 // persona and identical across browser engines.
+// org-settings.spec.ts signs in as the admin persona itself rather than
+// taking one from project metadata, and what it asserts — that
+// configuration outlives the browser it was written in — is server
+// behaviour, identical across engines and personas. So it runs once,
+// with the app specs, not per role.
 const ROLE_SPECS = /(roles|documents|leave-policy)\.spec\.ts$/;
 
 export default defineConfig({

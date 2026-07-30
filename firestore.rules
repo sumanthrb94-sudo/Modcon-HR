@@ -114,6 +114,21 @@ service cloud.firestore {
     }
 
     /**
+     * The organisation key of a stored or incoming document.
+     *
+     * Absent and explicitly-null `orgId` both resolve to 'default'. Absent is
+     * the legacy shape of the 18 tenant collections; explicit null is the shape
+     * the handbook writes for a legacy org (`handbookOrgId` returned
+     * `profile?.orgId ?? null`). Reading them differently meant a handbook
+     * version could never match its own organisation once these rules started
+     * comparing, so one helper answers the question for every collection.
+     */
+    function orgKeyOf(data) {
+      let stored = data.get('orgId', null);
+      return stored == null ? 'default' : stored;
+    }
+
+    /**
      * True when the stored document belongs to the caller's organisation.
      *
      * Documents missing `orgId` are read as 'default' so legacy data stays
@@ -121,12 +136,12 @@ service cloud.firestore {
      * existing record vanishing the moment these rules deploy.
      */
     function inMyOrg() {
-      return isSuperAdmin() || resource.data.get('orgId', 'default') == myOrgKey();
+      return isSuperAdmin() || orgKeyOf(resource.data) == myOrgKey();
     }
 
     /** True when the document being written is stamped with the caller's org. */
     function writingToMyOrg() {
-      return isSuperAdmin() || request.resource.data.get('orgId', 'default') == myOrgKey();
+      return isSuperAdmin() || orgKeyOf(request.resource.data) == myOrgKey();
     }
 
     // Managers, HR and admins can act on approval workflows.
@@ -196,7 +211,32 @@ service cloud.firestore {
     // Users directory (roles, profile info)
     // -------------------------------------------------------------------
     match /users/{uid} {
-      allow read: if isSignedIn();
+      // Read: yourself, or an administrator with reach over the account.
+      //
+      // This was `allow read: if isSignedIn()`, which handed every signed-in
+      // account of every organisation the whole platform's user directory —
+      // each account's email, role, orgId and superAdmin flag. Nothing in the
+      // app needed that: the only readers are the sign-in self-upsert
+      // (src/lib/auth.tsx), the Admin dashboard, the org provisioning flow, and
+      // the two backfills, all of which are self or administrator.
+      //
+      // get/list are split for the reason the leave block explains — a list is
+      // evaluated against every document it returns, so an HR manager's query
+      // must carry `where('orgId','==',...)` to be legal. A platform admin is
+      // deliberately not org-scoped here: they administer every organisation,
+      // which is the difference between `admin` and `hr`.
+      //
+      // Rule-internal get()s (myProfile, assignedRoleFor) are unaffected —
+      // rule evaluation is not subject to the caller's read permission.
+      allow get: if isSignedIn() && (
+        request.auth.uid == uid ||
+        isAdmin() || isSuperAdmin() ||
+        (isHR() && orgKeyOf(resource.data) == myOrgKey())
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() || isSuperAdmin() ||
+        (isHR() && orgKeyOf(resource.data) == myOrgKey())
+      );
       // Users may create/update their own profile (first login upsert), but
       // never with a self-granted role/superAdmin, and never a self-assigned
       // orgId (orgId is only ever set by an admin, e.g. org provisioning —
@@ -274,9 +314,13 @@ service cloud.firestore {
         // under one address while naming another.
         request.resource.data.email == emailId &&
         // An HR manager may only assign within their own organisation.
-        (isAdmin() || request.resource.data.get('orgId', null) == myOrgId());
+        // orgKeyOf/myOrgKey rather than a raw `== myOrgId()`: the sentinel is
+        // the same one every other collection compares, so a legacy assignment
+        // and a stamped 'default' one are the same tenant. See G4 in
+        // docs/tenant-isolation-spec.md.
+        (isAdmin() || orgKeyOf(request.resource.data) == myOrgKey());
       allow delete: if isOrgAdmin() &&
-        (isAdmin() || resource.data.get('orgId', null) == myOrgId());
+        (isAdmin() || orgKeyOf(resource.data) == myOrgKey());
     }
 
     // -------------------------------------------------------------------
@@ -303,9 +347,10 @@ service cloud.firestore {
         request.resource.data.uid == uid &&
         request.resource.data.employeeId is string &&
         request.resource.data.employeeId.size() > 0 &&
-        (isAdmin() || request.resource.data.get('orgId', null) == myOrgId());
+        // Same sentinel as everywhere else — see the role_assignments note.
+        (isAdmin() || orgKeyOf(request.resource.data) == myOrgKey());
       allow delete: if isOrgAdmin() &&
-        (isAdmin() || resource.data.get('orgId', null) == myOrgId());
+        (isAdmin() || orgKeyOf(resource.data) == myOrgKey());
     }
 
     // -------------------------------------------------------------------
@@ -552,12 +597,63 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Organisation configuration — leave policies, the company profile, the
+    // holiday calendar, departments, the permission matrix, preferences.
+    //
+    // These lived only in localStorage, org-namespaced by a key suffix the
+    // client owns. That made the tenant boundary for configuration a hygiene
+    // property rather than an enforced one, and — the part that was not about
+    // isolation at all — meant two administrators of the same organisation did
+    // not share it, while leave accrual policy is what payroll deductions are
+    // computed from. See G3 in docs/tenant-isolation-spec.md.
+    //
+    // Read is any signed-in member of the org: an employee's own leave page
+    // needs the accrual policy and the holiday calendar. Write is
+    // administrators, like every other piece of company configuration.
+    // -------------------------------------------------------------------
+    match /org_settings/{docId} {
+      // `get` tests the document *id*, not `resource.data`, because the sync in
+      // src/lib/orgSettings.ts subscribes before the document exists — a fresh
+      // organisation has published nothing yet. For a non-existent document
+      // `resource` is null, so `inMyOrg()` dereferences null and the rule fails
+      // evaluation: every subscription is denied, and the feature silently does
+      // not work. The id carries the tenant (`<orgKey>__<setting>`), which is
+      // why it can answer the question without the document being there —
+      // the same trick `handbook/{orgKey}` uses.
+      allow get: if isSignedIn() && (isSuperAdmin() || docId.split('__')[0] == myOrgKey());
+      // `list` keeps the field test: a query only ever returns documents that
+      // exist, and the `where('orgId','==',...)` filter is what makes it legal.
+      allow list: if isSignedIn() && inMyOrg();
+      // The id encodes the tenant as well as the field, so a document cannot be
+      // filed under one organisation while claiming another.
+      // The id must agree with the document's own orgId, and writingToMyOrg()
+      // decides which orgId that may be. Stated against the field rather than
+      // myOrgKey() so a super admin — who administers every organisation and
+      // switches between them in the UI — can still write the org they are
+      // acting in, while an org administrator remains pinned to their own.
+      allow create: if isOrgAdmin() && writingToMyOrg() &&
+        request.resource.data.key is string &&
+        request.resource.data.valueJson is string &&
+        docId == orgKeyOf(request.resource.data) + '__' + request.resource.data.key;
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg() &&
+        request.resource.data.valueJson is string &&
+        // The id is immutable, so an update cannot re-file the document.
+        request.resource.data.key == resource.data.key;
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    // -------------------------------------------------------------------
     // Employee handbook.
     //
-    // Read: any signed-in user. The handbook is organisation-wide policy and
-    // is deliberately NOT narrowed by the per-employee visibility rules in
-    // src/lib/dataScope.ts — an employee who can see nobody else's records
-    // still reads it.
+    // Read: any signed-in user **of the owning organisation**. The handbook is
+    // organisation-wide policy and is deliberately NOT narrowed by the
+    // per-employee visibility rules in src/lib/dataScope.ts — an employee who
+    // can see nobody else's records still reads it. It is narrowed by tenant:
+    // `read: if isSignedIn()` let any signed-in account of any organisation
+    // read any other organisation's handbook, and the version document carries
+    // the PDF itself in `contentBase64`, so that was the whole document and not
+    // just its metadata. The write side was scoped from the start, which is
+    // what made the read side easy to miss.
     //
     // Write: organisation administrators — HR managers and platform admins,
     // the same `isOrgAdmin()` every other collection here uses. HR is the role
@@ -572,12 +668,18 @@ service cloud.firestore {
     // is an affordance, not a gate.
     // -------------------------------------------------------------------
     match /handbook_versions/{versionId} {
-      allow read: if isSignedIn();
+      // Split get/list for the reason the leave block gives: a list is
+      // evaluated against every document it returns, so `useHandbook` must
+      // filter by orgId rather than fetch the collection and filter in JS.
+      allow get: if isSignedIn() && inMyOrg();
+      allow list: if isSignedIn() && inMyOrg();
       allow create: if isOrgAdmin() &&
         // Attribution cannot be forged: the uploader is always the caller.
         request.resource.data.uploadedByUid == request.auth.uid &&
-        // The client never names its own org.
-        request.resource.data.get('orgId', null) == myOrgId() &&
+        // The client never names its own org. `writingToMyOrg()` rather than a
+        // bare `== myOrgId()` so a legacy org may stamp either the 'default'
+        // sentinel or nothing at all, matching every other collection.
+        writingToMyOrg() &&
         request.resource.data.id == versionId &&
         request.resource.data.contentType == 'application/pdf' &&
         request.resource.data.version is int &&
@@ -602,7 +704,9 @@ service cloud.firestore {
     }
 
     match /handbook/{orgKey} {
-      allow read: if isSignedIn();
+      // The document id *is* the organisation key, so the tenant test is on the
+      // id and needs no field lookup.
+      allow read: if isSignedIn() && (isSuperAdmin() || orgKey == myOrgKey());
       allow create, update: if isOrgAdmin() &&
         orgKey == myOrgKey() &&
         request.resource.data.updatedByUid == request.auth.uid &&
@@ -611,8 +715,8 @@ service cloud.firestore {
         // org — otherwise an administrator of org A could publish org B's
         // handbook to their own employees.
         exists(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId)) &&
-        get(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId))
-          .data.get('orgId', null) == myOrgId();
+        orgKeyOf(get(/databases/$(database)/documents/handbook_versions/$(request.resource.data.currentVersionId)).data)
+          == myOrgKey();
       allow delete: if false;
     }
 

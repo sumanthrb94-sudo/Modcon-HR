@@ -14,7 +14,7 @@
  * uses; see docs/document-management-spec.md §5.
  */
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { Collections } from '@/lib/db';
 import { getPermissionLevel, resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployeeRecord } from '@/lib/dataScope';
@@ -37,9 +37,21 @@ export function handbookOrgKey(profile: UserProfile | null): string {
   return profile?.orgId || 'default';
 }
 
-/** The `orgId` field value for a profile: `null`, not `'default'`, for legacy orgs. */
-export function handbookOrgId(profile: UserProfile | null): string | null {
-  return profile?.orgId ?? null;
+/**
+ * The `orgId` field value stamped onto a version document.
+ *
+ * Identical to `handbookOrgKey` — the same `'default'` sentinel, not `null`.
+ * It used to write `null` for a legacy org, which was invisible to
+ * `where('orgId','==',...)`: Firestore equality matches neither a missing field
+ * nor a null one against a string. Once the read rule became org-scoped the
+ * query had to carry that filter, so the stored value has to be the string.
+ * `orgKeyOf()` in firestore.rules reads the old null-valued documents as
+ * 'default' so they stay *permitted*; the backfill is what makes them
+ * *reachable* (src/lib/orgBackfill.ts, and the same asymmetry as §4 of
+ * docs/multi-tenancy-spec.md).
+ */
+export function handbookOrgId(profile: UserProfile | null): string {
+  return handbookOrgKey(profile);
 }
 
 /**
@@ -75,9 +87,12 @@ interface UseHandbookResult {
 /**
  * Live handbook state for the signed-in profile's organisation.
  *
- * Versions are filtered to the caller's org client-side rather than with a
- * `where` clause: the collection is one document per handbook revision, so it
- * stays small, and a query would need a composite index for the ordering.
+ * Versions are filtered to the caller's org with a `where` clause, not in JS.
+ * That is not a performance choice: the rules evaluate a list against every
+ * document it returns and fail the whole query if one is disallowed, so an
+ * unfiltered read of this collection is rejected outright once a second
+ * organisation has uploaded anything. Ordering stays client-side (`.sort`
+ * below) so the equality filter needs no composite index.
  */
 export function useHandbook(profile: UserProfile | null): UseHandbookResult {
   const [versions, setVersions] = useState<HandbookVersion[]>([]);
@@ -102,12 +117,11 @@ export function useHandbook(profile: UserProfile | null): UseHandbookResult {
     // the app, so the app can be live against rules that do not know this
     // collection yet.
     const unsub = onSnapshot(
-      Collections.handbookVersions,
+      query(Collections.handbookVersions, where('orgId', '==', orgId)),
       (snap) => {
         setVersions(
           snap.docs
             .map((d) => ({ ...d.data(), id: d.id }))
-            .filter((v) => (v.orgId ?? null) === orgId)
             .sort((a, b) => b.version - a.version),
         );
         setLoadedVersions(true);

@@ -1,4 +1,5 @@
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 
 export interface IntegrationPreference {
   id: string;
@@ -6,8 +7,8 @@ export interface IntegrationPreference {
   badge?: string;
 }
 
-const INTEGRATIONS_STORAGE_KEY = 'modcon.hr.integrations';
-export const INTEGRATIONS_CHANGED_EVENT = 'modcon-hr-integrations-changed';
+const INTEGRATIONS_STORAGE_KEY = ORG_SETTINGS.integrations.storageKey;
+export const INTEGRATIONS_CHANGED_EVENT = ORG_SETTINGS.integrations.changedEvent;
 
 const defaultIntegrations: IntegrationPreference[] = [
   { id: 'slack', connected: true, badge: 'Connected' },
@@ -44,6 +45,7 @@ export function saveIntegrationPreferences(integrations: IntegrationPreference[]
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(INTEGRATIONS_STORAGE_KEY), JSON.stringify(integrations));
   notifyIntegrationsChanged();
+  publishOrgSetting(ORG_SETTINGS.integrations, integrations);
 }
 
 if (typeof window !== 'undefined') {

@@ -1,5 +1,6 @@
 import type { UserProfile } from '@/lib/auth';
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 
 export const APP_ROLES = ['Admin', 'HR Manager', 'Manager', 'Employee'] as const;
 export type AppRole = typeof APP_ROLES[number];
@@ -28,8 +29,8 @@ export type AppModule = typeof APP_MODULES[number];
 export type PermissionLevel = 'full' | 'view' | 'none';
 export type PermissionMatrix = Record<AppModule, Record<AppRole, PermissionLevel>>;
 
-const ACCESS_CONTROL_STORAGE_KEY = 'modcon.hr.accessControl.permissions';
-export const ACCESS_CONTROL_CHANGED_EVENT = 'modcon-hr-access-control-changed';
+const ACCESS_CONTROL_STORAGE_KEY = ORG_SETTINGS.accessControl.storageKey;
+export const ACCESS_CONTROL_CHANGED_EVENT = ORG_SETTINGS.accessControl.changedEvent;
 
 // An HR Manager is the administrator of their own company: they hold the same
 // module access as Admin. What separates the two is reach, not level — an HR
@@ -178,8 +179,14 @@ export function getPermissionMatrix(): PermissionMatrix {
 
 export function savePermissionMatrix(matrix: PermissionMatrix) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(ACCESS_CONTROL_STORAGE_KEY), JSON.stringify(enforceRequiredPermissions(matrix)));
+  const enforced = enforceRequiredPermissions(matrix);
+  window.localStorage.setItem(orgScopedKey(ACCESS_CONTROL_STORAGE_KEY), JSON.stringify(enforced));
   notifyPermissionsChanged();
+  // Storing it server-side does not make the matrix an authorization boundary —
+  // firestore.rules still decides, and resolveAppRole still reads the
+  // server-backed profile role. It stops one browser's devtools edit from being
+  // the whole of it, which is what G5 in docs/tenant-isolation-spec.md is about.
+  publishOrgSetting(ORG_SETTINGS.accessControl, enforced);
 }
 
 export function getPermissionLevel(module: AppModule, role: AppRole): PermissionLevel {

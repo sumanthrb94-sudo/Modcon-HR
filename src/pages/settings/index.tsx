@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Building2, Users, CalendarDays, Shield, Bell,
@@ -53,6 +53,7 @@ import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { backfillOrgIds } from '@/lib/orgBackfill';
+import { backfillOrgSettings } from '@/lib/orgSettings';
 import { backfillEmployeeLinks, backfillManagerChains } from '@/lib/accessBackfill';
 import { useAuth } from '@/lib/auth';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
@@ -77,12 +78,21 @@ function Field({
   hint?: string;
   disabled?: boolean;
 }) {
+  // Associated explicitly. The label was a bare <label> next to the input,
+  // neither wrapping it nor carrying htmlFor, so the input had no accessible
+  // name at all: a screen reader announced "edit text", and nothing could
+  // address these fields by their label.
+  const id = useId();
   return (
     <div>
-      <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+      <label
+        htmlFor={id}
+        className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5"
+      >
         {label}
       </label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -2441,7 +2451,22 @@ function DatabaseSection() {
   const [backfillLogs, setBackfillLogs] = useState<string[]>([]);
   const [accessStatus, setAccessStatus] = useState<'idle' | 'running' | 'dry-run' | 'done' | 'error'>('idle');
   const [accessLogs, setAccessLogs] = useState<string[]>([]);
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
+
+  // Authorized on the server-backed role, not on the permission matrix that
+  // routed the caller here.
+  //
+  // `RequireModuleAccess` gates /settings on the `Settings` row of that matrix,
+  // and the matrix lives in localStorage (src/lib/accessControl.ts) — a value
+  // the client owns, and one `enforceRequiredPermissions` does not pin for this
+  // row. So reaching this section is not evidence of anything. The Firestore
+  // half of every operation below is checked by the rules and fails for a
+  // non-administrator, but `handleResetMockData` also sweeps localStorage, and
+  // that half has no server to refuse it: an employee who granted themselves
+  // the module in devtools could wipe their organisation's entire local
+  // overlay. `profile.role` comes from a Firestore document only an
+  // administrator can write. See G5 in docs/tenant-isolation-spec.md.
+  const isOrgAdmin = isAdmin || profile?.role === 'hr';
 
   // Links accounts to employee records and refreshes the reporting chains on
   // leave documents. Both grant access the rules currently withhold — they fail
@@ -2473,11 +2498,15 @@ function DatabaseSection() {
     setBackfillStatus('running');
     setBackfillLogs([]);
     try {
-      await backfillOrgIds({
-        orgKey: getActiveOrgKey(),
-        dryRun,
-        onProgress: (msg) => setBackfillLogs((prev) => [...prev, msg]),
-      });
+      const onProgress = (msg: string) => setBackfillLogs((prev) => [...prev, msg]);
+      await backfillOrgIds({ orgKey: getActiveOrgKey(), dryRun, onProgress });
+      onProgress('---');
+      // Configuration held only in this browser. An organisation that used the
+      // app before org_settings existed has its leave policies and company
+      // profile in localStorage and nowhere else; this publishes them once,
+      // and never overwrites a document another administrator already
+      // published. See G3 in docs/tenant-isolation-spec.md.
+      await backfillOrgSettings({ dryRun, onProgress });
       setBackfillStatus(dryRun ? 'dry-run' : 'done');
     } catch (err) {
       setBackfillLogs((prev) => [...prev, `Error: ${String(err)}`]);
@@ -2505,6 +2534,10 @@ function DatabaseSection() {
   }
 
   async function handleResetMockData() {
+    // Re-checked here and not only at the render above: this is the one
+    // operation whose second half (the localStorage sweep) has no server to
+    // refuse it.
+    if (!isOrgAdmin) return;
     setResetStatus('running');
     setResetLogs([]);
     try {
@@ -2532,6 +2565,22 @@ function DatabaseSection() {
       setResetLogs((prev) => [...prev, `Error: ${String(err)}`]);
       setResetStatus('error');
     }
+  }
+
+  if (!isOrgAdmin) {
+    return (
+      <SettingsSection
+        title="Firestore Database"
+        subtitle="Seeding, backfills and data reset are restricted to administrators."
+      >
+        <Card>
+          <p className="text-sm text-ink-500">
+            These operations write to and delete this organisation&rsquo;s records. They are
+            available to an Admin or HR Manager only.
+          </p>
+        </Card>
+      </SettingsSection>
+    );
   }
 
   return (

@@ -31,6 +31,7 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
+import { startOrgSettingsSync } from './orgSettings';
 import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
 
 // ---------------------------------------------------------------------------
@@ -256,6 +257,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         return unsub;
     }, []);
+
+    // Hydrate the organisation's configuration — leave policies, company
+    // profile, holiday calendar, departments, permission matrix, preferences —
+    // from Firestore into the localStorage cache the data modules read.
+    //
+    // Here rather than at module load because it needs the resolved profile to
+    // know which organisation's documents to subscribe to, and because the
+    // subscription must be torn down when the account changes. The modules keep
+    // reading localStorage synchronously; this is what keeps that copy the
+    // organisation's rather than the browser's. See src/lib/orgSettings.ts.
+    useEffect(() => {
+        if (!profile) return;
+        return startOrgSettingsSync(profile);
+    }, [profile?.uid, profile?.orgId]);
 
     const clearError = () => setError('');
 

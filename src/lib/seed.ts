@@ -81,6 +81,16 @@ const SEEDED_COLLECTION_NAMES = [
 ];
 
 /**
+ * Also cleared by the purge, though the seed does not write it.
+ *
+ * Organisation configuration moved out of localStorage and into Firestore
+ * (src/lib/orgSettings.ts). Delete Mock Data sweeps the local cache, but the
+ * sync would pull the same values straight back from the server on reload, so
+ * a reset that did not include this collection would no longer be a reset.
+ */
+const PURGED_ONLY_COLLECTION_NAMES = ['org_settings'];
+
+/**
  * Deletes one organisation's documents from a collection.
  *
  * Org-scoped rather than wholesale: an unfiltered delete here wiped every
@@ -116,7 +126,7 @@ export async function purgeSeededFirestoreData(
         onProgress?.(msg);
     };
 
-    for (const name of SEEDED_COLLECTION_NAMES) {
+    for (const name of [...SEEDED_COLLECTION_NAMES, ...PURGED_ONLY_COLLECTION_NAMES]) {
         try {
             log(`Deleting ${name}…`);
             const count = await batchDeleteCollection(name, orgKey);
