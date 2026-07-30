@@ -116,6 +116,43 @@ export async function purgeSeededFirestoreData(
     log('✅ Firestore purge complete.');
 }
 
+/**
+ * Every employee id above each employee in the reporting tree.
+ *
+ * Denormalised onto leave documents so `firestore.rules` can answer "is the
+ * caller this person's manager". The rules cannot walk `reportingManagerId`
+ * themselves: the directory it lives in is localStorage-backed
+ * (src/data/employees.ts), so it is neither readable nor trustworthy on the
+ * server. Without this the only expressible tiers are "own record" and "any
+ * manager in the company" — the latter far wider than src/lib/dataScope.ts
+ * allows. See docs/salary-leave-access-spec.md §4.
+ *
+ * The chain is a snapshot taken at write time, so it goes stale when someone
+ * changes manager; whatever rewrites reporting lines must rewrite these too.
+ */
+function buildManagerChains(): Map<string, string[]> {
+    const managerOf = new Map<string, string | null>(
+        employees.map((e) => [e.id, e.reportingManagerId ?? null]),
+    );
+
+    const chains = new Map<string, string[]>();
+    for (const employee of employees) {
+        const chain: string[] = [];
+        const seen = new Set<string>([employee.id]);
+        let current = managerOf.get(employee.id) ?? null;
+        // Guarded against a cycle in the reporting data (A reports to B reports
+        // to A), which is reachable — reporting lines are editable from the
+        // profile page. dataScope.collectSubtree guards the same way.
+        while (current && !seen.has(current)) {
+            chain.push(current);
+            seen.add(current);
+            current = managerOf.get(current) ?? null;
+        }
+        chains.set(employee.id, chain);
+    }
+    return chains;
+}
+
 export async function seedFirestore(
     onProgress?: (msg: string) => void,
 ): Promise<void> {
@@ -130,16 +167,25 @@ export async function seedFirestore(
     const employeesWithoutComp = employees.map(({ ctc: _ctc, ...rest }) => rest);
     const compensation = employees.map((e) => ({ id: e.id, employeeId: e.id, ctc: e.ctc }));
 
+    const managerChains = buildManagerChains();
+
     const collections = [
         { name: 'employees', data: employeesWithoutComp },
         { name: 'employee_compensation', data: compensation },
         { name: 'attendance', data: attendanceRecords },
-        { name: 'leave_requests', data: leaveRequests },
+        {
+            name: 'leave_requests',
+            data: leaveRequests.map((r) => ({
+                ...r,
+                managerChainIds: managerChains.get(r.employeeId) ?? [],
+            })),
+        },
         {
             name: 'leave_balances',
             data: leaveBalances.map((b) => ({
                 ...b,
                 id: `${b.employeeId}_${b.type.replace(/\s+/g, '_')}`,
+                managerChainIds: managerChains.get(b.employeeId) ?? [],
             })),
         },
         { name: 'payslips', data: payslips },
