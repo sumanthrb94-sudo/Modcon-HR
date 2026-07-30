@@ -1,5 +1,6 @@
 import type { LeaveType } from '@/types';
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 
 export type LeaveAccrual = 'monthly' | 'annual';
 
@@ -47,8 +48,10 @@ export function isMonthlyPolicy(policy: LeavePolicy): boolean {
   return policy.accrual === 'monthly';
 }
 
-const LEAVE_POLICIES_STORAGE_KEY = 'modcon.hr.leavePolicies';
-export const LEAVE_POLICIES_CHANGED_EVENT = 'modcon-hr-leave-policies-changed';
+// Both come from the org-settings registry so the Firestore sync hydrates the
+// same key this module reads, and dispatches the event it listens for.
+const LEAVE_POLICIES_STORAGE_KEY = ORG_SETTINGS.leavePolicies.storageKey;
+export const LEAVE_POLICIES_CHANGED_EVENT = ORG_SETTINGS.leavePolicies.changedEvent;
 
 /**
  * The organisation's leave policy.
@@ -131,6 +134,9 @@ export function getPolicyForType(type: string): LeavePolicy | undefined {
 export function saveLeavePolicies(policies: LeavePolicy[]) {
   writeStoredLeavePolicies(policies);
   notifyLeavePoliciesChanged();
+  // The organisation's copy. Accrual policy is what LOP deductions are computed
+  // from, so it belonging to one browser was never right — see lib/orgSettings.
+  publishOrgSetting(ORG_SETTINGS.leavePolicies, policies);
 }
 
 export function normalizeLeaveTypeValue(type: string): LeaveType {

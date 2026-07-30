@@ -12,8 +12,9 @@ import {
     Trash2,
     FileText,
 } from 'lucide-react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, orderBy, query } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { resolveOrgKeyForProfile } from '@/lib/orgScope';
 import { useAuth, ADMIN_EMAILS, type UserProfile, type UserRole } from '@/lib/auth';
 import { updateDocumentStatus, useAllEmployeeDocumentLibraries, type EmployeeDocumentLibrary, type DocumentStatus } from '@/data/documents';
 import { getEmployeeName } from '@/data/employees';
@@ -50,22 +51,55 @@ const ROLE_TONE: Record<UserRole, 'violet' | 'blue' | 'amber' | 'gray'> = {
 // ---------------------------------------------------------------------------
 // Live user directory (Firebase Auth users mirrored into Firestore `users`)
 // ---------------------------------------------------------------------------
+/** `lastLoginAt` is a Firestore Timestamp; 0 for an account that has never
+ *  signed in, which sorts it last. */
+function loginSeconds(value: unknown): number {
+    if (value && typeof value === 'object' && 'seconds' in value) {
+        return Number((value as { seconds?: unknown }).seconds ?? 0);
+    }
+    return 0;
+}
+
+/**
+ * Every account this administrator may see.
+ *
+ * Platform admins and super admins list unfiltered — they administer every
+ * organisation, which is what separates `admin` from `hr`. An HR manager
+ * administers one, so their query carries `where('orgId','==',...)`: the rules
+ * evaluate a list against every document it returns and fail the whole query if
+ * one belongs to another tenant, so the filter is what makes the read legal
+ * rather than an optimisation.
+ *
+ * Ordering moved into JS. `where` + `orderBy` needs a composite index, and this
+ * collection is one document per account — small enough that sorting it here
+ * costs nothing and keeps a global index deploy out of a per-tenant fix.
+ */
 function useUserDirectory() {
+    const { profile, isAdmin, isSuperAdmin } = useAuth();
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const crossOrg = isAdmin || isSuperAdmin;
+    const orgKey = resolveOrgKeyForProfile(profile);
+
     useEffect(() => {
-        const q = query(collection(db, 'users'), orderBy('lastLoginAt', 'desc'));
+        const q = crossOrg
+            ? query(collection(db, 'users'))
+            : query(collection(db, 'users'), where('orgId', '==', orgKey));
         const unsub = onSnapshot(
             q,
             (snap) => {
-                setUsers(snap.docs.map((d) => ({ ...(d.data() as UserProfile), uid: d.id })));
+                setUsers(
+                    snap.docs
+                        .map((d) => ({ ...(d.data() as UserProfile), uid: d.id }))
+                        .sort((a, b) => loginSeconds(b.lastLoginAt) - loginSeconds(a.lastLoginAt)),
+                );
                 setLoading(false);
             },
             () => setLoading(false),
         );
         return unsub;
-    }, []);
+    }, [crossOrg, orgKey]);
 
     return { users, loading };
 }

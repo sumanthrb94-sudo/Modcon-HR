@@ -73,7 +73,15 @@ export async function backfillEmployeeLinks(options: {
              : 'Matching accounts to employee records by email.');
 
   const [userSnap, employeeSnap, linkSnap] = await Promise.all([
-    getDocs(collection(db, 'users')),
+    // Filtered for a real organisation, unfiltered for the legacy one: its user
+    // documents may carry no orgId at all, and an equality filter matches
+    // neither a missing field nor a null one. The unfiltered branch needs a
+    // platform admin or super admin once a second organisation exists — the
+    // same constraint backfillOrgIds documents, and the reason
+    // `backfillIdentityOrgIds` stamps `users` so the filter becomes usable.
+    orgKey === DEFAULT_ORG_KEY
+      ? getDocs(collection(db, 'users'))
+      : getDocs(query(collection(db, 'users'), where('orgId', '==', orgKey))),
     getDocs(query(collection(db, 'employees'), where('orgId', '==', orgKey))),
     getDocs(collection(db, 'employee_links')),
   ]);
@@ -130,7 +138,13 @@ export async function backfillEmployeeLinks(options: {
         batch.set(doc(db, 'employee_links', c.uid), {
           uid: c.uid,
           employeeId: c.employeeId,
-          ...(orgKey === DEFAULT_ORG_KEY ? {} : { orgId: orgKey }),
+          // Stamped even for the default org. Omitting it left the legacy
+          // tenant's links keyed differently from every other collection —
+          // correct only for as long as "no orgId" and "orgId 'default'" stay
+          // interchangeable, which stops being true the moment a default-org
+          // account is given an explicit orgId. See G4 in
+          // docs/tenant-isolation-spec.md.
+          orgId: orgKey,
           linkedBy: options.linkedBy ?? 'backfill',
         });
       });
@@ -191,10 +205,19 @@ function sameChain(a: unknown, b: string[]): boolean {
  * dataset's. Idempotent: a document whose chain already matches is left alone,
  * so this is safe to re-run after a reorganisation — which it will need, since
  * the chain is a snapshot and goes stale whenever someone changes manager.
+ *
+ * `reportingTree` overrides where the tree comes from. The Settings action
+ * passes nothing and gets the Firestore records; `syncManagerChains` in
+ * lib/reportingChains.ts passes the localStorage employee directory, because it
+ * runs immediately after an edit to that directory and Firestore has not seen
+ * the change yet. Recomputing from a stale source would write back the chain
+ * that was already there and report success — worse than not running, because
+ * it looks like the reorganisation was handled.
  */
 export async function backfillManagerChains(options: {
   orgKey?: string;
   dryRun?: boolean;
+  reportingTree?: Array<{ id: string; managerId: string | null }>;
   onProgress?: (message: string) => void;
 } = {}): Promise<ChainBackfillResult[]> {
   const orgKey = options.orgKey || DEFAULT_ORG_KEY;
@@ -207,14 +230,16 @@ export async function backfillManagerChains(options: {
   log(dryRun ? 'Dry run — recomputing reporting chains for leave records.'
              : 'Recomputing reporting chains for leave records.');
 
-  const employeeSnap = await getDocs(query(collection(db, 'employees'), where('orgId', '==', orgKey)));
-  const chains = buildChains(
-    employeeSnap.docs.map((d) => ({
+  let tree = options.reportingTree;
+  if (!tree) {
+    const employeeSnap = await getDocs(query(collection(db, 'employees'), where('orgId', '==', orgKey)));
+    tree = employeeSnap.docs.map((d) => ({
       id: d.id,
       managerId: (d.data().reportingManagerId as string | null) ?? null,
-    })),
-  );
-  log(`Reporting tree built from ${employeeSnap.size} employee record(s).`);
+    }));
+  }
+  const chains = buildChains(tree);
+  log(`Reporting tree built from ${tree.length} employee record(s).`);
 
   const results: ChainBackfillResult[] = [];
 

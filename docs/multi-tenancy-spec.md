@@ -140,8 +140,16 @@ Org-scoped: `employees`, `employee_compensation`, `attendance`, `leave_requests`
 
 Deliberately not org-scoped by `orgId` field, because they carry their own
 tenancy: `users` (has `orgId`, with its own rules), `organizations` (the doc id
-*is* the org), `role_assignments` and `employee_links` (both already compare
-`orgId` against `myOrgId()`).
+*is* the org), `role_assignments` and `employee_links` (both compare `orgId`
+against the caller's).
+
+Added since, and scoped the same way: `org_settings` — leave policies, company
+profile, holidays, departments, the permission matrix and the preference lists,
+which until then lived only in localStorage. Its `get` tests the document id
+rather than `resource.data`, because the app subscribes to those documents
+before they exist. See [the tenant isolation spec](tenant-isolation-spec.md) §7
+(G3), which also records that the reads on `users` and the handbook were still
+`isSignedIn()` when this document was written, and are not any more.
 
 Salary and leave keep their per-employee rules from
 [the salary/leave spec](salary-leave-access-spec.md) — own record via

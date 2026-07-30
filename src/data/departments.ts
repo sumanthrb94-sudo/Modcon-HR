@@ -2,6 +2,7 @@ import { employees, departments as employeeDepartments, reassignEmployeeDepartme
 import { getJobOpenings } from '@/data/recruitment';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 
 export interface DepartmentRecord {
   name: string;
@@ -23,9 +24,9 @@ export interface DepartmentRecord {
 /** How a row is persisted: no stored `openRoles` unless it is a legacy row. */
 type StoredDepartment = Omit<DepartmentRecord, 'openRoles'> & { openRoles?: number };
 
-const CUSTOM_DEPARTMENTS_STORAGE_KEY = 'modcon.hr.customDepartments';
-const REMOVED_DEPARTMENTS_STORAGE_KEY = 'modcon.hr.removedDepartments';
-export const DEPARTMENT_DIRECTORY_CHANGED_EVENT = 'modcon-hr-department-directory-changed';
+const CUSTOM_DEPARTMENTS_STORAGE_KEY = ORG_SETTINGS.customDepartments.storageKey;
+const REMOVED_DEPARTMENTS_STORAGE_KEY = ORG_SETTINGS.removedDepartments.storageKey;
+export const DEPARTMENT_DIRECTORY_CHANGED_EVENT = ORG_SETTINGS.customDepartments.changedEvent;
 
 /**
  * Who leads a department, read off the reporting hierarchy instead of a
@@ -90,6 +91,9 @@ function readCustomDepartments(): StoredDepartment[] {
 function writeCustomDepartments(records: StoredDepartment[]) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY), JSON.stringify(records));
+  // Departments are org data — renaming one reassigns every employee in it —
+  // so the list belongs to the organisation, not to whoever edited it.
+  publishOrgSetting(ORG_SETTINGS.customDepartments, records);
 }
 
 function notifyDepartmentDirectoryChanged() {
@@ -120,6 +124,7 @@ function readRemovedDepartments(): string[] {
 function writeRemovedDepartments(names: string[]) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(REMOVED_DEPARTMENTS_STORAGE_KEY), JSON.stringify(names));
+  publishOrgSetting(ORG_SETTINGS.removedDepartments, names);
 }
 
 function getBaseDepartmentRows(): DepartmentRecord[] {

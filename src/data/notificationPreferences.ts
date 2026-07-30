@@ -1,4 +1,5 @@
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 
 export interface NotificationPreference {
   id: string;
@@ -9,8 +10,8 @@ export interface NotificationPreference {
   inApp: boolean;
 }
 
-const NOTIFICATION_PREFERENCES_STORAGE_KEY = 'modcon.hr.notificationPreferences';
-export const NOTIFICATION_PREFERENCES_CHANGED_EVENT = 'modcon-hr-notification-preferences-changed';
+const NOTIFICATION_PREFERENCES_STORAGE_KEY = ORG_SETTINGS.notificationPreferences.storageKey;
+export const NOTIFICATION_PREFERENCES_CHANGED_EVENT = ORG_SETTINGS.notificationPreferences.changedEvent;
 
 const defaultNotificationPreferences: NotificationPreference[] = [
   { id: 'n1', category: 'Leave', label: 'Leave Request Submitted', description: 'Notify manager when employee submits a leave request', email: true, inApp: true },
@@ -78,6 +79,7 @@ export function saveNotificationPreferences(preferences: NotificationPreference[
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(NOTIFICATION_PREFERENCES_STORAGE_KEY), JSON.stringify(preferences));
   notifyNotificationPreferencesChanged();
+  publishOrgSetting(ORG_SETTINGS.notificationPreferences, preferences);
 }
 
 if (typeof window !== 'undefined') {

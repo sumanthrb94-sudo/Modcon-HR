@@ -50,6 +50,7 @@ import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { updateEmployeeInDirectory } from '@/data/employees';
+import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useAuth } from '@/lib/auth';
@@ -634,6 +635,9 @@ export function EmployeesPage() {
 
     addEmployeeToDirectory(nextEmployee);
     setEmployeeList(getEmployeeDirectory());
+    // A new joiner under a manager adds a branch to the reporting tree, so the
+    // chains stamped on leave documents no longer describe it.
+    if (reportingManagerId) void syncManagerChains();
     setSearch('');
     setDeptFilter('');
     setLocationFilter('');
@@ -2142,6 +2146,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   function handleDeleteProfile() {
     if (!emp) return;
     deleteEmployeeFromDirectory(emp.id);
+    // Removing a manager orphans their reports' chains, which would otherwise
+    // keep granting a departed employee's account access to their leave.
+    void syncManagerChains();
     setDeleteOpen(false);
     navigate(embeddedSelfView ? '/' : '/employees');
   }
@@ -2240,6 +2247,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     // The form can move someone between departments, so access is re-evaluated
     // on every save rather than only when the department field looks changed.
     syncAccess(updatedEmployee);
+    // The reporting line is checked rather than re-run unconditionally: this
+    // sweeps the organisation's leave documents, and most profile edits do not
+    // touch the tree.
+    if (reportingLineChanged(emp, updatedEmployee)) void syncManagerChains();
 
     setEditOpen(false);
   }

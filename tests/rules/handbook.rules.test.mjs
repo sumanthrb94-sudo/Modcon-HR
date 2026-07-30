@@ -25,7 +25,7 @@ import {
   assertFails,
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT ?? 'modcon-hr';
 const HOST = '127.0.0.1';
@@ -38,6 +38,9 @@ const USERS = {
   hrB: { uid: 'hr-b', email: 'hr-b@example.com', role: 'hr', orgId: 'org-b' },
   managerA: { uid: 'manager-a', email: 'manager-a@example.com', role: 'manager', orgId: 'org-a' },
   employeeA: { uid: 'employee-a', email: 'employee-a@example.com', role: 'employee', orgId: 'org-a' },
+  employeeB: { uid: 'employee-b', email: 'employee-b@example.com', role: 'employee', orgId: 'org-b' },
+  // No orgId: predates multi-org support, resolves to the 'default' org key.
+  legacyEmployee: { uid: 'legacy-employee', email: 'legacy-employee@example.com', role: 'employee' },
 };
 
 let testEnv;
@@ -118,10 +121,14 @@ async function seed() {
     await setDoc(doc(db, 'handbook', 'org-a'), pointer());
     // Another organisation's version, for the cross-org pointer test.
     await setDoc(doc(db, 'handbook_versions', 'v1-doc-b'), version({ id: 'v1-doc-b', orgId: 'org-b' }));
+    await setDoc(doc(db, 'handbook', 'org-b'), pointer({ orgId: 'org-b', currentVersionId: 'v1-doc-b' }));
+    // The legacy shape: `handbookOrgId` used to write null rather than the
+    // 'default' sentinel. orgKeyOf() in the rules must read it as 'default'.
+    await setDoc(doc(db, 'handbook_versions', 'v1-doc-legacy'), version({ id: 'v1-doc-legacy', orgId: null }));
   });
 }
 
-describe('handbook — universal read access', () => {
+describe('handbook — read access within the organisation', () => {
   beforeEach(seed);
 
   it('an employee can read the current-version pointer', async () => {
@@ -143,6 +150,71 @@ describe('handbook — universal read access', () => {
   it('an unauthenticated visitor cannot read the handbook', async () => {
     await assertFails(getDoc(doc(anon(), 'handbook', 'org-a')));
     await assertFails(getDoc(doc(anon(), 'handbook_versions', 'v1-doc')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-organisation reads (I2 in docs/tenant-isolation-spec.md)
+//
+// The version document carries the PDF itself in `contentBase64`, so a
+// cross-org read here is the whole handbook, not metadata about it. Both rules
+// were `allow read: if isSignedIn()`; the write side was scoped from the start,
+// which is what made the read side easy to miss.
+// ---------------------------------------------------------------------------
+describe('handbook — reads do not cross organisations', () => {
+  beforeEach(seed);
+
+  it("an employee of org B cannot read org A's version document", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'handbook_versions', 'v1-doc')));
+  });
+
+  it("HR of org B cannot read org A's version document", async () => {
+    await assertFails(getDoc(doc(as(USERS.hrB), 'handbook_versions', 'v1-doc')));
+  });
+
+  it("an employee of org B cannot read org A's pointer", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'handbook', 'org-a')));
+  });
+
+  it('an unfiltered list of versions is denied', async () => {
+    await assertFails(getDocs(collection(as(USERS.employeeA), 'handbook_versions')));
+  });
+
+  it('a list filtered to my own organisation is allowed', async () => {
+    await assertSucceeds(
+      getDocs(query(collection(as(USERS.employeeA), 'handbook_versions'), where('orgId', '==', 'org-a'))),
+    );
+  });
+
+  it("a list filtered to another organisation is denied", async () => {
+    await assertFails(
+      getDocs(query(collection(as(USERS.employeeA), 'handbook_versions'), where('orgId', '==', 'org-b'))),
+    );
+  });
+
+  it('a super admin reads across organisations', async () => {
+    await assertSucceeds(getDoc(doc(as(USERS.superA), 'handbook_versions', 'v1-doc')));
+    await assertSucceeds(getDoc(doc(as(USERS.superA), 'handbook', 'org-a')));
+  });
+
+  it('a null orgId reads as the default org, not as everyone', async () => {
+    // The legacy shape stays readable by a legacy account…
+    await assertSucceeds(getDoc(doc(as(USERS.legacyEmployee), 'handbook_versions', 'v1-doc-legacy')));
+    // …and is not thereby readable by a real organisation.
+    await assertFails(getDoc(doc(as(USERS.employeeA), 'handbook_versions', 'v1-doc-legacy')));
+  });
+
+  it('BACKFILL REQUIRED: a null-orgId version is invisible to the filtered query', async () => {
+    // Permitted (above) but unreachable: `where('orgId','==','default')` matches
+    // neither a missing field nor a null one. Same asymmetry as the orgId
+    // backfill in docs/multi-tenancy-spec.md §4, which is why
+    // handbook_versions is now in ORG_SCOPED_COLLECTIONS.
+    const snap = await getDocs(
+      query(collection(as(USERS.legacyEmployee), 'handbook_versions'), where('orgId', '==', 'default')),
+    );
+    if (snap.docs.some((d) => d.id === 'v1-doc-legacy')) {
+      throw new Error('expected the null-orgId version to be invisible to the org-filtered query');
+    }
   });
 });
 

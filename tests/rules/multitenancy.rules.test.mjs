@@ -107,6 +107,22 @@ async function seed() {
     await setDoc(doc(db, 'leave_requests', 'lr-b'), { employeeId: 'emp-b', orgId: 'org-b', status: 'Pending', managerChainIds: [] });
     await setDoc(doc(db, 'leave_balances', 'lb-a'), { employeeId: 'emp-a', orgId: 'org-a', available: 5, managerChainIds: [] });
     await setDoc(doc(db, 'leave_balances', 'lb-b'), { employeeId: 'emp-b', orgId: 'org-b', available: 5, managerChainIds: [] });
+
+    // Organisation records, which carry the feature flags.
+    for (const org of ['org-a', 'org-b']) {
+      await setDoc(doc(db, 'organizations', org), {
+        name: `Org ${org}`, adminEmail: `hr-${org}@example.com`, createdBy: 'super-a',
+      });
+    }
+    // The legacy tenant has no organisations record at all — it predates the
+    // collection. The read of it must be a clean miss, not a denial.
+
+    // Organisation configuration, keyed `<orgKey>__<setting>`.
+    for (const org of ['org-a', 'org-b']) {
+      await setDoc(doc(db, 'org_settings', `${org}__leavePolicies`), {
+        orgId: org, key: 'leavePolicies', valueJson: '[]',
+      });
+    }
   });
 }
 
@@ -266,5 +282,276 @@ describe('multi-tenancy — legacy documents and super admins', () => {
 
   it('a super admin can list unfiltered', async () => {
     await assertSucceeds(getDocs(collection(as(USERS.superA), 'employees')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The identity collections (I2 / I4 in docs/tenant-isolation-spec.md).
+//
+// These are not `orgId`-scoped tenant data — they carry their own tenancy — and
+// that is exactly why `users` was left `allow read: if isSignedIn()` and handed
+// every signed-in account of every organisation the whole platform's directory:
+// each account's email, role, orgId and superAdmin flag.
+// ---------------------------------------------------------------------------
+describe('multi-tenancy — the user directory does not cross organisations', () => {
+  beforeEach(seed);
+
+  it('an employee reads their own profile', async () => {
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'users', USERS.employeeA.uid)));
+  });
+
+  it("an employee cannot read a colleague's profile in their own org", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeA), 'users', USERS.hrA.uid)));
+  });
+
+  it("an employee of org B cannot read an org A account", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'users', USERS.employeeA.uid)));
+  });
+
+  it("HR of org B cannot read an org A account", async () => {
+    await assertFails(getDoc(doc(as(USERS.hrB), 'users', USERS.employeeA.uid)));
+  });
+
+  it('HR reads an account in their own organisation', async () => {
+    await assertSucceeds(getDoc(doc(as(USERS.hrA), 'users', USERS.employeeA.uid)));
+  });
+
+  it('an unfiltered list is denied to HR', async () => {
+    await assertFails(getDocs(collection(as(USERS.hrA), 'users')));
+  });
+
+  it('a list filtered to my own organisation is allowed for HR', async () => {
+    await assertSucceeds(
+      getDocs(query(collection(as(USERS.hrA), 'users'), where('orgId', '==', 'org-a'))),
+    );
+  });
+
+  it("a list filtered to another organisation is denied to HR", async () => {
+    await assertFails(
+      getDocs(query(collection(as(USERS.hrA), 'users'), where('orgId', '==', 'org-b'))),
+    );
+  });
+
+  it('an employee cannot list the directory at all', async () => {
+    await assertFails(getDocs(collection(as(USERS.employeeA), 'users')));
+    await assertFails(
+      getDocs(query(collection(as(USERS.employeeA), 'users'), where('orgId', '==', 'org-a'))),
+    );
+  });
+
+  it('a super admin lists every organisation, which is what a platform admin is for', async () => {
+    await assertSucceeds(getDocs(collection(as(USERS.superA), 'users')));
+  });
+
+  it('HR cannot move an account into another organisation', async () => {
+    // I4: orgId is immutable on every HR-authored update. Without this an HR
+    // manager could pull a colleague into their own tenant, or push their own
+    // account into someone else's.
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'users', USERS.employeeA.uid), {
+        ...USERS.employeeA, role: 'employee', orgId: 'org-b',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'users', USERS.employeeB.uid), {
+        ...USERS.employeeB, role: 'employee', orgId: 'org-a',
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Organisation configuration (G3).
+//
+// Leave policies, the company profile, the holiday calendar, departments and
+// the permission matrix used to live only in localStorage — org-namespaced by
+// a key suffix the client owns, so the tenant boundary was hygiene rather than
+// enforcement, and two admins of the same org did not even share the values.
+// ---------------------------------------------------------------------------
+describe('multi-tenancy — organisation configuration', () => {
+  beforeEach(seed);
+
+  const policies = (orgId, key = 'leavePolicies') => ({
+    orgId, key, valueJson: JSON.stringify([{ id: 'lp1', type: 'Casual Leave', annual: 12 }]),
+  });
+
+  it('an employee reads their own organisation\'s leave policy', async () => {
+    // Not administrators-only: an employee's own leave page needs the accrual
+    // policy and the holiday calendar to show a balance at all.
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_settings', 'org-a__leavePolicies')));
+  });
+
+  it("an employee of org B cannot read org A's configuration", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'org_settings', 'org-a__leavePolicies')));
+  });
+
+  it('a setting my org has not published yet is readable, not denied', async () => {
+    // The sync subscribes to every setting at sign-in, including ones this
+    // organisation has never saved. A rule testing `resource.data` fails
+    // evaluation on a document that does not exist, which denies the whole
+    // subscription and leaves configuration silently un-synced — the bug this
+    // pins down, caught by driving the real app rather than by these tests.
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_settings', 'org-a__holidays')));
+    // …and the same absence in another organisation is still denied.
+    await assertFails(getDoc(doc(as(USERS.employeeA), 'org_settings', 'org-b__holidays')));
+  });
+
+  it("HR of org B cannot read org A's configuration", async () => {
+    await assertFails(getDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__leavePolicies')));
+  });
+
+  it('an unfiltered list is denied, a list of my own org is allowed', async () => {
+    await assertFails(getDocs(collection(as(USERS.employeeA), 'org_settings')));
+    await assertSucceeds(
+      getDocs(query(collection(as(USERS.employeeA), 'org_settings'), where('orgId', '==', 'org-a'))),
+    );
+  });
+
+  it('HR writes their own organisation\'s configuration', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'org_settings', 'org-a__companyProfile'), policies('org-a', 'companyProfile')),
+    );
+  });
+
+  it('an employee cannot write configuration', async () => {
+    // The permission matrix is one of these documents. An employee who could
+    // write it could grant themselves a module.
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_settings', 'org-a__accessControl'), policies('org-a', 'accessControl')),
+    );
+  });
+
+  it("HR of org B cannot write into org A", async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__leavePolicies'), policies('org-a')),
+    );
+  });
+
+  it("HR of org B cannot overwrite org A's existing configuration", async () => {
+    // The takeover case: stamping your own orgId onto someone else's document.
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__leavePolicies'), policies('org-b')),
+    );
+  });
+
+  it('the document id must agree with the orgId it carries', async () => {
+    // Without this an administrator could file their own org's document under
+    // another org's id, and every member of that org would read it.
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'org_settings', 'org-b__leavePolicies'), policies('org-a')),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'org_settings', 'org-a__somethingElse'), policies('org-a')),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-organisation feature flags.
+//
+// One Firebase project means a code change reaches every tenant at once, so
+// staging a rollout has to be expressed in data. The flags live on the
+// organisation record: readable by that organisation so its own sessions can
+// act on them, writable by super admins only, because which tenants a change
+// has reached is a platform decision and not a tenant preference.
+// ---------------------------------------------------------------------------
+describe('multi-tenancy — feature flags on the organisation record', () => {
+  beforeEach(seed);
+
+  it('a member reads their own organisation record', async () => {
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'organizations', 'org-a')));
+  });
+
+  it("a member cannot read another organisation's record", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'organizations', 'org-a')));
+    await assertFails(getDoc(doc(as(USERS.hrB), 'organizations', 'org-a')));
+  });
+
+  it('a legacy account is not denied outright by the org read', async () => {
+    // Was `myProfile().orgId == orgId`, which *errors* for an account with no
+    // orgId — a missing map key fails evaluation rather than reading as null —
+    // so every legacy account was refused instead of merely not matching.
+    // Nothing here dereferences `resource`, so an absent record is a clean miss.
+    await assertSucceeds(getDoc(doc(as(USERS.legacyEmployee), 'organizations', 'default')));
+    await assertFails(getDoc(doc(as(USERS.legacyEmployee), 'organizations', 'org-a')));
+  });
+
+  it('HR cannot turn a feature on, even for their own organisation', async () => {
+    // Which tenants a change has reached is not theirs to decide.
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'organizations', 'org-a'),
+        { features: { somethingNew: true } }, { merge: true }),
+    );
+  });
+
+  it('an employee cannot turn a feature on', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'organizations', 'org-a'),
+        { features: { somethingNew: true } }, { merge: true }),
+    );
+  });
+
+  it('a super admin sets a flag on any organisation', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.superA), 'organizations', 'org-a'),
+        { features: { somethingNew: true } }, { merge: true }),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.superA), 'organizations', 'org-b'),
+        { features: { somethingNew: false } }, { merge: true }),
+    );
+  });
+});
+
+describe('multi-tenancy — access mappings stay inside one organisation', () => {
+  beforeEach(seed);
+
+  it("HR of org B cannot link an account to an org A employee", async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'employee_links', USERS.employeeA.uid), {
+        uid: USERS.employeeA.uid, employeeId: 'emp-a', orgId: 'org-a', linkedBy: USERS.hrB.uid,
+      }),
+    );
+  });
+
+  it('HR links an account inside their own organisation', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'employee_links', USERS.employeeA.uid), {
+        uid: USERS.employeeA.uid, employeeId: 'emp-a', orgId: 'org-a', linkedBy: USERS.hrA.uid,
+      }),
+    );
+  });
+
+  it("HR of org B cannot assign a role into org A", async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'role_assignments', 'someone@example.com'), {
+        email: 'someone@example.com', role: 'hr', orgId: 'org-a', assignedBy: USERS.hrB.uid,
+      }),
+    );
+  });
+
+  it("the 'default' sentinel and an absent orgId are the same tenant", async () => {
+    // G4: these two collections used to compare against the nullable
+    // `myOrgId()` while every other collection compared the 'default'-sentinel
+    // `myOrgKey()`. Both spellings must resolve to the legacy tenant, or
+    // stamping the sentinel during the backfill would lock its own author out.
+    await assertSucceeds(
+      setDoc(doc(as(USERS.legacyAdmin), 'employee_links', USERS.legacyEmployee.uid), {
+        uid: USERS.legacyEmployee.uid, employeeId: 'emp-legacy', orgId: 'default',
+        linkedBy: USERS.legacyAdmin.uid,
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.legacyAdmin), 'employee_links', 'legacy-2'), {
+        uid: 'legacy-2', employeeId: 'emp-legacy-2', linkedBy: USERS.legacyAdmin.uid,
+      }),
+    );
+    // …and neither spelling is a way into a real organisation.
+    await assertFails(
+      setDoc(doc(as(USERS.legacyAdmin), 'employee_links', USERS.employeeA.uid), {
+        uid: USERS.employeeA.uid, employeeId: 'emp-a', orgId: 'org-a',
+        linkedBy: USERS.legacyAdmin.uid,
+      }),
+    );
   });
 });

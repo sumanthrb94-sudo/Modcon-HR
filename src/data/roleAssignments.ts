@@ -21,6 +21,7 @@ import {
   collection, doc, deleteDoc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import type { UserProfile, UserRole } from '@/lib/auth';
 import type { Employee } from '@/types';
 import { isHrDesignation } from '@/data/companyProfile';
@@ -66,7 +67,12 @@ export async function assignRole(params: {
     {
       email: id,
       role: params.role,
-      ...(params.orgId ? { orgId: params.orgId } : {}),
+      // Always a string, never omitted: `DEFAULT_ORG_KEY` for a caller with no
+      // orgId of their own. An absent field and the 'default' sentinel mean the
+      // same tenant to `orgKeyOf()` in firestore.rules, but only the sentinel
+      // is reachable by `where('orgId','==',...)` — see G4 in
+      // docs/tenant-isolation-spec.md.
+      orgId: params.orgId || DEFAULT_ORG_KEY,
       assignedBy: params.assignedBy,
       assignedAt: serverTimestamp(),
     },
@@ -134,7 +140,7 @@ export async function syncHrRoleForEmployee(
       await assignRole({
         email,
         role: 'hr',
-        ...(actor?.orgId ? { orgId: actor.orgId } : {}),
+        orgId: actor?.orgId || DEFAULT_ORG_KEY,
         assignedBy: actor?.uid ?? 'unknown',
       });
       await applyRoleToExistingAccount(email, 'hr');

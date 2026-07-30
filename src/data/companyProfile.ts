@@ -1,4 +1,5 @@
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 /**
@@ -37,8 +38,8 @@ export interface CompanyProfile {
   hrDesignations: string[];
 }
 
-const COMPANY_PROFILE_STORAGE_KEY = 'modcon.hr.companyProfile';
-export const COMPANY_PROFILE_CHANGED_EVENT = 'modcon-hr-company-profile-changed';
+const COMPANY_PROFILE_STORAGE_KEY = ORG_SETTINGS.companyProfile.storageKey;
+export const COMPANY_PROFILE_CHANGED_EVENT = ORG_SETTINGS.companyProfile.changedEvent;
 
 const emptyCompanyProfile: CompanyProfile = {
   name: '',
@@ -110,6 +111,9 @@ export function saveCompanyProfile(profile: CompanyProfile) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(COMPANY_PROFILE_STORAGE_KEY), JSON.stringify(profile));
   notifyCompanyProfileChanged();
+  // hrDesignations decides who administers this organisation, so this is the
+  // last piece of configuration that should have lived in one browser.
+  publishOrgSetting(ORG_SETTINGS.companyProfile, profile);
 }
 
 /**

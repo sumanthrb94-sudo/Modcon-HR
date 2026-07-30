@@ -1,9 +1,10 @@
 import type { Holiday } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
+import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
 
-const HOLIDAYS_STORAGE_KEY = 'modcon.hr.holidays';
-export const HOLIDAYS_CHANGED_EVENT = 'modcon-hr-holidays-changed';
+const HOLIDAYS_STORAGE_KEY = ORG_SETTINGS.holidays.storageKey;
+export const HOLIDAYS_CHANGED_EVENT = ORG_SETTINGS.holidays.changedEvent;
 
 const defaultHolidays: Holiday[] = [
   { id: 'h1', name: 'Republic Day', date: '2026-01-26', type: 'National' },
@@ -47,6 +48,8 @@ export function saveHolidayDirectory(holidays: Holiday[]) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(orgScopedKey(HOLIDAYS_STORAGE_KEY), JSON.stringify(holidays));
   notifyHolidaysChanged();
+  // The calendar attendance and payroll are computed against.
+  publishOrgSetting(ORG_SETTINGS.holidays, holidays);
 }
 
 if (typeof window !== 'undefined') {

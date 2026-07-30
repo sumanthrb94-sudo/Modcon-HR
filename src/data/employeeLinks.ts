@@ -19,6 +19,7 @@
  */
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
 
 export interface EmployeeLink {
   /** Firebase Auth uid — also the document id. */
@@ -59,7 +60,9 @@ export async function linkEmployeeAccount(params: {
     {
       uid: id,
       employeeId: params.employeeId.trim(),
-      ...(params.orgId ? { orgId: params.orgId } : {}),
+      // Always stamped, never omitted — see the note in data/roleAssignments.ts
+      // and G4 in docs/tenant-isolation-spec.md.
+      orgId: params.orgId || DEFAULT_ORG_KEY,
       linkedBy: params.linkedBy,
       linkedAt: serverTimestamp(),
     },

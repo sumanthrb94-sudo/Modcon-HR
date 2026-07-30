@@ -388,4 +388,11 @@ export interface Organization {
   adminUid?: string;
   createdBy: ID; // super admin uid
   createdAt?: unknown;
+  /**
+   * Per-organisation feature flags: which tenants a change has been rolled out
+   * to. Absent means every flag sits at its declared default. Set by super
+   * admins only — see src/lib/features.ts for what a flag may gate, and why it
+   * is behaviour and never authorization.
+   */
+  features?: Record<string, boolean>;
 }

@@ -29,11 +29,12 @@ Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.conf
 
 Anything a user can change goes through `persistentCollection` in `src/data/persistence.ts` — an org-scoped localStorage store with a change event. **Read it through the store's getter everywhere, never the exported seed array.** Aggregates (`src/data/dashboard.ts`, `src/data/notifications.ts`) and the approval pages all derived from the seeds, so a decision made on one page left every other surface reporting its original figure. `src/lib/seed.ts` is the deliberate exception — it pushes the canonical demo dataset into Firestore. Components that stay mounted while data changes elsewhere subscribe via `useDashboardDataRevision` / `useCollectionRevision`. Seeding `useState` straight from a `src/data/*.ts` array means every edit is lost on refresh, which is what attendance, assets, expenses, helpdesk and payroll all did. `tests/e2e/persistence.spec.ts` guards this: it creates a record, **reloads**, and asserts it survived. The other specs never reload, so in-memory state passes them exactly as persisted state would.
 
-### Two independent data sources — do not conflate them
+### Four data sources — do not conflate them
 
 1. **Mock/seed data in `src/data/*.ts`** powers most feature pages (attendance, leave, payroll, etc.). It is static seed data, not Firestore.
 2. **The employee directory is a mutable localStorage-backed overlay.** `getEmployeeDirectory()` (`src/data/employees.ts`) merges seed employees + locally-added employees minus locally-deleted IDs (both persisted in localStorage). `addEmployeeToDirectory` / `deleteEmployeeFromDirectory` mutate it and dispatch a `modcon-hr-directory-changed` window event; components (e.g. `Topbar`) listen and re-render. So `employees` / `getEmployee(id)` reflect live local edits, **not** the raw seed array.
 3. **A separate live Firestore layer** (`src/lib/db.ts` typed collection refs + `src/lib/useFirestore.ts` real-time `use*()` hooks like `useEmployees`, `useExpenses`). This is currently used mainly by the **Admin dashboard**. `useEmployees()` (Firestore) and `@/data/employees` (mock directory) are two different employee sources — pick deliberately.
+4. **Organisation configuration is Firestore-backed, and localStorage is its cache.** Leave policies, company profile, holidays, departments, the permission matrix and the notification/integration preferences live in `org_settings` (one document per setting per org, keyed `<orgKey>__<setting>`). `src/lib/orgSettings.ts` holds the registry, publishes on save, and subscribes at sign-in to hydrate the same localStorage keys the data modules already read synchronously at module-load time. **A new configuration surface goes in that registry, not in a bare localStorage key** — held locally it is invisible to the organisation's other administrators, and leave accrual is what payroll deductions are computed from. See [docs/tenant-isolation-spec.md](docs/tenant-isolation-spec.md) §3.4.
 
 ### Auth & roles (`src/lib/auth.tsx`)
 
@@ -56,7 +57,10 @@ Anything a user can change goes through `persistentCollection` in `src/data/pers
 ### Firebase & security rules
 
 - `src/lib/firebase.ts` holds the public web config for project `modcon-hr` (safe to ship). Firestore uses long-polling only on localhost.
-- `firestore.rules`: helpers `isSignedIn` / `isAdmin` / `isManager`. General pattern — read: any signed-in user; write: admins/managers per collection. Rules changes must be deployed separately (see Commands); pushing app code does not update them.
+- `firestore.rules`: helpers `isSignedIn` / `isAdmin` / `isManager` / `isOrgAdmin`, plus the tenant helpers `orgKeyOf` / `myOrgKey` / `inMyOrg` / `writingToMyOrg`. General pattern — read: any signed-in user **of the owning organisation**; write: org administrators per collection. Every tenant document carries `orgId`, and **every query must filter on it**: a list is evaluated against each document it returns and fails whole if one belongs to another tenant, so an unfiltered read is denied, not merely wasteful.
+- **A rule that reads `resource.data` denies a `get` on a document that does not exist** — `resource` is null and the dereference fails evaluation. Collections the app subscribes to before anything is written (`org_settings`) must test the document id instead.
+- Rules changes must be deployed separately (see Commands); pushing app code does not update them. **The E2E suite runs against live Firebase, so it exercises the *deployed* ruleset, not the working tree** — a rules change cannot be verified end-to-end before it ships, which is what `tests/rules/` is for.
+- Tenant isolation as a whole — the invariants, what a deployment can and cannot contain, and the conformance rules for new collections/queries/operations — is [docs/tenant-isolation-spec.md](docs/tenant-isolation-spec.md).
 
 ### UI & styling
 
