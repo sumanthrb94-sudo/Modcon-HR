@@ -464,9 +464,10 @@ administrator predates the `hr` role from being locked out of its own payroll.
   exactly as before. `isSelf()` now exists to fix it properly, together with
   pinning `status` to `Pending` on create — the self-approval hole — but that is
   a behaviour change to leave, not a read exposure.
-- **`orgId` backfill (§5).** These records carry none, so another
-  organisation's HR can still read this org's salary. Asserted as it actually
-  behaves in the test named `KNOWN GAP:` rather than left silent.
+- ~~**`orgId` backfill (§5).**~~ **Now closed** — see
+  [multi-tenancy-spec.md](multi-tenancy-spec.md). Every collection is org-scoped
+  and the `KNOWN GAP:` test has been flipped to assert that another
+  organisation's HR is refused.
 - **Payslip re-keying** to `{employeeId}_{month}`; a second seed run still
   duplicates.
 - **`expenses`, `helpdesk_tickets`, `regularizations`** still carry the same
