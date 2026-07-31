@@ -64,33 +64,81 @@ async function idTokenFor(email: string, password: string): Promise<string | nul
 }
 
 /**
- * Undo a creation: the Auth account first, then the documents it left behind.
+ * Undo a creation.
  *
- * Order matters. The Auth account is deleted with its *own* token, so it has to
- * happen while the temporary password still works. Everything after is done as
- * the admin, and is best-effort — a failure here must not mask the assertion
- * that the test was actually making.
+ * Two channels, because the two halves live in different places and only one of
+ * them has a quota that runs out. The profile document is removed through the
+ * Admin dashboard's own "Remove from directory" control — the Firestore **SDK**,
+ * the same path the product uses — and the Auth account through
+ * identitytoolkit, with its own token, which is why that has to happen while
+ * the temporary password still works.
+ *
+ * Deliberately not the Firestore REST API for the profile. That was the first
+ * version and it is the wrong dependency: REST carries a separate daily quota
+ * from the SDK, and when it is exhausted (HTTP 429) the *cleanup* silently
+ * stops working while the *creation* carries on fine — so the failure mode is
+ * an accumulating pile of real accounts in a real project, which is exactly
+ * what this function exists to prevent. REST is kept only as a best-effort
+ * sweep for `role_assignments`, which has no UI.
+ *
+ * Every step is best-effort: a failure here must not mask the assertion the
+ * test was actually making.
  */
-async function cleanUp(email: string, tempPassword: string, uid: string) {
-  const theirs = await idTokenFor(email, tempPassword);
-  if (theirs) {
-    await fetch(`${IDENTITY}:delete?key=${FIREBASE_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: theirs }),
-    }).catch(() => {});
+async function cleanUp(page: Page, email: string, tempPassword: string): Promise<string[]> {
+  const leaked: string[] = [];
+
+  // 1. The profile, through the product.
+  try {
+    page.on('dialog', (d) => void d.accept());
+    await page.goto('/admin');
+    const row = page.getByRole('row').filter({ hasText: email });
+    // Wait for the row, do not count it.
+    //
+    // This is what leaked two real accounts into the production project. The
+    // first version asked `if (await row.count())` — and `count()` does not
+    // wait. The `goto` above tears down and re-establishes the directory's
+    // Firestore subscription, so at that instant the table is always empty:
+    // the check read zero every single time, concluded there was nothing to
+    // remove, and skipped the removal entirely. Silently, because the whole
+    // block was wrapped in a bare catch.
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.getByRole('button', { name: 'Remove from directory' }).click();
+    await expect(row).toHaveCount(0, { timeout: 15_000 });
+  } catch (err) {
+    leaked.push(`users profile for ${email} (${String(err).slice(0, 100)})`);
   }
 
-  const admin = await idTokenFor(PERSONAS.admin.email, PERSONAS.admin.password);
-  if (!admin) return;
-  const headers = { Authorization: `Bearer ${admin}` };
-  for (const path of [
-    `users/${uid}`,
-    `employee_links/${uid}`,
-    `role_assignments/${encodeURIComponent(email)}`,
-  ]) {
-    await fetch(`${FIRESTORE}/${path}`, { method: 'DELETE', headers }).catch(() => {});
+  // 2. The Auth account, with its own credential.
+  if (!tempPassword) {
+    leaked.push(`auth account for ${email} (no temporary password captured)`);
+  } else {
+    const theirs = await idTokenFor(email, tempPassword);
+    if (theirs) {
+      const res = await fetch(`${IDENTITY}:delete?key=${FIREBASE_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: theirs }),
+      }).catch(() => null);
+      if (!res?.ok) leaked.push(`auth account for ${email}`);
+    } else {
+      leaked.push(`auth account for ${email} (could not sign in to delete it)`);
+    }
   }
+
+  // 3. `role_assignments` has no UI, so this is the one thing that still needs
+  //    the REST API. Best-effort by necessity: when REST is quota-exhausted the
+  //    document survives, which is inert — the account it names is gone, and
+  //    adoption is org-checked — but it is reported rather than assumed.
+  const admin = await idTokenFor(PERSONAS.admin.email, PERSONAS.admin.password);
+  if (admin) {
+    const res = await fetch(`${FIRESTORE}/role_assignments/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${admin}` },
+    }).catch(() => null);
+    if (!res?.ok) leaked.push(`role_assignments/${email} (HTTP ${res?.status ?? 'no response'})`);
+  }
+
+  return leaked;
 }
 
 test.describe('creating an account for a colleague', () => {
@@ -161,7 +209,6 @@ test.describe('creating an account for a colleague', () => {
     // shared one would make two concurrent runs fight.
     const email = `e2e-invitee-${Date.now()}@modcon-hr.test`;
     let tempPassword = '';
-    let uid = '';
 
     try {
       await signIn(page, PERSONAS.admin);
@@ -182,37 +229,49 @@ test.describe('creating an account for a colleague', () => {
       // there is no email delivery in this app, so the inviter passes it on.
       await expect(dialog.getByText(/Shown once — nothing emails it/i)).toBeVisible();
 
+      // The linking outcome is always reported — either the employee record it
+      // matched, or why it matched none. A silent non-link is how an account
+      // ends up unable to see its own payslips with nobody aware of it.
+      await expect(
+        dialog.getByText(/Linked to employee record|Until it is linked/i),
+      ).toBeVisible();
+
+      await dialog.getByRole('button', { name: 'Done' }).click();
+
       // It is a working credential, which is the only thing that makes handing
       // it over meaningful.
       const theirToken = await idTokenFor(email, tempPassword);
       expect(theirToken, 'the temporary password should sign the new account in').toBeTruthy();
 
-      // Read the profile back as the new account itself: it is stamped with an
-      // organisation, carries the role that was chosen, and — the point of the
-      // "shown once" claim — does not store the password anywhere on it.
-      const lookup = await fetch(`${IDENTITY}:lookup?key=${FIREBASE_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: theirToken }),
-      });
-      uid = ((await lookup.json()) as { users?: { localId: string }[] }).users?.[0]?.localId ?? '';
-      expect(uid).toBeTruthy();
-
-      const profileRes = await fetch(`${FIRESTORE}/users/${uid}`, {
-        headers: { Authorization: `Bearer ${theirToken}` },
-      });
-      expect(profileRes.status, 'the new account should be able to read its own profile').toBe(200);
-      const fields = ((await profileRes.json()) as { fields?: Record<string, unknown> }).fields ?? {};
-
-      expect(fields.orgId, 'the account must be stamped with an organisation').toBeTruthy();
-      expect((fields.role as { stringValue?: string })?.stringValue).toBe('employee');
-      expect((fields.superAdmin as { booleanValue?: boolean })?.booleanValue ?? false).toBe(false);
-
-      // Nothing on the document is the password, under any field name.
-      expect(JSON.stringify(fields)).not.toContain(tempPassword);
-      expect(Object.keys(fields).join(' ').toLowerCase()).not.toMatch(/password/);
+      // The profile landed, with the role that was chosen and not a higher one.
+      // Read back through the product rather than around it: the Admin
+      // dashboard's directory is a live Firestore subscription, and it is
+      // org-scoped, so the row appearing here at all is also the evidence that
+      // the account was stamped with the inviter's organisation — an unstamped
+      // or foreign-stamped account is filtered out of this very list.
+      const row = page.getByRole('row').filter({ hasText: email });
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      // The Role *cell*, not the row: the row also holds the role `<select>`,
+      // whose options include every role a platform admin may assign — "Admin"
+      // among them. Asserting over the whole row would either match a hidden
+      // <option> or read the presence of that option as a granted role.
+      await expect(row.getByRole('cell').nth(1)).toHaveText('Employee');
     } finally {
-      if (tempPassword && uid) await cleanUp(email, tempPassword, uid);
+      // Always, not `if (tempPassword)`: the account may exist even when the
+      // test failed before it could read the password back, and that is exactly
+      // when a leak is least likely to be noticed.
+      const leaked = await cleanUp(page, email, tempPassword);
+      if (leaked.length) {
+        // Reported, never swallowed. Anything left here is a real account in a
+        // real Firebase project, and the previous version discarded the failure
+        // — which is how two of them ended up in production before anyone
+        // looked. Logged unconditionally, and failed only when the test would
+        // otherwise have passed, so this cannot mask the original error.
+        console.error(`[provisioning] CLEANUP LEAK: ${leaked.join(' | ')}`);
+        if (test.info().errors.length === 0) {
+          throw new Error(`cleanup left data behind in production: ${leaked.join(' | ')}`);
+        }
+      }
     }
   });
 });
