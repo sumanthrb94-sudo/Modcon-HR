@@ -33,3 +33,11 @@ coverage
 
 # Per-machine agent permission overrides; .claude/settings.json is shared
 /.claude/settings.local.json
+
+# ruflo writes runtime state into the working directory it is invoked from, and
+# ignores CLAUDE_FLOW_DATA_DIR / CLAUDE_FLOW_SWARM_DIR / RUFLO_STATE_DIR when it
+# does. The MCP server is registered at user scope, so any ruflo tool call from
+# this repo drops these here.
+/.claude-flow/
+/.swarm/
+/ruvector.db
