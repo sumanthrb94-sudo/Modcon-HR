@@ -56,9 +56,13 @@ service cloud.firestore {
     //
     // Salary and leave documents are keyed by employeeId (`emp-001`), while
     // rules only ever see `request.auth.uid`. Nothing connected the two, which
-    // is why the `resource.data.employeeId == request.auth.uid` checks written
-    // elsewhere in this file have never once evaluated true — they compare
-    // `emp-009` to a Firebase uid.
+    // is why the `resource.data.employeeId == request.auth.uid` checks this
+    // file used to be written with never once evaluated true — they compared
+    // `emp-009` to a Firebase uid. Every one of them is now `isSelf()`; the
+    // last three (leave_requests, expenses and regularizations, all on
+    // `update`) were missed when the rest were converted, so for a while an
+    // employee could file a leave request or an expense claim and then never
+    // edit or withdraw it, while the comment above each one said they could.
     //
     // Employee.authUid exists but lives in localStorage, so it is a claim the
     // client controls and could not be trusted here. The link is therefore an
@@ -76,6 +80,23 @@ service cloud.firestore {
     /** True when `employeeId` is the caller's own employee record. */
     function isSelf(employeeId) {
       return employeeId != null && employeeId == myEmployeeId();
+    }
+
+    /**
+     * True when the account a link is being written for belongs to my org.
+     *
+     * The /employee_links write rule needs this because its document id is
+     * somebody's uid: without it, stamping the payload with your own orgId was
+     * enough to rewrite an account in another organisation. See that block.
+     *
+     * A uid with no profile is nobody, and gets no link — which is also the
+     * order the invite flow already writes in (users first, then the link, see
+     * src/lib/accountInvites.ts) and the order the backfill reads in (it
+     * iterates existing user documents, see src/lib/accessBackfill.ts).
+     */
+    function linkTargetInMyOrg(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+        orgKeyOf(get(/databases/$(database)/documents/users/$(uid)).data) == myOrgKey();
     }
 
     /**
@@ -206,18 +227,52 @@ service cloud.firestore {
         ? get(/databases/$(database)/documents/role_assignments/$(email)).data.role
         : null;
     }
-    function isAdoptableAssignedRole(email, role) {
-      return role == assignedRoleFor(email) && (role == 'hr' || role == 'manager' || role == 'employee');
+    /** The organisation an assignment was filed by, or null if there is none. */
+    function assignedOrgKeyFor(email) {
+      return exists(/databases/$(database)/documents/role_assignments/$(email))
+        ? orgKeyOf(get(/databases/$(database)/documents/role_assignments/$(email)).data)
+        : null;
+    }
+
+    /**
+     * A role this email may adopt at sign-in, on behalf of `orgKey`.
+     *
+     * `orgKey` is the whole point and used to be missing. The document id here
+     * is an *email address*, so an HR manager of one organisation could file an
+     * assignment against a person in another — stamping it with their own org,
+     * which was the only thing the write rule checked — and that person would
+     * adopt `hr` the next time they signed in. Their own orgId never changed,
+     * so what they became was an administrator of the *victim's* organisation,
+     * installed by a stranger. Same shape as the employee_links hole: a
+     * collection keyed by somebody else's identifier, where only the payload's
+     * org was ever checked.
+     *
+     * So an assignment is adoptable only by an account already in the
+     * organisation that filed it. See the caller for why `create` passes null
+     * and is safe doing so.
+     */
+    function isAdoptableAssignedRole(email, role, orgKey) {
+      return role == assignedRoleFor(email) &&
+        (role == 'hr' || role == 'manager' || role == 'employee') &&
+        (orgKey == null || assignedOrgKeyFor(email) == orgKey);
     }
 
     // First-ever profile doc for an account: role/superAdmin must be the
     // safe default, a role an administrator assigned to this email, or the
     // value dictated by the hard-coded lists — a brand new sign-up can never
     // self-register as admin/super-admin.
+    // A first profile carries no orgId — the create rule below forbids one, so
+    // that it cannot be a self-service tenant switch. That is also why null is
+    // passed for the organisation here rather than a key to match against:
+    // there is nothing yet to match. Adopting `hr` at this point grants nothing
+    // to anybody, because an account with no orgId resolves to '~unassigned~'
+    // and every org-scoped rule compares against that and misses. The account
+    // becomes real only when an administrator sets its orgId, and the /users
+    // update rules let an HR manager do that solely for their own org.
     function selfCreateRoleIsValid(data) {
       let email = request.auth.token.email.lower();
       return (data.role == fixedRoleForEmail(email) ||
-          isAdoptableAssignedRole(email, data.role)) &&
+          isAdoptableAssignedRole(email, data.role, null)) &&
         data.get('superAdmin', false) == (email in fixedSuperAdminEmails());
     }
 
@@ -229,9 +284,14 @@ service cloud.firestore {
     // ever re-affirm it afterwards.
     function selfUpdateRoleIsValid(data) {
       let email = request.auth.token.email.lower();
+      // The established profile's own organisation is what an assignment has to
+      // have been filed by. `resource.data` and not `data`: the incoming write
+      // cannot move itself into another org (the create/update rules pin orgId
+      // either way), and reading the org off the payload would let the answer
+      // be chosen by the same request it is meant to constrain.
       return (data.role == fixedRoleForEmail(email) ||
           data.role == resource.data.role ||
-          isAdoptableAssignedRole(email, data.role)) &&
+          isAdoptableAssignedRole(email, data.role, orgKeyOf(resource.data))) &&
         (data.get('superAdmin', false) == (email in fixedSuperAdminEmails()) ||
           data.get('superAdmin', false) == resource.data.get('superAdmin', false));
     }
@@ -348,6 +408,20 @@ service cloud.firestore {
       // not subject to the caller's read permission.
       allow read: if isOrgAdmin() ||
         (isSignedIn() && emailId == request.auth.token.email.lower());
+      // Note what this does *not* require: that the assignment already stored
+      // here was filed by my own organisation.
+      //
+      // That was tried, to stop one tenant restamping another's pending grant,
+      // and it is the worse trade. Assignments are keyed by email and may
+      // precede the account — that is how a new joiner picks up their role on
+      // first sign-in — so whoever wrote first would own the address forever,
+      // and an attacker could squat every address they could guess with no way
+      // back that does not involve a platform admin.
+      //
+      // Last writer wins instead. The grant is inert until adopted and
+      // adoption checks the organisation (isAdoptableAssignedRole), so the
+      // damage a foreign write can do is bounded at overwriting a pending
+      // grant that the rightful organisation can simply write again.
       allow create, update: if isOrgAdmin() &&
         request.resource.data.role in ['hr', 'manager', 'employee'] &&
         // The document id is the email, so an assignment can never be filed
@@ -388,7 +462,25 @@ service cloud.firestore {
         request.resource.data.employeeId is string &&
         request.resource.data.employeeId.size() > 0 &&
         // Same sentinel as everywhere else — see the role_assignments note.
-        (isAdmin() || orgKeyOf(request.resource.data) == myOrgKey());
+        (isAdmin() || orgKeyOf(request.resource.data) == myOrgKey()) &&
+        // ...and the account being linked is one of mine.
+        //
+        // Stamping the incoming document is not enough on its own, and this is
+        // the only collection where that mattered: everywhere else the document
+        // id is opaque, so `writingToMyOrg()` on the payload is the whole
+        // question. Here the id *is* the victim — an HR manager who wrote
+        // employee_links/{another org's uid} while stamping their **own** orgId
+        // passed the line above, and silently re-pointed that account at any
+        // employeeId they named. The escalation landed inside the victim's
+        // tenant, not the attacker's: `myEmployeeId()` returns the named record
+        // and the victim's own org scopes the read, so naming their CEO handed
+        // the victim their CEO's payslips, and cost them their own.
+        //
+        // Checking the target's profile rather than the stored link is
+        // deliberate — it is the same question `create` and `update` both need
+        // answered, and a link whose stored orgId disagrees with its account's
+        // is exactly the damage this repairs.
+        (isAdmin() || linkTargetInMyOrg(uid));
       allow delete: if isOrgAdmin() &&
         (isAdmin() || orgKeyOf(resource.data) == myOrgKey());
     }
@@ -485,7 +577,7 @@ service cloud.firestore {
       // administrators decide them.
       allow create: if isSignedIn() && writingToMyOrg();
       allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
-        (resource.data.employeeId == request.auth.uid || isManager());
+        (isSelf(resource.data.employeeId) || isManager());
       allow delete: if isOrgAdmin() && inMyOrg();
     }
 
@@ -592,7 +684,7 @@ service cloud.firestore {
       // Employees can submit/edit their own expense claims; admins manage all.
       allow create: if isSignedIn() && writingToMyOrg();
       allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
-        (resource.data.employeeId == request.auth.uid || isManager());
+        (isSelf(resource.data.employeeId) || isManager());
       allow delete: if isOrgAdmin() && inMyOrg();
     }
 
@@ -641,7 +733,7 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && inMyOrg();
       allow create: if isSignedIn() && writingToMyOrg();
       allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
-        (resource.data.employeeId == request.auth.uid || isManager());
+        (isSelf(resource.data.employeeId) || isManager());
       allow delete: if isOrgAdmin() && inMyOrg();
     }
 

@@ -255,11 +255,6 @@ export type ExpenseCategory = 'Travel' | 'Meals' | 'Accommodation' | 'Software' 
 export interface ExpenseClaim {
   id: ID;
   employeeId: ID;
-  // Firebase Auth uid of whoever created this claim. Distinct from
-  // `employeeId` (which is the mock HR employee id, e.g. "emp-003") — this
-  // is what Firestore security rules check to let a user manage their own
-  // claim, since employeeId never equals request.auth.uid.
-  ownerUid?: string;
   title: string;
   category: ExpenseCategory;
   amount: number;

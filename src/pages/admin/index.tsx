@@ -154,10 +154,22 @@ export function AdminDashboardPage() {
                 name: inviteName,
                 email: inviteEmail,
                 role: inviteRole,
-                // The inviter's own organisation, never chosen in the form. A
-                // super admin has none of their own, so they act on whichever
-                // org they last switched to.
-                orgId: resolveOrgKeyForProfile(profile),
+                // The inviter's own organisation, never chosen in the form.
+                //
+                // Platform and super admins genuinely belong to no single org —
+                // they administer every one — so resolveOrgKeyForProfile stands
+                // in for them: the org a super admin last switched to, and the
+                // default tenant for a platform admin.
+                //
+                // An HR administrator gets no such substitution. Passing them
+                // through the same resolver turned "this account has no
+                // organisation" into 'default' before inviteAccount could see
+                // it, which made its refusal unreachable and would have seeded
+                // the incumbent tenant with someone else's colleague. Handing
+                // over the raw value is what lets that guard fire.
+                orgId: isAdmin || profile.superAdmin
+                    ? resolveOrgKeyForProfile(profile)
+                    : (profile.orgId ?? ''),
             }, profile.uid));
         } catch (err) {
             setInviteError(friendlyInviteError(err));

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
+import { isBrowserTransportNoise } from './noise';
 
 /**
  * End-to-end smoke test.
@@ -40,7 +41,12 @@ const MODULES: { label: string; path: string; heading: RegExp }[] = [
 const runtimeErrors: string[] = [];
 
 function trackErrors(page: Page) {
-  page.on('pageerror', (err) => runtimeErrors.push(`[pageerror] ${err.message}`));
+  page.on('pageerror', (err) => {
+    // Same exemption the console handler below already makes for network
+    // noise: WebKit raises Firestore's aborted long-polls as uncaught errors.
+    if (isBrowserTransportNoise(err.message)) return;
+    runtimeErrors.push(`[pageerror] ${err.message}`);
+  });
   page.on('console', (msg) => {
     if (msg.type() === 'error') {
       const text = msg.text();
