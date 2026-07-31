@@ -556,6 +556,11 @@ describe('multi-tenancy — an administrator creates accounts in their own org',
   });
 
   it('the invite links the account to an employee record in the same org', async () => {
+    // In the order inviteAccount writes them: the profile first, then the link.
+    // The link rule requires the account to exist and to be in the writer's
+    // organisation — a link for a uid with no profile is a link to nobody, and
+    // was the shape that let one tenant's HR rewrite another tenant's account.
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'users', 'invited-1'), invitee()));
     await assertSucceeds(setDoc(doc(as(USERS.hrA), 'employee_links', 'invited-1'), {
       uid: 'invited-1', employeeId: 'emp-a', orgId: 'org-a', linkedBy: USERS.hrA.uid,
     }));
@@ -665,6 +670,16 @@ describe('multi-tenancy — access mappings stay inside one organisation', () =>
       setDoc(doc(as(USERS.legacyAdmin), 'employee_links', USERS.legacyEmployee.uid), {
         uid: USERS.legacyEmployee.uid, employeeId: 'emp-legacy', orgId: 'default',
         linkedBy: USERS.legacyAdmin.uid,
+      }),
+    );
+    // The same question asked of the *account* rather than the link document:
+    // legacy-2's profile carries no orgId at all, and must still read as the
+    // legacy tenant for its own administrator. (The link rule resolves the
+    // target account's org, so this account has to exist to be linked.)
+    await assertSucceeds(
+      setDoc(doc(as(USERS.legacyAdmin), 'users', 'legacy-2'), {
+        uid: 'legacy-2', email: 'legacy-2@example.com', displayName: 'Legacy 2',
+        role: 'employee', orgId: 'default',
       }),
     );
     await assertSucceeds(

@@ -750,39 +750,35 @@ export function ExpensesPage() {
   }, [liveExpenses, liveLoading]);
 
   // ----- Actions -----
-  // Firestore rules require `ownerUid` to equal the signed-in user's uid on
-  // create, and use it (not `employeeId`, which is the mock HR id) to decide
-  // who may later update this doc — see firestore.rules for why.
-  function withOwner(claim: ExpenseClaim): ExpenseClaim {
-    return profile ? { ...claim, ownerUid: profile.uid } : claim;
-  }
-
+  // No `ownerUid` here any more. The claim used to be stamped with one because
+  // the rules were said to check it — they never did, and `employee_links` is
+  // how an account resolves to an employee everywhere else in this app. The
+  // expenses rules now use `isSelf(resource.data.employeeId)` like their own
+  // get/list rules do, so `employeeId` is the only identity the document needs.
   async function handleAddClaim(claim: ExpenseClaim) {
-    const owned = withOwner(claim);
-    setClaims((prev) => [owned, ...prev]);
+    setClaims((prev) => [claim, ...prev]);
     setActiveView('claims');
     setActiveTab('Submitted');
     setActiveCategory('all');
     setSearch('');
-    setSelectedClaim(owned);
+    setSelectedClaim(claim);
 
     try {
-      await upsert(Collections.expenses, owned.id, owned);
+      await upsert(Collections.expenses, claim.id, claim);
     } catch (err) {
       console.error('Failed to save expense claim to Firestore:', err);
     }
   }
 
   async function handleSaveDraft(claim: ExpenseClaim) {
-    const owned = withOwner(claim);
-    setClaims((prev) => [owned, ...prev]);
+    setClaims((prev) => [claim, ...prev]);
     setActiveView('claims');
     setActiveTab('Draft');
     setActiveCategory('all');
     setSearch('');
 
     try {
-      await upsert(Collections.expenses, owned.id, owned);
+      await upsert(Collections.expenses, claim.id, claim);
     } catch (err) {
       console.error('Failed to save draft expense claim to Firestore:', err);
     }

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { FIREBASE_API_KEY, PERSONAS } from './config';
+import { isBrowserTransportNoise } from './noise';
 
 /**
  * Organisation configuration, and the operations that write it.
@@ -130,8 +131,12 @@ test.describe.serial('organisation configuration', () => {
     page.on('console', (m) => {
       if (m.text().includes('[org-settings]')) denials.push(m.text());
     });
+    // App errors only. WebKit surfaces Firestore's own aborted long-poll
+    // requests as uncaught errors, which is transport churn rather than
+    // anything the settings code did — see isBrowserTransportNoise.
+    const appErrors: string[] = [];
     page.on('pageerror', (err) => {
-      throw new Error(`unhandled error on the settings page: ${err.message}`);
+      if (!isBrowserTransportNoise(err.message)) appErrors.push(err.message);
     });
 
     await signIn(page, PERSONAS.admin);
@@ -152,6 +157,11 @@ test.describe.serial('organisation configuration', () => {
     if (denials.length) {
       expect(denials.join('\n')).toContain('could not');
     }
+    // Asserted here rather than thrown from the listener: a throw inside an
+    // event handler surfaces as whatever the test happened to be awaiting,
+    // which is how this last failed on the click two lines into the test
+    // rather than on the error it actually objected to.
+    expect(appErrors, 'unhandled application errors on the settings page').toEqual([]);
 
     await page.screenshot({ path: 'test-results/org-settings-survives-undeployed-rules.png', fullPage: true });
     await context.close();
