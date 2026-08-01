@@ -1,4 +1,5 @@
-import type { AttendanceRecord, AttendanceStatus } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
+import { isWeekOffFor, getEmployee } from '@/data/employees';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
@@ -251,12 +252,19 @@ export function regularizationId(employeeId: string, date: string): string {
  *     or the employee's if they raise it themselves.
  *   - The reason is generic and describes the record. A specific human reason
  *     only exists when a human types one — see `addRegularizationRequest`.
+ *   - A day that is the employee's own week-off. Not working on the day you
+ *     are rostered off is not an anomaly, and asking someone to account for it
+ *     is asking them to justify their week-off. Week-offs differ per person
+ *     (Sunday, Monday or Tuesday — see `weekOffOf`), so this cannot be a fixed
+ *     "skip weekends" rule: the same Monday is a working day for most of the
+ *     company and a day off for the sales and support teams.
  */
 export function deriveRegularizationRequests(
   records: AttendanceRecord[] = getAttendanceRecords(),
 ): RegularizationRequest[] {
   return records
     .filter((record) => record.status === 'Absent' || record.isLate)
+    .filter((record) => !isWeekOffFor(getEmployee(record.employeeId), record.date))
     .map((record) => ({
       id: regularizationId(record.employeeId, record.date),
       employeeId: record.employeeId,
@@ -300,14 +308,31 @@ export function getRecordsByDate(date: string): AttendanceRecord[] {
  * the real clock — surfaces that say "current week" must ask for the current
  * week, and get an empty result when nothing has been marked in it.
  */
+/**
+ * Monday to Sunday of the week today falls in.
+ *
+ * All seven days, because the working week is now six days long and *which*
+ * day is missing differs per employee: week-offs are rostered across Sunday,
+ * Monday and Tuesday (see `weekOffOf` in data/employees.ts). A fixed Mon–Fri
+ * window could not show a Saturday — which everyone now works — nor a Sunday,
+ * which everyone whose week-off is Monday or Tuesday works.
+ *
+ * So this is a calendar week, not a working week. Ask
+ * `getWorkingWeekDatesFor(employee)` for one person's working days.
+ */
 export function getCurrentWeekDates(): string[] {
   const base = todayDate(); // UTC midnight, matching how record dates parse
   const sinceMonday = (base.getUTCDay() + 6) % 7;
-  return Array.from({ length: 5 }, (_, offset) => {
+  return Array.from({ length: 7 }, (_, offset) => {
     const day = new Date(base);
     day.setUTCDate(base.getUTCDate() - sinceMonday + offset);
     return day.toISOString().slice(0, 10);
   });
+}
+
+/** This week's dates that `employee` is rostered to work — the calendar week minus their week-off. */
+export function getWorkingWeekDatesFor(employee: Pick<Employee, 'weekOff'> | null | undefined): string[] {
+  return getCurrentWeekDates().filter((date) => !isWeekOffFor(employee, date));
 }
 
 export function getWeekSummary(): Array<{ date: string; Present: number; 'Work From Home': number; 'On Leave': number; Absent: number; 'Half Day': number }> {

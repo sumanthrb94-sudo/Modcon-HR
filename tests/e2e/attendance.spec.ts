@@ -168,3 +168,187 @@ test.describe.serial('raising a regularization', () => {
     await expect(raised.getByText('Work From Home', { exact: true })).toBeVisible();
   });
 });
+
+/**
+ * The day filter must always offer today.
+ *
+ * The options were the Mon–Fri working week, but Mark Attendance always writes
+ * for `todayIso()` and then selects that day. On a Saturday or Sunday the two
+ * disagreed: the Select was left holding a date absent from its own option
+ * list, so the rows on screen belonged to a day the control could not name and
+ * no option led back to them. The page opened on Friday as well, so a day
+ * marked at the weekend read as though nothing had been written.
+ *
+ * The filter now offers all seven days of the week, because the working week
+ * became six days with the missing day differing per employee (week-offs are
+ * rostered across Sunday, Monday and Tuesday). That makes "today is always an
+ * option" structural rather than a special case — which is the point, but it
+ * also means this test would now pass against a Mon–Sun window that had lost
+ * the original fix. The `toHaveValue` assertion is what still guards it: the
+ * bug was the Select holding a date its own options did not contain.
+ *
+ * The clock is pinned because the bug was invisible Monday to Friday — this
+ * suite ran green for months and only failed once a run happened to land on a
+ * Saturday. Times are 09:00 IST (03:30Z) so the pinned instant is unambiguously
+ * that IST calendar day; see src/lib/today.ts, which answers every calendar
+ * question in Asia/Kolkata rather than UTC.
+ */
+const DAY_FILTER_CASES = [
+  { label: 'Saturday', instant: '2026-08-01T03:30:00Z', iso: '2026-08-01' },
+  { label: 'Sunday', instant: '2026-08-02T03:30:00Z', iso: '2026-08-02' },
+  { label: 'Wednesday', instant: '2026-07-29T03:30:00Z', iso: '2026-07-29' },
+];
+
+for (const day of DAY_FILTER_CASES) {
+  test(`the attendance day filter offers today on a ${day.label}`, async ({ page }) => {
+    // Before any navigation, so the app never observes the real clock.
+    await page.clock.install({ time: new Date(day.instant) });
+    await login(page);
+    await page.goto('/attendance');
+
+    const dayFilter = page.locator('select').filter({ has: page.locator('option:has-text("(Today)")') }).first();
+    await expect(dayFilter).toBeAttached();
+
+    const values = await dayFilter.locator('option').evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value),
+    );
+    expect(values).toContain(day.iso);
+
+    // Exactly one option may claim to be today.
+    const todayLabels = await dayFilter.locator('option:has-text("(Today)")').allTextContents();
+    expect(todayLabels).toHaveLength(1);
+
+    // The control must be showing a day it actually offers — this is what
+    // broke: selectedDate held a date the option list did not contain.
+    await expect(dayFilter).toHaveValue(day.iso);
+
+    // Monday to Sunday, every week. Saturday and Sunday are working days for
+    // most of the company now, so a five-option filter could not show them.
+    expect(values).toHaveLength(7);
+  });
+}
+
+/**
+ * Week-offs are per employee, and the app must treat them as such.
+ *
+ * The organisation rosters one week-off per person across Sunday, Monday and
+ * Tuesday — so the same Monday is an ordinary working day for most of the
+ * company and a day off for the sales and support teams. Nothing here may be
+ * asserted with a fixed "weekends are Sat/Sun" rule; every check below is
+ * relative to the employee being looked at.
+ *
+ * The clock is pinned to a known Monday so "who is off today" is a fact the
+ * test can state rather than something it has to re-derive from the calendar.
+ */
+const MONDAY = { instant: '2026-07-27T03:30:00Z', iso: '2026-07-27' };
+
+/** Someone seeded with a Monday week-off, and someone seeded without one. */
+const MONDAY_OFF_EMPLOYEE = 'Sanjay Malhotra';
+const SUNDAY_OFF_EMPLOYEE = 'Diya Mehta';
+
+/**
+ * Select someone in the My Attendance picker by name.
+ *
+ * By value rather than by label: the options read "Full Name (MC-000)", and
+ * selectOption's `label` takes a string only — a regex is rejected at runtime,
+ * not at compile time. Resolving the value here keeps the employee code, which
+ * is seed trivia, out of the tests.
+ */
+async function pickEmployee(page: Page, fullName: string) {
+  const picker = page.locator('select').first();
+  // The picker is populated from the directory after mount, so its options are
+  // not there on first paint. Without this the evaluate below runs against an
+  // empty list and reports the employee as missing rather than waiting.
+  await expect(picker.locator('option').filter({ hasText: fullName })).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  const value = await picker.locator('option').evaluateAll(
+    (options, name) =>
+      (options as HTMLOptionElement[]).find((option) => option.textContent?.startsWith(name))?.value ?? '',
+    fullName,
+  );
+  expect(value, `no option for ${fullName}`).not.toBe('');
+  await picker.selectOption(value);
+}
+
+test.describe('per-employee week offs', () => {
+  test('the attendance page names who is off, and it is not everyone', async ({ page }) => {
+    await page.clock.install({ time: new Date(MONDAY.instant) });
+    await login(page);
+    await page.goto('/attendance');
+
+    // The <p>, not the count <span> inside it — the names live on the paragraph.
+    const offNote = page.locator('p').filter({ hasText: /on week off/i }).first();
+    await expect(offNote).toBeVisible();
+
+    // The people rostered off this Monday are named; someone whose week-off is
+    // Sunday must not be among them, or the app is treating the week-off as a
+    // company-wide day rather than a personal one.
+    const noteText = (await offNote.textContent()) ?? '';
+    expect(noteText).toContain(MONDAY_OFF_EMPLOYEE);
+    expect(noteText).not.toContain(SUNDAY_OFF_EMPLOYEE);
+  });
+
+  test('an employee cannot raise a regularization against their own week off', async ({ page }) => {
+    await page.clock.install({ time: new Date(MONDAY.instant) });
+    await login(page);
+    await page.goto('/my-attendance');
+
+    // Admins pick whose attendance they are viewing.
+    await pickEmployee(page, MONDAY_OFF_EMPLOYEE);
+    await expect(page.getByText(/week off Monday/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /Request Regularization/i }).click();
+    const dialog = page.getByRole('dialog');
+    const dateOptions = await dialog.locator('select').first().locator('option').evaluateAll(
+      (options) => options.map((option) => (option as HTMLOptionElement).value),
+    );
+
+    // Every Monday in the list would be a day this person was rostered off.
+    const mondays = dateOptions.filter((iso) => iso && new Date(iso).getUTCDay() === 1);
+    expect(mondays).toEqual([]);
+    // The list is not simply empty — other days are still offered.
+    expect(dateOptions.filter(Boolean).length).toBeGreaterThan(0);
+  });
+
+  test('the same day is offered to someone whose week off is a different day', async ({ page }) => {
+    await page.clock.install({ time: new Date(MONDAY.instant) });
+    await login(page);
+    await page.goto('/my-attendance');
+
+    await pickEmployee(page, SUNDAY_OFF_EMPLOYEE);
+    await expect(page.getByText(/week off Sunday/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /Request Regularization/i }).click();
+    const dialog = page.getByRole('dialog');
+    const dateOptions = await dialog.locator('select').first().locator('option').evaluateAll(
+      (options) => options.map((option) => (option as HTMLOptionElement).value),
+    );
+
+    // This is the assertion that makes the previous test mean something: the
+    // Monday withheld from Sanjay is offered here, so it was withheld because
+    // of *his* roster and not because Mondays are excluded for everyone.
+    expect(dateOptions).toContain(MONDAY.iso);
+    expect(dateOptions.filter((iso) => iso && new Date(iso).getUTCDay() === 0)).toEqual([]);
+  });
+
+  test('HR can change an employee week off and the app follows', async ({ page }) => {
+    await page.clock.install({ time: new Date(MONDAY.instant) });
+    await login(page);
+    await page.goto('/employees');
+    await page.getByText(SUNDAY_OFF_EMPLOYEE, { exact: true }).first().click();
+    await expect(page).toHaveURL(/\/employees\/emp-/);
+    await expect(page.getByText('Week Off')).toBeVisible();
+
+    await page.getByRole('button', { name: /Edit Profile/i }).first().click();
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('select').filter({ has: page.locator('option[value="Tuesday"]') }).first()
+      .selectOption('Tuesday');
+    await dialog.getByRole('button', { name: /^Save/i }).click();
+    await expect(dialog).toBeHidden();
+
+    // Reload: a roster that only survives until refresh is not a roster.
+    await page.reload();
+    await expect(page.getByText('Tuesday')).toBeVisible();
+  });
+});

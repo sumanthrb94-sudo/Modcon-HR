@@ -43,13 +43,14 @@ import {
 import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
 import { addDocumentToLibrary, updateDocumentStatus, useEmployeeDocumentLibrary, type DocumentRecord, type DocumentStatus } from '@/data/documents';
 import { departments, addDepartmentToDirectory } from '@/data/departments';
-import type { Employee, EmployeeStatus, EmploymentType, Gender } from '@/types';
+import type { Employee, EmployeeStatus, EmploymentType, Gender, WeekOffDay } from '@/types';
+import { WEEK_OFF_DAYS } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { OrgChart } from './OrgChart';
 import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
-import { updateEmployeeInDirectory } from '@/data/employees';
+import { updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -1312,6 +1313,7 @@ function OverviewTab({
           <InfoRow label="Gender" value={emp.gender} />
           <InfoRow label="Blood Group" value={emp.bloodGroup} />
           <InfoRow label="Marital Status" value={emp.maritalStatus} />
+          <InfoRow label="Week Off" value={weekOffOf(emp)} />
           <InfoRow label="Email" value={emp.email} />
           <InfoRow label="Phone" value={emp.phone} />
           <div className="col-span-2 md:col-span-3">
@@ -1954,6 +1956,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editDateOfBirth, setEditDateOfBirth] = useState('');
   const [editBloodGroup, setEditBloodGroup] = useState('');
   const [editMaritalStatus, setEditMaritalStatus] = useState('');
+  // Typed as WeekOffDay rather than string: the roster offers exactly three
+  // days, and there is no "not recorded" option because every employee has a
+  // week-off. Someone with none set is off on Sunday, not off on no day.
+  const [editWeekOff, setEditWeekOff] = useState<WeekOffDay>('Sunday');
   const [editAddress, setEditAddress] = useState('');
   const [editReportingManagerId, setEditReportingManagerId] = useState('');
   const [editError, setEditError] = useState('');
@@ -2168,6 +2174,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditDateOfBirth(emp.dateOfBirth ?? '');
     setEditBloodGroup(emp.bloodGroup ?? '');
     setEditMaritalStatus(emp.maritalStatus ?? '');
+    setEditWeekOff(weekOffOf(emp));
     setEditAddress(emp.address ?? '');
     setEditReportingManagerId(emp.reportingManagerId ?? '');
     setEditError('');
@@ -2236,6 +2243,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       // says "not recorded" instead of "recorded as empty".
       bloodGroup: editBloodGroup.trim() || undefined,
       maritalStatus: (editMaritalStatus as Employee['maritalStatus']) || undefined,
+      // Always written, unlike the optional personal details above: this is a
+      // roster the employer sets, so "unset" is not a state it should reach
+      // once someone has been through this form.
+      weekOff: editWeekOff,
       address: editAddress.trim() || undefined,
       reportingManagerId: editReportingManagerId || null,
       // getEmployeeDirectory() recomputes the name on read; setting it here
@@ -2665,6 +2676,14 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                 { label: 'Single', value: 'Single' },
                 { label: 'Married', value: 'Married' },
               ]}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Week Off</label>
+            <Select
+              value={editWeekOff}
+              onChange={(value) => setEditWeekOff(value as WeekOffDay)}
+              options={WEEK_OFF_DAYS.map((day) => ({ label: day, value: day }))}
             />
           </div>
           <div className="md:col-span-2">

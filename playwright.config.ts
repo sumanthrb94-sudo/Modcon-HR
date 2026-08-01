@@ -73,7 +73,7 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|org-settings|provisioning)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|org-settings|provisioning|password-reset)\.spec\.ts$/;
 // Specs that assert per-persona access control, run once per role project.
 // documents.spec.ts belongs here rather than with the app specs: what it checks
 // is which controls a given role is offered, which is meaningless without a

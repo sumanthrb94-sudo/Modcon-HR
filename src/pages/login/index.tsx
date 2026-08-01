@@ -6,11 +6,16 @@ import { useAuth } from '@/lib/auth';
 
 export function LoginPage() {
     const navigate = useNavigate();
-    const { user, loading, error, clearError, signInEmail } = useAuth();
+    const { user, loading, error, clearError, signInEmail, sendPasswordReset } = useAuth();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    // The reset flow reuses this card rather than a separate route: it shares
+    // the email field, the error slot and the auth context, so nothing about
+    // the sign-in path changes when it is not in use.
+    const [mode, setMode] = useState<'signin' | 'reset'>('signin');
+    const [resetSent, setResetSent] = useState('');
 
     useEffect(() => {
         if (!loading && user) {
@@ -18,11 +23,44 @@ export function LoginPage() {
         }
     }, [loading, user, navigate]);
 
+    function switchMode(next: 'signin' | 'reset') {
+        setMode(next);
+        setResetSent('');
+        if (error) clearError();
+    }
+
+    function onEmailChange(value: string) {
+        setEmail(value);
+        setResetSent('');
+        if (error) clearError();
+    }
+
     async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setSubmitting(true);
         try {
             await signInEmail(email, password);
+        } catch {
+            // error surfaced via context
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    async function handleResetSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setSubmitting(true);
+        setResetSent('');
+        try {
+            const address = email.trim();
+            await sendPasswordReset(address);
+            // Worded to be true whether or not the address is registered —
+            // Firebase's enumeration protection resolves successfully for
+            // unknown addresses on purpose. See sendPasswordReset in auth.tsx.
+            setResetSent(
+                `If ${address} belongs to a ModCon HR account, a reset link is on its way. ` +
+                    'It expires in an hour — check your spam folder if it has not arrived in a few minutes.',
+            );
         } catch {
             // error surfaced via context
         } finally {
@@ -40,6 +78,73 @@ export function LoginPage() {
                         </div>
                         <p className="font-bold text-ink-900">ModCon HR</p>
                     </div>
+                    {mode === 'reset' ? (
+                        <>
+                            <h1 className="text-2xl font-bold text-ink-900">Reset your password</h1>
+                            <p className="mt-1 text-sm text-ink-500">
+                                Enter your work email and we&rsquo;ll send you a link to set a new password.
+                            </p>
+
+                            <form className="mt-6 space-y-4" onSubmit={handleResetSubmit}>
+                                <div>
+                                    <label className="label" htmlFor="reset-email">
+                                        Email
+                                    </label>
+                                    <input
+                                        id="reset-email"
+                                        type="email"
+                                        className="input"
+                                        placeholder="you@company.com"
+                                        autoComplete="email"
+                                        value={email}
+                                        onChange={(event) => onEmailChange(event.target.value)}
+                                        required
+                                        autoFocus
+                                    />
+                                </div>
+
+                                {error ? (
+                                    <p role="alert" className="text-sm font-medium text-rose-600">
+                                        {error}
+                                    </p>
+                                ) : null}
+
+                                {resetSent ? (
+                                    <p
+                                        role="status"
+                                        className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700"
+                                    >
+                                        {resetSent}
+                                    </p>
+                                ) : null}
+
+                                <Button type="submit" className="w-full justify-center" disabled={submitting}>
+                                    {submitting ? (
+                                        <Loader2 className="animate-spin" size={16} />
+                                    ) : resetSent ? (
+                                        'Resend link'
+                                    ) : (
+                                        'Send reset link'
+                                    )}
+                                </Button>
+
+                                <p className="text-center text-sm text-ink-500">
+                                    <button
+                                        type="button"
+                                        className="font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                                        onClick={() => switchMode('signin')}
+                                    >
+                                        Back to sign in
+                                    </button>
+                                </p>
+
+                                <p className="text-center text-sm text-ink-500">
+                                    Still stuck? Your organization&rsquo;s administrator can reset it for you.
+                                </p>
+                            </form>
+                        </>
+                    ) : (
+                    <>
                     <h1 className="text-2xl font-bold text-ink-900">Sign in to continue</h1>
                     <p className="mt-1 text-sm text-ink-500">Use your work email and password.</p>
 
@@ -55,18 +160,24 @@ export function LoginPage() {
                                 placeholder="you@company.com"
                                 autoComplete="email"
                                 value={email}
-                                onChange={(event) => {
-                                    setEmail(event.target.value);
-                                    if (error) clearError();
-                                }}
+                                onChange={(event) => onEmailChange(event.target.value)}
                                 required
                             />
                         </div>
 
                         <div>
-                            <label className="label" htmlFor="password">
-                                Password
-                            </label>
+                            <div className="flex items-baseline justify-between gap-2">
+                                <label className="label" htmlFor="password">
+                                    Password
+                                </label>
+                                <button
+                                    type="button"
+                                    className="mb-1 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                                    onClick={() => switchMode('reset')}
+                                >
+                                    Forgot Password?
+                                </button>
+                            </div>
                             <input
                                 id="password"
                                 type="password"
@@ -83,7 +194,11 @@ export function LoginPage() {
                             />
                         </div>
 
-                        {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+                        {error ? (
+                            <p role="alert" className="text-sm font-medium text-rose-600">
+                                {error}
+                            </p>
+                        ) : null}
 
                         <Button type="submit" className="w-full justify-center" disabled={submitting}>
                             {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Sign In'}
@@ -156,6 +271,8 @@ export function LoginPage() {
                             No account? Your organization&rsquo;s administrator creates one for you.
                         </p>
                     </form>
+                    </>
+                    )}
                 </section>
             </div>
         </main>
