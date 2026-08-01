@@ -29,7 +29,7 @@ import {
     type User,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { auth, db, authPersistenceReady } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
 import { startOrgSettingsSync } from './orgSettings';
 import { startOrgFeatureSync } from './features';
@@ -291,6 +291,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function signInEmail(email: string, password: string) {
         setError('');
         try {
+            // Settle persistence first, or a fast sign-in is written with
+            // Firebase's localStorage default and survives the tab it was
+            // made in. See authPersistenceReady in lib/firebase.ts.
+            await authPersistenceReady;
             await signInWithEmailAndPassword(auth, email.trim(), password);
         } catch (err) {
             setError(friendlyAuthError(err));
