@@ -17,7 +17,8 @@ import { getCompanyProfile, saveCompanyProfile, type CompanyProfile as CompanyPr
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
-import { getLeavePolicies, saveLeavePolicies, isMonthlyPolicy, type LeavePolicy, type LeaveAccrual } from '@/data/leavePolicies';
+import { getLeavePolicies, saveLeavePolicies, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy, type LeaveAccrual } from '@/data/leavePolicies';
+import { getLeaveRequests } from '@/data/leave';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import {
   APP_MODULES,
@@ -850,6 +851,7 @@ function LeavePolicies() {
   const [newHalfDay, setNewHalfDay] = useState(true);
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
+  const [deleteBlocked, setDeleteBlocked] = useState('');
 
   useEffect(() => {
     setPolicies(getLeavePolicies());
@@ -978,6 +980,36 @@ function LeavePolicies() {
     setPolicies(updated);
   };
 
+  /**
+   * Remove a leave type from the organisation's policy.
+   *
+   * There was no way to do this at all: a type added by mistake — or by a test
+   * run, since the E2E suite writes to the same shared document — stayed in the
+   * organisation's configuration for good, offered in Apply Leave to everyone.
+   *
+   * A type people have actually taken leave under is a different matter. Those
+   * requests carry the type by name, and entitlement is derived by walking the
+   * policies, so deleting it would leave approved leave with no policy to be
+   * measured against — the days would vanish from every balance while the
+   * request rows kept claiming them. So that case is refused rather than
+   * cascaded, the same way a department with people in it is.
+   */
+  function handleDeletePolicy(policy: LeavePolicy) {
+    const type = normalizeLeaveTypeValue(policy.type);
+    const recorded = getLeaveRequests().filter((request) => request.type === type).length;
+    if (recorded > 0) {
+      setDeleteBlocked(
+        `${policy.type} has ${recorded} leave request${recorded === 1 ? '' : 's'} recorded against it. `
+        + 'Those would be left with no policy to measure them against, so this type cannot be deleted.',
+      );
+      return;
+    }
+    const updated = policies.filter((p) => p.id !== policy.id);
+    saveLeavePolicies(updated);
+    setPolicies(updated);
+    setDeleteBlocked('');
+  }
+
   const cols: Column<LeavePolicy>[] = [
     {
       key: 'type',
@@ -1043,7 +1075,20 @@ function LeavePolicies() {
       key: 'actions',
       header: '',
       align: 'right',
-      render: (r) => <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditPolicy(r)}>Edit</Button>,
+      render: (r) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openEditPolicy(r)}>Edit</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trash2 size={13} />}
+            onClick={() => handleDeletePolicy(r)}
+            title={`Delete ${r.type}`}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -1054,6 +1099,12 @@ function LeavePolicies() {
           <p className="text-sm text-ink-500">Click toggles to update policies</p>
           <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Leave Type</Button>
         </div>
+        {deleteBlocked && (
+          <div className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+            <p className="text-sm text-amber-800">{deleteBlocked}</p>
+          </div>
+        )}
         <Table columns={cols} data={policies} keyExtractor={(r) => r.id} />
       </Card>
 

@@ -167,6 +167,46 @@ test.describe.serial('organisation configuration', () => {
     await context.close();
   });
 
+  test('a leave type can be deleted, and one with leave taken under it cannot', async ({ browser }) => {
+    // Settings offered Edit but no Delete, so a leave type added by mistake —
+    // or by this suite, which writes to the organisation's real configuration —
+    // stayed for good and was offered in Apply Leave to everyone. That is what
+    // `removeTestPolicies` existed to paper over out of band.
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await signIn(page, PERSONAS.admin);
+    await openSettingsSection(page, 'Leave Policies');
+
+    const unique = `${POLICY_NAME} ${Date.now()}`;
+    await addLeavePolicy(page, unique);
+    await expect(page.getByText(unique)).toBeVisible();
+
+    const row = page.getByRole('row').filter({ hasText: unique });
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await expect(page.getByText(unique)).toHaveCount(0);
+
+    // Gone for good rather than just out of this render — but only if the
+    // publish lands. Sign-in re-hydrates localStorage from the organisation's
+    // Firestore copy, so a refused write means the type is back after a reload,
+    // which is exactly what a quota-exhausted or undeployed project does. Gated
+    // with the other round-trip assertion in this file, for the same reason.
+    if (process.env.E2E_ORG_SETTINGS_DEPLOYED === 'true') {
+      await page.reload();
+      await openSettingsSection(page, 'Leave Policies');
+      await expect(page.getByText(unique)).toHaveCount(0);
+    }
+
+    // Casual Leave has requests recorded against it. Deleting it would leave
+    // approved leave with no policy to be measured against, so it is refused.
+    const casual = page.getByRole('row').filter({ hasText: 'Casual Leave' });
+    await casual.getByRole('button', { name: 'Delete' }).click();
+    await expect(page.getByText(/leave requests? recorded against it/)).toBeVisible();
+    // Exact: the refusal message names the type too.
+    await expect(page.getByText('Casual Leave', { exact: true })).toBeVisible();
+
+    await context.close();
+  });
+
   test('a leave policy saved on one machine is there on a machine that has never seen it', async ({ browser }) => {
     test.skip(
       process.env.E2E_ORG_SETTINGS_DEPLOYED !== 'true',
