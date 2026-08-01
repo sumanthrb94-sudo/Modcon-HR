@@ -51,7 +51,7 @@ test.describe.serial('leave policy', () => {
     await page.goto('/leave');
     await page.getByRole('button', { name: /Leave Balance/ }).click();
     // April-March. A calendar-year label here would mean the reset is wrong.
-    await expect(page.getByText(/FY \d{4}-\d{2}/)).toBeVisible();
+    await expect(page.getByText(/FY \d{4}-\d{2}/).first()).toBeVisible();
     await expect(page.getByText(/do not survive 1 April/)).toBeVisible();
   });
 
@@ -62,7 +62,7 @@ test.describe.serial('leave policy', () => {
     if (persona().role === 'employee') {
       // No directory record, so no cards — the framing is all this persona
       // can assert, and the suppression below still applies.
-      await expect(page.getByText(/FY \d{4}-\d{2}/)).toBeVisible();
+      await expect(page.getByText(/FY \d{4}-\d{2}/).first()).toBeVisible();
     } else {
       await expect(page.getByText('1/month').first()).toBeVisible();
     }
@@ -75,11 +75,35 @@ test.describe.serial('leave policy', () => {
     expect(text).not.toMatch(/Sick \d+ days\/year/);
   });
 
+  test('every employee in scope has a balance card, not only the seeded ones', async () => {
+    test.skip(persona().role !== 'admin', 'needs the whole directory in scope');
+    await page.goto('/leave');
+    await page.getByRole('button', { name: /Leave Balance/ }).click();
+    // Rohan Iyer carries no seeded balance row. Entitlement is derived from the
+    // policy and his joining date, so the absence was never a reason to leave
+    // him off the tab.
+    await expect(page.getByText('Rohan Iyer').first()).toBeVisible();
+  });
+
+  test('each type shows the whole financial year, not only what has accrued', async () => {
+    await page.goto('/leave');
+    await page.getByRole('button', { name: /Leave Balance/ }).click();
+    if (persona().role === 'employee') {
+      // No directory record, so no cards to carry the figure.
+      await expect(page.getByText(/FY \d{4}-\d{2}/).first()).toBeVisible();
+      return;
+    }
+    await expect(page.getByText(/\d+ days for FY \d{4}-\d{2}/).first()).toBeVisible();
+    // The accrued-to-date figure stays beside it — the year total must not
+    // replace it, or an employee reads days they cannot yet apply for.
+    await expect(page.getByText(/\d+\/\d+ available/).first()).toBeVisible();
+  });
+
   test('the balances survive a reload', async () => {
     await page.goto('/leave');
     await page.reload();
     await page.getByRole('button', { name: /Leave Balance/ }).click();
-    await expect(page.getByText(/FY \d{4}-\d{2}/)).toBeVisible();
+    await expect(page.getByText(/FY \d{4}-\d{2}/).first()).toBeVisible();
   });
 
   // ---- Applying leave against the policy ----------------------------------

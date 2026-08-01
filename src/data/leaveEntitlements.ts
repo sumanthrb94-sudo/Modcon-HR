@@ -26,7 +26,7 @@
  */
 import type { Employee, Gender, LeaveBalance, LeaveRequest, LeaveType } from '@/types';
 import { getLeavePolicies, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy } from './leavePolicies';
-import { accrualMonthsElapsed, financialYearOf, financialYearStart, monthsBetween } from '@/lib/financialYear';
+import { accrualMonthsElapsed, financialYearEnd, financialYearOf, financialYearStart, monthsBetween } from '@/lib/financialYear';
 import { todayIso } from '@/lib/today';
 
 export interface Entitlement {
@@ -34,6 +34,18 @@ export interface Entitlement {
   policy: LeavePolicy;
   /** Days granted so far this financial year. */
   granted: number;
+  /**
+   * Days the employee will have been granted by 31 March — the financial year
+   * as a whole rather than the part of it that has happened.
+   *
+   * For an annual policy this is simply the yearly grant. For a monthly one it
+   * is what twelve months of accrual comes to, or fewer for someone who joins
+   * mid-year: a July joiner accrues nine of the twelve. A tenure gate that will
+   * be crossed before March is counted as met, because by the end of the year
+   * it is — which is why this is the same `grantedDays` call asked about a
+   * different day rather than a second formula that could disagree with it.
+   */
+  fullYear: number;
   /** Approved days taken within this financial year. */
   used: number;
   available: number;
@@ -149,6 +161,7 @@ export function getApplicableEntitlements(
         type,
         policy,
         granted,
+        fullYear: grantedDays(policy, employee, financialYearEnd(asOf)).granted,
         used,
         available: Math.max(0, granted - used),
         monthly: isMonthlyPolicy(policy),

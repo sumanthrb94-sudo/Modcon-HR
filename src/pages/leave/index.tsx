@@ -25,15 +25,13 @@ import {
 } from '@/components/ui';
 import {
   getLeaveRequests,
-  getEmployeeBalances,
-  balanceEmployeeIds,
   saveLeaveRequests,
   updateLeaveRequestStatus,
   LEAVE_REQUESTS_CHANGED_EVENT,
 } from '@/data/leave';
 import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies';
 import { getHolidayDirectory } from '@/data/holidays';
-import { employees, getEmployee, getEmployeeName } from '@/data/employees';
+import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { getApplicableEntitlements, getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
 import { checkLeaveApplication, policySummary } from '@/data/leaveApplication';
@@ -361,14 +359,15 @@ export function LeavePage() {
       return [{ emp: currentEmployee, balances: getEntitlements(currentEmployee, scopedRequests) }];
     }
 
-    return balanceEmployeeIds
-      .filter((empId) => visibleEmployeeIds.has(empId))
-      .map((empId) => {
-        const emp = getEmployee(empId);
-        return emp ? { emp, balances: getEntitlements(emp, scopedRequests) } : undefined;
-      })
-      .filter((b): b is BalanceViewItem => b !== undefined);
-  }, [scopedRequests, isEmployee, currentEmployee, visibleEmployeeIds]);
+    // Every employee this viewer oversees, not the fourteen that happened to
+    // carry a seeded balance row: entitlement is derived from the policy and
+    // the joining date, so it exists for everyone in the directory and the
+    // people missing from `balanceEmployeeIds` were missing for no reason
+    // anyone could act on.
+    return getEmployeeDirectory()
+      .filter((emp) => visibleEmployeeIds.has(emp.id))
+      .map((emp) => ({ emp, balances: getEntitlements(emp, scopedRequests) }));
+  }, [scopedRequests, isEmployee, currentEmployee, visibleEmployeeIds, directoryRevision]);
 
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {
@@ -478,8 +477,9 @@ export function LeavePage() {
                 accumulate within it and reset when it turns over, so the year
                 being shown is not incidental. */}
             <p className="mb-4 text-xs text-ink-400">
-              {financialYearLabel()} · Casual and Sick accrue 1 day per month and carry forward
-              within the year; unused days do not survive 1 April.
+              {financialYearLabel()} · Every employee's entitlement for the whole financial year,
+              beside what has accrued so far. Casual and Sick accrue 1 day per month and carry
+              forward within the year; unused days do not survive 1 April.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {balancesView.map(({ emp, balances }) => (
@@ -503,7 +503,7 @@ export function LeavePage() {
                               {b.type}
                             </Badge>
                             {/* The rate, never an annual quota, for accrued
-                                types — what the employee has is what has
+                                types — what the employee has *now* is what has
                                 accrued so far, not a yearly allowance. */}
                             {b.monthly && (
                               <span className="text-[10px] text-ink-400">
@@ -519,9 +519,20 @@ export function LeavePage() {
                             </span>
                           )}
                         </div>
+                        {/* The year as a whole, beside the part of it that has
+                            happened: a monthly type reads 5 accrued now out of
+                            the 12 the year will bring, and the bar measures
+                            what is used against the full year rather than
+                            against a figure that grows every month. */}
+                        <div className="flex items-center justify-between mb-1 text-[10px] text-ink-400">
+                          <span>
+                            {b.fullYear} day{b.fullYear === 1 ? '' : 's'} for {financialYearLabel()}
+                          </span>
+                          <span>{b.used} used</span>
+                        </div>
                         <ProgressBar
-                          value={pct(b.used, b.granted)}
-                          tone={pct(b.used, b.granted) > 75 ? 'amber' : 'brand'}
+                          value={pct(b.used, b.fullYear)}
+                          tone={pct(b.used, b.fullYear) > 75 ? 'amber' : 'brand'}
                           size="sm"
                         />
                       </div>
