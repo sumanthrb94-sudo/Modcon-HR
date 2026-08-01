@@ -23,6 +23,7 @@ import {
 import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
+    sendPasswordResetEmail,
     isSignInWithEmailLink,
     signOut,
     type User,
@@ -191,6 +192,9 @@ interface AuthContextValue {
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
+    /** Sends a Firebase password-reset email. Shares `error`/`clearError` with
+     * sign-in, so the login card only ever shows one message at a time. */
+    sendPasswordReset: (email: string) => Promise<void>;
     signOutUser: () => Promise<void>;
 }
 
@@ -206,7 +210,9 @@ function friendlyAuthError(err: unknown): string {
         'auth/weak-password': 'Password must be at least 6 characters.',
         'auth/invalid-email': 'Enter a valid email address.',
         'auth/popup-closed-by-user': 'Sign-in popup was closed before completing.',
-        'auth/too-many-requests': 'Too many attempts. Please wait and try again.',
+        'auth/too-many-requests': 'Too many attempts. Wait a few minutes, then try again.',
+        'auth/missing-email': 'Enter the email address you sign in with.',
+        'auth/network-request-failed': 'Could not reach the server. Check your connection and try again.',
     };
     return map[code] ?? 'Something went wrong. Please try again.';
 }
@@ -292,6 +298,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    // Password reset. Firebase sends the mail and hosts the reset page, so
+    // nothing here touches the user's session — a signed-out visitor stays
+    // signed out, and a signed-in one is not disturbed.
+    //
+    // Note on "no account found": if email-enumeration protection is enabled
+    // on the Firebase project (the default for projects created since Sep
+    // 2023), Firebase deliberately resolves successfully for an address it
+    // does not know rather than leaking which addresses are registered. So
+    // `auth/user-not-found` may never arrive, and the caller's success copy
+    // has to be worded to hold either way. The mapping is kept for projects
+    // where the protection is off.
+    async function sendPasswordReset(email: string) {
+        setError('');
+        try {
+            await sendPasswordResetEmail(auth, email.trim());
+        } catch (err) {
+            setError(friendlyAuthError(err));
+            throw err;
+        }
+    }
+
     // No signUpEmail. Self-registration created an account with no `orgId`,
     // and "no orgId" resolved to the default organisation — so anyone who
     // signed up could read the default tenant's directory, attendance, jobs,
@@ -325,6 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 error,
                 clearError,
                 signInEmail,
+                sendPasswordReset,
                 signOutUser,
             }}
         >
