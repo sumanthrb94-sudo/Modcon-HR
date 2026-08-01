@@ -78,13 +78,10 @@ export function AttendancePage() {
     () => getVisibleEmployeeIds(profile),
     [profile, directoryRevision],
   );
-  // Clamped into the Mon–Fri options: opening the page at the weekend would
-  // otherwise leave the date Select holding a value it does not offer.
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const today = todayIso();
-    const week = getCurrentWeekDates();
-    return week.includes(today) ? today : week[week.length - 1];
-  });
+  // Today is always offered (see dayOptionDates), so this needs no clamping
+  // into the working week — and must not clamp, or a day marked at the weekend
+  // opens on Friday and reads as though the record had not been written.
+  const [selectedDate, setSelectedDate] = useState(todayIso);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [markModalOpen, setMarkModalOpen] = useState(false);
@@ -190,14 +187,26 @@ export function AttendancePage() {
     [visibleEmployeeIds, directoryRevision],
   );
 
+  // The day filter offers the working week, plus today itself when today is
+  // not one of its days. Mark Attendance always writes for today and then
+  // selects that day, so at a weekend the Mon–Fri week alone left the Select
+  // holding a date absent from its own options: the rows shown belonged to a
+  // day the control could not name, and no option led back to them. The
+  // weekly chart and the "Week of …" subtitle still use weekDates — the
+  // working week is what those are about.
+  const dayOptionDates = useMemo(() => {
+    const today = todayIso();
+    return weekDates.includes(today) ? weekDates : [...weekDates, today];
+  }, [weekDates]);
+
   // Date options
   const dateOptions = useMemo(
     () =>
-      weekDates.map((d) => ({
+      dayOptionDates.map((d) => ({
         label: dayLabel(d) + (d === todayIso() ? ' (Today)' : ''),
         value: d,
       })),
-    [weekDates],
+    [dayOptionDates],
   );
 
   // Columns for attendance table

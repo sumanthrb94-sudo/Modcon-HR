@@ -168,3 +168,54 @@ test.describe.serial('raising a regularization', () => {
     await expect(raised.getByText('Work From Home', { exact: true })).toBeVisible();
   });
 });
+
+/**
+ * The day filter must always offer today.
+ *
+ * The options were the Mon–Fri working week, but Mark Attendance always writes
+ * for `todayIso()` and then selects that day. On a Saturday or Sunday the two
+ * disagreed: the Select was left holding a date absent from its own option
+ * list, so the rows on screen belonged to a day the control could not name and
+ * no option led back to them. The page opened on Friday as well, so a day
+ * marked at the weekend read as though nothing had been written.
+ *
+ * The clock is pinned because the bug is invisible Monday to Friday — this
+ * suite ran green for months and only failed once a run happened to land on a
+ * Saturday. Times are 09:00 IST (03:30Z) so the pinned instant is unambiguously
+ * that IST calendar day; see src/lib/today.ts, which answers every calendar
+ * question in Asia/Kolkata rather than UTC.
+ */
+const DAY_FILTER_CASES = [
+  { label: 'Saturday', instant: '2026-08-01T03:30:00Z', iso: '2026-08-01', inWeek: false },
+  { label: 'Sunday', instant: '2026-08-02T03:30:00Z', iso: '2026-08-02', inWeek: false },
+  { label: 'Wednesday', instant: '2026-07-29T03:30:00Z', iso: '2026-07-29', inWeek: true },
+];
+
+for (const day of DAY_FILTER_CASES) {
+  test(`the attendance day filter offers today on a ${day.label}`, async ({ page }) => {
+    // Before any navigation, so the app never observes the real clock.
+    await page.clock.install({ time: new Date(day.instant) });
+    await login(page);
+    await page.goto('/attendance');
+
+    const dayFilter = page.locator('select').filter({ has: page.locator('option:has-text("(Today)")') }).first();
+    await expect(dayFilter).toBeAttached();
+
+    const values = await dayFilter.locator('option').evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value),
+    );
+    expect(values).toContain(day.iso);
+
+    // Exactly one option may claim to be today.
+    const todayLabels = await dayFilter.locator('option:has-text("(Today)")').allTextContents();
+    expect(todayLabels).toHaveLength(1);
+
+    // The control must be showing a day it actually offers — this is what
+    // broke: selectedDate held a date the option list did not contain.
+    await expect(dayFilter).toHaveValue(day.iso);
+
+    // The working week itself is unchanged: five weekday options, plus today
+    // only when today is not already one of them.
+    expect(values).toHaveLength(day.inWeek ? 5 : 6);
+  });
+}
