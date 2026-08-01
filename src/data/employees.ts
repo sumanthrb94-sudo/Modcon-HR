@@ -1,4 +1,5 @@
-import type { Employee, Department, EmploymentType, EmployeeStatus, Gender } from '@/types';
+import type { Employee, Department, EmploymentType, EmployeeStatus, Gender, WeekOffDay } from '@/types';
+import { WEEK_OFF_DAY_INDEX } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
 
@@ -23,6 +24,17 @@ interface Seed {
   managerId: string | null;
   ctc: number;
   skills: string[];
+  /**
+   * Rostered week-off. Absent means Sunday, which is most of the company.
+   *
+   * Set explicitly per person rather than computed from the array index. The
+   * index trick is what put blood groups and marital statuses on people by
+   * seat number (see buildEmployeeDirectory below) — and unlike those, a
+   * week-off is a real rota an HR team publishes, so it should read as one:
+   * the customer-facing teams below cover the weekend and take their day in
+   * the week instead.
+   */
+  weekOff?: WeekOffDay;
   // Personal details an HR system only knows once someone supplies them.
   // Optional, and absent unless a seed actually carries one — they used to be
   // manufactured from the seed's array position (see buildEmployeeDirectory).
@@ -34,11 +46,11 @@ interface Seed {
 
 const seeds: Seed[] = [
   // Leadership
-  { code: 'MC-001', first: 'Aarav', last: 'Sharma', gender: 'Male', designation: 'Chief Executive Officer', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2019-03-01', dob: '1982-06-12', managerId: null, ctc: 9600000, skills: ['Leadership', 'Strategy', 'Fundraising'] },
+  { code: 'MC-001', first: 'Aarav', last: 'Sharma', gender: 'Male', designation: 'Chief Executive Officer', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2019-03-01', dob: '1982-06-12', managerId: null, ctc: 9600000, skills: ['Leadership', 'Strategy', 'Fundraising'], weekOff: 'Monday' },
   { code: 'MC-002', first: 'Diya', last: 'Mehta', gender: 'Female', designation: 'VP of Engineering', department: 'Engineering', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2019-07-15', dob: '1985-02-20', managerId: 'emp-001', ctc: 7200000, skills: ['Architecture', 'Team Building', 'Cloud'] },
   { code: 'MC-003', first: 'Rohan', last: 'Iyer', gender: 'Male', designation: 'VP of Product', department: 'Product', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2020-01-10', dob: '1986-11-05', managerId: 'emp-001', ctc: 6800000, skills: ['Product Strategy', 'Roadmapping'] },
   { code: 'MC-004', first: 'Ananya', last: 'Reddy', gender: 'Female', designation: 'Head of People', department: 'Human Resources', location: 'Hyderabad', type: 'Full-time', status: 'Active', doj: '2020-02-01', dob: '1987-09-18', managerId: 'emp-001', ctc: 5400000, skills: ['HR Strategy', 'Culture', 'Hiring'] },
-  { code: 'MC-005', first: 'Vikram', last: 'Nair', gender: 'Male', designation: 'VP of Sales', department: 'Sales', location: 'Delhi', type: 'Full-time', status: 'Active', doj: '2020-05-20', dob: '1984-04-22', managerId: 'emp-001', ctc: 6600000, skills: ['Enterprise Sales', 'GTM'] },
+  { code: 'MC-005', first: 'Vikram', last: 'Nair', gender: 'Male', designation: 'VP of Sales', department: 'Sales', location: 'Delhi', type: 'Full-time', status: 'Active', doj: '2020-05-20', dob: '1984-04-22', managerId: 'emp-001', ctc: 6600000, skills: ['Enterprise Sales', 'GTM'], weekOff: 'Monday' },
   { code: 'MC-006', first: 'Priya', last: 'Kapoor', gender: 'Female', designation: 'Head of Finance', department: 'Finance', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2020-06-15', dob: '1983-12-30', managerId: 'emp-001', ctc: 6200000, skills: ['FP&A', 'Compliance'] },
 
   // Engineering
@@ -57,10 +69,10 @@ const seeds: Seed[] = [
   { code: 'MC-023', first: 'Dev', last: 'Saxena', gender: 'Male', designation: 'Product Designer', department: 'Design', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2022-11-10', dob: '1994-07-21', managerId: 'emp-022', ctc: 2600000, skills: ['UI', 'Prototyping', 'Illustration'] },
 
   // Sales
-  { code: 'MC-030', first: 'Sanjay', last: 'Malhotra', gender: 'Male', designation: 'Sales Manager', department: 'Sales', location: 'Delhi', type: 'Full-time', status: 'Active', doj: '2021-02-01', dob: '1987-01-15', managerId: 'emp-005', ctc: 3600000, skills: ['Negotiation', 'CRM'] },
-  { code: 'MC-031', first: 'Pooja', last: 'Agarwal', gender: 'Female', designation: 'Account Executive', department: 'Sales', location: 'Delhi', type: 'Full-time', status: 'Active', doj: '2022-04-18', dob: '1993-08-08', managerId: 'emp-030', ctc: 2400000, skills: ['Closing', 'Demos'] },
-  { code: 'MC-032', first: 'Rishi', last: 'Khanna', gender: 'Male', designation: 'Sales Development Rep', department: 'Sales', location: 'Gurugram', type: 'Full-time', status: 'Notice Period', doj: '2023-01-09', dob: '1996-03-19', managerId: 'emp-030', ctc: 1800000, skills: ['Prospecting', 'Outreach'] },
-  { code: 'MC-033', first: 'Anjali', last: 'Singh', gender: 'Female', designation: 'Account Executive', department: 'Sales', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-07-22', dob: '1992-11-28', managerId: 'emp-030', ctc: 2500000, skills: ['Enterprise', 'Upsell'] },
+  { code: 'MC-030', first: 'Sanjay', last: 'Malhotra', gender: 'Male', designation: 'Sales Manager', department: 'Sales', location: 'Delhi', type: 'Full-time', status: 'Active', doj: '2021-02-01', dob: '1987-01-15', managerId: 'emp-005', ctc: 3600000, skills: ['Negotiation', 'CRM'], weekOff: 'Monday' },
+  { code: 'MC-031', first: 'Pooja', last: 'Agarwal', gender: 'Female', designation: 'Account Executive', department: 'Sales', location: 'Delhi', type: 'Full-time', status: 'Active', doj: '2022-04-18', dob: '1993-08-08', managerId: 'emp-030', ctc: 2400000, skills: ['Closing', 'Demos'], weekOff: 'Tuesday' },
+  { code: 'MC-032', first: 'Rishi', last: 'Khanna', gender: 'Male', designation: 'Sales Development Rep', department: 'Sales', location: 'Gurugram', type: 'Full-time', status: 'Notice Period', doj: '2023-01-09', dob: '1996-03-19', managerId: 'emp-030', ctc: 1800000, skills: ['Prospecting', 'Outreach'], weekOff: 'Monday' },
+  { code: 'MC-033', first: 'Anjali', last: 'Singh', gender: 'Female', designation: 'Account Executive', department: 'Sales', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-07-22', dob: '1992-11-28', managerId: 'emp-030', ctc: 2500000, skills: ['Enterprise', 'Upsell'], weekOff: 'Tuesday' },
 
   // Marketing
   { code: 'MC-040', first: 'Neha', last: 'Chopra', gender: 'Female', designation: 'Marketing Manager', department: 'Marketing', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2021-06-01', dob: '1990-04-04', managerId: 'emp-001', ctc: 3400000, skills: ['Brand', 'Content', 'SEO'] },
@@ -75,13 +87,13 @@ const seeds: Seed[] = [
   // Finance & Ops
   { code: 'MC-060', first: 'Manish', last: 'Goyal', gender: 'Male', designation: 'Financial Analyst', department: 'Finance', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2021-11-08', dob: '1991-07-07', managerId: 'emp-006', ctc: 2400000, skills: ['Modeling', 'Excel'] },
   { code: 'MC-061', first: 'Divya', last: 'Pandey', gender: 'Female', designation: 'Accountant', department: 'Finance', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-03-14', dob: '1993-01-29', managerId: 'emp-006', ctc: 1700000, skills: ['Accounting', 'GST'] },
-  { code: 'MC-062', first: 'Harsh', last: 'Mehra', gender: 'Male', designation: 'Operations Manager', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2021-07-19', dob: '1989-05-16', managerId: 'emp-001', ctc: 3400000, skills: ['Process', 'Vendor Mgmt'] },
-  { code: 'MC-063', first: 'Lakshmi', last: 'Venkat', gender: 'Female', designation: 'Office Administrator', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2022-05-03', dob: '1990-03-25', managerId: 'emp-030', ctc: 1400000, skills: ['Admin', 'Facilities'] },
+  { code: 'MC-062', first: 'Harsh', last: 'Mehra', gender: 'Male', designation: 'Operations Manager', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2021-07-19', dob: '1989-05-16', managerId: 'emp-001', ctc: 3400000, skills: ['Process', 'Vendor Mgmt'], weekOff: 'Tuesday' },
+  { code: 'MC-063', first: 'Lakshmi', last: 'Venkat', gender: 'Female', designation: 'Office Administrator', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2022-05-03', dob: '1990-03-25', managerId: 'emp-030', ctc: 1400000, skills: ['Admin', 'Facilities'], weekOff: 'Monday' },
 
   // Customer Success
-  { code: 'MC-070', first: 'Gaurav', last: 'Sinha', gender: 'Male', designation: 'Customer Success Manager', department: 'Customer Success', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2021-10-11', dob: '1990-08-30', managerId: 'emp-001', ctc: 3000000, skills: ['Retention', 'Onboarding'] },
-  { code: 'MC-071', first: 'Ayesha', last: 'Sheikh', gender: 'Female', designation: 'Support Specialist', department: 'Customer Success', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2022-12-05', dob: '1996-04-13', managerId: 'emp-032', ctc: 1500000, skills: ['Support', 'Zendesk'] },
-  { code: 'MC-072', first: 'Nikhil', last: 'Bose', gender: 'Male', designation: 'Implementation Specialist', department: 'Customer Success', location: 'Kolkata', type: 'Full-time', status: 'Active', doj: '2023-04-24', dob: '1994-11-02', managerId: 'emp-032', ctc: 1800000, skills: ['Integrations', 'Training'] },
+  { code: 'MC-070', first: 'Gaurav', last: 'Sinha', gender: 'Male', designation: 'Customer Success Manager', department: 'Customer Success', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2021-10-11', dob: '1990-08-30', managerId: 'emp-001', ctc: 3000000, skills: ['Retention', 'Onboarding'], weekOff: 'Monday' },
+  { code: 'MC-071', first: 'Ayesha', last: 'Sheikh', gender: 'Female', designation: 'Support Specialist', department: 'Customer Success', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2022-12-05', dob: '1996-04-13', managerId: 'emp-032', ctc: 1500000, skills: ['Support', 'Zendesk'], weekOff: 'Tuesday' },
+  { code: 'MC-072', first: 'Nikhil', last: 'Bose', gender: 'Male', designation: 'Implementation Specialist', department: 'Customer Success', location: 'Kolkata', type: 'Full-time', status: 'Active', doj: '2023-04-24', dob: '1994-11-02', managerId: 'emp-032', ctc: 1800000, skills: ['Integrations', 'Training'], weekOff: 'Monday' },
 
   // Legal
   { code: 'MC-080', first: 'Shreya', last: 'Desai', gender: 'Female', designation: 'Legal Counsel', department: 'Legal', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-02-28', dob: '1988-09-21', managerId: 'emp-001', ctc: 4000000, skills: ['Contracts', 'Compliance'] },
@@ -90,9 +102,9 @@ const seeds: Seed[] = [
 
   // Demo employee accounts used for login walkthroughs
   { code: 'MC-090', first: 'Riya', last: 'Sharma', email: 'riya.sharma@modconhr.test', gender: 'Female', designation: 'Software Engineer', department: 'Engineering', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2022-09-05', dob: '1996-07-18', managerId: 'emp-010', ctc: 2600000, skills: ['React', 'TypeScript', 'Frontend'] },
-  { code: 'MC-091', first: 'Arjun', last: 'Mehta', email: 'arjun.mehta@modconhr.test', gender: 'Male', designation: 'Operations Analyst', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2023-01-16', dob: '1995-02-11', managerId: 'emp-030', ctc: 2200000, skills: ['Reporting', 'Process Improvement'] },
+  { code: 'MC-091', first: 'Arjun', last: 'Mehta', email: 'arjun.mehta@modconhr.test', gender: 'Male', designation: 'Operations Analyst', department: 'Operations', location: 'Bengaluru', type: 'Full-time', status: 'Active', doj: '2023-01-16', dob: '1995-02-11', managerId: 'emp-030', ctc: 2200000, skills: ['Reporting', 'Process Improvement'], weekOff: 'Tuesday' },
   { code: 'MC-092', first: 'Priya', last: 'Nair', email: 'priya.nair@modconhr.test', gender: 'Female', designation: 'Accountant', department: 'Finance', location: 'Mumbai', type: 'Full-time', status: 'Active', doj: '2022-11-21', dob: '1994-10-06', managerId: 'emp-006', ctc: 2400000, skills: ['Accounting', 'Reconciliation'] },
-  { code: 'MC-093', first: 'Karan', last: 'Verma', email: 'karan.verma@modconhr.test', gender: 'Male', designation: 'Customer Support Specialist', department: 'Customer Success', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2023-04-03', dob: '1997-01-27', managerId: 'emp-032', ctc: 1800000, skills: ['Support', 'Communication'] },
+  { code: 'MC-093', first: 'Karan', last: 'Verma', email: 'karan.verma@modconhr.test', gender: 'Male', designation: 'Customer Support Specialist', department: 'Customer Success', location: 'Remote', type: 'Full-time', status: 'Active', doj: '2023-04-03', dob: '1997-01-27', managerId: 'emp-032', ctc: 1800000, skills: ['Support', 'Communication'], weekOff: 'Tuesday' },
   { code: 'MC-094', first: 'Neha', last: 'Gupta', email: 'neha.gupta@modconhr.test', gender: 'Female', designation: 'HR Executive', department: 'Human Resources', location: 'Hyderabad', type: 'Full-time', status: 'Active', doj: '2023-06-12', dob: '1996-12-14', managerId: 'emp-004', ctc: 1900000, skills: ['Onboarding', 'People Ops'] },
 ];
 
@@ -130,8 +142,38 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
       maritalStatus: s.maritalStatus,
       address: s.address,
       skills: s.skills,
+      weekOff: s.weekOff,
     };
   });
+}
+
+/**
+ * The day this person does not work.
+ *
+ * Everything that asks "is this employee off today" goes through here rather
+ * than reading `employee.weekOff`, so the Sunday default lives in one place.
+ * The field is optional because most of the company never needed a row of its
+ * own to say "Sunday", and because records created before week-offs existed
+ * carry nothing — those people are not off every day of the week, they are off
+ * on Sunday like everyone else.
+ */
+export function weekOffOf(employee: Pick<Employee, 'weekOff'> | null | undefined): WeekOffDay {
+  return employee?.weekOff ?? 'Sunday';
+}
+
+/**
+ * True when `isoDate` is this employee's week-off.
+ *
+ * The day index is read in UTC, matching how `YYYY-MM-DD` record dates parse
+ * everywhere else in the app (see lib/today.ts) — `getDay()` would answer in
+ * the viewer's zone and put the week-off on the wrong date for anyone west of
+ * IST.
+ */
+export function isWeekOffFor(
+  employee: Pick<Employee, 'weekOff'> | null | undefined,
+  isoDate: string,
+): boolean {
+  return new Date(isoDate).getUTCDay() === WEEK_OFF_DAY_INDEX[weekOffOf(employee)];
 }
 
 const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';

@@ -9,6 +9,27 @@ export type EmploymentType = 'Full-time' | 'Part-time' | 'Contract' | 'Intern';
 export type EmployeeStatus = 'Active' | 'On Leave' | 'Probation' | 'Notice Period' | 'Resigned';
 export type Gender = 'Male' | 'Female' | 'Other';
 
+/**
+ * The days a week-off may fall on.
+ *
+ * Deliberately three literals rather than every weekday: the organisation
+ * rosters its week-offs across Sunday, Monday and Tuesday only, and an
+ * employee takes exactly one of them. Widening this is a policy decision — it
+ * changes which days the attendance grid can leave unworked — so it belongs
+ * here where the compiler enforces it, not as a free string.
+ */
+export type WeekOffDay = 'Sunday' | 'Monday' | 'Tuesday';
+
+/** Every week-off the organisation offers, in week order. */
+export const WEEK_OFF_DAYS: readonly WeekOffDay[] = ['Sunday', 'Monday', 'Tuesday'] as const;
+
+/** `Date.getUTCDay()` index for each week-off day. */
+export const WEEK_OFF_DAY_INDEX: Readonly<Record<WeekOffDay, number>> = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+};
+
 export interface Employee {
   id: ID;
   employeeCode: string;
@@ -42,6 +63,15 @@ export interface Employee {
   reportingManagerId: ID | null;
   reportingManagerName?: string;
   ctc: number; // annual cost to company (INR)
+  /**
+   * The one day a week this person does not work.
+   *
+   * Absent means Sunday — see `weekOffOf` in data/employees.ts, which is the
+   * only thing that should read this field directly. The rest of the week is
+   * worked: this is a six-day week, so Saturday is a working day for everyone
+   * and Sunday is one for anyone whose week-off is Monday or Tuesday.
+   */
+  weekOff?: WeekOffDay;
   bloodGroup?: string;
   maritalStatus?: 'Single' | 'Married';
   address?: string;

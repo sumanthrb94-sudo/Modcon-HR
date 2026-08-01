@@ -36,7 +36,7 @@ import {
   ATTENDANCE_CHANGED_EVENT,
   type RegularizationRequest,
 } from '@/data/attendance';
-import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
+import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor } from '@/data/employees';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
@@ -63,8 +63,10 @@ export function MyAttendancePage() {
   // account left check-in refused until the page happened to remount.
   const directoryRevision = useEmployeeDirectoryRevision();
   const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
-  // Mon–Fri of the current week, derived rather than pinned to the week the
-  // seed records were written for.
+  // Mon–Sun of the current week, derived rather than pinned to the week the
+  // seed records were written for. All seven days: the week-off that makes it
+  // a six-day week belongs to the employee, not to the calendar, so the day
+  // this person does not work is marked below rather than left out here.
   const weekDates = useMemo(() => getCurrentWeekDates(), []);
   // A manager may look up their own reporting line and HR, not the whole
   // company — the picker below offers exactly what they are entitled to see.
@@ -128,12 +130,16 @@ export function MyAttendancePage() {
     () =>
       weekDates.map((date) => {
         const rec = records.find((r) => r.date === date);
+        // A rostered day off reads as zero hours exactly like a day that was
+        // missed, so the label says which it is. Without it the six-day week
+        // looks like a seven-day week with one unexplained gap.
+        const off = isWeekOffFor(targetEmployee, date);
         return {
-          day: formatWeekdayShort(date),
+          day: formatWeekdayShort(date) + (off ? ' (off)' : ''),
           Hours: rec ? Number(rec.workedHours.toFixed(1)) : 0,
         };
       }),
-    [records, weekDates],
+    [records, weekDates, targetEmployee],
   );
 
   // ---- Check in / check out --------------------------------------------------
@@ -195,12 +201,18 @@ export function MyAttendancePage() {
   // Only days this employee actually has a record for, plus the rest of the
   // work week. Raising against a day outside the week the page shows would
   // produce a request nothing on this page can explain.
+  //
+  // Their own week-off is excluded: there is nothing to correct about a day
+  // they were rostered not to work, and offering it invites a request an
+  // approver can only reject. Which day that is differs per person, so this
+  // filters on the employee rather than on the weekday.
   const raiseDateOptions = useMemo(() => {
     const dates = new Set([...records.map((record) => record.date), ...weekDates]);
     return Array.from(dates)
+      .filter((date) => !isWeekOffFor(targetEmployee, date))
       .sort((a, b) => b.localeCompare(a))
       .map((date) => ({ label: `${formatDate(date)} · ${formatWeekdayLong(date)}`, value: date }));
-  }, [records, weekDates]);
+  }, [records, weekDates, targetEmployee]);
 
   function openRaise() {
     setRaiseDate(raiseDateOptions[0]?.value ?? '');
@@ -341,8 +353,8 @@ export function MyAttendancePage() {
         title={canPickAny ? 'Employee Attendance' : 'My Attendance'}
         subtitle={
           canPickAny
-            ? 'View any employee’s attendance for the week'
-            : `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[4])}`
+            ? `Viewing the week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
+            : `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
         }
         actions={
           <div className="flex items-center gap-2">

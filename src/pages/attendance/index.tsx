@@ -44,7 +44,7 @@ import {
   isLateCheckIn,
   type RegularizationRequest,
 } from '@/data/attendance';
-import { getEmployeeDirectory, getEmployee } from '@/data/employees';
+import { getEmployeeDirectory, getEmployee, isWeekOffFor } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -68,9 +68,11 @@ export function AttendancePage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
   const { profile } = useAuth();
-  // The working week is Mon–Fri of whichever week today falls in, not the week
-  // the seed records happen to cover. A date literal here would have gone stale
-  // the following Monday and stayed wrong forever.
+  // Monday–Sunday of whichever week today falls in, not the week the seed
+  // records happen to cover. A date literal here would have gone stale the
+  // following Monday and stayed wrong forever. All seven days: the working
+  // week is six of them and which day is dropped is the employee's own
+  // week-off, so it cannot be decided at page level.
   const weekDates = useMemo(() => getCurrentWeekDates(), []);
   // Whose rows this viewer is entitled to. HR and Admin get the whole company;
   // a Manager gets their own reporting line plus HR. See lib/dataScope.ts.
@@ -78,9 +80,10 @@ export function AttendancePage() {
     () => getVisibleEmployeeIds(profile),
     [profile, directoryRevision],
   );
-  // Today is always offered (see dayOptionDates), so this needs no clamping
-  // into the working week — and must not clamp, or a day marked at the weekend
-  // opens on Friday and reads as though the record had not been written.
+  // Today is always one of weekDates, so this needs no clamping into the
+  // week — and must not clamp, or a day marked on a date the old Mon–Fri
+  // window excluded opened on Friday and read as though the record had never
+  // been written.
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
@@ -187,26 +190,30 @@ export function AttendancePage() {
     [visibleEmployeeIds, directoryRevision],
   );
 
-  // The day filter offers the working week, plus today itself when today is
-  // not one of its days. Mark Attendance always writes for today and then
-  // selects that day, so at a weekend the Mon–Fri week alone left the Select
-  // holding a date absent from its own options: the rows shown belonged to a
-  // day the control could not name, and no option led back to them. The
-  // weekly chart and the "Week of …" subtitle still use weekDates — the
-  // working week is what those are about.
-  const dayOptionDates = useMemo(() => {
-    const today = todayIso();
-    return weekDates.includes(today) ? weekDates : [...weekDates, today];
-  }, [weekDates]);
-
-  // Date options
+  // Every day of the week today falls in, so today is always among them —
+  // Mark Attendance writes for today and then selects that day, and an option
+  // list that could not name it left the Select holding a date it did not
+  // offer. weekDates is the full Mon–Sun calendar week because the working
+  // week is six days and which day is missing is per-employee, not per-page.
   const dateOptions = useMemo(
     () =>
-      dayOptionDates.map((d) => ({
+      weekDates.map((d) => ({
         label: dayLabel(d) + (d === todayIso() ? ' (Today)' : ''),
         value: d,
       })),
-    [dayOptionDates],
+    [weekDates],
+  );
+
+  // Who is rostered off on the day being viewed. They have no record and never
+  // will, so without this the day reads as "attendance not marked" for them —
+  // the same as someone genuinely unaccounted for.
+  const weekOffOnDay = useMemo(
+    () =>
+      getEmployeeDirectory()
+        .filter((employee) => visibleEmployeeIds.has(employee.id))
+        .filter((employee) => employee.status !== 'Resigned')
+        .filter((employee) => isWeekOffFor(employee, selectedDate)),
+    [visibleEmployeeIds, directoryRevision, selectedDate],
   );
 
   // Columns for attendance table
@@ -445,7 +452,7 @@ export function AttendancePage() {
     <div className="space-y-6">
       <PageHeader
         title="Attendance"
-        subtitle={`Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[4])}`}
+        subtitle={`Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])}`}
         actions={
           <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
             Mark Attendance
@@ -517,6 +524,17 @@ export function AttendancePage() {
               />
             </div>
           </div>
+          {/* Rostered off on this day. Stated rather than left to the absence
+              of a row: a week-off and an unmarked day both show as nothing in
+              the table below, and only one of them needs chasing. */}
+          {weekOffOnDay.length > 0 ? (
+            <p className="mt-3 text-sm text-ink-500">
+              <span className="font-medium text-ink-700">
+                {weekOffOnDay.length} on week off
+              </span>{' '}
+              — {weekOffOnDay.map((employee) => employee.fullName).join(', ')}
+            </p>
+          ) : null}
         </div>
         <Table
           columns={columns}
@@ -530,7 +548,7 @@ export function AttendancePage() {
       <Card>
         <CardHeader
           title="Weekly Attendance Trend"
-          subtitle="Stacked breakdown by status across the work week"
+          subtitle="Stacked breakdown by status, Monday to Sunday"
         />
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
