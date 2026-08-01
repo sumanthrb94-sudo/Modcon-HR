@@ -35,7 +35,8 @@ import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies'
 import { getHolidayDirectory } from '@/data/holidays';
 import { employees, getEmployee, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
-import { getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
+import { getApplicableEntitlements, getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
+import { checkLeaveApplication, policySummary } from '@/data/leaveApplication';
 import { financialYearLabel } from '@/lib/financialYear';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -76,10 +77,6 @@ export function LeavePage() {
   const [activeTab, setActiveTab] = useState('requests');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => getLeaveRequests());
   const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
-  const leaveTypeOptions = useMemo(() => {
-    const types = getLeavePolicies().map((policy) => normalizeLeaveTypeValue(policy.type));
-    return Array.from(new Set(types));
-  }, [leavePoliciesRevision]);
 
   // Request filters
   const [search, setSearch] = useState('');
@@ -93,6 +90,7 @@ export function LeavePage() {
     : 'Casual');
   const [formStart, setFormStart] = useState('');
   const [formEnd, setFormEnd] = useState('');
+  const [formHalfDay, setFormHalfDay] = useState(false);
   const [formReason, setFormReason] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -101,6 +99,50 @@ export function LeavePage() {
       setFormEmpId(currentEmployee.id);
     }
   }, [isEmployee, currentEmployee]);
+
+  // ---- The policy, live, for whoever this request is being made for --------
+  // Type list, balance, chargeable days and every blocking rule are derived
+  // from the applicant rather than from the policy list alone: a man is not
+  // offered Maternity Leave, and a four-month joiner is told Earned Leave is
+  // withheld rather than finding out at approval time. See
+  // data/leaveApplication.ts.
+  const formEmployee = useMemo(
+    () => (isEmployee ? currentEmployee : getEmployee(formEmpId)),
+    [isEmployee, currentEmployee, formEmpId, directoryRevision],
+  );
+
+  const applicableEntitlements = useMemo(
+    () => (formEmployee ? getApplicableEntitlements(formEmployee, leaveRequests) : []),
+    [formEmployee, leaveRequests, leavePoliciesRevision],
+  );
+
+  const leaveTypeOptions = useMemo(() => {
+    // Before an employee is picked there is nobody to be applicable to, so the
+    // organisation's full list stands in — narrowed the moment one is chosen.
+    const types = formEmployee
+      ? applicableEntitlements.map((e) => e.type)
+      : getLeavePolicies().map((policy) => normalizeLeaveTypeValue(policy.type));
+    return Array.from(new Set(types));
+  }, [formEmployee, applicableEntitlements, leavePoliciesRevision]);
+
+  const policyCheck = useMemo(
+    () =>
+      checkLeaveApplication({
+        employee: formEmployee,
+        type: formType,
+        startDate: formStart,
+        endDate: formEnd,
+        requests: leaveRequests,
+        halfDay: formHalfDay,
+      }),
+    [formEmployee, formType, formStart, formEnd, formHalfDay, leaveRequests, leavePoliciesRevision, holidayRevision],
+  );
+
+  // Half a day is only offered where the policy allows it on a single-day
+  // request; changing type or dates away from that must not leave it set.
+  useEffect(() => {
+    if (!policyCheck.halfDayAllowed && formHalfDay) setFormHalfDay(false);
+  }, [policyCheck.halfDayAllowed, formHalfDay]);
 
   // Every stat and table on this page reads from here. Previously anyone who
   // wasn't a plain Employee saw the whole company's leave; now HR and Admin do,
@@ -179,14 +221,12 @@ export function LeavePage() {
       setFormError('Please fill all required fields.');
       return;
     }
-    if (formEnd < formStart) {
-      setFormError('End date must be on or after start date.');
+    // The same check the dialog renders decides whether this may be submitted,
+    // so what the applicant was shown and what is enforced cannot drift apart.
+    if (policyCheck.errors.length > 0) {
+      setFormError(policyCheck.errors[0]);
       return;
     }
-    const start = new Date(formStart);
-    const end = new Date(formEnd);
-    const diffMs = end.getTime() - start.getTime();
-    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
 
     const newRequest: LeaveRequest = {
       id: `lr-${String(leaveRequests.length + 1).padStart(3, '0')}`,
@@ -194,7 +234,9 @@ export function LeavePage() {
       type: formType,
       startDate: formStart,
       endDate: formEnd,
-      days,
+      // What the leave actually costs the balance: working days only, with
+      // holidays and this employee's week-offs left out, half-day applied.
+      days: policyCheck.chargeableDays,
       reason: formReason.trim(),
       status: 'Pending',
       appliedOn: todayIso(),
@@ -208,6 +250,7 @@ export function LeavePage() {
     setFormType(leaveTypeOptions[0] ?? 'Casual');
     setFormStart('');
     setFormEnd('');
+    setFormHalfDay(false);
     setFormReason('');
     setFormError('');
     setActiveTab('requests');
@@ -605,14 +648,16 @@ export function LeavePage() {
             >
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleApplySubmit}>
+            {/* Blocked by the policy, not by taste: the reasons are listed in
+                the dialog above this button. */}
+            <Button variant="primary" onClick={handleApplySubmit} disabled={policyCheck.errors.length > 0}>
               Submit Request
             </Button>
           </>
         }
       >
         <div className="space-y-4">
-          {formError && (
+          {formError && !policyCheck.errors.includes(formError) && (
             <div className="rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-2.5">
               {formError}
             </div>
@@ -649,12 +694,44 @@ export function LeavePage() {
               value={formType}
               onChange={(e) => setFormType(e.target.value as LeaveType)}
             >
-              {leaveTypeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              {leaveTypeOptions.map((t) => {
+                const ent = applicableEntitlements.find((e) => e.type === t);
+                const suffix = !ent
+                  ? ''
+                  : ent.withheldReason
+                    ? ` — ${ent.withheldReason.toLowerCase()}`
+                    : ent.granted > 0
+                      ? ` — ${ent.available} of ${ent.granted} available`
+                      : ' — no accrued balance';
+                return (
+                  <option key={t} value={t}>
+                    {t}{suffix}
+                  </option>
+                );
+              })}
             </select>
+            {/* The policy behind the selected type, as the organisation has it
+                configured — not a description written into this page. */}
+            {policyCheck.entitlement && (
+              <div className="mt-2 rounded-lg border border-ink-100 bg-ink-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-xs text-ink-500">{policySummary(policyCheck.entitlement)}</span>
+                  {policyCheck.entitlement.withheldReason ? (
+                    <Badge tone="amber">{policyCheck.entitlement.withheldReason}</Badge>
+                  ) : policyCheck.entitlement.granted > 0 ? (
+                    <span className="text-xs text-ink-600">
+                      <span className="font-semibold text-ink-900">
+                        {policyCheck.entitlement.available}
+                      </span>{' '}
+                      of {policyCheck.entitlement.granted} available · {policyCheck.entitlement.used} used
+                      {' '}({financialYearLabel()})
+                    </span>
+                  ) : (
+                    <span className="text-xs text-ink-500">No accrued balance</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -682,16 +759,61 @@ export function LeavePage() {
               />
             </div>
           </div>
+          {/* Half a day exists only where the policy grants it, and only on a
+              one-day request — the flag was configurable in Settings and had
+              nowhere to take effect until now. */}
+          {policyCheck.halfDayAllowed && (
+            <label className="flex items-center gap-2 text-sm text-ink-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-300"
+                checked={formHalfDay}
+                onChange={(e) => setFormHalfDay(e.target.checked)}
+              />
+              Half day (0.5 day charged)
+            </label>
+          )}
+
           {formStart && formEnd && formEnd >= formStart && (
-            <div className="rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-sm px-4 py-2">
-              Duration:{' '}
-              <strong>
-                {Math.ceil(
-                  (new Date(formEnd).getTime() - new Date(formStart).getTime()) /
-                  (1000 * 60 * 60 * 24),
-                ) + 1}{' '}
-                day(s)
-              </strong>
+            <div className="rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-sm px-4 py-2 space-y-1">
+              <div>
+                Charged:{' '}
+                <strong>{policyCheck.chargeableDays} day(s)</strong>
+                {policyCheck.chargeableDays !== policyCheck.calendarDays && (
+                  <span className="text-blue-600"> of {policyCheck.calendarDays} calendar day(s)</span>
+                )}
+                {policyCheck.balanceAfter !== null && policyCheck.errors.length === 0 && (
+                  <span className="text-blue-600">
+                    {' '}· {policyCheck.balanceAfter} day(s) would remain
+                  </span>
+                )}
+              </div>
+              {policyCheck.excludedHolidays.map((h) => (
+                <div key={h.date} className="text-xs text-blue-600">
+                  {formatDateShort(h.date)} — {h.name} (holiday, not charged)
+                </div>
+              ))}
+              {policyCheck.excludedWeekOffs.map((d) => (
+                <div key={d} className="text-xs text-blue-600">
+                  {formatDateShort(d)} — {formatWeekdayLong(d)} week-off (not charged)
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Everything the policy refuses, live, while the form is edited. */}
+          {policyCheck.errors.length > 0 && (
+            <div className="rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-2.5 space-y-1">
+              {policyCheck.errors.map((e) => (
+                <div key={e}>{e}</div>
+              ))}
+            </div>
+          )}
+          {policyCheck.notes.length > 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-100 text-amber-800 text-xs px-4 py-2.5 space-y-1">
+              {policyCheck.notes.map((n) => (
+                <div key={n}>{n}</div>
+              ))}
             </div>
           )}
           <div>

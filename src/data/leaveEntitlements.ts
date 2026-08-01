@@ -127,14 +127,14 @@ function usedDays(
 }
 
 /**
- * Every entitlement an employee currently holds.
+ * Every leave type this employee may apply for, including the ones that
+ * currently grant nothing.
  *
- * Types the organisation has set to zero days and does not grant (Unpaid, Comp
- * Off at 0) are omitted — a row reading "0 of 0" is noise. A type withheld by
- * a tenure gate is kept, with `withheldReason`, because "you get this after a
- * year" is information the employee wants.
+ * This is the set the Apply Leave dialog offers: Unpaid Leave and an unearned
+ * Comp Off grant zero days but are still applicable, so they belong here even
+ * though `getEntitlements` drops them from the balances display.
  */
-export function getEntitlements(
+export function getApplicableEntitlements(
   employee: Pick<Employee, 'id' | 'dateOfJoining' | 'gender'>,
   requests: LeaveRequest[],
   asOf: string = todayIso(),
@@ -154,8 +154,35 @@ export function getEntitlements(
         monthly: isMonthlyPolicy(policy),
         withheldReason,
       };
-    })
-    .filter((e) => e.granted > 0 || e.used > 0 || e.withheldReason);
+    });
+}
+
+/** The employee's entitlement for one leave type, or undefined if it does not apply to them. */
+export function getEntitlement(
+  employee: Pick<Employee, 'id' | 'dateOfJoining' | 'gender'>,
+  type: LeaveType,
+  requests: LeaveRequest[],
+  asOf: string = todayIso(),
+): Entitlement | undefined {
+  return getApplicableEntitlements(employee, requests, asOf).find((e) => e.type === type);
+}
+
+/**
+ * Every entitlement an employee currently holds.
+ *
+ * Types the organisation has set to zero days and does not grant (Unpaid, Comp
+ * Off at 0) are omitted — a row reading "0 of 0" is noise. A type withheld by
+ * a tenure gate is kept, with `withheldReason`, because "you get this after a
+ * year" is information the employee wants.
+ */
+export function getEntitlements(
+  employee: Pick<Employee, 'id' | 'dateOfJoining' | 'gender'>,
+  requests: LeaveRequest[],
+  asOf: string = todayIso(),
+): Entitlement[] {
+  return getApplicableEntitlements(employee, requests, asOf).filter(
+    (e) => e.granted > 0 || e.used > 0 || e.withheldReason,
+  );
 }
 
 /** The same figures shaped as `LeaveBalance`, for surfaces that expect it. */
