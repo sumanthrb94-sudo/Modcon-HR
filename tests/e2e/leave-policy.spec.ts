@@ -85,6 +85,16 @@ test.describe.serial('leave policy', () => {
     await expect(page.getByText('Rohan Iyer').first()).toBeVisible();
   });
 
+  test('the balances can be searched down to one employee', async () => {
+    test.skip(persona().role !== 'admin', 'needs the whole directory in scope');
+    await page.goto('/leave');
+    await page.getByRole('button', { name: /Leave Balance/ }).click();
+    await page.getByPlaceholder(/Search name, code or department/).fill('Rohan');
+    await expect(page.getByText(/Showing 1 of \d+ employees/)).toBeVisible();
+    await expect(page.getByText('Diya Mehta')).toHaveCount(0);
+    await expect(page.getByText('Rohan Iyer').first()).toBeVisible();
+  });
+
   test('each type shows the whole financial year, not only what has accrued', async () => {
     await page.goto('/leave');
     await page.getByRole('button', { name: /Leave Balance/ }).click();

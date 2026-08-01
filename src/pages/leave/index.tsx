@@ -80,6 +80,9 @@ export function LeavePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Balances filter — its own, see the Balances tab.
+  const [balanceSearch, setBalanceSearch] = useState('');
+
   // Apply Leave Modal
   const [applyOpen, setApplyOpen] = useState(false);
   const [formEmpId, setFormEmpId] = useState('');
@@ -369,6 +372,16 @@ export function LeavePage() {
       .map((emp) => ({ emp, balances: getEntitlements(emp, scopedRequests) }));
   }, [scopedRequests, isEmployee, currentEmployee, visibleEmployeeIds, directoryRevision]);
 
+  const filteredBalances = useMemo(() => {
+    const q = balanceSearch.trim().toLowerCase();
+    if (!q) return balancesView;
+    return balancesView.filter(({ emp }) =>
+      [emp.fullName, emp.employeeCode, emp.department].some((field) =>
+        field.toLowerCase().includes(q),
+      ),
+    );
+  }, [balancesView, balanceSearch]);
+
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {
     return scopedRequests
@@ -481,8 +494,32 @@ export function LeavePage() {
               beside what has accrued so far. Casual and Sick accrue 1 day per month and carry
               forward within the year; unused days do not survive 1 April.
             </p>
+            {/* The tab covers the whole directory now, so it needs a way
+                through it. Its own search state: sharing the Requests one
+                would filter two lists from a box visible on one of them. */}
+            {balancesView.length > 1 && (
+              <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <p className="text-sm text-ink-500 flex-1">
+                  Showing <span className="font-medium text-ink-800">{filteredBalances.length}</span>{' '}
+                  of {balancesView.length} employees
+                </p>
+                <SearchInput
+                  value={balanceSearch}
+                  onChange={setBalanceSearch}
+                  placeholder="Search name, code or department…"
+                  className="w-64"
+                />
+              </div>
+            )}
+            {filteredBalances.length === 0 ? (
+              <EmptyState
+                icon={<Users size={26} />}
+                title="No employees match"
+                description="No one in view matches that search."
+              />
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {balancesView.map(({ emp, balances }) => (
+              {filteredBalances.map(({ emp, balances }) => (
                 <div
                   key={emp.id}
                   className="border border-ink-100 rounded-xl p-4 hover:shadow-sm transition-shadow"
@@ -541,6 +578,7 @@ export function LeavePage() {
                 </div>
               ))}
             </div>
+            )}
           </div>
         )}
 
