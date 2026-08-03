@@ -88,12 +88,12 @@ function readCustomDepartments(): StoredDepartment[] {
   }
 }
 
-function writeCustomDepartments(records: StoredDepartment[]) {
-  if (typeof window === 'undefined') return;
+function writeCustomDepartments(records: StoredDepartment[]): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   window.localStorage.setItem(orgScopedKey(CUSTOM_DEPARTMENTS_STORAGE_KEY), JSON.stringify(records));
   // Departments are org data — renaming one reassigns every employee in it —
   // so the list belongs to the organisation, not to whoever edited it.
-  publishOrgSetting(ORG_SETTINGS.customDepartments, records);
+  return publishOrgSetting(ORG_SETTINGS.customDepartments, records);
 }
 
 function notifyDepartmentDirectoryChanged() {
@@ -121,10 +121,10 @@ function readRemovedDepartments(): string[] {
   }
 }
 
-function writeRemovedDepartments(names: string[]) {
-  if (typeof window === 'undefined') return;
+function writeRemovedDepartments(names: string[]): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   window.localStorage.setItem(orgScopedKey(REMOVED_DEPARTMENTS_STORAGE_KEY), JSON.stringify(names));
-  publishOrgSetting(ORG_SETTINGS.removedDepartments, names);
+  return publishOrgSetting(ORG_SETTINGS.removedDepartments, names);
 }
 
 function getBaseDepartmentRows(): DepartmentRecord[] {
@@ -188,28 +188,38 @@ function syncDepartmentSnapshots() {
   departments.splice(0, departments.length, ...directory.map((record) => record.name));
 }
 
-export function addDepartmentToDirectory(record: StoredDepartment) {
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function addDepartmentToDirectory(record: StoredDepartment): Promise<boolean> {
   const customDepartments = readCustomDepartments().filter((item) => item.name !== record.name);
-  writeCustomDepartments([record, ...customDepartments]);
+  const published = writeCustomDepartments([record, ...customDepartments]);
   syncDepartmentSnapshots();
   notifyDepartmentDirectoryChanged();
+  return published;
 }
 
-export function updateDepartmentInDirectory(record: StoredDepartment) {
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function updateDepartmentInDirectory(record: StoredDepartment): Promise<boolean> {
   const customDepartments = readCustomDepartments().filter((item) => item.name !== record.name);
-  writeCustomDepartments([record, ...customDepartments]);
+  const published = writeCustomDepartments([record, ...customDepartments]);
   syncDepartmentSnapshots();
   notifyDepartmentDirectoryChanged();
+  return published;
 }
 
-export function deleteDepartmentFromDirectory(name: string) {
-  writeCustomDepartments(readCustomDepartments().filter((item) => item.name !== name));
+/**
+ * Resolves once the organisation's copy has caught up — see publishOrgSetting.
+ * Deleting a built-in writes two settings documents, and the delete has only
+ * reached the organisation when both have landed.
+ */
+export function deleteDepartmentFromDirectory(name: string): Promise<boolean> {
+  const writes = [writeCustomDepartments(readCustomDepartments().filter((item) => item.name !== name))];
   // A built-in has no stored row to drop, so record it as removed instead.
   if (employeeDepartments.includes(name)) {
-    writeRemovedDepartments(Array.from(new Set([...readRemovedDepartments(), name])));
+    writes.push(writeRemovedDepartments(Array.from(new Set([...readRemovedDepartments(), name]))));
   }
   syncDepartmentSnapshots();
   notifyDepartmentDirectoryChanged();
+  return Promise.all(writes).then((results) => results.every(Boolean));
 }
 
 /**

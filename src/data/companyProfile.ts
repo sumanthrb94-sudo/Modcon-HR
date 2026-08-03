@@ -107,13 +107,14 @@ export function getCompanyProfile(): CompanyProfile {
   }
 }
 
-export function saveCompanyProfile(profile: CompanyProfile) {
-  if (typeof window === 'undefined') return;
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function saveCompanyProfile(profile: CompanyProfile): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   window.localStorage.setItem(orgScopedKey(COMPANY_PROFILE_STORAGE_KEY), JSON.stringify(profile));
   notifyCompanyProfileChanged();
   // hrDesignations decides who administers this organisation, so this is the
   // last piece of configuration that should have lived in one browser.
-  publishOrgSetting(ORG_SETTINGS.companyProfile, profile);
+  return publishOrgSetting(ORG_SETTINGS.companyProfile, profile);
 }
 
 /**

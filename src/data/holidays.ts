@@ -44,12 +44,13 @@ export function getHolidayDirectory(): Holiday[] {
   return isMockDataCleared() ? [] : defaultHolidays;
 }
 
-export function saveHolidayDirectory(holidays: Holiday[]) {
-  if (typeof window === 'undefined') return;
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function saveHolidayDirectory(holidays: Holiday[]): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   window.localStorage.setItem(orgScopedKey(HOLIDAYS_STORAGE_KEY), JSON.stringify(holidays));
   notifyHolidaysChanged();
   // The calendar attendance and payroll are computed against.
-  publishOrgSetting(ORG_SETTINGS.holidays, holidays);
+  return publishOrgSetting(ORG_SETTINGS.holidays, holidays);
 }
 
 if (typeof window !== 'undefined') {

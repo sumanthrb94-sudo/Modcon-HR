@@ -145,19 +145,82 @@ function Toggle({ checked, onChange, label, description }: {
 }
 
 /** Section container */
-function SettingsSection({ title, subtitle, children }: {
+function SettingsSection({ title, subtitle, action, children }: {
   title: string;
   subtitle?: string;
+  /** Rendered opposite the title — where each section reports its save state. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div>
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-ink-900">{title}</h2>
-        {subtitle && <p className="text-sm text-ink-500 mt-0.5">{subtitle}</p>}
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-ink-900">{title}</h2>
+          {subtitle && <p className="text-sm text-ink-500 mt-0.5">{subtitle}</p>}
+        </div>
+        {action}
       </div>
       {children}
     </div>
+  );
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'local-only';
+
+/**
+ * Report whether a configuration change has reached the organisation.
+ *
+ * Every setting on this page is written to localStorage synchronously and
+ * published to Firestore afterwards, fire-and-forget (see lib/orgSettings). The
+ * write cannot be made instant — but leaving it invisible is what let an
+ * administrator delete a leave type, reload immediately, and watch it come
+ * back, because the page was torn down with the publish still queued. So each
+ * section says what it is doing: "Saving…" while the write is in flight, and a
+ * standing warning when it was refused.
+ *
+ * A refusal is not "saved locally instead": Firestore rolls the rejected write
+ * back, the rollback arrives as a snapshot, and startOrgSettingsSync hydrates
+ * localStorage from the organisation's unchanged copy — so the edit is undone
+ * on this machine too, seconds after it was made. The warning says the change
+ * did not reach the organisation, which is the part that matters, and does not
+ * promise a local copy that will not survive.
+ */
+function useSaveIndicator() {
+  const [state, setState] = useState<SaveState>('idle');
+  const timer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  /** Hand it whatever the save function returned. */
+  function track(published: Promise<boolean>) {
+    setState('saving');
+    window.clearTimeout(timer.current);
+    void published.then((landed) => {
+      setState(landed ? 'saved' : 'local-only');
+      // Only the happy path fades; a refusal stands until the next save, so it
+      // does not scroll past unnoticed.
+      if (landed) timer.current = window.setTimeout(() => setState('idle'), 2_000);
+    });
+  }
+
+  return { state, track };
+}
+
+function SaveIndicator({ state }: { state: SaveState }) {
+  if (state === 'idle') return null;
+  if (state === 'saving') return <span className="text-sm text-ink-500 whitespace-nowrap">Saving…</span>;
+  if (state === 'saved') {
+    return (
+      <span className="flex items-center gap-1 text-sm text-emerald-600 whitespace-nowrap">
+        <Check size={14} /> Saved
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-sm text-amber-700">
+      <AlertCircle size={14} className="shrink-0" /> Not saved to your organisation
+    </span>
   );
 }
 
@@ -165,6 +228,7 @@ function SettingsSection({ title, subtitle, children }: {
 // Section: Company Profile
 // ===========================================================================
 function CompanyProfile() {
+  const save = useSaveIndicator();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const directoryRevision = useEmployeeDirectoryRevision();
   // Read from the company's own record rather than starting every organisation
@@ -213,7 +277,7 @@ function CompanyProfile() {
   // Save used to flash "Saved!" and discard the edit — every field reverted on
   // the next page load. It now writes to the company's own org-scoped record.
   function handleSave() {
-    saveCompanyProfile(form);
+    save.track(saveCompanyProfile(form));
     setDirty(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -253,7 +317,11 @@ function CompanyProfile() {
   }
 
   return (
-    <SettingsSection title="Company Profile" subtitle="Core organisational information shown across the platform.">
+    <SettingsSection
+      title="Company Profile"
+      subtitle="Core organisational information shown across the platform."
+      action={<SaveIndicator state={save.state} />}
+    >
       <Card>
         {/* Logo block */}
         <div className="flex items-center gap-5 pb-6 mb-6 border-b border-ink-100">
@@ -441,6 +509,7 @@ function DepartmentHeadSelect({
 }
 
 function DepartmentsSection() {
+  const save = useSaveIndicator();
   const departmentRevision = useDepartmentDirectoryRevision();
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -514,12 +583,12 @@ function DepartmentsSection() {
       return;
     }
 
-    addDepartmentToDirectory({
+    save.track(addDepartmentToDirectory({
       name,
       head: head || '—',
       headcount: headcountValue,
       ...(newDeptTracksOpenRoles ? {} : { openRolesOverride: openRolesValue }),
-    });
+    }));
     setAddOpen(false);
     resetAddForm();
   }
@@ -554,12 +623,12 @@ function DepartmentsSection() {
       renameDepartmentInDirectory(editingDeptOriginalName, name);
     }
 
-    updateDepartmentInDirectory({
+    save.track(updateDepartmentInDirectory({
       name,
       head: head || '—',
       headcount: headcountValue,
       ...(editingDeptTracksOpenRoles ? {} : { openRolesOverride: openRolesValue }),
-    });
+    }));
     setEditOpen(false);
     resetEditForm();
   }
@@ -574,7 +643,7 @@ function DepartmentsSection() {
       );
       return;
     }
-    deleteDepartmentFromDirectory(row.name);
+    save.track(deleteDepartmentFromDirectory(row.name));
     setDeleteBlocked('');
   }
 
@@ -645,7 +714,11 @@ function DepartmentsSection() {
   ];
 
   return (
-    <SettingsSection title="Departments" subtitle="Manage organisational units, department heads, and open headcount.">
+    <SettingsSection
+      title="Departments"
+      subtitle="Manage organisational units, department heads, and open headcount."
+      action={<SaveIndicator state={save.state} />}
+    >
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <p className="text-sm text-ink-500">{deptRows.length} departments configured</p>
@@ -852,10 +925,16 @@ function LeavePolicies() {
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
   const [deleteBlocked, setDeleteBlocked] = useState('');
+  const save = useSaveIndicator();
 
   useEffect(() => {
     setPolicies(getLeavePolicies());
   }, [leavePoliciesRevision]);
+
+  function persist(updated: LeavePolicy[]) {
+    setPolicies(updated);
+    save.track(saveLeavePolicies(updated));
+  }
 
   function resetAddForm() {
     setNewType('');
@@ -929,8 +1008,7 @@ function LeavePolicies() {
       applicable: newApplicable.trim() || 'All employees',
     };
     const updated = [...policies, next];
-    saveLeavePolicies(updated);
-    setPolicies(updated);
+    persist(updated);
     setAddOpen(false);
     resetAddForm();
   }
@@ -968,16 +1046,14 @@ function LeavePolicies() {
           }
         : policy
     ));
-    saveLeavePolicies(updated);
-    setPolicies(updated);
+    persist(updated);
     setEditOpen(false);
     resetEditForm();
   }
 
   const toggle = (id: string, key: 'carryForward' | 'encashment' | 'halfDay') => {
     const updated = policies.map((policy) => (policy.id === id ? { ...policy, [key]: !policy[key] } : policy));
-    saveLeavePolicies(updated);
-    setPolicies(updated);
+    persist(updated);
   };
 
   /**
@@ -1005,8 +1081,7 @@ function LeavePolicies() {
       return;
     }
     const updated = policies.filter((p) => p.id !== policy.id);
-    saveLeavePolicies(updated);
-    setPolicies(updated);
+    persist(updated);
     setDeleteBlocked('');
   }
 
@@ -1093,7 +1168,11 @@ function LeavePolicies() {
   ];
 
   return (
-    <SettingsSection title="Leave Policies" subtitle="Configure leave types, quotas, and carry-forward rules.">
+    <SettingsSection
+      title="Leave Policies"
+      subtitle="Configure leave types, quotas, and carry-forward rules."
+      action={<SaveIndicator state={save.state} />}
+    >
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <p className="text-sm text-ink-500">Click toggles to update policies</p>
@@ -1281,6 +1360,7 @@ const permCycle: Record<PermissionLevel, PermissionLevel> = {
 };
 
 function RolesPermissions() {
+  const save = useSaveIndicator();
   const permissionsRevision = useAccessControlRevision();
   const [perms, setPerms] = useState<PermissionMatrix>(() => getPermissionMatrix());
 
@@ -1296,19 +1376,23 @@ function RolesPermissions() {
         [role]: permCycle[perms[mod][role]],
       },
     };
-    savePermissionMatrix(updated);
+    save.track(savePermissionMatrix(updated));
     setPerms(updated);
   };
 
   const resetToDefaults = () => {
-    savePermissionMatrix(defaultPermissions);
+    save.track(savePermissionMatrix(defaultPermissions));
     setPerms(defaultPermissions);
   };
 
   const cycleHint = 'Define what each role can access. Click any cell to cycle: Full -> View -> None.';
 
   return (
-    <SettingsSection title="Roles & Permissions" subtitle={cycleHint}>
+    <SettingsSection
+      title="Roles & Permissions"
+      subtitle={cycleHint}
+      action={<SaveIndicator state={save.state} />}
+    >
       <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
         <AlertCircle size={16} className="mt-0.5 shrink-0" />
         {/* Was an amber warning that HR Manager and Manager "are not yet
@@ -1404,6 +1488,7 @@ const PermIcon = ({ level }: { level: PermissionLevel }) => {
 // Section: Holidays
 // ===========================================================================
 function HolidaysSection() {
+  const save = useSaveIndicator();
   const holidayRevision = useHolidayDirectoryRevision();
   const [holidayRows, setHolidayRows] = useState<Holiday[]>(() => getHolidayDirectory());
   const [addOpen, setAddOpen] = useState(false);
@@ -1478,7 +1563,7 @@ function HolidaysSection() {
 
     const id = `h${Date.now()}`;
     const updatedRows = [...holidayRows, { id, name, date, type }];
-    saveHolidayDirectory(updatedRows);
+    save.track(saveHolidayDirectory(updatedRows));
     setHolidayRows(updatedRows);
     setAddOpen(false);
     resetAddForm();
@@ -1507,7 +1592,7 @@ function HolidaysSection() {
         ? { ...holiday, name, date, type }
         : holiday
     ));
-    saveHolidayDirectory(updatedRows);
+    save.track(saveHolidayDirectory(updatedRows));
     setHolidayRows(updatedRows);
     setEditOpen(false);
     resetEditForm();
@@ -1518,7 +1603,7 @@ function HolidaysSection() {
     if (!confirmed) return;
 
     const updatedRows = holidayRows.filter((row) => row.id !== holiday.id);
-    saveHolidayDirectory(updatedRows);
+    save.track(saveHolidayDirectory(updatedRows));
     setHolidayRows(updatedRows);
   }
 
@@ -1561,7 +1646,11 @@ function HolidaysSection() {
   ];
 
   return (
-    <SettingsSection title="Holidays" subtitle="Manage the holiday calendar visible to all employees.">
+    <SettingsSection
+      title="Holidays"
+      subtitle="Manage the holiday calendar visible to all employees."
+      action={<SaveIndicator state={save.state} />}
+    >
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <div className="flex items-center gap-4">
@@ -1698,6 +1787,7 @@ function HolidaysSection() {
 // Section: Notifications
 // ===========================================================================
 function NotificationsSection() {
+  const save = useSaveIndicator();
   const notificationRevision = useNotificationPreferencesRevision();
   const [notifs, setNotifs] = useState<NotificationPreference[]>(() => getNotificationPreferences());
 
@@ -1707,14 +1797,18 @@ function NotificationsSection() {
 
   const toggle = (id: string, key: 'email' | 'inApp') => {
     const updated = notifs.map((notif) => (notif.id === id ? { ...notif, [key]: !notif[key] } : notif));
-    saveNotificationPreferences(updated);
+    save.track(saveNotificationPreferences(updated));
     setNotifs(updated);
   };
 
   const categories = Array.from(new Set(notifs.map((n) => n.category)));
 
   return (
-    <SettingsSection title="Notification Preferences" subtitle="Control which events trigger email and in-app notifications.">
+    <SettingsSection
+      title="Notification Preferences"
+      subtitle="Control which events trigger email and in-app notifications."
+      action={<SaveIndicator state={save.state} />}
+    >
       <Card padding={false}>
         {/* Header row */}
         <div className="grid grid-cols-[1fr_80px_80px] px-5 py-3 border-b border-ink-100 text-xs font-semibold text-ink-500 uppercase tracking-wide">
@@ -1842,6 +1936,7 @@ const defaultIntegrations: Integration[] = [
 ];
 
 function IntegrationsSection() {
+  const save = useSaveIndicator();
   const integrationRevision = useIntegrationPreferencesRevision();
   const [integrations, setIntegrations] = useState(defaultIntegrations);
   const [configureOpen, setConfigureOpen] = useState(false);
@@ -1869,7 +1964,7 @@ function IntegrationsSection() {
         ? { ...integration, connected: !integration.connected, badge: !integration.connected ? 'Connected' : undefined }
         : integration
     ));
-    saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge })));
+    save.track(saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge }))));
     setIntegrations(updated);
   };
 
@@ -1893,7 +1988,7 @@ function IntegrationsSection() {
         ? { ...integration, badge: nextLabel }
         : integration
     ));
-    saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge })));
+    save.track(saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge }))));
     setIntegrations(updated);
     setConfigureOpen(false);
     setEditingIntegration(null);
@@ -1904,7 +1999,11 @@ function IntegrationsSection() {
   const categories = Array.from(new Set(integrations.map((i) => i.category)));
 
   return (
-    <SettingsSection title="Integrations" subtitle="Connect ModCon HR with your existing tools and data sources.">
+    <SettingsSection
+      title="Integrations"
+      subtitle="Connect ModCon HR with your existing tools and data sources."
+      action={<SaveIndicator state={save.state} />}
+    >
       {categories.map((cat) => (
         <div key={cat} className="mb-6">
           <p className="text-xs font-bold text-ink-500 uppercase tracking-wider mb-3">{cat}</p>

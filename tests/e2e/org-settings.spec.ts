@@ -50,12 +50,22 @@ const POLICY_NAME = 'E2E Isolation Leave';
  * way global-setup.ts provisions the accounts. It reads and rewrites rather
  * than restoring a snapshot, so a policy a human added while the suite was
  * running is not thrown away.
+ *
+ * Runs **before** the suite as well as after. The afterAll alone is not enough:
+ * a run interrupted with Ctrl-C never reaches it, and a sign-in that fails here
+ * returns silently by design (a dirty organisation must not fail the suite), so
+ * leftovers accumulate one per run until someone notices them in Settings. The
+ * beforeAll makes the next run clean them up instead.
  */
-async function removeTestPolicies() {
-  const admin = PERSONAS.admin;
-  const base = 'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
-  const path = 'org_settings/default__leavePolicies';
+const FIRESTORE_BASE =
+  'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
+const POLICIES_DOC = 'org_settings/default__leavePolicies';
 
+/** The admin persona's own token, fetched once. Null if sign-in fails. */
+let cachedAdminToken: string | null | undefined;
+async function adminToken(): Promise<string | null> {
+  if (cachedAdminToken !== undefined) return cachedAdminToken;
+  const admin = PERSONAS.admin;
   const auth = await (await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
     {
@@ -64,22 +74,46 @@ async function removeTestPolicies() {
       body: JSON.stringify({ email: admin.email, password: admin.password, returnSecureToken: true }),
     },
   )).json();
-  if (!auth.idToken) return;
+  cachedAdminToken = auth.idToken ?? null;
+  return cachedAdminToken;
+}
 
-  const headers = { Authorization: `Bearer ${auth.idToken}`, 'Content-Type': 'application/json' };
-  const res = await fetch(`${base}/${path}`, { headers });
+/**
+ * The leave types as **Firestore** holds them, not as the browser renders them.
+ *
+ * Null when the organisation's copy cannot be read at all (sign-in refused, or
+ * nothing published yet) — which callers must not confuse with "the type is
+ * gone", hence null rather than an empty array.
+ */
+async function publishedPolicyTypes(): Promise<string[] | null> {
+  const token = await adminToken();
+  if (!token) return null;
+  const res = await fetch(`${FIRESTORE_BASE}/${POLICIES_DOC}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status !== 200) return null;
+  const raw = (await res.json()).fields?.valueJson?.stringValue;
+  if (typeof raw !== 'string') return null;
+  return (JSON.parse(raw) as Array<{ type?: string }>).map((p) => String(p.type ?? ''));
+}
+
+async function removeTestPolicies() {
+  const token = await adminToken();
+  if (!token) return;
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  const res = await fetch(`${FIRESTORE_BASE}/${POLICIES_DOC}`, { headers });
   // Nothing published yet — nothing to clean.
   if (res.status !== 200) return;
 
-  const doc = await res.json();
-  const raw = doc.fields?.valueJson?.stringValue;
+  const raw = (await res.json()).fields?.valueJson?.stringValue;
   if (typeof raw !== 'string') return;
 
   const policies = JSON.parse(raw) as Array<{ type?: string }>;
   const kept = policies.filter((p) => !String(p.type ?? '').startsWith(POLICY_NAME));
   if (kept.length === policies.length) return;
 
-  await fetch(`${base}/${path}?updateMask.fieldPaths=valueJson`, {
+  await fetch(`${FIRESTORE_BASE}/${POLICIES_DOC}?updateMask.fieldPaths=valueJson`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({ fields: { valueJson: { stringValue: JSON.stringify(kept) } } }),
@@ -113,9 +147,11 @@ async function addLeavePolicy(page: Page, name: string) {
 }
 
 test.describe.serial('organisation configuration', () => {
-  // After both tests, not after each: they are serial and the second reads what
-  // it wrote across two contexts. Runs even if a test failed, so a red run does
-  // not leave the organisation's configuration dirty.
+  // Before the suite, to sweep up whatever a previous interrupted run left
+  // behind, and after it — not after each: the tests are serial and the second
+  // reads what it wrote across two contexts. The afterAll runs even if a test
+  // failed, so a red run does not leave the organisation's configuration dirty.
+  test.beforeAll(removeTestPolicies);
   test.afterAll(removeTestPolicies);
 
   test('an edit stands on its own, whether or not the Firestore write lands', async ({ browser }) => {
@@ -191,6 +227,20 @@ test.describe.serial('organisation configuration', () => {
     // which is exactly what a quota-exhausted or undeployed project does. Gated
     // with the other round-trip assertion in this file, for the same reason.
     if (process.env.E2E_ORG_SETTINGS_DEPLOYED === 'true') {
+      // The Firestore write trails the local one and is fire-and-forget
+      // (publishOrgSetting does not await setDoc), so a reload issued
+      // immediately after the click tears down the page with the delete still
+      // queued — Firestore keeps the pre-delete array, sign-in re-hydrates it,
+      // and the type is back. Wait for the write to actually land rather than
+      // sleeping a guessed interval: a fixed wait is either flaky on a slow
+      // network or slower than it needs to be on a fast one. A read that fails
+      // outright keeps polling — absent evidence is not evidence of deletion.
+      await expect
+        .poll(async () => (await publishedPolicyTypes())?.includes(unique) ?? true, {
+          message: 'the delete never reached the organisation\'s Firestore copy',
+          timeout: 15_000,
+        })
+        .toBe(false);
       await page.reload();
       await openSettingsSection(page, 'Leave Policies');
       await expect(page.getByText(unique)).toHaveCount(0);
@@ -239,6 +289,48 @@ test.describe.serial('organisation configuration', () => {
     await expect(fresh.getByText(unique)).toBeVisible({ timeout: 20_000 });
     await fresh.screenshot({ path: 'test-results/org-settings-second-machine.png', fullPage: true });
     await second.close();
+  });
+
+  test('a refused publish is shown to the person who made the edit, not just swallowed', async ({ browser }) => {
+    // The sibling test above asserts a refused write does not *break* the edit.
+    // This asserts the other half, which was missing: that it does not pass for
+    // a successful one either. A publish the rules refuse leaves the change in
+    // one browser, and that is exactly the state in which a reload loses it —
+    // so the section says so rather than showing the same "Saved" an
+    // organisation-wide write gets.
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await signIn(page, PERSONAS.employee);
+
+    // The same forged local grant the Database-section test uses: the
+    // permission matrix is client-owned, so an employee can reach Settings.
+    // What they cannot do is write org_settings — firestore.rules decides that.
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        'modcon.hr.accessControl.permissions',
+        JSON.stringify({ Settings: { Employee: 'full' } }),
+      );
+    });
+    await openSettingsSection(page, 'Leave Policies');
+
+    // Named like the suite's other policies so the cleanup catches it if the
+    // rules ever start allowing this write — the point of the test is that
+    // they do not, and a silent regression must not dirty the organisation.
+    const unique = `${POLICY_NAME} ${Date.now()}`;
+    await addLeavePolicy(page, unique);
+
+    await expect(page.getByText('Not saved to your organisation')).toBeVisible({ timeout: 20_000 });
+
+    // And the organisation's copy really is untouched — the warning is not
+    // merely cosmetic. Checked at the source rather than through the UI:
+    // Firestore rolls the rejected write back, the rollback arrives as a
+    // snapshot, and startOrgSettingsSync hydrates localStorage from the
+    // unchanged remote copy, so the row disappears from the table too. That
+    // revert is the SDK's behaviour rather than this app's, so it is the
+    // document that is asserted here, not the disappearance.
+    expect(await publishedPolicyTypes()).not.toContain(unique);
+    await page.screenshot({ path: 'test-results/org-settings-refused-publish.png', fullPage: true });
+    await context.close();
   });
 });
 

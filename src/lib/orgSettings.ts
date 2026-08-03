@@ -102,11 +102,17 @@ let currentAuthorUid: string | null = null;
  * reach the organisation's other administrators. A failure is logged rather
  * than thrown — the rules refuse a non-administrator, which is them working,
  * and a save that threw would make an offline edit look like a lost one.
+ *
+ * Resolves `true` once the write lands and `false` if it was refused; it never
+ * rejects, so the callers that ignore the return keep behaving exactly as they
+ * did. A caller that *does* wait on it can tell an admin whether the change has
+ * reached the organisation yet — until it has, a reload re-hydrates from the
+ * old document and the change is gone.
  */
-export function publishOrgSetting(target: OrgSetting, value: unknown): void {
-  if (typeof window === 'undefined') return;
+export function publishOrgSetting(target: OrgSetting, value: unknown): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   const orgKey = getActiveOrgKey();
-  void setDoc(
+  return setDoc(
     doc(db, 'org_settings', orgSettingDocId(orgKey, target.key)),
     {
       orgId: orgKey,
@@ -116,8 +122,9 @@ export function publishOrgSetting(target: OrgSetting, value: unknown): void {
       ...(currentAuthorUid ? { updatedByUid: currentAuthorUid } : {}),
     },
     { merge: true },
-  ).catch((err) => {
+  ).then(() => true).catch((err) => {
     console.warn(`[org-settings] could not publish "${target.key}":`, err);
+    return false;
   });
 }
 

@@ -177,8 +177,9 @@ export function getPermissionMatrix(): PermissionMatrix {
   }
 }
 
-export function savePermissionMatrix(matrix: PermissionMatrix) {
-  if (typeof window === 'undefined') return;
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function savePermissionMatrix(matrix: PermissionMatrix): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   const enforced = enforceRequiredPermissions(matrix);
   window.localStorage.setItem(orgScopedKey(ACCESS_CONTROL_STORAGE_KEY), JSON.stringify(enforced));
   notifyPermissionsChanged();
@@ -186,7 +187,7 @@ export function savePermissionMatrix(matrix: PermissionMatrix) {
   // firestore.rules still decides, and resolveAppRole still reads the
   // server-backed profile role. It stops one browser's devtools edit from being
   // the whole of it, which is what G5 in docs/tenant-isolation-spec.md is about.
-  publishOrgSetting(ORG_SETTINGS.accessControl, enforced);
+  return publishOrgSetting(ORG_SETTINGS.accessControl, enforced);
 }
 
 export function getPermissionLevel(module: AppModule, role: AppRole): PermissionLevel {

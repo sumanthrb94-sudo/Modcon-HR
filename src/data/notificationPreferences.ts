@@ -75,11 +75,12 @@ export function getNotificationPreferences(): NotificationPreference[] {
   });
 }
 
-export function saveNotificationPreferences(preferences: NotificationPreference[]) {
-  if (typeof window === 'undefined') return;
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function saveNotificationPreferences(preferences: NotificationPreference[]): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   window.localStorage.setItem(orgScopedKey(NOTIFICATION_PREFERENCES_STORAGE_KEY), JSON.stringify(preferences));
   notifyNotificationPreferencesChanged();
-  publishOrgSetting(ORG_SETTINGS.notificationPreferences, preferences);
+  return publishOrgSetting(ORG_SETTINGS.notificationPreferences, preferences);
 }
 
 if (typeof window !== 'undefined') {

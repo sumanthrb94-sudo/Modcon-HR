@@ -41,11 +41,12 @@ export function getIntegrationPreferences(): IntegrationPreference[] {
   return stored ? stored : defaultIntegrations;
 }
 
-export function saveIntegrationPreferences(integrations: IntegrationPreference[]) {
-  if (typeof window === 'undefined') return;
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function saveIntegrationPreferences(integrations: IntegrationPreference[]): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
   window.localStorage.setItem(orgScopedKey(INTEGRATIONS_STORAGE_KEY), JSON.stringify(integrations));
   notifyIntegrationsChanged();
-  publishOrgSetting(ORG_SETTINGS.integrations, integrations);
+  return publishOrgSetting(ORG_SETTINGS.integrations, integrations);
 }
 
 if (typeof window !== 'undefined') {

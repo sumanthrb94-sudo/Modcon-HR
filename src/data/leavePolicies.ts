@@ -131,12 +131,18 @@ export function getPolicyForType(type: string): LeavePolicy | undefined {
   return getLeavePolicies().find((p) => normalizeLeaveTypeValue(p.type) === type);
 }
 
-export function saveLeavePolicies(policies: LeavePolicy[]) {
+/**
+ * Persist the policy list. The local write is synchronous and immediate; the
+ * returned promise resolves once the organisation's Firestore copy has caught
+ * up (`false` if that write was refused). Callers that do not care can ignore
+ * it — it never rejects.
+ */
+export function saveLeavePolicies(policies: LeavePolicy[]): Promise<boolean> {
   writeStoredLeavePolicies(policies);
   notifyLeavePoliciesChanged();
   // The organisation's copy. Accrual policy is what LOP deductions are computed
   // from, so it belonging to one browser was never right — see lib/orgSettings.
-  publishOrgSetting(ORG_SETTINGS.leavePolicies, policies);
+  return publishOrgSetting(ORG_SETTINGS.leavePolicies, policies);
 }
 
 export function normalizeLeaveTypeValue(type: string): LeaveType {
