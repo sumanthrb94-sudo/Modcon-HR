@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'firebase/firestore';
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 
 export const firebaseConfig = {
@@ -23,6 +23,27 @@ export const db = isLocalDev
         experimentalForceLongPolling: true,
     })
     : getFirestore(firebaseApp);
+
+/**
+ * Point Firestore at a local emulator, for E2E runs that must not touch the
+ * live project.
+ *
+ * Opt-in and build-time only: `VITE_FIRESTORE_EMULATOR_HOST` is inlined by Vite
+ * at build, so a production bundle built without it contains no emulator call
+ * at all — there is no runtime switch an end user could flip, and no way for a
+ * deployed build to silently talk to localhost.
+ *
+ * Only Firestore is redirected. Auth stays on the live project because the
+ * suite signs in with real accounts, and the emulator's Firestore honours
+ * `firestore.rules` the same way production does — which is the point: an E2E
+ * run against it exercises the same authorization, without spending the live
+ * project's daily quota.
+ */
+const firestoreEmulator = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST;
+if (firestoreEmulator) {
+    const [emulatorHost, emulatorPort] = firestoreEmulator.split(':');
+    connectFirestoreEmulator(db, emulatorHost, Number(emulatorPort) || 8080);
+}
 
 export const auth = getAuth(firebaseApp);
 

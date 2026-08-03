@@ -151,7 +151,12 @@ export default defineConfig({
   webServer: {
     // Build with the E2E role allow-list enabled, then serve the production
     // bundle. Never reuse a stale server so the correct build is always served.
-    command: `VITE_ENABLE_E2E_ACCOUNTS=true npm run build && npm run preview -- --port ${PORT} --strictPort`,
+    // E2E_FIRESTORE_EMULATOR=<host:port> builds a bundle whose Firestore talks
+    // to the emulator instead of the live project — see src/lib/firebase.ts and
+    // `npm run test:e2e:emulator`. Absent, the build is unchanged.
+    command: `VITE_ENABLE_E2E_ACCOUNTS=true ${
+      process.env.E2E_FIRESTORE_EMULATOR ? `VITE_FIRESTORE_EMULATOR_HOST=${process.env.E2E_FIRESTORE_EMULATOR} ` : ''
+    }npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
     timeout: 180_000,

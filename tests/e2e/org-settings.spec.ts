@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIREBASE_API_KEY, PERSONAS } from './config';
+import { PERSONAS } from './config';
+import { FIRESTORE_BASE, adminToken } from './firestore';
 import { isBrowserTransportNoise } from './noise';
 
 /**
@@ -35,48 +36,7 @@ import { isBrowserTransportNoise } from './noise';
  */
 
 const POLICY_NAME = 'E2E Isolation Leave';
-
-/**
- * Remove the policies this suite created, out of band.
- *
- * Necessary now, and it was not before: configuration used to live in the
- * browser, so a test that added a leave policy dirtied only its own throwaway
- * context. It is a shared Firestore document today, which means a test that
- * does not clean up leaves a fake policy in the organisation's real
- * configuration — and every run adds another. Settings offers Edit but no
- * Delete for a leave type, so there is no UI path to undo it.
- *
- * Done over the Firestore REST API with the admin persona's own token, the same
- * way global-setup.ts provisions the accounts. It reads and rewrites rather
- * than restoring a snapshot, so a policy a human added while the suite was
- * running is not thrown away.
- *
- * Runs **before** the suite as well as after. The afterAll alone is not enough:
- * a run interrupted with Ctrl-C never reaches it, and a sign-in that fails here
- * returns silently by design (a dirty organisation must not fail the suite), so
- * leftovers accumulate one per run until someone notices them in Settings. The
- * beforeAll makes the next run clean them up instead.
- */
-const FIRESTORE_BASE =
-  'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
 const POLICIES_DOC = 'org_settings/default__leavePolicies';
-
-/** The admin persona's own token, fetched once. Null if sign-in fails. */
-let cachedAdminToken: string | null | undefined;
-async function adminToken(): Promise<string | null> {
-  if (cachedAdminToken !== undefined) return cachedAdminToken;
-  const admin = PERSONAS.admin;
-  const auth = await (await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: admin.email, password: admin.password, returnSecureToken: true }),
-    },
-  )).json();
-  cachedAdminToken = auth.idToken ?? null;
-  return cachedAdminToken;
-}
 
 /**
  * The leave types as **Firestore** holds them, not as the browser renders them.
@@ -97,6 +57,26 @@ async function publishedPolicyTypes(): Promise<string[] | null> {
   return (JSON.parse(raw) as Array<{ type?: string }>).map((p) => String(p.type ?? ''));
 }
 
+/**
+ * Remove the policies this suite created, out of band.
+ *
+ * Necessary now, and it was not before: configuration used to live in the
+ * browser, so a test that added a leave policy dirtied only its own throwaway
+ * context. It is a shared Firestore document today, which means a test that
+ * does not clean up leaves a fake policy in the organisation's real
+ * configuration — and every run adds another.
+ *
+ * Done over the Firestore REST API against whichever project the run targets —
+ * live, or the emulator (see ./firestore). It reads and rewrites rather than
+ * restoring a snapshot, so a policy a human added while the suite was running
+ * is not thrown away.
+ *
+ * Runs **before** the suite as well as after. The afterAll alone is not enough:
+ * a run interrupted with Ctrl-C never reaches it, and a sign-in that fails here
+ * returns silently by design (a dirty organisation must not fail the suite), so
+ * leftovers accumulate one per run until someone notices them in Settings. The
+ * beforeAll makes the next run clean them up instead.
+ */
 async function removeTestPolicies() {
   const token = await adminToken();
   if (!token) return;

@@ -1,4 +1,5 @@
 import { FIREBASE_API_KEY, PERSONAS } from './config';
+import { EMULATOR_HOST, seedPersonaProfiles } from './firestore';
 
 /**
  * Ensure every dedicated E2E test account exists in Firebase Auth before the
@@ -27,6 +28,12 @@ async function provision(email: string, password: string) {
 async function globalSetup() {
   for (const persona of Object.values(PERSONAS)) {
     await provision(persona.email, persona.password);
+  }
+  // An emulator starts with no users/{uid} documents, and the rules refuse to
+  // let an account create its own privileged one. See seedPersonaProfiles.
+  if (EMULATOR_HOST) {
+    console.log(`[e2e] Firestore emulator at ${EMULATOR_HOST} — seeding persona profiles`);
+    await seedPersonaProfiles();
   }
 }
 
