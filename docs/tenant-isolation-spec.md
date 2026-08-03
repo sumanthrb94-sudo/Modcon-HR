@@ -31,7 +31,7 @@ different enforcement points. Conflating them is how the gaps in §7 got in.
 | **Access mapping** | `employee_links/{uid}`, `managerChainIds[]` | `orgId` field / derived from org-filtered employees | [firestore.rules:69–94](../firestore.rules#L69-L94), [firestore.rules:336–354](../firestore.rules#L336-L354) |
 | **Config** | leave policies, company profile, holidays, departments, permission matrix, preferences | `orgId` + the `<orgKey>__<setting>` document id | [firestore.rules](../firestore.rules) `org_settings`, synced by [orgSettings.ts](../src/lib/orgSettings.ts) |
 | **Local** | the rest of the `src/data/*` overlay, and the config cache | localStorage key suffix `::org:<id>` | [orgScope.ts:47](../src/lib/orgScope.ts#L47) — **browser-local, not a server boundary** |
-| **Control** | seed, purge, `orgId` backfill, access backfills, rules deploy, hosting deploy | `orgKey` parameter / *nothing* | §4 |
+| **Control** | seed, purge, `orgId` backfill, access backfills, rules deploy, app deploy | `orgKey` parameter / *nothing* | §4 |
 
 The tenant key itself is a string that is **never null**: accounts with no
 `orgId` resolve to the literal `'default'`
