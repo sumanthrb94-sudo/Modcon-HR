@@ -7,9 +7,11 @@ name: CI
 # requests, which is where a rules regression should be caught — before it is
 # merged and auto-deployed.
 #
-# Not covered here: the Playwright E2E suite. It signs in through real Firebase
-# Auth and provisions test accounts, so it needs live project credentials rather
-# than an emulator, and is run locally against the production build.
+# Every job here runs against simulations. Nothing in CI touches the live
+# Firebase project: Firestore and Auth are emulated (see scripts/e2e.sh and
+# playwright.config.ts), and the `e2e` job refuses to start if anyone has set
+# E2E_LIVE_FIRESTORE. A live run writes the organisation's real data and, on
+# 2026-08-03, exhausted the project's daily quota for the rest of the day.
 
 on:
   push:
@@ -77,3 +79,58 @@ jobs:
       # path. See tests/rules/.
       - name: Run security-rules tests
         run: npm run test:rules
+
+  e2e:
+    name: E2E (emulated)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A live run would write the organisation's real configuration. CI must
+      # never be the thing that does that, however the variable got set.
+      - name: Refuse to run against the live project
+        run: |
+          if [ -n "${E2E_LIVE_FIRESTORE:-}" ]; then
+            echo "E2E_LIVE_FIRESTORE is set in CI. Refusing: CI runs simulations only." >&2
+            exit 1
+          fi
+          echo "no live-project override present — proceeding with emulators"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Both emulators the suite needs (Firestore and Auth) are Java processes.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Chromium only. The role and org-settings specs assert app logic and
+      # server behaviour, which is identical across engines; running three
+      # triples the runtime for no extra signal.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # scripts/e2e.sh starts firestore+auth for the run and shuts them down
+      # after. playwright.config.ts points the bundle and the specs' REST
+      # helpers at them, so no credential and no network access is required.
+      - name: Run E2E against the emulators
+        run: E2E_BROWSERS=chromium npm run test:e2e -- --project=app --project=org-settings
+        env:
+          E2E_ORG_SETTINGS_DEPLOYED: 'true'
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
