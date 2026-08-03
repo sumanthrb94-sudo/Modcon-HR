@@ -78,8 +78,10 @@ succeed.
 
 ## 🚢 Deployment
 
-The app is hosted on **Vercel**. Firebase provides Auth and Firestore only —
-it is not the host, and Firebase Hosting must not be used to serve the app.
+The app is hosted on **Vercel** at
+[modcon-hr.vercel.app](https://modcon-hr.vercel.app). Firebase provides Auth
+and Firestore only — it is not the host, and Firebase Hosting must not be used
+to serve the app.
 
 ### The app (Vercel)
 
