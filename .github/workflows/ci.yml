@@ -2,10 +2,10 @@ name: CI
 
 # Correctness gates that run on every pull request and every push to main.
 #
-# Deliberately separate from firebase-hosting.yml: that workflow's job is to
-# ship, and it is triggered only by main. This one also runs on pull requests,
-# which is where a rules regression should be caught — before it is merged and
-# auto-deployed.
+# Deliberately separate from shipping: the app is deployed by Vercel's Git
+# integration, which builds every push to main. This one also runs on pull
+# requests, which is where a rules regression should be caught — before it is
+# merged and auto-deployed.
 #
 # Not covered here: the Playwright E2E suite. It signs in through real Firebase
 # Auth and provisions test accounts, so it needs live project credentials rather

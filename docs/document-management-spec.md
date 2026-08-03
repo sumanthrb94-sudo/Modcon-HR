@@ -457,13 +457,13 @@ shrinks to one round trip — a further argument for B.
 App code and rules deploy independently, and **rules must go first**:
 
 ```
-firebase deploy --only firestore:rules,storage    # first
-npm run firebase:deploy                           # then hosting
+firebase deploy --only firestore:rules,storage    # first (Firebase)
+git push origin main                              # then the app (Vercel)
 ```
 
 Ship the UI first and HR gets `permission-denied` against rules that do not yet
-grant the write. Pushes to `main` auto-deploy hosting but **not** rules, so the
-rules deploy is a manual step that must precede the merge.
+grant the write. Pushes to `main` auto-deploy the app via Vercel but **not**
+rules, so the rules deploy is a manual step that must precede the merge.
 
 Option A additionally requires the custom-claim Function deployed and every HR
 account's token refreshed before upload works. Options A and B both move the

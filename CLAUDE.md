@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ModCon HR is a modern HRMS single-page app (React + TypeScript + Vite + Tailwind), backed by Firebase (Auth + Firestore) and deployed to Firebase Hosting at `modcon-hr.web.app`.
+ModCon HR is a modern HRMS single-page app (React + TypeScript + Vite + Tailwind), backed by Firebase (Auth + Firestore) and hosted on Vercel. **Firebase is backend and database only — never the host.** Firebase Hosting is not used and `firebase deploy --only hosting` must not be run.
 
 ## Commands
 
@@ -19,7 +19,7 @@ npm run test:rules # Firestore security-rules tests (Firestore emulator; needs J
 - **The app specs run on all three engines; scope with `E2E_BROWSERS`.** `E2E_BROWSERS=chromium npm run test:e2e` is the fast Chromium-only run. Firefox/WebKit need their browsers downloaded once via `npx playwright install firefox webkit`.
 - **Security rules are tested separately from the app.** `tests/rules/` runs `firestore.rules` against the Firestore emulator via `@firebase/rules-unit-testing` (`npm run test:rules`, wrapped in `firebase emulators:exec`; needs a JDK). The E2E suite drives the UI and never exercises the rules, so role/permission changes need a test here as well. Each test reseeds — the suites mutate roles, so shared state produces false passes.
 - **CI:** `.github/workflows/ci.yml` runs the build and the rules tests on every pull request and push to `main`. E2E is *not* in CI — it signs in through real Firebase Auth and provisions accounts, so it needs live credentials rather than an emulator; run it locally.
-- **Deploy:** `npm run firebase:deploy` (hosting). Firestore rules deploy separately: `firebase deploy --only firestore:rules`. Pushes to `main` also auto-deploy hosting via `.github/workflows/firebase-hosting.yml` (needs the `FIREBASE_TOKEN` repo secret). **App code and rules deploy independently — if a change needs both, deploy the rules first or privileged users get permission-denied against the new UI.**
+- **Deploy:** the app ships via **Vercel's Git integration** — pushes to `main` build and promote to production, pull requests get preview URLs. There is no deploy workflow in this repo; build settings live in `vercel.json`. Manual deploy from a checkout: `npx vercel --prod`. Firestore rules deploy separately through Firebase: `npm run rules:deploy` (`firebase deploy --only firestore:rules`). **App code and rules deploy independently — if a change needs both, deploy the rules first or privileged users get permission-denied against the new UI.**
 
 Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.config.ts`).
 

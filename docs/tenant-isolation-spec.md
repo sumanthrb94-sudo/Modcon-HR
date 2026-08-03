@@ -237,7 +237,7 @@ the specification says so rather than promising it:
 | One Firebase project, one Firestore database `(default)` | [firebase.json](../firebase.json) | every tenant |
 | One `firestore.rules` ruleset | `firebase deploy --only firestore:rules` | every tenant, instantly, no staging |
 | One `firestore.indexes.json` | [firestore.indexes.json](../firestore.indexes.json) | every tenant; a query needing a missing composite index fails for all of them |
-| One hosting site, one bundle | [firebase-hosting.yml:54](../.github/workflows/firebase-hosting.yml#L54), push to `main` | every tenant, simultaneously |
+| One Vercel production deployment, one bundle | [vercel.json](../vercel.json), push to `main` | every tenant, simultaneously |
 
 There is no per-tenant deploy target, no per-tenant ruleset, and no canary. A
 change built for one tenant reaches all of them in one release. Claiming

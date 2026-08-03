@@ -78,40 +78,37 @@ succeed.
 
 ## 🚢 Deployment
 
-The app is hosted on **Firebase Hosting** at
-[modcon-hr.web.app](https://modcon-hr.web.app) (project `modcon-hr`, see
-`.firebaserc` / `firebase.json`).
+The app is hosted on **Vercel**. Firebase provides Auth and Firestore only —
+it is not the host, and Firebase Hosting must not be used to serve the app.
 
-### Automated (GitHub Actions)
+### The app (Vercel)
 
-Every push to `main` builds and deploys via
-`.github/workflows/firebase-hosting.yml`. It needs one repository secret:
+Deployment is handled by Vercel's Git integration, not by a workflow in this
+repo: connect the repository once in the Vercel dashboard and every push to
+`main` builds and promotes to production, while pull requests get their own
+preview URL. Build settings come from [`vercel.json`](vercel.json) — Vite
+framework preset, `npm run build`, `dist/` output, an SPA rewrite so
+client-side routes resolve, plus immutable caching on `/assets/*` and the
+baseline security headers.
 
-1. Generate a Firebase CI token on a machine logged into the project:
-   ```bash
-   npm i -g firebase-tools
-   firebase login:ci        # opens a browser, prints a token
-   ```
-2. In GitHub: **Settings → Secrets and variables → Actions → New repository
-   secret**, name it `FIREBASE_TOKEN`, and paste the token.
+No environment variables are required. The Firebase web config in
+`src/lib/firebase.ts` is public by design and ships in the bundle.
 
-Pushes to `main` then deploy automatically; you can also trigger a deploy
-from the **Actions** tab (workflow_dispatch).
-
-> `firebase login:ci` tokens are being phased out in favour of service
-> accounts. To use one instead, store the service-account JSON as a secret
-> and swap the deploy step for
-> [`FirebaseExtended/action-hosting-deploy`](https://github.com/FirebaseExtended/action-hosting-deploy).
-
-### Manual
+To deploy by hand from a checkout:
 
 ```bash
-npm run build
-npm run firebase:deploy   # firebase deploy --only hosting  (after: firebase login)
+npx vercel --prod
 ```
 
-Firestore security rules (`firestore.rules`) are deployed separately with
-`firebase deploy --only firestore:rules`.
+### Firestore rules (Firebase)
+
+Security rules are a database concern and still ship through the Firebase
+CLI — independent of the host, and **always before** the app code that
+depends on them:
+
+```bash
+npm run rules:deploy      # firebase deploy --only firestore:rules
+```
 
 ## 🧱 Architecture
 
