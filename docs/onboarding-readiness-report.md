@@ -59,8 +59,78 @@ until the rules are deployed.
 | An account with no organisation reaches none of them | 5 | pass |
 | **Total** | **525** | **525 pass** |
 
-Full suite after the change: **816 / 816** (`npm run test:rules`).
-`npm run build` clean. Chromium E2E: see §5.
+Full suite after the change: **872 / 872** (`npm run test:rules`), which includes
+the 56-assertion deploy rehearsal in §1b. `npm run build` clean. Chromium E2E:
+see §5.
+
+---
+
+## 1b. Rules deploy rehearsal
+
+`tests/rules/deploy-rehearsal.rules.test.mjs` — **56 assertions**. The onboarding
+suite answers "are these rules correct". This one answers the question you have
+to answer the moment before `firebase deploy --only firestore:rules`: **what
+changes for accounts and data that already exist.** That is a comparison, so it
+runs two rulesets — the working tree, and a git snapshot of the last one §10
+records as deployed (`61339dd`) — over a production-shaped fixture, in both
+migration states.
+
+**Reading the live ruleset needs `firebase login` and the Rules API, and this
+session is not authenticated.** The baseline is therefore reconstructed from
+git. Its verdict is "what this diff does", not "what production does" — see
+`tests/rules/fixtures/README.md`.
+
+### Finding: three changes are pending, not one
+
+`git diff 61339dd HEAD -- firestore.rules` is not just the fix from B0. It is:
+
+1. **G7** — an account with no `orgId` resolves to `'~unassigned~'` rather than
+   `'default'`.
+2. **Invite stamping** — `users` create refuses an account with no organisation.
+3. **Identity list scoping** — B0 above.
+
+There is one ruleset and one deploy ([tenant-isolation-spec.md](tenant-isolation-spec.md)
+§4.1), so these ship **together**. B0 cannot be released ahead of G7, and G7 is
+the one that locks accounts out. That coupling was not obvious from the spec,
+which discusses G7's rollout as though it were the only thing outstanding.
+
+### Finding: the lockout is real, bounded, and recoverable
+
+Measured, not estimated. Deploying today, **before** the identity backfill has
+stamped the legacy organisation's accounts:
+
+| | Under the deployed ruleset | Under the pending ruleset |
+|---|---|---|
+| Legacy HR reads `employees`, `attendance`, `payroll_runs`, `jobs`, `assets` | allowed | **denied** |
+| Legacy HR lists those, filtered to its own org | allowed | **denied** |
+| A legacy employee reads them | allowed | **denied** |
+| Legacy HR reads its own `org_settings` | allowed | **denied** |
+| Legacy HR lists its own account directory | allowed | **denied** |
+| Either account reads **its own profile** | allowed | allowed |
+| Either account stamps itself with an org to escape | denied | denied |
+| The second, properly stamped organisation | unaffected | unaffected |
+| A super admin, unfiltered | allowed | allowed |
+
+Two rows carry the whole recovery story. Sign-in survives, because an account
+can always read its own profile — so the lockout presents as an empty app
+rather than a failure to log in. And a super admin keeps unfiltered reach, so
+the backfill that repairs it stays runnable. Without either, the state would be
+unrecoverable from the client.
+
+Run the identity backfill first and the same deploy is a **no-op** for the
+legacy organisation: all of the above go back to allowed, cross-tenant reads
+stay denied, and an unstamped legacy *document* remains readable by its own
+tenant (the data backfill and the identity backfill are separate repairs — a
+document that missed the first is permitted but invisible, not denied).
+
+### Finding: B0's leak is present in production today
+
+Not hypothetical. Under the deployed ruleset the second organisation's HR admin
+**succeeds** at `getDocs(collection(db, 'employee_links'))` and at the same
+call on `role_assignments`, returning every tenant's rows. Under the pending
+ruleset both are denied, while own-org filtered lists, an employee's own
+single-document reads, and the super admin's unfiltered lists all still work —
+so the tightening costs the backfill and sign-in nothing.
 
 ---
 
@@ -246,8 +316,9 @@ across `src/data/roleAssignments.ts`, `src/data/employeeLinks.ts`,
 |---|---|
 | `npm ci` | clean |
 | `npm run build` (`tsc -b && vite build`) | clean |
-| `npm run test:rules` | **816 / 816** |
+| `npm run test:rules` | **872 / 872** |
 | `tests/rules/onboarding.rules.test.mjs` alone | **525 / 525** |
+| `tests/rules/deploy-rehearsal.rules.test.mjs` alone | **56 / 56** |
 | Discrimination: revert the B0 rule fix, re-run | **26 fail** — restored, green |
 | `E2E_BROWSERS=chromium npm run test:e2e`, projects `app`, `role-employee`, `role-manager`, `role-admin` | **92 passed, 1 skipped** |
 
@@ -276,16 +347,28 @@ rules suite is for. `app-firefox` / `app-webkit` need
       own salary and leave. *Blocking.*
 - [ ] **B2** — §10 step 3 corrected to say super-admin-only, and gated in the UI.
       *Blocking for rollout.*
-- [ ] Deploy the rules **before** the app (`firebase deploy --only
-      firestore:rules`). The B0 tightening removes access, so it must land
-      first — and the `accessBackfill` query fix must ship with or before it.
-- [ ] Run the per-organisation backfills for **every** existing organisation.
-      There is no record of which have been done.
-- [ ] **Then** the G7 rules deploy (§10 step 5, still open). Deployed against
-      un-stamped accounts it locks every one of them out. *Largest single risk
-      on the board.*
-- [ ] Audit `users` for documents with no `orgId` and `superAdmin !== true` —
-      each is an account the G7 deploy will lock out.
+**The rules deploy, in this order — the rehearsal in §1b measures what happens
+if it is done in any other.** G7, the invite stamp and the B0 fix are one
+ruleset and land together; there is no sequencing them apart.
+
+- [ ] 1. Ship the **app** change first (already on this branch): the
+      `accessBackfill` query filter. Under the deployed ruleset it is harmless;
+      without it, the B0 tightening breaks the backfill you are about to need.
+- [ ] 2. Audit `users` for every document with no `orgId` and
+      `superAdmin !== true`. That list *is* the set of accounts the deploy
+      locks out. If it is not empty, do not deploy.
+- [ ] 3. Run the identity backfill for **every** organisation — as a super
+      admin switched to each one (B2). Settings → Database → "Backfill
+      organization IDs", dry run then apply. Re-run the audit in step 2 and
+      confirm it is empty.
+- [ ] 4. `firebase deploy --only firestore:rules`. Verify by signing in as a
+      legacy account and loading a data page.
+- [ ] 5. Deploy the app.
+
+If step 4 is done before step 3, the failure mode is measured and bounded:
+every un-stamped account sees an empty application. It is recoverable — sign-in
+still works, and a super admin keeps the reach to run the backfill — but it is
+visible to every user of the legacy organisation until it is.
 - [ ] Audit `organizations` for records with no `adminUid` — a
       `createOrganization` whose rollback also failed.
 - [ ] Organizations → "Review admin roles": confirm no organisation still holds

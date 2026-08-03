@@ -723,6 +723,17 @@ it is reversed.
    Step 3 has been run for the default organisation; any organisation whose
    accounts have not been stamped must be done first.
 
+   **This step is no longer G7 alone.** Two further rules changes have landed
+   since and are unreleased — the invite org-stamp requirement, and the
+   `role_assignments`/`employee_links` list scoping. One ruleset means one
+   deploy: all three ship together, and none of them can be released ahead of
+   G7's lockout. [deploy-rehearsal.rules.test.mjs](../tests/rules/deploy-rehearsal.rules.test.mjs)
+   runs the pending ruleset and the last-deployed one over the same
+   production-shaped fixture and measures the difference in both migration
+   states, so what this step costs if the ordering slips is an assertion rather
+   than a warning. The ordered checklist is in
+   [onboarding-readiness-report.md](onboarding-readiness-report.md) §6.
+
 Step 3 matters for a reason §4 of [multi-tenancy-spec.md](multi-tenancy-spec.md)
 sets out: an un-stamped document is permitted but unreachable. Two new instances
 of that asymmetry ship here — legacy `handbook_versions` carrying `orgId: null`,
