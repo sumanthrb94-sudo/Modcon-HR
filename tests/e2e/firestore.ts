@@ -12,17 +12,33 @@ import { FIREBASE_API_KEY, PERSONAS } from './config';
  * local emulator instead, so a run costs nothing and cannot be rate-limited.
  *
  * The emulator still evaluates `firestore.rules`, so authorization is exercised
- * either way. Two things differ, both deliberate:
- *   - `Bearer owner` bypasses rules, which is how the seeding below writes the
- *     `users/{uid}` documents that the live project already has.
- *   - Auth is not emulated. Sign-in still goes to the live project, so the uids
- *     are the real ones and the personas are the same accounts.
+ * either way. What differs is deliberate: `Bearer owner` bypasses rules, which
+ * is how the seeding below writes the `users/{uid}` documents the live project
+ * already has.
+ *
+ * Auth is emulated on the same terms (`E2E_AUTH_EMULATOR`), so a default run
+ * reaches no live Google service: the accounts, uids and tokens all belong to
+ * the emulator and vanish with it. `E2E_LIVE_FIRESTORE=true` turns both off,
+ * which is the only way to check the deployed ruleset — and the only way to
+ * touch the organisation's real data.
  */
 export const EMULATOR_HOST = process.env.E2E_FIRESTORE_EMULATOR ?? '';
+export const AUTH_EMULATOR_HOST = process.env.E2E_AUTH_EMULATOR ?? '';
 
 export const FIRESTORE_BASE = EMULATOR_HOST
   ? `http://${EMULATOR_HOST}/v1/projects/modcon-hr/databases/(default)/documents`
   : 'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
+
+/**
+ * Identity Toolkit, live or emulated.
+ *
+ * The Auth emulator serves the real REST surface under a prefixed path, so the
+ * same calls work against both and only the base changes. The API key is still
+ * required in the query string and still ignored by the emulator.
+ */
+export const IDENTITY_BASE = AUTH_EMULATOR_HOST
+  ? `http://${AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1`
+  : 'https://identitytoolkit.googleapis.com/v1';
 
 /** Sign in and return the account's ID token and uid, or nulls if refused. */
 export async function signInPersona(
@@ -30,7 +46,7 @@ export async function signInPersona(
   password: string,
 ): Promise<{ idToken: string | null; uid: string | null }> {
   const res = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+    `${IDENTITY_BASE}/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

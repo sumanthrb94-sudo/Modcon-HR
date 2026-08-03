@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'firebase/firestore';
-import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { connectAuthEmulator, getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 
 export const firebaseConfig = {
     apiKey: 'AIzaSyCDTZ1Sc3ajyKE7fKnzDguzoIphn9tDRQU',
@@ -46,6 +46,21 @@ if (firestoreEmulator) {
 }
 
 export const auth = getAuth(firebaseApp);
+
+/**
+ * Point Auth at a local emulator too, on the same opt-in terms as Firestore.
+ *
+ * With both redirected a test run touches no live Google service at all: the
+ * accounts, their uids and their tokens are the emulator's. Build-time only, so
+ * a production bundle carries neither call.
+ *
+ * `disableWarnings` silences the banner the SDK injects into the page — it
+ * overlays the app and the E2E suite clicks through where it sits.
+ */
+const authEmulator = import.meta.env.VITE_AUTH_EMULATOR_HOST;
+if (authEmulator) {
+    connectAuthEmulator(auth, `http://${authEmulator}`, { disableWarnings: true });
+}
 
 /**
  * There is no automatic sign-in. Closing the app signs you out.

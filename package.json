@@ -11,11 +11,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:e2e": "playwright test",
+    "test:e2e": "bash scripts/e2e.sh",
     "lint": "eslint .",
     "rules:deploy": "firebase deploy --only firestore:rules",
     "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project modcon-hr \"node --test --test-concurrency=1 tests/rules/*.test.mjs\"",
-    "test:e2e:emulator": "firebase emulators:exec --only firestore --project modcon-hr \"E2E_FIRESTORE_EMULATOR=127.0.0.1:8080 E2E_ORG_SETTINGS_DEPLOYED=true playwright test --project=org-settings\""
+    "test:e2e:emulator": "firebase emulators:exec --only firestore,auth --project modcon-hr \"E2E_FIRESTORE_EMULATOR=127.0.0.1:8080 E2E_ORG_SETTINGS_DEPLOYED=true playwright test --project=org-settings\"",
+    "test:e2e:live": "E2E_LIVE_FIRESTORE=true playwright test"
   },
   "dependencies": {
     "clsx": "^2.1.1",

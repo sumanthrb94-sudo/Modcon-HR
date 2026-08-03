@@ -114,8 +114,41 @@ const SHARED_CONFIG_SPECS = /(org-settings)\.spec\.ts$/;
  * `E2E_ORG_SETTINGS_LIVE=true`. A plain `npm run test:e2e` cannot dirty the real
  * organisation, because the spec is not in it.
  */
+/**
+ * Firestore is emulated by default. Reaching the live project is opt-in.
+ *
+ * A live run writes to the organisation's real data, and the day this default
+ * changed it had already cost a day: a full matrix run exhausted the project's
+ * daily quota, which then blocked the app itself and stranded four fake leave
+ * policies in the organisation's configuration where every employee could see
+ * them — un-removable precisely because the quota was gone.
+ *
+ * So `E2E_FIRESTORE_EMULATOR` defaults to 127.0.0.1:8080 rather than being
+ * absent, and `E2E_LIVE_FIRESTORE=true` is the deliberate escape hatch for the
+ * one thing an emulator cannot check: that the *deployed* ruleset behaves. The
+ * emulator must be running (`firebase emulators:start`, or
+ * `npm run test:e2e:emulator` which starts its own).
+ *
+ * Auth is emulated on the same terms, so a default run reaches no live Google
+ * service at all — the accounts, uids and tokens are the emulator's.
+ */
+const FIRESTORE_EMULATOR =
+  process.env.E2E_LIVE_FIRESTORE === 'true'
+    ? ''
+    : process.env.E2E_FIRESTORE_EMULATOR ?? '127.0.0.1:8080';
+const AUTH_EMULATOR =
+  process.env.E2E_LIVE_FIRESTORE === 'true'
+    ? ''
+    : process.env.E2E_AUTH_EMULATOR ?? '127.0.0.1:9099';
+// Re-exported so the specs' REST helpers (tests/e2e/firestore.ts) and
+// global-setup resolve the same targets the bundle was built against.
+process.env.E2E_FIRESTORE_EMULATOR = FIRESTORE_EMULATOR;
+process.env.E2E_AUTH_EMULATOR = AUTH_EMULATOR;
+
+// Emulated (the default) or explicitly opted into the live project — either way
+// the run is allowed to write the organisation's shared configuration document.
 const ORG_SETTINGS_ENABLED =
-  Boolean(process.env.E2E_FIRESTORE_EMULATOR) || process.env.E2E_ORG_SETTINGS_LIVE === 'true';
+  Boolean(FIRESTORE_EMULATOR) || process.env.E2E_ORG_SETTINGS_LIVE === 'true';
 // Specs that assert per-persona access control, run once per role project.
 // documents.spec.ts belongs here rather than with the app specs: what it checks
 // is which controls a given role is offered, which is meaningless without a
@@ -176,7 +209,9 @@ export default defineConfig({
     // to the emulator instead of the live project — see src/lib/firebase.ts and
     // `npm run test:e2e:emulator`. Absent, the build is unchanged.
     command: `VITE_ENABLE_E2E_ACCOUNTS=true ${
-      process.env.E2E_FIRESTORE_EMULATOR ? `VITE_FIRESTORE_EMULATOR_HOST=${process.env.E2E_FIRESTORE_EMULATOR} ` : ''
+      FIRESTORE_EMULATOR ? `VITE_FIRESTORE_EMULATOR_HOST=${FIRESTORE_EMULATOR} ` : ''
+    }${
+      AUTH_EMULATOR ? `VITE_AUTH_EMULATOR_HOST=${AUTH_EMULATOR} ` : ''
     }npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,

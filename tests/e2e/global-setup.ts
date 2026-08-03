@@ -1,12 +1,12 @@
 import { FIREBASE_API_KEY, PERSONAS } from './config';
-import { EMULATOR_HOST, seedPersonaProfiles } from './firestore';
+import { EMULATOR_HOST, IDENTITY_BASE, seedPersonaProfiles } from './firestore';
 
 /**
  * Ensure every dedicated E2E test account exists in Firebase Auth before the
  * suite runs. Idempotent: accounts that already exist are left as-is.
  */
 async function provision(email: string, password: string) {
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`;
+  const url = `${IDENTITY_BASE}/accounts:signUp?key=${FIREBASE_API_KEY}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
