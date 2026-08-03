@@ -98,6 +98,24 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * engine.
  */
 const SHARED_CONFIG_SPECS = /(org-settings)\.spec\.ts$/;
+
+/**
+ * …and they do not run against the live project by default.
+ *
+ * Every run of this spec adds leave policies to the organisation's real
+ * configuration and deletes them again afterwards. When the afterAll cannot
+ * complete — a Ctrl-C, a refused sign-in, an exhausted quota — the fakes stay,
+ * and an administrator opens Settings to find "E2E Isolation Leave 1785742888407"
+ * offered to every employee. That happened twice in one day.
+ *
+ * So the project only exists when the run is pointed at an emulator
+ * (`E2E_FIRESTORE_EMULATOR`, which is what `npm run test:e2e:emulator` sets), or
+ * when someone deliberately opts into the live project with
+ * `E2E_ORG_SETTINGS_LIVE=true`. A plain `npm run test:e2e` cannot dirty the real
+ * organisation, because the spec is not in it.
+ */
+const ORG_SETTINGS_ENABLED =
+  Boolean(process.env.E2E_FIRESTORE_EMULATOR) || process.env.E2E_ORG_SETTINGS_LIVE === 'true';
 // Specs that assert per-persona access control, run once per role project.
 // documents.spec.ts belongs here rather than with the app specs: what it checks
 // is which controls a given role is offered, which is meaningless without a
@@ -123,12 +141,15 @@ export default defineConfig({
       testMatch: APP_SPECS,
       use: useFor(engine),
     })),
-    {
-      // One engine, one worker's worth of writers against the shared document.
-      name: 'org-settings',
-      testMatch: SHARED_CONFIG_SPECS,
-      use: useFor(ROLE_ENGINE),
-    },
+    // One engine, one worker's worth of writers against the shared document —
+    // and only when the run is allowed to touch it at all (see above).
+    ...(ORG_SETTINGS_ENABLED
+      ? [{
+          name: 'org-settings',
+          testMatch: SHARED_CONFIG_SPECS,
+          use: useFor(ROLE_ENGINE),
+        }]
+      : []),
     {
       name: 'role-employee',
       testMatch: ROLE_SPECS,
