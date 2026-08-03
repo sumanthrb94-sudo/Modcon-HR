@@ -346,8 +346,21 @@ service cloud.firestore {
       // enumerate every colleague's address and pending role. The server-side
       // get() in assignedRoleFor() is unaffected by this — rule evaluation is
       // not subject to the caller's read permission.
-      allow read: if isOrgAdmin() ||
-        (isSignedIn() && emailId == request.auth.token.email.lower());
+      //
+      // Split get/list and org-scoped, which a single `allow read: if
+      // isOrgAdmin() || ...` was not. `isOrgAdmin()` never dereferences
+      // `resource`, so it held for a *list* regardless of which organisation
+      // the returned documents belonged to — the HR admin of any tenant could
+      // enumerate every tenant's addresses, pending roles and orgIds. That is
+      // exactly what I2 in docs/tenant-isolation-spec.md forbids.
+      //
+      // The self branch is first on purpose: `inMyOrg()` reads
+      // `resource.data`, and a `get` on a document that does not exist has no
+      // `resource`, so evaluating it first would deny a signed-in user the
+      // read of their own (not yet written) assignment.
+      allow get: if (isSignedIn() && emailId == request.auth.token.email.lower()) ||
+        (isOrgAdmin() && inMyOrg());
+      allow list: if isOrgAdmin() && inMyOrg();
       allow create, update: if isOrgAdmin() &&
         request.resource.data.role in ['hr', 'manager', 'employee'] &&
         // The document id is the email, so an assignment can never be filed
@@ -377,7 +390,15 @@ service cloud.firestore {
       // Your own link (so a client can resolve its own employeeId), or an
       // administrator's. Not isSignedIn(): the collection maps every colleague
       // to their employee record, and that is not a directory to hand out.
-      allow read: if isOrgAdmin() || (isSignedIn() && uid == request.auth.uid);
+      //
+      // Org-scoped and split get/list, for the reason spelled out on
+      // role_assignments above: as a single `read` rule, `isOrgAdmin()` alone
+      // satisfied a *list*, so any tenant's HR admin could read every tenant's
+      // uid -> employeeId mapping — the access-mapping plane in full. Self
+      // branch first, so a missing link still evaluates.
+      allow get: if (isSignedIn() && uid == request.auth.uid) ||
+        (isOrgAdmin() && inMyOrg());
+      allow list: if isOrgAdmin() && inMyOrg();
       // Self-linking by an administrator is deliberately allowed: a link only
       // ever grants reads of one employee's own salary and leave, and an
       // administrator already reads every record in the org, so it escalates

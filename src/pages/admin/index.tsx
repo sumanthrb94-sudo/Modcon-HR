@@ -170,16 +170,18 @@ export function AdminDashboardPage() {
     const { data: allPayrollRuns } = usePayrollRuns();
     const { data: allExpenses } = useExpenses();
 
-    // These Firestore collections (users aside) have no orgId field at all —
-    // they structurally belong to the default/legacy org only. A non-default
-    // org's admin doesn't own that data, so it renders empty for them rather
-    // than showing the default org's real numbers. Super admins and the
-    // default org's own admins see everything, unchanged.
-    const isDefaultOrgViewer = isSuperAdmin || !profile?.orgId;
-    const employees = isDefaultOrgViewer ? allEmployees : [];
-    const jobs = isDefaultOrgViewer ? allJobs : [];
-    const payrollRuns = isDefaultOrgViewer ? allPayrollRuns : [];
-    const expenses = isDefaultOrgViewer ? allExpenses : [];
+    // These hooks are already tenant-scoped: useCollection injects
+    // `where('orgId','==',orgKey)` from the caller's own profile
+    // (src/lib/useFirestore.ts), and the seed stamps every document it writes
+    // (src/lib/seed.ts). They used to be blanked for any org other than the
+    // default one, on the since-outdated grounds that these collections carried
+    // no orgId at all — which meant a properly onboarded organisation was shown
+    // zeros for its own real data. The hook's filter is the mechanism the rest
+    // of the app trusts; trust it here too.
+    const employees = allEmployees;
+    const jobs = allJobs;
+    const payrollRuns = allPayrollRuns;
+    const expenses = allExpenses;
     const users = useMemo(
         () => (isSuperAdmin ? allUsers : allUsers.filter((u) => (u.orgId ?? undefined) === profile?.orgId)),
         [allUsers, isSuperAdmin, profile?.orgId],

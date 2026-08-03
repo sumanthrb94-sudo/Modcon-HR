@@ -83,7 +83,16 @@ export async function backfillEmployeeLinks(options: {
       ? getDocs(collection(db, 'users'))
       : getDocs(query(collection(db, 'users'), where('orgId', '==', orgKey))),
     getDocs(query(collection(db, 'employees'), where('orgId', '==', orgKey))),
-    getDocs(collection(db, 'employee_links')),
+    // Filtered on the same terms as `users` above, and for the same reason: the
+    // links of a real organisation carry `orgId`, while the legacy org's may
+    // predate the stamp entirely and match no equality filter. This used to be
+    // an unfiltered read of the whole collection — which the rules permitted,
+    // so any organisation's HR admin could enumerate every tenant's
+    // uid -> employeeId mapping. That read is org-scoped now
+    // (firestore.rules /employee_links), so this query must be too.
+    orgKey === DEFAULT_ORG_KEY
+      ? getDocs(collection(db, 'employee_links'))
+      : getDocs(query(collection(db, 'employee_links'), where('orgId', '==', orgKey))),
   ]);
 
   const existingLinks = new Set(linkSnap.docs.map((d) => d.id));

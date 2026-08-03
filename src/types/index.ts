@@ -256,10 +256,17 @@ export interface ExpenseClaim {
   id: ID;
   employeeId: ID;
   // Firebase Auth uid of whoever created this claim. Distinct from
-  // `employeeId` (which is the mock HR employee id, e.g. "emp-003") — this
-  // is what Firestore security rules check to let a user manage their own
-  // claim, since employeeId never equals request.auth.uid.
+  // `employeeId` (which is the mock HR employee id, e.g. "emp-003"), which
+  // never equals request.auth.uid.
+  //
+  // Note the rules do NOT read this field today: `firestore.rules` still
+  // compares `resource.data.employeeId == request.auth.uid`, a test that can
+  // never be true, so only a manager can update a claim. Recorded rather than
+  // fixed here — see the report accompanying this change.
   ownerUid?: string;
+  /** Owning organisation. Required: an unstamped claim is invisible to every
+   *  org-filtered query, and denied outright for a non-default tenant. */
+  orgId?: string;
   title: string;
   category: ExpenseCategory;
   amount: number;

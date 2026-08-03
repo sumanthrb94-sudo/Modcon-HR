@@ -395,6 +395,21 @@ Cases added to satisfy §2 as written, all now present:
 | I4 | HR of B cannot move an account into A by writing `orgId` | `multitenancy.rules.test.mjs` |
 | I5 | a link naming an employee of A, written by HR of B, is denied | `multitenancy.rules.test.mjs` |
 | I8→config | configuration survives a browser that has never seen it | `org-settings.spec.ts` (deploy-gated, §8) |
+| I2 | HR of B cannot **list** `employee_links` or `role_assignments` | `onboarding.rules.test.mjs` |
+
+**One obligation the matrix above cannot discharge**, added in
+[onboarding.rules.test.mjs](../tests/rules/onboarding.rules.test.mjs): every
+suite here starts from tenants written with the rules disabled — fixtures that
+simply *exist*. That answers "is the ruleset correct once two tenants are
+populated" and leaves "can a second organisation be **onboarded** at all"
+untested, which is how a `read` rule that was never org-scoped on `list`
+survived (see the I2 row above: every prior case on those two collections was a
+*write* case). The onboarding suite provisions three organisations in order,
+issuing every write **through the rules as the principal who issues it in the
+app**, so a provisioning step the rules would refuse fails the suite. Three
+rather than two, because with two tenants "mine" and "not mine" are the same
+partition, and a rule leaking to exactly one other tenant is indistinguishable
+from one leaking to all of them.
 
 One shape is worth copying rather than rediscovering: a rule that reads
 `resource.data` denies a `get` on a document that does **not exist**, because
@@ -688,6 +703,17 @@ it is reversed.
    browser holding the good copy of that organisation's configuration — it
    publishes what is local, and never overwrites what another administrator
    already published.
+
+   **Run it as a super admin switched to that organisation, not as the
+   organisation's own HR admin.** `backfillOrgIds` reads each collection
+   unfiltered ([orgBackfill.ts:95](../src/lib/orgBackfill.ts#L95)) — it has to,
+   because an equality filter matches neither a missing `orgId` nor a null one,
+   which is the whole condition it exists to repair. Once a second organisation
+   has data that read is denied for anyone who is not a platform or super
+   admin, and what an HR admin sees is a per-collection `⚠️` line that the UI
+   presents as a completed run. The code comment at
+   [orgBackfill.ts:16-19](../src/lib/orgBackfill.ts#L16) has always said this;
+   this step did not, and step 5 below is gated on it having genuinely run.
 4. ~~**Run the deploy-gated E2E test.**~~ **Done** — passing with
    `E2E_ORG_SETTINGS_DEPLOYED=true` against the deployed rules.
 5. **Deploy the rules again for G7, and only after step 3.** This is a hard

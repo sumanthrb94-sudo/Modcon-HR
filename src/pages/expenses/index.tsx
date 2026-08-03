@@ -54,6 +54,7 @@ import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { Collections, patch, upsert } from '@/lib/db';
 import { useExpenses } from '@/lib/useFirestore';
+import { getActiveOrgKey } from '@/lib/orgScope';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { currentMonthIso, todayIso } from '@/lib/today';
 
@@ -750,11 +751,20 @@ export function ExpensesPage() {
   }, [liveExpenses, liveLoading]);
 
   // ----- Actions -----
-  // Firestore rules require `ownerUid` to equal the signed-in user's uid on
-  // create, and use it (not `employeeId`, which is the mock HR id) to decide
-  // who may later update this doc — see firestore.rules for why.
+  // Two stamps, for two different reasons.
+  //
+  // `orgId` is what makes the write legal at all: `writingToMyOrg()` reads a
+  // claim carrying no orgId as the default organisation, so every other
+  // tenant's claim was denied — and the default tenant's was written but then
+  // dropped by `useExpenses()`'s own `where('orgId','==',…)` filter. Both
+  // failures were invisible, because the only handling is a console.error.
+  //
+  // `ownerUid` records who created the claim, since `employeeId` is the mock HR
+  // id and never equals request.auth.uid. It is not consulted by the deployed
+  // rules — see the note on ExpenseClaim.ownerUid.
   function withOwner(claim: ExpenseClaim): ExpenseClaim {
-    return profile ? { ...claim, ownerUid: profile.uid } : claim;
+    const orgId = getActiveOrgKey();
+    return profile ? { ...claim, ownerUid: profile.uid, orgId } : { ...claim, orgId };
   }
 
   async function handleAddClaim(claim: ExpenseClaim) {

@@ -217,7 +217,10 @@ export function OrganizationsPage() {
 
     function copyCredentials() {
         if (!result) return;
-        const text = `Organization: ${result.adminEmail}\nEmail: ${result.adminEmail}\nTemporary password: ${result.tempPassword}`;
+        // The first line is the organisation's name — it used to repeat the
+        // admin email, so the credentials handed to a new administrator never
+        // said which organisation they administered.
+        const text = `Organization: ${orgName}\nEmail: ${result.adminEmail}\nTemporary password: ${result.tempPassword}`;
         void navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
