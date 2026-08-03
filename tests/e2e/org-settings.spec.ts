@@ -235,12 +235,22 @@ test.describe.serial('organisation configuration', () => {
       // sleeping a guessed interval: a fixed wait is either flaky on a slow
       // network or slower than it needs to be on a fast one. A read that fails
       // outright keeps polling — absent evidence is not evidence of deletion.
+      // 'unreadable' rather than a bare true, so a quota-exhausted or
+      // otherwise unreachable project says so instead of being reported as a
+      // delete that never landed — which is how a 429 first presented.
       await expect
-        .poll(async () => (await publishedPolicyTypes())?.includes(unique) ?? true, {
-          message: 'the delete never reached the organisation\'s Firestore copy',
-          timeout: 15_000,
-        })
-        .toBe(false);
+        .poll(
+          async () => {
+            const published = await publishedPolicyTypes();
+            if (!published) return 'unreadable';
+            return published.includes(unique) ? 'still there' : 'gone';
+          },
+          {
+            message: 'the delete never reached the organisation\'s Firestore copy',
+            timeout: 15_000,
+          },
+        )
+        .toBe('gone');
       await page.reload();
       await openSettingsSection(page, 'Leave Policies');
       await expect(page.getByText(unique)).toHaveCount(0);

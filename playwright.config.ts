@@ -73,16 +73,38 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|org-settings|provisioning|password-reset|no-auto-signin)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin)\.spec\.ts$/;
+
+/**
+ * Specs that write the organisation's *shared* configuration document.
+ *
+ * These should not run once per engine, for two reasons.
+ *
+ * `org_settings/default__leavePolicies` holds the whole policy list in one
+ * field, so every save is a whole-document write: three engines running this
+ * spec concurrently are three writers doing read-modify-write on one array,
+ * and the last one wins.
+ *
+ * And it triples the traffic against a live Firebase project that has a daily
+ * quota. A full three-engine matrix failed this spec on all three engines with
+ * "the delete never reached the organisation's Firestore copy", and a plain
+ * REST GET of the document straight afterwards answered
+ * `429 RESOURCE_EXHAUSTED` — so the publishes were being refused for quota,
+ * not (or not only) losing a race. Either way the spec belongs on one engine.
+ *
+ * Running once is not a loss of coverage: what this spec asserts is server
+ * behaviour — that configuration outlives the browser it was written in — which
+ * is identical across engines, the same argument that keeps ROLE_SPECS on one
+ * engine.
+ */
+const SHARED_CONFIG_SPECS = /(org-settings)\.spec\.ts$/;
 // Specs that assert per-persona access control, run once per role project.
 // documents.spec.ts belongs here rather than with the app specs: what it checks
 // is which controls a given role is offered, which is meaningless without a
 // persona and identical across browser engines.
 // org-settings.spec.ts signs in as the admin persona itself rather than
-// taking one from project metadata, and what it asserts — that
-// configuration outlives the browser it was written in — is server
-// behaviour, identical across engines and personas. So it runs once,
-// with the app specs, not per role.
+// taking one from project metadata, so it does not belong here either — it
+// has its own single project, see SHARED_CONFIG_SPECS above.
 const ROLE_SPECS = /(roles|documents|leave-policy)\.spec\.ts$/;
 
 export default defineConfig({
@@ -101,6 +123,12 @@ export default defineConfig({
       testMatch: APP_SPECS,
       use: useFor(engine),
     })),
+    {
+      // One engine, one worker's worth of writers against the shared document.
+      name: 'org-settings',
+      testMatch: SHARED_CONFIG_SPECS,
+      use: useFor(ROLE_ENGINE),
+    },
     {
       name: 'role-employee',
       testMatch: ROLE_SPECS,
