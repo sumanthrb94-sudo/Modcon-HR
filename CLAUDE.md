@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ModCon HR is a modern HRMS single-page app (React + TypeScript + Vite + Tailwind), backed by Firebase (Auth + Firestore) and hosted on Vercel. **Firebase is backend and database only — never the host.** Firebase Hosting is not used and `firebase deploy --only hosting` must not be run.
+ModCon HR is a modern HRMS single-page app (React + TypeScript + Vite + Tailwind), backed by Firebase (Auth + Firestore) and hosted on Vercel at `modcon-hr.vercel.app`. **Firebase is backend and database only — never the host.** Firebase Hosting is not used and `firebase deploy --only hosting` must not be run.
 
 ## Commands
 
