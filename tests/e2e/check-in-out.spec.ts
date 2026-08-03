@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
+import { istDay, istToday } from './clock';
 
 /**
  * Check in, check out, and what the captured times then drive.
@@ -20,34 +21,10 @@ const PERSONA = PERSONAS.admin;
 /** Matches the LATE_AFTER constant the app derives lateness from. */
 const LATE_AFTER = '09:15';
 
-/**
- * A fixed instant at `HH:mm` IST on today's date.
- *
- * Built from today rather than a pinned date so the suite does not quietly
- * start simulating a day in the past. IST is UTC+5:30 year-round.
- */
-function istToday(time: string): Date {
-  return istDay(0, time);
-}
-
-/** A fixed instant at `HH:mm` IST, `offsetDays` from today. */
-function istDay(offsetDays: number, time: string): Date {
-  const date = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-  const shifted = new Date(`${date}T00:00:00+05:30`);
-  shifted.setUTCDate(shifted.getUTCDate() + offsetDays);
-  const iso = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(shifted);
-  return new Date(`${iso}T${time}:00+05:30`);
-}
+// The clock is anchored on a working day rather than on the wall-clock date —
+// see tests/e2e/clock.ts. The late-arrival test below asserts the stamp reaches
+// the regularization queue, and this page's subject is the first seed employee,
+// who is rostered off on Mondays.
 
 async function login(page: Page) {
   await page.goto('/login');

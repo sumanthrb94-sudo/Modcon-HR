@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { PERSONAS } from './config';
+import { istToday } from './clock';
 
 /**
  * Attendance → Regularizations → Approvals, end to end.
@@ -114,6 +115,10 @@ test.describe.serial('regularizations derive from attendance', () => {
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
+    // Anchored on a working day, not the wall clock: these tests mark the day
+    // and expect it flagged, and a record on the subject's own week-off is
+    // deliberately never flagged. See tests/e2e/clock.ts.
+    await page.clock.setFixedTime(istToday('10:00'));
     await login(page);
     people = await employeeLabels(page, 3);
     await resetRegularizationStore(page);
@@ -182,6 +187,9 @@ test.describe.serial('deciding a regularization', () => {
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
+    // Same anchor as the block above — the request raised here is against the
+    // day just marked, so it has to be a day the subject actually works.
+    await page.clock.setFixedTime(istToday('10:00'));
     await login(page);
     person = (await employeeLabels(page, 1))[0];
     today = await todayValue(page);
