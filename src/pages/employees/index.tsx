@@ -1619,10 +1619,41 @@ function docStatusTone(s: DocStatus): 'green' | 'amber' | 'red' {
   return 'red';
 }
 
+/**
+ * Who may upload into each section.
+ *
+ * Primary documents are the employee's own identity and bank records — Aadhaar,
+ * PAN, account details. They are submitted by the person they belong to, or by
+ * HR on their behalf; an administrator uploading somebody else's identity
+ * document is not a workflow this company has. "Employee" means the owner of
+ * the record whatever their role, so a manager can still submit their own PAN.
+ *
+ * Secondary documents are the organisation's paperwork about the employee, so
+ * they are the other way round: administrators and HR file them, and the
+ * employee does not.
+ *
+ * This decides what the page offers. It is not a security boundary and cannot
+ * be: the document library lives in localStorage (see data/documents.ts), so
+ * there is no server to refuse the write. When it moves to Firestore this must
+ * be restated in firestore.rules, which is where a rule of this kind belongs.
+ */
+function canUploadDocuments(
+  category: DocumentUploadCategory,
+  role: ReturnType<typeof resolveAppRole>,
+  isOwnRecord: boolean,
+): boolean {
+  if (role === 'HR Manager') return true;
+  return category === 'primary' ? isOwnRecord : role === 'Admin';
+}
+
 function DocumentsTab({ employeeId }: { employeeId: string }) {
   const { profile } = useAuth();
   const documents = useEmployeeDocumentLibrary(employeeId);
   const canEditStatus = profile?.role === 'admin';
+  const viewerRole = resolveAppRole(profile);
+  const isOwnRecord = getCurrentEmployee(profile)?.id === employeeId;
+  const canUploadPrimary = canUploadDocuments('primary', viewerRole, isOwnRecord);
+  const canUploadSecondary = canUploadDocuments('secondary', viewerRole, isOwnRecord);
   const primaryDocuments = documents.filter((document) => PRIMARY_DOCUMENT_NAMES.has(document.name.trim().toLowerCase()));
   const secondaryDocuments = documents.filter((document) => !PRIMARY_DOCUMENT_NAMES.has(document.name.trim().toLowerCase()));
   const [uploadCategory, setUploadCategory] = useState<DocumentUploadCategory>('primary');
@@ -1674,6 +1705,16 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
   }
 
   async function handleUploadSubmit() {
+    // Re-checked here as well as at render: the section's button is hidden for
+    // anyone who may not upload, and a hidden control is not a closed one.
+    if (!canUploadDocuments(uploadCategory, viewerRole, isOwnRecord)) {
+      setUploadError(
+        uploadCategory === 'primary'
+          ? 'Primary documents are uploaded by the employee themselves or by HR.'
+          : 'Secondary documents are uploaded by an administrator or by HR.',
+      );
+      return;
+    }
     if (!selectedUploadFile) {
       setUploadError('Select a file to upload.');
       return;
@@ -1770,6 +1811,9 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
     emptyMessage: string,
     uploadButtonLabel: string,
     uploadButtonAction: () => void,
+    canUpload: boolean,
+    /** Who may upload here, shown in place of the button to whoever may not. */
+    uploaderNote: string,
   ) {
     return (
       <div className="space-y-3">
@@ -1780,9 +1824,16 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
           </div>
           <div className="flex items-center gap-2 self-start">
             <Badge tone={requirementTone}>{requirementLabel}</Badge>
-            <Button variant="secondary" size="sm" onClick={uploadButtonAction}>
-              {uploadButtonLabel}
-            </Button>
+            {/* Not rendered at all rather than disabled: a greyed-out button
+                invites someone to ask why it is greyed out, where a sentence
+                naming who does upload here answers it. */}
+            {canUpload ? (
+              <Button variant="secondary" size="sm" onClick={uploadButtonAction}>
+                {uploadButtonLabel}
+              </Button>
+            ) : (
+              <span className="text-xs text-ink-400 max-w-[15rem] sm:text-right">{uploaderNote}</span>
+            )}
           </div>
         </div>
         <Table
@@ -1813,6 +1864,8 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
           'Primary documents pending upload',
           'Upload Compulsory',
           () => openUploadModal('primary'),
+          canUploadPrimary,
+          'Uploaded by the employee themselves or by HR.',
         )}
         {renderDocumentSection(
           'Secondary Documents',
@@ -1823,6 +1876,8 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
           'No secondary documents uploaded',
           'Upload Optional',
           () => openUploadModal('secondary'),
+          canUploadSecondary,
+          'Uploaded by an administrator or by HR.',
         )}
       </div>
       <Modal

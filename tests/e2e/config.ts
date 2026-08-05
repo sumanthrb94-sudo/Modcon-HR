@@ -11,6 +11,25 @@ export const FIREBASE_API_KEY =
 export type Role = 'employee' | 'manager' | 'admin';
 
 /**
+ * The HR persona, kept apart from PERSONAS for the same reason as SUPER_ADMIN:
+ * the three role projects exist to check access control per role, and adding a
+ * fourth would run every role spec again for a role they were not written
+ * about.
+ *
+ * `hr` is not granted by an email allow-list the way admin and manager are for
+ * tests — the role is read from the stored profile — so seeding
+ * `users/{uid}.role = 'hr'` is the whole of it, and the sign-in upsert
+ * re-affirms what it finds.
+ */
+export const HR_PERSONA = {
+  role: 'hr' as const,
+  email: process.env.E2E_HR_EMAIL ?? 'playwright-e2e-hr@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright HR',
+  roleLabel: 'HR Manager',
+};
+
+/**
  * The cross-organisation persona, kept apart from PERSONAS.
  *
  * PERSONAS drives the three role projects, and a super admin is not a fourth
