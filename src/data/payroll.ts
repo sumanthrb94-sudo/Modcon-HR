@@ -10,10 +10,24 @@ import { getAttendanceRecords } from '@/data/attendance';
 // Salary component builder
 // ---------------------------------------------------------------------------
 
+/**
+ * Flat monthly allowances, the same rupee figure for everyone.
+ *
+ * Unlike Basic and HRA these are not a share of CTC — they are fixed amounts
+ * the organisation pays, so they do not scale with salary and the percentage
+ * shown beside them on the compensation tab falls out of the amount rather
+ * than being a rule anyone typed.
+ */
+export const MEDICAL_ALLOWANCE = 1492;
+export const CONVENIENCE_ALLOWANCE = 1492;
+
 export interface PayslipComponents {
   monthly: number;
   basic: number;
   hra: number;
+  medicalAllowance: number;
+  convenienceAllowance: number;
+  /** Whatever is left of the monthly gross after the four components above. */
   specialAllowance: number;
   bonus: number;
   pf: number;
@@ -84,11 +98,26 @@ export function buildPayslipComponents(
   month: string = currentMonthIso(),
 ): PayslipComponents {
   const monthly = Math.round(employee.ctc / 12);
-  const basic = Math.round(monthly * 0.4);
-  const hra = Math.round(monthly * 0.2);
-  const specialAllowance = monthly - basic - hra;
+  const basic = Math.round(monthly * 0.5);
+  const hra = Math.round(monthly * 0.25);
+
+  // The two flat allowances are paid out of what is left after Basic and HRA,
+  // and are capped by it. Without the cap a low enough CTC produces a negative
+  // Special Allowance: the fixed ₹2,984 exceeds the remaining quarter of the
+  // monthly gross below ₹1,43,232 a year, and the breakdown would then show a
+  // negative row and a gross that no longer equals CTC ÷ 12.
+  const afterPercentages = Math.max(0, monthly - basic - hra);
+  const medicalAllowance = Math.min(MEDICAL_ALLOWANCE, afterPercentages);
+  const convenienceAllowance = Math.min(
+    CONVENIENCE_ALLOWANCE,
+    afterPercentages - medicalAllowance,
+  );
+  // The remainder, so the components always sum to the monthly gross exactly —
+  // including the rupee or two that rounding Basic and HRA leaves behind.
+  const specialAllowance = afterPercentages - medicalAllowance - convenienceAllowance;
   const bonus = 0; // no bonus in regular month
-  const grossEarnings = basic + hra + specialAllowance + bonus;
+  const grossEarnings =
+    basic + hra + medicalAllowance + convenienceAllowance + specialAllowance + bonus;
 
   // Deductions derive exclusively from attendance, by policy. PF, income tax
   // and the high-CTC levy are therefore not withheld, and are reported as zero
@@ -110,7 +139,7 @@ export function buildPayslipComponents(
   const netPay = grossEarnings - totalDeductions;
 
   return {
-    monthly, basic, hra, specialAllowance, bonus,
+    monthly, basic, hra, medicalAllowance, convenienceAllowance, specialAllowance, bonus,
     pf, tax, otherDeductions, lossOfPay, lopDays, payableDays,
     grossEarnings, totalDeductions, netPay,
   };
@@ -124,6 +153,8 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     month,
     basic: c.basic,
     hra: c.hra,
+    medicalAllowance: c.medicalAllowance,
+    convenienceAllowance: c.convenienceAllowance,
     specialAllowance: c.specialAllowance,
     bonus: c.bonus,
     pf: c.pf,

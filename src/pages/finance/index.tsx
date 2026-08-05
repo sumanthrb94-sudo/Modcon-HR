@@ -135,6 +135,10 @@ function EmployeeFinancePage() {
       writeLine('Salary Structure', { bold: true, size: 11 });
       writeLine(`Basic Salary: ${formatINR(payslip.basic)}`);
       writeLine(`House Rent Allowance: ${formatINR(payslip.hra)}`);
+      // Nullish rather than truthy: a stored payslip from before these existed
+      // has no field at all, and a legitimate zero must still print as ₹0.
+      writeLine(`Medical Allowance: ${formatINR(payslip.medicalAllowance ?? 0)}`);
+      writeLine(`Convenience Allowance: ${formatINR(payslip.convenienceAllowance ?? 0)}`);
       writeLine(`Special Allowance: ${formatINR(payslip.specialAllowance)}`);
       writeLine(`Bonus: ${formatINR(payslip.bonus)}`);
       writeLine(`Gross Earnings: ${formatINR(payslip.grossEarnings)}`, { bold: true });
@@ -300,6 +304,8 @@ function EmployeeFinancePage() {
             {[
               { label: 'Basic Salary', value: salary.basic },
               { label: 'House Rent Allowance', value: salary.hra },
+              { label: 'Medical Allowance', value: salary.medicalAllowance },
+              { label: 'Convenience Allowance', value: salary.convenienceAllowance },
               { label: 'Special Allowance', value: salary.specialAllowance },
               { label: 'Bonus', value: salary.bonus },
             ].map((item) => (

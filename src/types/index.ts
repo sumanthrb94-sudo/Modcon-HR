@@ -165,6 +165,13 @@ export interface Payslip {
   month: string; // e.g. "2026-05"
   basic: number;
   hra: number;
+  /**
+   * Flat monthly allowances — see MEDICAL_ALLOWANCE / CONVENIENCE_ALLOWANCE in
+   * src/data/payroll.ts. Optional because payslip documents written before
+   * these existed carry neither, and a stored payslip is never rewritten.
+   */
+  medicalAllowance?: number;
+  convenienceAllowance?: number;
   specialAllowance: number;
   bonus: number;
   pf: number; // deduction
