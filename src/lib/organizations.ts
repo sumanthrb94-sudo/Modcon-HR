@@ -9,7 +9,7 @@
  * — this keeps the super admin's own session on the primary `auth` intact.
  */
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
+import { connectAuthEmulator, getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { ADMIN_EMAILS } from './auth';
@@ -58,6 +58,15 @@ export async function createOrganization(
 
     const secondaryApp = initializeApp(firebaseConfig, `org-provision-${orgId}`);
     const secondaryAuth = getAuth(secondaryApp);
+    // The primary auth instance is pointed at the emulator in src/lib/firebase.ts
+    // when VITE_AUTH_EMULATOR_HOST is set; this one is created here and knows
+    // nothing about that. Without this line an emulated run mints the new
+    // organisation's administrator on **live** Firebase Auth — a real account,
+    // on the production project, created by a test.
+    const authEmulator = import.meta.env.VITE_AUTH_EMULATOR_HOST;
+    if (authEmulator) {
+        connectAuthEmulator(secondaryAuth, `http://${authEmulator}`, { disableWarnings: true });
+    }
 
     try {
         const cred = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);

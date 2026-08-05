@@ -44,12 +44,23 @@ import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees'
 const E2E_ACCOUNTS_ENABLED = import.meta.env.VITE_ENABLE_E2E_ACCOUNTS === 'true';
 const E2E_ADMIN_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-admin@modcon-hr.test'] : [];
 const E2E_MANAGER_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-manager@modcon-hr.test'] : [];
+// The one persona that can act across organisations, so the suite can prove a
+// second organisation sees none of the first's configuration. It is a platform
+// admin as well, because every super admin is (see SUPER_ADMIN_EMAILS below).
+//
+// The rules keep their own hard-coded list (`fixedSuperAdminEmails` in
+// firestore.rules) and this email is not in it — deliberately. A self-write may
+// only re-affirm the flag a document already carries, so the seeded profile in
+// tests/e2e/firestore.ts is what makes this account a super admin, and no build
+// of the app can promote itself into one.
+const E2E_SUPER_ADMIN_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-super@modcon-hr.test'] : [];
 
 export const ADMIN_EMAILS = [
     'sumanthbolla97@gmail.com',
     'saikrishnakoppaka@gmail.com',
     'info@modconbuilders.com',
     ...E2E_ADMIN_EMAILS,
+    ...E2E_SUPER_ADMIN_EMAILS,
 ].map((e) => e.toLowerCase());
 
 // Emails that are always granted the `manager` role on sign-in.
@@ -62,6 +73,7 @@ export const MANAGER_EMAILS = [
 // src/pages/organizations) and are not scoped to any single `orgId`.
 export const SUPER_ADMIN_EMAILS = [
     'saikrishnakoppaka@gmail.com',
+    ...E2E_SUPER_ADMIN_EMAILS,
 ].map((e) => e.toLowerCase());
 
 /**

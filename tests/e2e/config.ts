@@ -10,6 +10,29 @@ export const FIREBASE_API_KEY =
 
 export type Role = 'employee' | 'manager' | 'admin';
 
+/**
+ * The cross-organisation persona, kept apart from PERSONAS.
+ *
+ * PERSONAS drives the three role projects, and a super admin is not a fourth
+ * role to check access control for — it is the only account that can create a
+ * second organisation and switch between them, which is what
+ * org-isolation.spec.ts needs and nothing else does.
+ *
+ * Its `superAdmin: true` cannot come from signing in: firestore.rules only lets
+ * a self-write re-affirm the flag a profile already carries, and its
+ * hard-coded list does not contain this address. `seedPersonaProfiles` writes
+ * it with the emulator's owner bypass, exactly as the real super admin's
+ * profile was created.
+ */
+export const SUPER_ADMIN = {
+  role: 'admin' as const,
+  email: process.env.E2E_SUPER_ADMIN_EMAIL ?? 'playwright-e2e-super@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Super Admin',
+  roleLabel: 'Administrator',
+  superAdmin: true as const,
+};
+
 export interface Persona {
   role: Role;
   email: string;
