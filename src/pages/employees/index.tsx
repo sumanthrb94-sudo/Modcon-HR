@@ -1449,28 +1449,41 @@ function TeamTab({ emp, embeddedSelfView = false }: { emp: Employee; embeddedSel
 // ---------------------------------------------------------------------------
 // Compensation Tab
 // ---------------------------------------------------------------------------
-const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b'];
+const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#a855f7'];
 
 function CompensationTab({ emp }: { emp: Employee }) {
   const annual = emp.ctc;
-  // Reuse payroll's own split rather than restating the 40/20 ratios here —
-  // duplicating them meant this tab could silently disagree with the payslip.
-  const { monthly, basic, hra, specialAllowance: special } = buildPayslipComponents(emp);
+  // Reuse payroll's own split rather than restating the 50/25 ratios and the
+  // flat allowances here — duplicating them meant this tab could silently
+  // disagree with the payslip.
+  const {
+    monthly, basic, hra, medicalAllowance, convenienceAllowance, specialAllowance: special,
+  } = buildPayslipComponents(emp);
 
   // Percentages are computed from the amounts, not asserted alongside them.
   // "Special Allowance" was labelled a flat 40% while actually being the
   // rounding remainder.
   const share = (amount: number) => pct(amount, monthly);
 
-  const breakdown = [
-    { label: 'Basic Salary', amount: basic, pct: share(basic), color: 'text-indigo-600' },
-    { label: 'HRA', amount: hra, pct: share(hra), color: 'text-emerald-600' },
-    { label: 'Special Allowance', amount: special, pct: share(special), color: 'text-amber-600' },
+  const breakdown: Array<{
+    label: string;
+    amount: number;
+    pct: number;
+    color: string;
+    tone: 'brand' | 'green' | 'amber' | 'red';
+  }> = [
+    { label: 'Basic Salary', amount: basic, pct: share(basic), color: 'text-indigo-600', tone: 'brand' },
+    { label: 'HRA', amount: hra, pct: share(hra), color: 'text-emerald-600', tone: 'green' },
+    { label: 'Medical Allowance', amount: medicalAllowance, pct: share(medicalAllowance), color: 'text-cyan-600', tone: 'brand' },
+    { label: 'Convenience Allowance', amount: convenienceAllowance, pct: share(convenienceAllowance), color: 'text-violet-600', tone: 'green' },
+    { label: 'Special Allowance', amount: special, pct: share(special), color: 'text-amber-600', tone: 'amber' },
   ];
 
   const pieData = [
     { name: 'Basic', value: basic },
     { name: 'HRA', value: hra },
+    { name: 'Medical', value: medicalAllowance },
+    { name: 'Convenience', value: convenienceAllowance },
     { name: 'Special', value: special },
   ];
 
@@ -1482,7 +1495,7 @@ function CompensationTab({ emp }: { emp: Employee }) {
           <div>
             <p className="text-sm font-medium text-ink-500 mb-1">Annual CTC</p>
             <p className="text-3xl font-bold text-ink-900">{formatINR(annual)}</p>
-            <p className="text-sm text-ink-400 mt-1">Monthly gross: <span className="font-semibold text-ink-700">{formatINR(monthly)}</span></p>
+            <p className="text-sm text-ink-400 mt-1">Monthly gross: <span className="font-semibold text-ink-700" data-testid="monthly-gross" data-amount={monthly}>{formatINR(monthly)}</span></p>
           </div>
           <div className="flex items-center gap-3 sm:ml-auto">
             <Badge tone="green">Active Package</Badge>
@@ -1497,14 +1510,29 @@ function CompensationTab({ emp }: { emp: Employee }) {
           <CardHeader title="Monthly Breakdown" />
           <div className="space-y-4">
             {breakdown.map((item) => (
-              <div key={item.label}>
+              <div
+                key={item.label}
+                // The figures, unformatted, so tests/e2e/salary-breakdown.spec.ts
+                // can check that the components still add up to the monthly gross
+                // rather than re-deriving them from "₹1,50,000" strings.
+                data-testid="salary-component"
+                data-component={item.label}
+                data-amount={item.amount}
+              >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm font-medium text-ink-700">{item.label}</span>
                   <span className={cn('text-sm font-semibold', item.color)}>{formatINR(item.amount)}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <ProgressBar value={item.pct} tone={item.label === 'Basic Salary' ? 'brand' : item.label === 'HRA' ? 'green' : 'amber'} />
-                  <span className="text-xs text-ink-400 w-10 text-right">{item.pct}%</span>
+                  {/* Tone travels with the row rather than being re-derived from
+                      its label, which silently defaulted every component after
+                      HRA to the same amber. */}
+                  <ProgressBar value={item.pct} tone={item.tone} />
+                  {/* A flat ₹1,492 against a large salary rounds to 0%, which
+                      reads as "nothing is paid". It is paid; it is just small. */}
+                  <span className="text-xs text-ink-400 w-10 text-right">
+                    {item.pct === 0 && item.amount > 0 ? '<1%' : `${item.pct}%`}
+                  </span>
                 </div>
               </div>
             ))}

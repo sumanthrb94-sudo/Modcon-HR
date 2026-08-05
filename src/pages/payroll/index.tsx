@@ -129,6 +129,10 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
             {[
               { label: 'Basic Salary', value: payslip.basic },
               { label: 'House Rent Allowance', value: payslip.hra },
+              // A payslip stored before these components existed carries
+              // neither field; ?? 0 so it renders as a row rather than "₹NaN".
+              { label: 'Medical Allowance', value: payslip.medicalAllowance ?? 0 },
+              { label: 'Convenience Allowance', value: payslip.convenienceAllowance ?? 0 },
               { label: 'Special Allowance', value: payslip.specialAllowance },
               { label: 'Bonus', value: payslip.bonus },
             ].map((row) => (
