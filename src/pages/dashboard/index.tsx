@@ -18,7 +18,9 @@ import {
   StatCard, ProgressBar, PageHeader, QuickAddMenu, NotificationsMenu,
 } from '@/components/ui';
 import { getEmployeeDirectory } from '@/data/employees';
-import { getLeaveRequests, getEmployeeBalances } from '@/data/leave';
+import { getLeaveRequests } from '@/data/leave';
+import { getEntitlements } from '@/data/leaveEntitlements';
+import { financialYearLabel } from '@/lib/financialYear';
 import { getExpenseClaims } from '@/data/expenses';
 import { getTickets } from '@/data/helpdesk';
 import { announcements } from '@/data/common';
@@ -115,8 +117,12 @@ function EmployeeDashboard() {
     () => (currentEmployee ? getLeaveRequests().filter((request) => request.employeeId === currentEmployee.id) : []),
     [currentEmployee],
   );
+  // The same derived entitlements the Leave module's Balances tab shows —
+  // policy accrual, the April reset and the tenure gates — rather than the
+  // seeded `leaveBalances` rows, which are a fixed total someone typed and so
+  // reported a different figure for the same employee on the same day.
   const leaveBalances = useMemo(
-    () => (currentEmployee ? getEmployeeBalances(currentEmployee.id, getLeaveRequests()) : []),
+    () => (currentEmployee ? getEntitlements(currentEmployee, getLeaveRequests()) : []),
     [currentEmployee],
   );
   const employeeExpenses = useMemo(
@@ -221,18 +227,38 @@ function EmployeeDashboard() {
 
       <div className="grid grid-cols-1 gap-4">
         <Card>
-          <CardHeader title="My Leave Balance" subtitle="Your available leave buckets" />
+          <CardHeader title="My Leave Balance" subtitle={`Accrued so far in ${financialYearLabel()}`} />
           {leaveBalances.length === 0 ? (
             <p className="text-sm text-ink-500">No leave balance data available for this account yet.</p>
           ) : (
             <div className="space-y-3">
               {leaveBalances.map((balance) => (
-                <div key={balance.type} className="space-y-1.5">
+                <div
+                  key={balance.type}
+                  className="space-y-1.5"
+                  data-testid="leave-balance-row"
+                  data-leave-type={balance.type}
+                  // The reading this surface shows, exposed verbatim so
+                  // tests/e2e/leave-balance.spec.ts can hold it against the
+                  // Leave module's without re-deriving either.
+                  data-leave-reading={balance.withheldReason ?? `${balance.available}/${balance.granted}`}
+                >
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-ink-700">{balance.type}</span>
-                    <span className="text-ink-500">{balance.available}/{balance.total} available</span>
+                    {balance.withheldReason ? (
+                      <span className="text-xs text-ink-400">{balance.withheldReason}</span>
+                    ) : (
+                      <span className="text-ink-500">{balance.available}/{balance.granted} available</span>
+                    )}
                   </div>
-                  <ProgressBar value={pct(balance.used, balance.total)} tone={pct(balance.used, balance.total) > 75 ? 'amber' : 'brand'} size="sm" />
+                  {/* Used measured against the year as a whole, not against a
+                      granted figure that grows every month — otherwise the bar
+                      moves when nothing was taken. Matches the Leave module. */}
+                  <div className="flex items-center justify-between text-[11px] text-ink-400">
+                    <span>{balance.fullYear} day{balance.fullYear === 1 ? '' : 's'} for {financialYearLabel()}</span>
+                    <span>{balance.used} used</span>
+                  </div>
+                  <ProgressBar value={pct(balance.used, balance.fullYear)} tone={pct(balance.used, balance.fullYear) > 75 ? 'amber' : 'brand'} size="sm" />
                 </div>
               ))}
             </div>
