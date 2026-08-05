@@ -16,6 +16,8 @@ import {
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { usePayslipDocuments } from '@/lib/payslipDocuments';
+import { downloadPayslipDocument } from '@/pages/payroll';
 import { buildPayslip, buildPayslipComponents, getPayrollRuns } from '@/data/payroll';
 import { formatINR, formatDate } from '@/lib/utils';
 import type { Payslip } from '@/types';
@@ -52,6 +54,15 @@ function EmployeeFinancePage() {
             .sort((a, b) => b.month.localeCompare(a.month))
         : [],
     [employee],
+  );
+
+  // The payslips HR uploaded for this employee. `null` rather than `undefined`
+  // when the account matches no employee record: undefined would ask for the
+  // whole organisation's payslips, which the rules refuse — rightly.
+  const { documents: issuedPayslips } = usePayslipDocuments(profile, employee?.id ?? null);
+  const issuedByMonth = useMemo(
+    () => new Map(issuedPayslips.map((document) => [document.month, document])),
+    [issuedPayslips],
   );
 
   if (!employee) {
@@ -182,20 +193,45 @@ function EmployeeFinancePage() {
       key: 'payslip',
       header: 'Payslip',
       align: 'right',
-      render: (row) => (
-        <Button
-          variant="secondary"
-          size="sm"
-          className="px-2.5 py-1 text-[11px]"
-          icon={<Download size={12} />}
-          onClick={(event) => {
-            event.stopPropagation();
-            void downloadFinancePdf(row);
-          }}
-        >
-          PDF
-        </Button>
-      ),
+      render: (row) => {
+        // The payslip HR issued for this month is the authoritative document —
+        // it is what payroll actually paid against. The statement below it is
+        // this app's own calculation, kept because it itemises the deductions
+        // and because a month may have no upload at all.
+        const issued = issuedByMonth.get(row.month);
+        return (
+          <div className="flex items-center justify-end gap-2">
+            {issued ? (
+              <Button
+                variant="primary"
+                size="sm"
+                className="px-2.5 py-1 text-[11px]"
+                icon={<Download size={12} />}
+                data-testid="issued-payslip-download"
+                data-month={row.month}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  downloadPayslipDocument(issued);
+                }}
+              >
+                Payslip
+              </Button>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="px-2.5 py-1 text-[11px]"
+              icon={<Download size={12} />}
+              onClick={(event) => {
+                event.stopPropagation();
+                void downloadFinancePdf(row);
+              }}
+            >
+              {issued ? 'Statement' : 'PDF'}
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 

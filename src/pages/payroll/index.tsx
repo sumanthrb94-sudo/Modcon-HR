@@ -14,6 +14,8 @@ import {
   TrendingUp,
   CalendarClock,
   Play,
+  Upload,
+  Download,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -38,7 +40,16 @@ import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
-import type { Payslip, PayrollRun } from '@/types';
+import { useAuth } from '@/lib/auth';
+import {
+  canUploadPayslips,
+  payslipBlobUrl,
+  payslipDocId,
+  payslipOrgId,
+  usePayslipDocuments,
+} from '@/lib/payslipDocuments';
+import { PayslipUploadModal } from './PayslipUploadModal';
+import type { Payslip, PayrollRun, PayslipDocument } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,6 +59,24 @@ function monthLabel(m: string): string {
   const [yr, mo] = m.split('-');
   const date = new Date(Number(yr), Number(mo) - 1, 1);
   return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+/**
+ * Save an uploaded payslip to disk.
+ *
+ * The object URL is revoked on the next tick rather than immediately: revoking
+ * before the browser has started the download cancels it, and holding it for
+ * the life of the tab leaks the whole PDF per click.
+ */
+export function downloadPayslipDocument(document: PayslipDocument) {
+  const url = payslipBlobUrl(document.contentBase64);
+  const link = window.document.createElement('a');
+  link.href = url;
+  link.download = document.fileName;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /** Pay day for a "YYYY-MM" run — the last day of that month. */
@@ -163,8 +192,18 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
 export function PayrollPage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('runs');
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
+  // The PDFs payroll actually issued, keyed by the payslip they document, so
+  // the list below can say which months are covered and which are not.
+  const { documents: uploadedPayslips } = usePayslipDocuments(profile);
+  const uploadedById = useMemo(
+    () => new Map(uploadedPayslips.map((document) => [document.id, document])),
+    [uploadedPayslips],
+  );
+  const uploadOrgId = payslipOrgId(profile);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   // Seeded from the store and written through, so a processed run does not
@@ -362,6 +401,32 @@ export function PayrollPage() {
         </Badge>
       ),
     },
+    {
+      // The issued PDF, beside the figures the app computed for the same month.
+      // A dash here is coverage information, not an error: it says payroll has
+      // not uploaded that month's payslip for this person yet.
+      key: 'document',
+      header: 'Payslip PDF',
+      align: 'right',
+      render: (p) => {
+        const document = uploadedById.get(payslipDocId(uploadOrgId, p.employeeId, p.month));
+        if (!document) return <span className="text-ink-300">—</span>;
+        return (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="px-2.5 py-1 text-[11px]"
+            icon={<Download size={12} />}
+            onClick={(event) => {
+              event.stopPropagation();
+              downloadPayslipDocument(document);
+            }}
+          >
+            PDF
+          </Button>
+        );
+      },
+    },
   ];
 
   return (
@@ -370,9 +435,18 @@ export function PayrollPage() {
         title="Payroll"
         subtitle="Manage salary disbursements, payslips, and compensation analytics"
         actions={
-          <Button icon={<Play size={16} />} variant="primary" onClick={handleRunPayroll}>
-            Run Payroll
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Presentation only — firestore.rules is what refuses the write.
+                See the header of src/lib/payslipDocuments.ts. */}
+            {canUploadPayslips(profile) && (
+              <Button icon={<Upload size={16} />} variant="secondary" onClick={() => setUploadOpen(true)}>
+                Upload payslips
+              </Button>
+            )}
+            <Button icon={<Play size={16} />} variant="primary" onClick={handleRunPayroll}>
+              Run Payroll
+            </Button>
+          </div>
         }
       />
 
@@ -497,6 +571,8 @@ export function PayrollPage() {
 
       {/* Payslip Detail Modal */}
       <PayslipModal payslip={selectedPayslip} onClose={() => setSelectedPayslip(null)} />
+
+      <PayslipUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
     </div>
   );
 }

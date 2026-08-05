@@ -844,6 +844,54 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // -------------------------------------------------------------------
+    // Payslip PDFs an administrator uploaded, one per employee per month.
+    //
+    // Read like /payslips and written like /handbook_versions, because it is
+    // both: the figures are as private as the computed payslip they document —
+    // an employee reads their own and nobody else's — and the payload is a PDF
+    // whose size has to be bounded or it takes the document past Firestore's
+    // 1 MiB ceiling. See src/lib/payslipDocuments.ts.
+    // -------------------------------------------------------------------
+    match /payslip_documents/{docId} {
+      allow get: if inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId));
+      // The list is legal only because the client filters on orgId, and for an
+      // employee on employeeId as well: a list is evaluated against every
+      // document it returns and fails whole if one is disallowed.
+      allow list: if inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId));
+      allow create: if isOrgAdmin() && writingToMyOrg() && validPayslipDocument(docId);
+      // update additionally checks the stored document: without inMyOrg(),
+      // overwriting another org's payslip while stamping your own orgId would
+      // be allowed, which is a takeover, not a write. Update rather than
+      // create-only because re-issuing a month is a correction, and the id is
+      // deterministic so the correction lands on the document it corrects.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg() && validPayslipDocument(docId);
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    function validPayslipDocument(docId) {
+      return request.resource.data.id == docId &&
+        // Attribution cannot be forged: the uploader is always the caller.
+        request.resource.data.uploadedByUid == request.auth.uid &&
+        request.resource.data.employeeId is string &&
+        request.resource.data.employeeId.size() > 0 &&
+        // YYYY-MM. The id is built from it, so a malformed month would produce
+        // a document that the month-scoped reads can never find again.
+        request.resource.data.month is string &&
+        request.resource.data.month.size() == 7 &&
+        request.resource.data.contentType == 'application/pdf' &&
+        request.resource.data.sizeBytes is int &&
+        request.resource.data.sizeBytes > 0 &&
+        // Mirrors PAYSLIP_MAX_BYTES in src/lib/payslipDocuments.ts, for the
+        // reason given on handbook_versions above.
+        request.resource.data.sizeBytes <= 737280 &&
+        request.resource.data.contentBase64 is string &&
+        request.resource.data.contentBase64.size() <= 1000000 &&
+        request.resource.data.fileName is string &&
+        request.resource.data.fileName.size() > 0 &&
+        request.resource.data.fileName.size() <= 200;
+    }
+
     match /handbook/{orgKey} {
       // The document id *is* the organisation key, so the tenant test is on the
       // id and needs no field lookup.
