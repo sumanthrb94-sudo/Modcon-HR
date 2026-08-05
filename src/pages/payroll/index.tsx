@@ -40,6 +40,7 @@ import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useAuth } from '@/lib/auth';
 import {
   canUploadPayslips,
@@ -77,6 +78,24 @@ export function downloadPayslipDocument(document: PayslipDocument) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/**
+ * Whether a stored payslip carries a component breakdown at all.
+ *
+ * A payslip generated while the organisation had no salary structure has every
+ * component at zero and its gross in none of them. That is not a breakdown, and
+ * rendering it as one shows six rupee-zero rows under a non-zero gross.
+ */
+function hasComponentBreakdown(payslip: Payslip): boolean {
+  return (
+    payslip.basic +
+      payslip.hra +
+      (payslip.medicalAllowance ?? 0) +
+      (payslip.conveyanceAllowance ?? 0) +
+      payslip.specialAllowance >
+    0
+  );
 }
 
 /** Pay day for a "YYYY-MM" run — the last day of that month. */
@@ -126,16 +145,29 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
         <div>
           <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-3">Earnings</p>
           <div className="space-y-2.5">
-            {[
-              { label: 'Basic Salary', value: payslip.basic },
-              { label: 'House Rent Allowance', value: payslip.hra },
-              // A payslip stored before these components existed carries
-              // neither field; ?? 0 so it renders as a row rather than "₹NaN".
-              { label: 'Medical Allowance', value: payslip.medicalAllowance ?? 0 },
-              { label: 'Conveyance Allowance', value: payslip.conveyanceAllowance ?? 0 },
-              { label: 'Special Allowance', value: payslip.specialAllowance },
-              { label: 'Bonus', value: payslip.bonus },
-            ].map((row) => (
+            {/* A stored payslip carries its own components, so this list is
+                driven by the document rather than by today's structure. It is
+                empty only for a payslip written with no structure set — which
+                the note below says, instead of showing a column of zeroes. */}
+            {!hasComponentBreakdown(payslip) && (
+              <p className="text-sm text-ink-500">
+                No salary structure was set when this payslip was generated, so it has no component
+                breakdown. Set one in Settings → Salary Structure.
+              </p>
+            )}
+            {(hasComponentBreakdown(payslip)
+              ? [
+                  { label: 'Basic Salary', value: payslip.basic },
+                  { label: 'House Rent Allowance', value: payslip.hra },
+                  // A payslip stored before these components existed carries
+                  // neither field; ?? 0 so it renders as a row rather than "₹NaN".
+                  { label: 'Medical Allowance', value: payslip.medicalAllowance ?? 0 },
+                  { label: 'Conveyance Allowance', value: payslip.conveyanceAllowance ?? 0 },
+                  { label: 'Special Allowance', value: payslip.specialAllowance },
+                  { label: 'Bonus', value: payslip.bonus },
+                ]
+              : []
+            ).map((row) => (
               <div key={row.label} className="flex items-center justify-between">
                 <span className="text-sm text-ink-600">{row.label}</span>
                 <span className="text-sm font-medium text-ink-900">{formatINR(row.value)}</span>
@@ -196,6 +228,9 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
 export function PayrollPage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
+  // Payslip figures are derived from the organisation's split, which an
+  // administrator can change while this page is open.
+  useSalaryStructureRevision();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);

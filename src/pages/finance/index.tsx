@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { usePayslipDocuments } from '@/lib/payslipDocuments';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { downloadPayslipDocument } from '@/pages/payroll';
 import { buildPayslip, buildPayslipComponents, getPayrollRuns } from '@/data/payroll';
 import { formatINR, formatDate } from '@/lib/utils';
@@ -32,6 +33,9 @@ function monthLabel(month: string): string {
 
 function EmployeeFinancePage() {
   const { profile } = useAuth();
+  // The organisation's salary split can change under a mounted page — and is
+  // hydrated from Firestore shortly after this one first renders.
+  useSalaryStructureRevision();
   const employee = getCurrentEmployee(profile);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);
@@ -133,14 +137,20 @@ function EmployeeFinancePage() {
       y += 2;
 
       writeLine('Salary Structure', { bold: true, size: 11 });
-      writeLine(`Basic Salary: ${formatINR(payslip.basic)}`);
-      writeLine(`House Rent Allowance: ${formatINR(payslip.hra)}`);
-      // Nullish rather than truthy: a stored payslip from before these existed
-      // has no field at all, and a legitimate zero must still print as ₹0.
-      writeLine(`Medical Allowance: ${formatINR(payslip.medicalAllowance ?? 0)}`);
-      writeLine(`Conveyance Allowance: ${formatINR(payslip.conveyanceAllowance ?? 0)}`);
-      writeLine(`Special Allowance: ${formatINR(payslip.specialAllowance)}`);
-      writeLine(`Bonus: ${formatINR(payslip.bonus)}`);
+      if (salary.splitConfigured) {
+        writeLine(`Basic Salary: ${formatINR(payslip.basic)}`);
+        writeLine(`House Rent Allowance: ${formatINR(payslip.hra)}`);
+        // Nullish rather than truthy: a stored payslip from before these existed
+        // has no field at all, and a legitimate zero must still print as ₹0.
+        writeLine(`Medical Allowance: ${formatINR(payslip.medicalAllowance ?? 0)}`);
+        writeLine(`Conveyance Allowance: ${formatINR(payslip.conveyanceAllowance ?? 0)}`);
+        writeLine(`Special Allowance: ${formatINR(payslip.specialAllowance)}`);
+        writeLine(`Bonus: ${formatINR(payslip.bonus)}`);
+      } else {
+        // A statement that prints a component breakdown the organisation never
+        // defined would be a document asserting somebody else's policy.
+        writeLine('No salary structure has been set for this organisation.');
+      }
       writeLine(`Gross Earnings: ${formatINR(payslip.grossEarnings)}`, { bold: true });
       y += 2;
 
@@ -301,14 +311,25 @@ function EmployeeFinancePage() {
         <Card>
           <CardHeader title="Salary Structure" subtitle="Detailed monthly earnings for the current cycle" />
           <div className="space-y-3">
-            {[
-              { label: 'Basic Salary', value: salary.basic },
-              { label: 'House Rent Allowance', value: salary.hra },
-              { label: 'Medical Allowance', value: salary.medicalAllowance },
-              { label: 'Conveyance Allowance', value: salary.conveyanceAllowance },
-              { label: 'Special Allowance', value: salary.specialAllowance },
-              { label: 'Bonus', value: salary.bonus },
-            ].map((item) => (
+            {/* Components only where the organisation has defined them. Gross
+                below is the month's pay either way. */}
+            {!salary.splitConfigured && (
+              <p className="text-sm text-ink-500" data-testid="salary-structure-unset">
+                Your organisation has not set a salary structure yet, so this month's gross is not
+                broken into components.
+              </p>
+            )}
+            {(salary.splitConfigured
+              ? [
+                  { label: 'Basic Salary', value: salary.basic },
+                  { label: 'House Rent Allowance', value: salary.hra },
+                  { label: 'Medical Allowance', value: salary.medicalAllowance },
+                  { label: 'Conveyance Allowance', value: salary.conveyanceAllowance },
+                  { label: 'Special Allowance', value: salary.specialAllowance },
+                  { label: 'Bonus', value: salary.bonus },
+                ]
+              : []
+            ).map((item) => (
               <div key={item.label} className="flex items-center justify-between text-sm">
                 <span className="text-ink-600">{item.label}</span>
                 <span className="font-medium text-ink-900">{formatINR(item.value)}</span>

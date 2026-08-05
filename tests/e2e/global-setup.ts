@@ -1,4 +1,4 @@
-import { FIREBASE_API_KEY, PERSONAS } from './config';
+import { FIREBASE_API_KEY, PERSONAS, SUPER_ADMIN } from './config';
 import { EMULATOR_HOST, IDENTITY_BASE, seedPersonaProfiles } from './firestore';
 
 /**
@@ -26,7 +26,7 @@ async function provision(email: string, password: string) {
 }
 
 async function globalSetup() {
-  for (const persona of Object.values(PERSONAS)) {
+  for (const persona of [...Object.values(PERSONAS), SUPER_ADMIN]) {
     await provision(persona.email, persona.password);
   }
   // An emulator starts with no users/{uid} documents, and the rules refuse to

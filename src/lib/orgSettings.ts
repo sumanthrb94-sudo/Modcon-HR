@@ -71,6 +71,9 @@ export const ORG_SETTINGS = {
   holidays: setting('holidays', 'modcon.hr.holidays', 'modcon-hr-holidays-changed'),
   customDepartments: setting('customDepartments', 'modcon.hr.customDepartments', 'modcon-hr-department-directory-changed'),
   removedDepartments: setting('removedDepartments', 'modcon.hr.removedDepartments', 'modcon-hr-department-directory-changed'),
+  // How a monthly gross is split into Basic, HRA and the flat allowances. A
+  // company's own policy, not a platform constant — see data/salaryStructure.ts.
+  salaryStructure: setting('salaryStructure', 'modcon.hr.salaryStructure', 'modcon-hr-salary-structure-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it

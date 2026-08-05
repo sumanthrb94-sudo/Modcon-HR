@@ -1,4 +1,4 @@
-import { FIREBASE_API_KEY, PERSONAS } from './config';
+import { FIREBASE_API_KEY, PERSONAS, SUPER_ADMIN } from './config';
 
 /**
  * Firestore REST access for the specs, against whichever project the run is
@@ -90,11 +90,16 @@ export async function adminToken(): Promise<string | null> {
 export async function seedPersonaProfiles(): Promise<void> {
   if (!EMULATOR_HOST) return;
 
-  for (const persona of Object.values(PERSONAS)) {
+  for (const persona of [...Object.values(PERSONAS), SUPER_ADMIN]) {
     const { uid } = await signInPersona(persona.email, persona.password);
     if (!uid) {
       throw new Error(`[e2e] could not resolve a uid for ${persona.email} — cannot seed its profile`);
     }
+    // The super admin deliberately carries **no** orgId: it administers every
+    // organisation rather than belonging to one, and resolveOrgKeyForProfile
+    // reads whichever org it last switched to instead. Giving it one would pin
+    // it to the default org and the org-switch under test would do nothing.
+    const superAdmin = 'superAdmin' in persona && persona.superAdmin === true;
     const res = await fetch(`${FIRESTORE_BASE}/users/${uid}`, {
       method: 'PATCH',
       headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
@@ -102,14 +107,16 @@ export async function seedPersonaProfiles(): Promise<void> {
         fields: {
           email: { stringValue: persona.email },
           role: { stringValue: persona.role },
-          orgId: { stringValue: 'default' },
-          superAdmin: { booleanValue: false },
+          ...(superAdmin ? {} : { orgId: { stringValue: 'default' } }),
+          superAdmin: { booleanValue: superAdmin },
         },
       }),
     });
     if (!res.ok) {
       throw new Error(`[e2e] seeding users/${uid} failed: ${res.status} ${await res.text()}`);
     }
-    console.log(`[e2e] emulator: seeded users/${uid} as ${persona.role} for ${persona.email}`);
+    console.log(
+      `[e2e] emulator: seeded users/${uid} as ${superAdmin ? 'super admin' : persona.role} for ${persona.email}`,
+    );
   }
 }

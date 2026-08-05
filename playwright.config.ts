@@ -73,7 +73,7 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|salary-breakdown)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload)\.spec\.ts$/;
 
 /**
  * Specs that write the organisation's *shared* configuration document.
@@ -97,7 +97,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * is identical across engines, the same argument that keeps ROLE_SPECS on one
  * engine.
  */
-const SHARED_CONFIG_SPECS = /(org-settings)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|org-isolation)\.spec\.ts$/;
 
 /**
  * …and they do not run against the live project by default.

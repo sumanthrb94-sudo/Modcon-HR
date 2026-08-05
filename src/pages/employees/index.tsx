@@ -66,6 +66,7 @@ import { getEntitlements } from '@/data/leaveEntitlements';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -1452,12 +1453,16 @@ function TeamTab({ emp, embeddedSelfView = false }: { emp: Employee; embeddedSel
 const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#a855f7'];
 
 function CompensationTab({ emp }: { emp: Employee }) {
+  // This tab stays mounted while an administrator edits the split in Settings,
+  // and the cache is also hydrated from Firestore after sign-in.
+  useSalaryStructureRevision();
   const annual = emp.ctc;
   // Reuse payroll's own split rather than restating the 50/25 ratios and the
   // flat allowances here — duplicating them meant this tab could silently
   // disagree with the payslip.
   const {
-    monthly, basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance: special,
+    monthly, splitConfigured,
+    basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance: special,
   } = buildPayslipComponents(emp);
 
   // Percentages are computed from the amounts, not asserted alongside them.
@@ -1504,7 +1509,27 @@ function CompensationTab({ emp }: { emp: Employee }) {
         </div>
       </Card>
 
-      {/* Breakdown + Chart */}
+      {/* Breakdown + Chart — only once the organisation has said how it splits
+          a salary. Showing a plausible default instead would be telling this
+          company its pay is divided in a way nobody here decided. */}
+      {!splitConfigured ? (
+        <Card>
+          <CardHeader title="Monthly Breakdown" />
+          <div
+            className="rounded-xl border border-dashed border-ink-200 px-4 py-6 text-center"
+            data-testid="salary-structure-unset"
+          >
+            <p className="text-sm text-ink-500">
+              Your organisation has not set a salary structure, so this salary cannot be broken
+              into components.
+            </p>
+            <p className="mt-1 text-xs text-ink-400">
+              An administrator sets it in Settings → Salary Structure. The gross above and the net
+              pay on payslips are unaffected.
+            </p>
+          </div>
+        </Card>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Card>
           <CardHeader title="Monthly Breakdown" />
@@ -1563,6 +1588,7 @@ function CompensationTab({ emp }: { emp: Employee }) {
           </div>
         </Card>
       </div>
+      )}
     </div>
   );
 }
