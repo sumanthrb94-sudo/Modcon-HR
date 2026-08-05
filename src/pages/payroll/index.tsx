@@ -40,6 +40,7 @@ import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useAuth } from '@/lib/auth';
 import {
   canUploadPayslips,
@@ -196,6 +197,9 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
 export function PayrollPage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
+  // Payslip figures are derived from the organisation's split, which an
+  // administrator can change while this page is open.
+  useSalaryStructureRevision();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);

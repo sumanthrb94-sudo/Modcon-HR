@@ -97,7 +97,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * is identical across engines, the same argument that keeps ROLE_SPECS on one
  * engine.
  */
-const SHARED_CONFIG_SPECS = /(org-settings)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure)\.spec\.ts$/;
 
 /**
  * …and they do not run against the live project by default.

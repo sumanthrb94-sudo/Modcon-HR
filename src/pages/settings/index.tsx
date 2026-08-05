@@ -5,7 +5,7 @@ import {
   Plug, CreditCard, ChevronRight, Check, X,
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
-  AlertCircle, CheckCircle2, Star, Database, Trash2,
+  AlertCircle, CheckCircle2, Star, Database, Trash2, Wallet,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
@@ -20,6 +20,14 @@ import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevi
 import { getLeavePolicies, saveLeavePolicies, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy, type LeaveAccrual } from '@/data/leavePolicies';
 import { getLeaveRequests } from '@/data/leave';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
+import {
+  getSalaryStructure,
+  saveSalaryStructure,
+  splitMonthlyGross,
+  DEFAULT_SALARY_STRUCTURE,
+  type SalaryStructure,
+} from '@/data/salaryStructure';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import {
   APP_MODULES,
   APP_ROLES,
@@ -50,7 +58,7 @@ import {
 } from '@/data/billing';
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
-import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
+import { cn, formatDate, formatINR, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { backfillOrgIds } from '@/lib/orgBackfill';
@@ -2926,6 +2934,171 @@ function DatabaseSection() {
   );
 }
 
+// ===========================================================================
+// Section: Salary Structure
+// ===========================================================================
+/** The gross a preview is worked out against — an example, not anyone's salary. */
+const SAMPLE_MONTHLY_GROSS = 100_000;
+
+function SalaryStructureSection() {
+  const save = useSaveIndicator();
+  // Re-read when the organisation's copy arrives from Firestore, so an
+  // administrator does not edit a form seeded from a stale cache.
+  const revision = useSalaryStructureRevision();
+  const [form, setForm] = useState<SalaryStructure>(() => getSalaryStructure());
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    // A local edit in progress wins over an incoming hydration; overwriting it
+    // would throw away typing the administrator has not saved yet.
+    if (!dirty) setForm(getSalaryStructure());
+  }, [revision, dirty]);
+
+  const percentTotal = form.basicPercent + form.hraPercent;
+  const overspent = percentTotal > 100;
+  // The same function payroll computes a payslip with, so the preview cannot
+  // promise a split the payslip does not pay.
+  const preview = splitMonthlyGross(SAMPLE_MONTHLY_GROSS, form);
+
+  function set<K extends keyof SalaryStructure>(key: K, value: string) {
+    const parsed = Number(value);
+    setDirty(true);
+    setForm((prev) => ({ ...prev, [key]: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0 }));
+  }
+
+  function handleSave() {
+    if (overspent) return;
+    setDirty(false);
+    save.track(saveSalaryStructure(form));
+  }
+
+  const rows: Array<{ label: string; value: number; hint: string }> = [
+    { label: 'Basic Salary', value: preview.basic, hint: `${form.basicPercent}% of gross` },
+    { label: 'HRA', value: preview.hra, hint: `${form.hraPercent}% of gross` },
+    { label: 'Medical Allowance', value: preview.medicalAllowance, hint: 'flat' },
+    { label: 'Conveyance Allowance', value: preview.conveyanceAllowance, hint: 'flat' },
+    { label: 'Special Allowance', value: preview.specialAllowance, hint: 'the remainder' },
+  ];
+
+  return (
+    <SettingsSection
+      title="Salary Structure"
+      subtitle="How this organisation splits a monthly gross into salary components"
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="space-y-6">
+          <p className="text-sm text-ink-500">
+            These apply to every payslip and compensation breakdown in your organisation, and to
+            nobody else's. Special Allowance is not set here: it is whatever remains, so the
+            components always add up to the month's gross exactly.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="salary-basic">
+                Basic Salary (% of gross)
+              </label>
+              <input
+                id="salary-basic"
+                type="number"
+                min={0}
+                max={100}
+                className="input w-full"
+                aria-label="Basic percent"
+                value={form.basicPercent}
+                onChange={(event) => set('basicPercent', event.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="salary-hra">
+                HRA (% of gross)
+              </label>
+              <input
+                id="salary-hra"
+                type="number"
+                min={0}
+                max={100}
+                className="input w-full"
+                aria-label="HRA percent"
+                value={form.hraPercent}
+                onChange={(event) => set('hraPercent', event.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="salary-medical">
+                Medical Allowance (₹ per month)
+              </label>
+              <input
+                id="salary-medical"
+                type="number"
+                min={0}
+                className="input w-full"
+                aria-label="Medical allowance"
+                value={form.medicalAllowance}
+                onChange={(event) => set('medicalAllowance', event.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="salary-conveyance">
+                Conveyance Allowance (₹ per month)
+              </label>
+              <input
+                id="salary-conveyance"
+                type="number"
+                min={0}
+                className="input w-full"
+                aria-label="Conveyance allowance"
+                value={form.conveyanceAllowance}
+                onChange={(event) => set('conveyanceAllowance', event.target.value)}
+              />
+            </div>
+          </div>
+
+          {overspent && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Basic and HRA come to {percentTotal}% of the gross. Together they cannot exceed 100%,
+              or there is nothing left for the allowances.
+            </div>
+          )}
+
+          <div className="rounded-xl border border-ink-100" data-testid="salary-structure-preview">
+            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+              <span>Example — a monthly gross of {formatINR(SAMPLE_MONTHLY_GROSS)}</span>
+              <span>{formatINR(rows.reduce((sum, row) => sum + row.value, 0))}</span>
+            </div>
+            <ul className="divide-y divide-ink-50">
+              {rows.map((row) => (
+                <li key={row.label} className="flex items-center gap-3 px-4 py-2 text-sm">
+                  <span className="text-ink-700">{row.label}</span>
+                  <span className="text-xs text-ink-400">{row.hint}</span>
+                  <span className="ml-auto font-medium text-ink-900">{formatINR(row.value)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="primary" onClick={handleSave} disabled={overspent}>
+              Save Structure
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setForm({ ...DEFAULT_SALARY_STRUCTURE });
+                setDirty(true);
+              }}
+            >
+              Restore defaults
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </SettingsSection>
+  );
+}
+
 interface NavItem {
   id: string;
   label: string;
@@ -2937,6 +3110,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'company', label: 'Company Profile', icon: <Building2 size={17} />, description: 'Brand, legal & contact info' },
   { id: 'departments', label: 'Departments', icon: <Users size={17} />, description: 'Org structure & heads' },
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
+  { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
   { id: 'holidays', label: 'Holidays', icon: <CalendarDays size={17} />, description: 'Holiday calendar' },
   { id: 'notifications', label: 'Notifications', icon: <Bell size={17} />, description: 'Alert preferences' },
@@ -2989,6 +3163,7 @@ export function SettingsPage() {
       case 'company': return <CompanyProfile />;
       case 'departments': return <DepartmentsSection />;
       case 'leave': return <LeavePolicies />;
+      case 'salary': return <SalaryStructureSection />;
       case 'roles': return <RolesPermissions />;
       case 'holidays': return <HolidaysSection />;
       case 'notifications': return <NotificationsSection />;

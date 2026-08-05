@@ -66,6 +66,7 @@ import { getEntitlements } from '@/data/leaveEntitlements';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -1452,6 +1453,9 @@ function TeamTab({ emp, embeddedSelfView = false }: { emp: Employee; embeddedSel
 const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#a855f7'];
 
 function CompensationTab({ emp }: { emp: Employee }) {
+  // This tab stays mounted while an administrator edits the split in Settings,
+  // and the cache is also hydrated from Firestore after sign-in.
+  useSalaryStructureRevision();
   const annual = emp.ctc;
   // Reuse payroll's own split rather than restating the 50/25 ratios and the
   // flat allowances here — duplicating them meant this tab could silently

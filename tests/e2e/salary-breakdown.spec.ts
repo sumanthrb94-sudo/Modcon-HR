@@ -2,18 +2,28 @@ import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
 
 /**
- * The monthly salary breakdown, as the organisation defines it.
+ * The monthly salary breakdown, whatever the organisation has configured.
  *
- * Basic 50% and HRA 25% of the monthly gross, Medical and Conveyance
- * Allowance a flat ₹1,492 each, and Special Allowance whatever is left. The
- * last of those is the part worth a test: it is a remainder, so it absorbs the
- * rupee or two that rounding Basic and HRA leaves behind, and the only way to
- * know the split is still honest is that the components add back up to the
- * monthly gross exactly. A percentage typed into two places — this tab and
- * buildPayslipComponents — is what the assertions here exist to catch.
+ * The percentages and the flat amounts are the organisation's own setting now
+ * (Settings → Salary Structure, `src/data/salaryStructure.ts`), so asserting
+ * "Basic is 50%" here would be asserting a value another spec is entitled to
+ * change — and does. What holds under *any* structure is asserted instead:
+ *
+ *   - the five components are all shown;
+ *   - Special Allowance is exactly the remainder, so the components sum to the
+ *     monthly gross — the invariant that keeps rounding from quietly losing a
+ *     rupee or two of somebody's pay;
+ *   - the percentage components scale with salary and the flat ones do not,
+ *     which is the whole distinction between the two kinds.
+ *
+ * The configured values themselves are covered in salary-structure.spec.ts,
+ * which owns that setting and can set and restore it deterministically.
  */
 const ADMIN = PERSONAS.admin;
-const FLAT_ALLOWANCE = 1492;
+// Two very different salaries: a flat allowance must be the same rupee figure
+// on both, and a percentage one must not be.
+const HIGH_EARNER = 'Aarav Sharma';
+const LOWER_EARNER = 'Riya Sharma';
 
 async function login(page: Page) {
   await page.goto('/login');
@@ -23,35 +33,44 @@ async function login(page: Page) {
   await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
 }
 
+interface Breakdown {
+  monthly: number;
+  components: Record<string, number>;
+}
+
+async function breakdownFor(page: Page, name: string): Promise<Breakdown> {
+  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByPlaceholder('Search name, role, email, code…').fill(name);
+  await page.getByText(name).first().click();
+  await page.getByRole('button', { name: 'Compensation' }).click();
+
+  const gross = page.getByTestId('monthly-gross');
+  await expect(gross).toBeVisible();
+  const monthly = Number(await gross.getAttribute('data-amount'));
+
+  const rows = page.getByTestId('salary-component');
+  await expect(rows.first()).toBeVisible();
+  const components = Object.fromEntries(
+    (await rows.evaluateAll((nodes) =>
+      nodes.map((node) => [
+        node.getAttribute('data-component') ?? '',
+        Number(node.getAttribute('data-amount')),
+      ]),
+    )) as Array<[string, number]>,
+  );
+  return { monthly, components };
+}
+
 test.describe.serial('monthly salary breakdown', () => {
   let page: Page;
-  let monthly = 0;
-  let components: Record<string, number> = {};
+  let high: Breakdown;
+  let lower: Breakdown;
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await login(page);
-
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
-    await page.getByText('Aarav Sharma').first().click();
-    await page.getByRole('button', { name: 'Compensation' }).click();
-
-    const gross = page.getByTestId('monthly-gross');
-    await expect(gross).toBeVisible();
-    monthly = Number(await gross.getAttribute('data-amount'));
-
-    const rows = page.getByTestId('salary-component');
-    await expect(rows.first()).toBeVisible();
-    components = Object.fromEntries(
-      (
-        await rows.evaluateAll((nodes) =>
-          nodes.map((node) => [
-            node.getAttribute('data-component') ?? '',
-            Number(node.getAttribute('data-amount')),
-          ]),
-        )
-      ) as Array<[string, number]>,
-    );
+    high = await breakdownFor(page, HIGH_EARNER);
+    lower = await breakdownFor(page, LOWER_EARNER);
   });
 
   test.afterAll(async () => {
@@ -59,39 +78,48 @@ test.describe.serial('monthly salary breakdown', () => {
   });
 
   test('the five components are listed', async () => {
-    expect(Object.keys(components)).toEqual([
+    expect(Object.keys(high.components)).toEqual([
       'Basic Salary',
       'HRA',
       'Medical Allowance',
       'Conveyance Allowance',
       'Special Allowance',
     ]);
-    expect(monthly).toBeGreaterThan(0);
-  });
-
-  test('Basic is half the monthly gross and HRA a quarter', async () => {
-    expect(components['Basic Salary']).toBe(Math.round(monthly * 0.5));
-    expect(components['HRA']).toBe(Math.round(monthly * 0.25));
-  });
-
-  test('Medical and Conveyance Allowance are flat amounts', async () => {
-    expect(components['Medical Allowance']).toBe(FLAT_ALLOWANCE);
-    expect(components['Conveyance Allowance']).toBe(FLAT_ALLOWANCE);
+    expect(high.monthly).toBeGreaterThan(lower.monthly);
   });
 
   test('Special Allowance is exactly the remainder', async () => {
-    const others =
-      components['Basic Salary'] +
-      components['HRA'] +
-      components['Medical Allowance'] +
-      components['Conveyance Allowance'];
-    expect(components['Special Allowance']).toBe(monthly - others);
+    for (const { monthly, components } of [high, lower]) {
+      const others =
+        components['Basic Salary'] +
+        components['HRA'] +
+        components['Medical Allowance'] +
+        components['Conveyance Allowance'];
+      expect(components['Special Allowance']).toBe(monthly - others);
+    }
   });
 
   test('the components add up to the monthly gross', async () => {
-    // The invariant the other four tests are specific cases of: whatever the
-    // ratios become, the breakdown must still describe the whole salary.
-    const total = Object.values(components).reduce((sum, amount) => sum + amount, 0);
-    expect(total).toBe(monthly);
+    for (const { monthly, components } of [high, lower]) {
+      const total = Object.values(components).reduce((sum, amount) => sum + amount, 0);
+      expect(total).toBe(monthly);
+    }
+  });
+
+  test('Basic and HRA scale with salary; Medical and Conveyance do not', async () => {
+    // The same share of two different salaries, to within the rupee that
+    // rounding each one costs.
+    const ratio = (part: number, whole: number) => part / whole;
+    expect(ratio(high.components['Basic Salary'], high.monthly)).toBeCloseTo(
+      ratio(lower.components['Basic Salary'], lower.monthly),
+      4,
+    );
+    expect(ratio(high.components['HRA'], high.monthly)).toBeCloseTo(
+      ratio(lower.components['HRA'], lower.monthly),
+      4,
+    );
+
+    expect(high.components['Medical Allowance']).toBe(lower.components['Medical Allowance']);
+    expect(high.components['Conveyance Allowance']).toBe(lower.components['Conveyance Allowance']);
   });
 });

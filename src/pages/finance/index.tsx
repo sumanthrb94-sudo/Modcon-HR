@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { usePayslipDocuments } from '@/lib/payslipDocuments';
+import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { downloadPayslipDocument } from '@/pages/payroll';
 import { buildPayslip, buildPayslipComponents, getPayrollRuns } from '@/data/payroll';
 import { formatINR, formatDate } from '@/lib/utils';
@@ -32,6 +33,9 @@ function monthLabel(month: string): string {
 
 function EmployeeFinancePage() {
   const { profile } = useAuth();
+  // The organisation's salary split can change under a mounted page — and is
+  // hydrated from Firestore shortly after this one first renders.
+  useSalaryStructureRevision();
   const employee = getCurrentEmployee(profile);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);

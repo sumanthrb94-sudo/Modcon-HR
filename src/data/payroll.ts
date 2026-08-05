@@ -5,21 +5,11 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 import { getAttendanceRecords } from '@/data/attendance';
+import { splitMonthlyGross } from '@/data/salaryStructure';
 
 // ---------------------------------------------------------------------------
 // Salary component builder
 // ---------------------------------------------------------------------------
-
-/**
- * Flat monthly allowances, the same rupee figure for everyone.
- *
- * Unlike Basic and HRA these are not a share of CTC — they are fixed amounts
- * the organisation pays, so they do not scale with salary and the percentage
- * shown beside them on the compensation tab falls out of the amount rather
- * than being a rule anyone typed.
- */
-export const MEDICAL_ALLOWANCE = 1492;
-export const CONVEYANCE_ALLOWANCE = 1492;
 
 export interface PayslipComponents {
   monthly: number;
@@ -98,23 +88,11 @@ export function buildPayslipComponents(
   month: string = currentMonthIso(),
 ): PayslipComponents {
   const monthly = Math.round(employee.ctc / 12);
-  const basic = Math.round(monthly * 0.5);
-  const hra = Math.round(monthly * 0.25);
-
-  // The two flat allowances are paid out of what is left after Basic and HRA,
-  // and are capped by it. Without the cap a low enough CTC produces a negative
-  // Special Allowance: the fixed ₹2,984 exceeds the remaining quarter of the
-  // monthly gross below ₹1,43,232 a year, and the breakdown would then show a
-  // negative row and a gross that no longer equals CTC ÷ 12.
-  const afterPercentages = Math.max(0, monthly - basic - hra);
-  const medicalAllowance = Math.min(MEDICAL_ALLOWANCE, afterPercentages);
-  const conveyanceAllowance = Math.min(
-    CONVEYANCE_ALLOWANCE,
-    afterPercentages - medicalAllowance,
-  );
-  // The remainder, so the components always sum to the monthly gross exactly —
-  // including the rupee or two that rounding Basic and HRA leaves behind.
-  const specialAllowance = afterPercentages - medicalAllowance - conveyanceAllowance;
+  // The organisation's own split, read at call time rather than captured at
+  // module load: an administrator can change it in Settings, and every surface
+  // that shows a breakdown re-renders on the change event.
+  const { basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance } =
+    splitMonthlyGross(monthly);
   const bonus = 0; // no bonus in regular month
   const grossEarnings =
     basic + hra + medicalAllowance + conveyanceAllowance + specialAllowance + bonus;
