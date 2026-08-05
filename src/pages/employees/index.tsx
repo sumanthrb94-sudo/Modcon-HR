@@ -1457,7 +1457,7 @@ function CompensationTab({ emp }: { emp: Employee }) {
   // flat allowances here — duplicating them meant this tab could silently
   // disagree with the payslip.
   const {
-    monthly, basic, hra, medicalAllowance, convenienceAllowance, specialAllowance: special,
+    monthly, basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance: special,
   } = buildPayslipComponents(emp);
 
   // Percentages are computed from the amounts, not asserted alongside them.
@@ -1475,7 +1475,7 @@ function CompensationTab({ emp }: { emp: Employee }) {
     { label: 'Basic Salary', amount: basic, pct: share(basic), color: 'text-indigo-600', tone: 'brand' },
     { label: 'HRA', amount: hra, pct: share(hra), color: 'text-emerald-600', tone: 'green' },
     { label: 'Medical Allowance', amount: medicalAllowance, pct: share(medicalAllowance), color: 'text-cyan-600', tone: 'brand' },
-    { label: 'Convenience Allowance', amount: convenienceAllowance, pct: share(convenienceAllowance), color: 'text-violet-600', tone: 'green' },
+    { label: 'Conveyance Allowance', amount: conveyanceAllowance, pct: share(conveyanceAllowance), color: 'text-violet-600', tone: 'green' },
     { label: 'Special Allowance', amount: special, pct: share(special), color: 'text-amber-600', tone: 'amber' },
   ];
 
@@ -1483,7 +1483,7 @@ function CompensationTab({ emp }: { emp: Employee }) {
     { name: 'Basic', value: basic },
     { name: 'HRA', value: hra },
     { name: 'Medical', value: medicalAllowance },
-    { name: 'Convenience', value: convenienceAllowance },
+    { name: 'Conveyance', value: conveyanceAllowance },
     { name: 'Special', value: special },
   ];
 

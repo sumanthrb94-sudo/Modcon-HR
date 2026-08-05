@@ -19,14 +19,14 @@ import { getAttendanceRecords } from '@/data/attendance';
  * than being a rule anyone typed.
  */
 export const MEDICAL_ALLOWANCE = 1492;
-export const CONVENIENCE_ALLOWANCE = 1492;
+export const CONVEYANCE_ALLOWANCE = 1492;
 
 export interface PayslipComponents {
   monthly: number;
   basic: number;
   hra: number;
   medicalAllowance: number;
-  convenienceAllowance: number;
+  conveyanceAllowance: number;
   /** Whatever is left of the monthly gross after the four components above. */
   specialAllowance: number;
   bonus: number;
@@ -108,16 +108,16 @@ export function buildPayslipComponents(
   // negative row and a gross that no longer equals CTC ÷ 12.
   const afterPercentages = Math.max(0, monthly - basic - hra);
   const medicalAllowance = Math.min(MEDICAL_ALLOWANCE, afterPercentages);
-  const convenienceAllowance = Math.min(
-    CONVENIENCE_ALLOWANCE,
+  const conveyanceAllowance = Math.min(
+    CONVEYANCE_ALLOWANCE,
     afterPercentages - medicalAllowance,
   );
   // The remainder, so the components always sum to the monthly gross exactly —
   // including the rupee or two that rounding Basic and HRA leaves behind.
-  const specialAllowance = afterPercentages - medicalAllowance - convenienceAllowance;
+  const specialAllowance = afterPercentages - medicalAllowance - conveyanceAllowance;
   const bonus = 0; // no bonus in regular month
   const grossEarnings =
-    basic + hra + medicalAllowance + convenienceAllowance + specialAllowance + bonus;
+    basic + hra + medicalAllowance + conveyanceAllowance + specialAllowance + bonus;
 
   // Deductions derive exclusively from attendance, by policy. PF, income tax
   // and the high-CTC levy are therefore not withheld, and are reported as zero
@@ -139,7 +139,7 @@ export function buildPayslipComponents(
   const netPay = grossEarnings - totalDeductions;
 
   return {
-    monthly, basic, hra, medicalAllowance, convenienceAllowance, specialAllowance, bonus,
+    monthly, basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance, bonus,
     pf, tax, otherDeductions, lossOfPay, lopDays, payableDays,
     grossEarnings, totalDeductions, netPay,
   };
@@ -154,7 +154,7 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     basic: c.basic,
     hra: c.hra,
     medicalAllowance: c.medicalAllowance,
-    convenienceAllowance: c.convenienceAllowance,
+    conveyanceAllowance: c.conveyanceAllowance,
     specialAllowance: c.specialAllowance,
     bonus: c.bonus,
     pf: c.pf,
