@@ -1,4 +1,4 @@
-import { FIREBASE_API_KEY, PERSONAS, SUPER_ADMIN } from './config';
+import { FIREBASE_API_KEY, HR_PERSONA, PERSONAS, SUPER_ADMIN } from './config';
 
 /**
  * Firestore REST access for the specs, against whichever project the run is
@@ -90,7 +90,7 @@ export async function adminToken(): Promise<string | null> {
 export async function seedPersonaProfiles(): Promise<void> {
   if (!EMULATOR_HOST) return;
 
-  for (const persona of [...Object.values(PERSONAS), SUPER_ADMIN]) {
+  for (const persona of [...Object.values(PERSONAS), HR_PERSONA, SUPER_ADMIN]) {
     const { uid } = await signInPersona(persona.email, persona.password);
     if (!uid) {
       throw new Error(`[e2e] could not resolve a uid for ${persona.email} — cannot seed its profile`);
