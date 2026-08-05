@@ -13,6 +13,15 @@ import { splitMonthlyGross } from '@/data/salaryStructure';
 
 export interface PayslipComponents {
   monthly: number;
+  /**
+   * False when the organisation has not set a salary structure.
+   *
+   * The pay is still known — gross is CTC ÷ 12 and net is that minus unpaid
+   * absence — but how it divides into components is not, so the five figures
+   * below are all zero and every surface that shows a breakdown must render
+   * "not set" instead of a table of zeroes. See data/salaryStructure.ts.
+   */
+  splitConfigured: boolean;
   basic: number;
   hra: number;
   medicalAllowance: number;
@@ -90,12 +99,16 @@ export function buildPayslipComponents(
   const monthly = Math.round(employee.ctc / 12);
   // The organisation's own split, read at call time rather than captured at
   // module load: an administrator can change it in Settings, and every surface
-  // that shows a breakdown re-renders on the change event.
+  // that shows a breakdown re-renders on the change event. Null when the
+  // organisation has not set one — see `splitConfigured`.
+  const split = splitMonthlyGross(monthly);
   const { basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance } =
-    splitMonthlyGross(monthly);
+    split ?? { basic: 0, hra: 0, medicalAllowance: 0, conveyanceAllowance: 0, specialAllowance: 0 };
   const bonus = 0; // no bonus in regular month
-  const grossEarnings =
-    basic + hra + medicalAllowance + conveyanceAllowance + specialAllowance + bonus;
+  // The month's pay, which is known whether or not the split is: the components
+  // sum to `monthly` by construction when there is a structure, and an
+  // unconfigured organisation still pays its people.
+  const grossEarnings = monthly + bonus;
 
   // Deductions derive exclusively from attendance, by policy. PF, income tax
   // and the high-CTC levy are therefore not withheld, and are reported as zero
@@ -117,7 +130,8 @@ export function buildPayslipComponents(
   const netPay = grossEarnings - totalDeductions;
 
   return {
-    monthly, basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance, bonus,
+    monthly, splitConfigured: split !== null,
+    basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance, bonus,
     pf, tax, otherDeductions, lossOfPay, lopDays, payableDays,
     grossEarnings, totalDeductions, netPay,
   };

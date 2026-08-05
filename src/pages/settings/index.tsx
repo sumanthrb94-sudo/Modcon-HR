@@ -24,7 +24,6 @@ import {
   getSalaryStructure,
   saveSalaryStructure,
   splitMonthlyGross,
-  DEFAULT_SALARY_STRUCTURE,
   type SalaryStructure,
 } from '@/data/salaryStructure';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
@@ -2940,45 +2939,84 @@ function DatabaseSection() {
 /** The gross a preview is worked out against — an example, not anyone's salary. */
 const SAMPLE_MONTHLY_GROSS = 100_000;
 
+/** The form holds strings so "not set" can be an empty field rather than a zero. */
+type SalaryStructureForm = Record<keyof SalaryStructure, string>;
+
+const FORM_FIELDS: Array<keyof SalaryStructure> = [
+  'basicPercent',
+  'hraPercent',
+  'medicalAllowance',
+  'conveyanceAllowance',
+];
+
+function toForm(structure: SalaryStructure | null): SalaryStructureForm {
+  return {
+    basicPercent: structure ? String(structure.basicPercent) : '',
+    hraPercent: structure ? String(structure.hraPercent) : '',
+    medicalAllowance: structure ? String(structure.medicalAllowance) : '',
+    conveyanceAllowance: structure ? String(structure.conveyanceAllowance) : '',
+  };
+}
+
 function SalaryStructureSection() {
   const save = useSaveIndicator();
   // Re-read when the organisation's copy arrives from Firestore, so an
   // administrator does not edit a form seeded from a stale cache.
   const revision = useSalaryStructureRevision();
-  const [form, setForm] = useState<SalaryStructure>(() => getSalaryStructure());
+  // Strings, not numbers: an organisation that has set nothing shows four empty
+  // fields. Seeding them with a plausible 50 / 25 / 1492 would be handing this
+  // company a policy it never chose and letting it save it by accident.
+  const [form, setForm] = useState<SalaryStructureForm>(() => toForm(getSalaryStructure()));
   const [dirty, setDirty] = useState(false);
+  const configured = getSalaryStructure() !== null;
 
   useEffect(() => {
     // A local edit in progress wins over an incoming hydration; overwriting it
     // would throw away typing the administrator has not saved yet.
-    if (!dirty) setForm(getSalaryStructure());
+    if (!dirty) setForm(toForm(getSalaryStructure()));
   }, [revision, dirty]);
 
-  const percentTotal = form.basicPercent + form.hraPercent;
+  const complete = FORM_FIELDS.every((field) => form[field].trim() !== '');
+  const parsed: SalaryStructure = {
+    basicPercent: Number(form.basicPercent) || 0,
+    hraPercent: Number(form.hraPercent) || 0,
+    medicalAllowance: Number(form.medicalAllowance) || 0,
+    conveyanceAllowance: Number(form.conveyanceAllowance) || 0,
+  };
+  const percentTotal = parsed.basicPercent + parsed.hraPercent;
   const overspent = percentTotal > 100;
   // The same function payroll computes a payslip with, so the preview cannot
   // promise a split the payslip does not pay.
-  const preview = splitMonthlyGross(SAMPLE_MONTHLY_GROSS, form);
+  const preview = complete && !overspent ? splitMonthlyGross(SAMPLE_MONTHLY_GROSS, parsed) : null;
 
-  function set<K extends keyof SalaryStructure>(key: K, value: string) {
-    const parsed = Number(value);
+  function set(key: keyof SalaryStructureForm, value: string) {
     setDirty(true);
-    setForm((prev) => ({ ...prev, [key]: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0 }));
+    setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function handleSave() {
-    if (overspent) return;
+    if (overspent || !complete) return;
     setDirty(false);
-    save.track(saveSalaryStructure(form));
+    save.track(saveSalaryStructure(parsed));
   }
 
-  const rows: Array<{ label: string; value: number; hint: string }> = [
-    { label: 'Basic Salary', value: preview.basic, hint: `${form.basicPercent}% of gross` },
-    { label: 'HRA', value: preview.hra, hint: `${form.hraPercent}% of gross` },
-    { label: 'Medical Allowance', value: preview.medicalAllowance, hint: 'flat' },
-    { label: 'Conveyance Allowance', value: preview.conveyanceAllowance, hint: 'flat' },
-    { label: 'Special Allowance', value: preview.specialAllowance, hint: 'the remainder' },
-  ];
+  function handleClear() {
+    setDirty(false);
+    setForm(toForm(null));
+    // Cleared, not reset to a default: every breakdown in the organisation goes
+    // back to saying the structure is not set.
+    save.track(saveSalaryStructure(null));
+  }
+
+  const rows = preview
+    ? [
+        { label: 'Basic Salary', value: preview.basic, hint: `${parsed.basicPercent}% of gross` },
+        { label: 'HRA', value: preview.hra, hint: `${parsed.hraPercent}% of gross` },
+        { label: 'Medical Allowance', value: preview.medicalAllowance, hint: 'flat' },
+        { label: 'Conveyance Allowance', value: preview.conveyanceAllowance, hint: 'flat' },
+        { label: 'Special Allowance', value: preview.specialAllowance, hint: 'the remainder' },
+      ]
+    : [];
 
   return (
     <SettingsSection
@@ -2993,6 +3031,17 @@ function SalaryStructureSection() {
             nobody else's. Special Allowance is not set here: it is whatever remains, so the
             components always add up to the month's gross exactly.
           </p>
+
+          {!configured && (
+            <div
+              className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              data-testid="salary-structure-unset"
+            >
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Your organisation has not set a salary structure. Until it does, no payslip or
+              compensation page shows a component breakdown — gross and net pay are unaffected.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -3063,35 +3112,41 @@ function SalaryStructureSection() {
             </div>
           )}
 
-          <div className="rounded-xl border border-ink-100" data-testid="salary-structure-preview">
-            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
-              <span>Example — a monthly gross of {formatINR(SAMPLE_MONTHLY_GROSS)}</span>
-              <span>{formatINR(rows.reduce((sum, row) => sum + row.value, 0))}</span>
+          {/* The preview exists only once all four fields are filled: a partial
+              form has no split to show, and inventing one from the blanks would
+              be the default this page exists to avoid. */}
+          {rows.length > 0 ? (
+            <div className="rounded-xl border border-ink-100" data-testid="salary-structure-preview">
+              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+                <span>Example — a monthly gross of {formatINR(SAMPLE_MONTHLY_GROSS)}</span>
+                <span>{formatINR(rows.reduce((sum, row) => sum + row.value, 0))}</span>
+              </div>
+              <ul className="divide-y divide-ink-50">
+                {rows.map((row) => (
+                  <li key={row.label} className="flex items-center gap-3 px-4 py-2 text-sm">
+                    <span className="text-ink-700">{row.label}</span>
+                    <span className="text-xs text-ink-400">{row.hint}</span>
+                    <span className="ml-auto font-medium text-ink-900">{formatINR(row.value)}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="divide-y divide-ink-50">
-              {rows.map((row) => (
-                <li key={row.label} className="flex items-center gap-3 px-4 py-2 text-sm">
-                  <span className="text-ink-700">{row.label}</span>
-                  <span className="text-xs text-ink-400">{row.hint}</span>
-                  <span className="ml-auto font-medium text-ink-900">{formatINR(row.value)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-ink-200 px-4 py-5 text-center text-sm text-ink-400">
+              Fill in all four fields to see what they would pay on a{' '}
+              {formatINR(SAMPLE_MONTHLY_GROSS)} monthly gross.
+            </p>
+          )}
 
           <div className="flex items-center gap-2">
-            <Button variant="primary" onClick={handleSave} disabled={overspent}>
+            <Button variant="primary" onClick={handleSave} disabled={overspent || !complete}>
               Save Structure
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setForm({ ...DEFAULT_SALARY_STRUCTURE });
-                setDirty(true);
-              }}
-            >
-              Restore defaults
-            </Button>
+            {configured && (
+              <Button variant="secondary" onClick={handleClear}>
+                Clear structure
+              </Button>
+            )}
           </div>
         </div>
       </Card>

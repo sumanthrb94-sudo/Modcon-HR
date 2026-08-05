@@ -39,12 +39,15 @@ Anything a user can change goes through `persistentCollection` in `src/data/pers
 
 ### The salary split is the organisation's, not the platform's
 
-How a monthly gross becomes Basic, HRA, Medical Allowance, Conveyance Allowance and Special Allowance is per-organisation configuration (Settings → Salary Structure, [src/data/salaryStructure.ts](src/data/salaryStructure.ts), registered in `ORG_SETTINGS`). Defaults — Basic 50%, HRA 25%, ₹1,492 each — are only where a new organisation starts.
+How a monthly gross becomes Basic, HRA, Medical Allowance, Conveyance Allowance and Special Allowance is per-organisation configuration (Settings → Salary Structure, [src/data/salaryStructure.ts](src/data/salaryStructure.ts), registered in `ORG_SETTINGS`).
+
+- **There is no platform default, and an unset structure shows nothing.** `getSalaryStructure()` returns `null` for an organisation that has not configured one, `buildPayslipComponents` reports `splitConfigured: false` with every component at zero, and each surface renders "not set" instead of a breakdown. Falling back to a plausible Basic 50% would tell a company its pay is divided in a way nobody there decided. Basic 50 / HRA 25 / ₹1,492 is **ModCon Builders' demo data**, gated by `isMockDataCleared()` exactly like `demoCompanyProfile` — the demo org shows it, a real organisation created later does not.
+- **Gross and net never depend on the split.** `grossEarnings` is CTC ÷ 12 and net is that minus unpaid absence, so an unconfigured organisation still sees correct pay; only the component rows are withheld.
 
 - **`splitMonthlyGross(monthly, structure)` is the one definition of the arithmetic.** `buildPayslipComponents` computes payslips with it and the Settings preview shows an unsaved change with it; written twice, the preview would eventually promise a split the payslip does not pay.
 - **Special Allowance is never configured — it is the remainder**, so the components always sum to the monthly gross including the rupee or two that rounding Basic and HRA leaves behind. The flat allowances are capped by what is left after the percentages, or a low enough salary yields a negative Special Allowance.
 - **Read it through `getSalaryStructure()` at call time**, never captured at module load, and subscribe with `useSalaryStructureRevision` in anything that stays mounted — an administrator can change it in Settings, and the cache is hydrated from Firestore after sign-in.
-- `tests/e2e/salary-structure.spec.ts` owns the configured values and restores the defaults afterwards; `salary-breakdown.spec.ts` deliberately asserts only what holds under *any* structure, because the two run concurrently against one emulator.
+- **Every salary-split assertion lives in `tests/e2e/salary-structure.spec.ts`**, one `describe.serial` in the org-settings project. Two spec files would run in different workers against one emulator and each would see the other's half-applied state — which is exactly what makes "clear it, then check nothing shows" meaningless. It restores the demo split at the end; skipping that changes every payslip in the deployment.
 
 ### Uploaded payslips
 

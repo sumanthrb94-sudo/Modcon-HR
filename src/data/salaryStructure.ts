@@ -19,6 +19,7 @@
  */
 import { orgScopedKey } from '@/lib/orgScope';
 import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 export interface SalaryStructure {
   /** Share of the monthly gross paid as Basic, 0–100. */
@@ -35,10 +36,18 @@ const STORAGE_KEY = ORG_SETTINGS.salaryStructure.storageKey;
 export const SALARY_STRUCTURE_CHANGED_EVENT = ORG_SETTINGS.salaryStructure.changedEvent;
 
 /**
- * What a new organisation starts on — and what every organisation was on
- * before this was configurable, so nobody's payslips change by upgrading.
+ * ModCon Builders' own split — part of the demo dataset, not a platform default.
+ *
+ * It is shown for the demo organisation and for nobody else. There is no
+ * fallback structure for a real organisation that has not set one: a company
+ * shown a plausible-looking Basic 50% it never agreed to would read it as its
+ * own policy, and payslips would be handed out on somebody else's numbers.
+ * Unset is unset — every surface says so and asks an administrator to set it.
+ *
+ * Same reasoning, and the same `isMockDataCleared()` gate, as
+ * `demoCompanyProfile` in data/companyProfile.ts.
  */
-export const DEFAULT_SALARY_STRUCTURE: SalaryStructure = {
+const DEMO_SALARY_STRUCTURE: SalaryStructure = {
   basicPercent: 50,
   hraPercent: 25,
   medicalAllowance: 1492,
@@ -66,43 +75,66 @@ function number(value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER)
  * would stop summing to the monthly figure. HRA yields, because Basic is the
  * one statutory deductions are computed from.
  */
-export function normalizeSalaryStructure(value: unknown): SalaryStructure {
-  const raw = (value ?? {}) as Partial<SalaryStructure>;
-  const basicPercent = number(raw.basicPercent, DEFAULT_SALARY_STRUCTURE.basicPercent, 100);
-  const hraPercent = Math.min(
-    number(raw.hraPercent, DEFAULT_SALARY_STRUCTURE.hraPercent, 100),
-    100 - basicPercent,
-  );
+export function normalizeSalaryStructure(value: unknown): SalaryStructure | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<SalaryStructure>;
+  // Zero, not a borrowed figure, for a field that is missing or unusable: a
+  // stored structure is always written whole by the form, so a gap here is a
+  // hand-edited or half-migrated document, and "0% Basic" is at least visibly
+  // wrong where "50% Basic" would pass for a policy somebody chose.
+  const basicPercent = number(raw.basicPercent, 0, 100);
+  const hraPercent = Math.min(number(raw.hraPercent, 0, 100), 100 - basicPercent);
   return {
     basicPercent,
     hraPercent,
-    medicalAllowance: Math.round(number(raw.medicalAllowance, DEFAULT_SALARY_STRUCTURE.medicalAllowance)),
-    conveyanceAllowance: Math.round(number(raw.conveyanceAllowance, DEFAULT_SALARY_STRUCTURE.conveyanceAllowance)),
+    medicalAllowance: Math.round(number(raw.medicalAllowance, 0)),
+    conveyanceAllowance: Math.round(number(raw.conveyanceAllowance, 0)),
   };
 }
 
 /**
- * This organisation's split.
+ * This organisation's split, or `null` when it has not set one.
+ *
+ * Null is a state the callers must handle rather than paper over: every surface
+ * that shows a breakdown says the structure is not set and points at Settings,
+ * because the alternative — quietly using a platform default — tells a company
+ * its salaries are split in a way nobody there agreed to.
  *
  * Read synchronously from the localStorage cache, like every other setting —
  * `buildPayslipComponents` is called during render and cannot await Firestore.
  * `startOrgSettingsSync` is what keeps the cache current across machines.
  */
-export function getSalaryStructure(): SalaryStructure {
-  if (typeof window === 'undefined') return { ...DEFAULT_SALARY_STRUCTURE };
+export function getSalaryStructure(): SalaryStructure | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(orgScopedKey(STORAGE_KEY));
-    if (!raw) return { ...DEFAULT_SALARY_STRUCTURE };
+    // No stored value at all: the demo organisation gets the demo split, every
+    // other organisation gets nothing until its own administrator sets one.
+    if (!raw) return isMockDataCleared() ? null : { ...DEMO_SALARY_STRUCTURE };
+    // A stored `null` is an organisation that deliberately cleared its
+    // structure, and must not fall back to the demo one.
     return normalizeSalaryStructure(JSON.parse(raw));
   } catch {
-    return { ...DEFAULT_SALARY_STRUCTURE };
+    return null;
   }
 }
 
-/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
-export function saveSalaryStructure(structure: SalaryStructure): Promise<boolean> {
+/** True when this organisation has a split to show. */
+export function hasSalaryStructure(): boolean {
+  return getSalaryStructure() !== null;
+}
+
+/**
+ * Store this organisation's split, or clear it with `null`.
+ *
+ * Resolves once the organisation's copy has caught up — see publishOrgSetting.
+ */
+export function saveSalaryStructure(structure: SalaryStructure | null): Promise<boolean> {
   if (typeof window === 'undefined') return Promise.resolve(false);
-  const normalized = normalizeSalaryStructure(structure);
+  const normalized = structure === null ? null : normalizeSalaryStructure(structure);
+  // Written rather than removed even when null: an absent key means "nothing
+  // stored", which the demo organisation reads as its demo split. Clearing has
+  // to be able to say "cleared".
   window.localStorage.setItem(orgScopedKey(STORAGE_KEY), JSON.stringify(normalized));
   notifyChanged();
   return publishOrgSetting(ORG_SETTINGS.salaryStructure, normalized);
@@ -132,9 +164,12 @@ export interface SalarySplit {
  */
 export function splitMonthlyGross(
   monthly: number,
-  structure: SalaryStructure = getSalaryStructure(),
-): SalarySplit {
+  structure: SalaryStructure | null = getSalaryStructure(),
+): SalarySplit | null {
   const safe = normalizeSalaryStructure(structure);
+  // No structure, no split. Returning zeros would render a breakdown claiming
+  // the whole salary is Special Allowance, which is a statement, not a blank.
+  if (!safe) return null;
   const basic = Math.round(monthly * (safe.basicPercent / 100));
   const hra = Math.round(monthly * (safe.hraPercent / 100));
   const afterPercentages = Math.max(0, monthly - basic - hra);

@@ -3,29 +3,39 @@ import { PERSONAS } from './config';
 import { FIRESTORE_BASE, adminToken } from './firestore';
 
 /**
- * The salary split belongs to the organisation, not to the platform.
+ * The salary split belongs to the organisation — including when it has not set
+ * one.
  *
  * Basic 50% / HRA 25% / two flat ₹1,492 allowances were literals in
  * `buildPayslipComponents`, which made one company's compensation policy every
- * company's. They now live in `org_settings` like the leave policies, and this
- * spec is the acceptance test for that: change them in Settings, and the
- * payslip breakdown an employee's profile shows must change with them — for
- * this organisation.
+ * company's. They now live in `org_settings`, and an organisation that has not
+ * configured a split is shown no breakdown at all rather than a plausible
+ * default it never agreed to — a company reading "Basic 50%" on its own
+ * payslips would take it for its own policy.
  *
- * ## Why this is an org-settings spec rather than an app spec
+ * ## Why every salary-split assertion lives in this one file
  *
- * It writes the organisation's *shared* configuration document, the same class
- * of write org-settings.spec.ts documents: one document per setting, whole-file
- * writes, and running it once per browser engine would be three concurrent
- * writers on one document. It also has to put the structure back afterwards —
- * `restoreDefaults` below — because everything else in the deployment computes
- * pay from what this test leaves behind.
+ * These tests set and clear a **shared** configuration document, and everything
+ * else in the deployment computes a breakdown from it. Split across two spec
+ * files they would run concurrently in different workers against one emulator,
+ * and each would see the other's half-applied state. One `describe.serial` in
+ * one file, on one engine, is what makes "clear it, then check nothing shows" a
+ * meaningful assertion — and it is why the structure is restored at the end.
+ *
+ * The same reasoning puts it in the org-settings project rather than the app
+ * project: see SHARED_CONFIG_SPECS in playwright.config.ts.
  */
 const ADMIN = PERSONAS.admin;
 const STRUCTURE_DOC = 'org_settings/default__salaryStructure';
 
-const DEFAULTS = { basic: 50, hra: 25, medical: 1492, conveyance: 1492 };
+/** ModCon Builders' own split — the demo organisation's data, not a platform default. */
+const DEMO = { basic: 50, hra: 25, medical: 1492, conveyance: 1492 };
 const CHANGED = { basic: 40, hra: 30, medical: 2000, conveyance: 1000 };
+
+// Two very different salaries: a flat allowance must be the same rupee figure
+// on both, and a percentage one must not be.
+const HIGH_EARNER = 'Aarav Sharma';
+const LOWER_EARNER = 'Riya Sharma';
 
 async function login(page: Page) {
   await page.goto('/login');
@@ -62,18 +72,27 @@ async function publishedStructure(): Promise<Record<string, number> | null> {
   });
   if (res.status !== 200) return null;
   const raw = (await res.json()).fields?.valueJson?.stringValue;
-  return typeof raw === 'string' ? (JSON.parse(raw) as Record<string, number>) : null;
+  if (typeof raw !== 'string') return null;
+  return JSON.parse(raw) as Record<string, number> | null;
+}
+
+interface Breakdown {
+  monthly: number;
+  components: Record<string, number>;
+}
+
+async function openCompensation(page: Page, name: string) {
+  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByPlaceholder('Search name, role, email, code…').fill(name);
+  await page.getByText(name).first().click();
+  await page.getByRole('button', { name: 'Compensation' }).click();
+  await expect(page.getByTestId('monthly-gross')).toBeVisible();
 }
 
 /** Read the compensation breakdown for one employee, in rupees. */
-async function breakdownFor(page: Page, name: string) {
-  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
-  await page.getByText(name).first().click();
-  await page.getByRole('button', { name: 'Compensation' }).click();
-
-  const gross = page.getByTestId('monthly-gross');
-  await expect(gross).toBeVisible();
-  const monthly = Number(await gross.getAttribute('data-amount'));
+async function breakdownFor(page: Page, name: string): Promise<Breakdown> {
+  await openCompensation(page, name);
+  const monthly = Number(await page.getByTestId('monthly-gross').getAttribute('data-amount'));
 
   const rows = page.getByTestId('salary-component');
   await expect(rows.first()).toBeVisible();
@@ -97,7 +116,7 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     // Start from a known structure rather than whatever a previous run left,
     // so the assertions below are about this test's own changes.
     await openSalaryStructure(page);
-    await setStructure(page, DEFAULTS);
+    await setStructure(page, DEMO);
   });
 
   test.afterAll(async () => {
@@ -105,13 +124,13 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     // behind. Restoring is not tidiness; skipping it changes every payslip.
     try {
       await openSalaryStructure(page);
-      await setStructure(page, DEFAULTS);
+      await setStructure(page, DEMO);
     } finally {
       await page?.close();
     }
   });
 
-  test('the defaults are the split every organisation starts on', async () => {
+  test('the demo organisation shows its own configured split', async () => {
     await openSalaryStructure(page);
     await expect(page.getByLabel('Basic percent')).toHaveValue('50');
     await expect(page.getByLabel('HRA percent')).toHaveValue('25');
@@ -135,6 +154,13 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     await expect(preview).toContainText('₹27,000');
   });
 
+  test('an incomplete form previews nothing and cannot be saved', async () => {
+    await openSalaryStructure(page);
+    await page.getByLabel('Medical allowance').fill('');
+    await expect(page.getByTestId('salary-structure-preview')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save Structure' })).toBeDisabled();
+  });
+
   test('percentages that overspend the gross are refused', async () => {
     await openSalaryStructure(page);
     await page.getByLabel('Basic percent').fill('80');
@@ -156,13 +182,11 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
       conveyanceAllowance: CHANGED.conveyance,
     });
 
-    const { monthly, components } = await breakdownFor(page, 'Aarav Sharma');
+    const { monthly, components } = await breakdownFor(page, HIGH_EARNER);
     expect(components['Basic Salary']).toBe(Math.round(monthly * (CHANGED.basic / 100)));
     expect(components['HRA']).toBe(Math.round(monthly * (CHANGED.hra / 100)));
     expect(components['Medical Allowance']).toBe(CHANGED.medical);
     expect(components['Conveyance Allowance']).toBe(CHANGED.conveyance);
-    // Still exact: Special Allowance absorbs whatever the rounding leaves.
-    expect(Object.values(components).reduce((sum, amount) => sum + amount, 0)).toBe(monthly);
   });
 
   test('the change survives a reload, because it is not held in this browser', async () => {
@@ -170,5 +194,74 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     await openSalaryStructure(page);
     await expect(page.getByLabel('Basic percent')).toHaveValue(String(CHANGED.basic));
     await expect(page.getByLabel('Conveyance allowance')).toHaveValue(String(CHANGED.conveyance));
+  });
+
+  test('the components always add up to the monthly gross', async () => {
+    // The invariant that holds under any structure: Special Allowance is the
+    // remainder, so rounding Basic and HRA can never quietly lose a rupee of
+    // somebody's pay.
+    for (const name of [HIGH_EARNER, LOWER_EARNER]) {
+      const { monthly, components } = await breakdownFor(page, name);
+      expect(Object.keys(components)).toEqual([
+        'Basic Salary',
+        'HRA',
+        'Medical Allowance',
+        'Conveyance Allowance',
+        'Special Allowance',
+      ]);
+      const others =
+        components['Basic Salary'] +
+        components['HRA'] +
+        components['Medical Allowance'] +
+        components['Conveyance Allowance'];
+      expect(components['Special Allowance']).toBe(monthly - others);
+      expect(Object.values(components).reduce((sum, amount) => sum + amount, 0)).toBe(monthly);
+    }
+  });
+
+  test('percentage components scale with salary; flat ones do not', async () => {
+    const high = await breakdownFor(page, HIGH_EARNER);
+    const lower = await breakdownFor(page, LOWER_EARNER);
+    expect(high.monthly).toBeGreaterThan(lower.monthly);
+
+    const ratio = (part: number, whole: number) => part / whole;
+    expect(ratio(high.components['Basic Salary'], high.monthly)).toBeCloseTo(
+      ratio(lower.components['Basic Salary'], lower.monthly),
+      4,
+    );
+    expect(high.components['Medical Allowance']).toBe(lower.components['Medical Allowance']);
+    expect(high.components['Conveyance Allowance']).toBe(lower.components['Conveyance Allowance']);
+  });
+
+  test('clearing the structure hides the breakdown rather than falling back to a default', async () => {
+    await openSalaryStructure(page);
+    await page.getByRole('button', { name: 'Clear structure' }).click();
+    await expect(page.getByText('Saved')).toBeVisible({ timeout: 20_000 });
+
+    // Cleared at the organisation, not just blanked on screen: the published
+    // value is null, so another administrator's browser hydrates to unset too.
+    expect(await publishedStructure()).toBeNull();
+
+    // The form is empty — no 50 / 25 / 1492 waiting to be saved by accident.
+    await expect(page.getByLabel('Basic percent')).toHaveValue('');
+    await expect(page.getByLabel('Medical allowance')).toHaveValue('');
+    await expect(page.getByTestId('salary-structure-unset')).toBeVisible();
+
+    // And no breakdown anywhere: the gross is still known, the split is not.
+    await openCompensation(page, HIGH_EARNER);
+    await expect(page.getByTestId('salary-structure-unset')).toBeVisible();
+    await expect(page.getByTestId('salary-component')).toHaveCount(0);
+    expect(
+      Number(await page.getByTestId('monthly-gross').getAttribute('data-amount')),
+    ).toBeGreaterThan(0);
+  });
+
+  test('setting a structure again brings the breakdown back', async () => {
+    await openSalaryStructure(page);
+    await setStructure(page, DEMO);
+
+    const { monthly, components } = await breakdownFor(page, HIGH_EARNER);
+    expect(components['Basic Salary']).toBe(Math.round(monthly * (DEMO.basic / 100)));
+    expect(components['Medical Allowance']).toBe(DEMO.medical);
   });
 });
