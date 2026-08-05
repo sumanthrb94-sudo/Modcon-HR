@@ -166,12 +166,18 @@ export interface Payslip {
   basic: number;
   hra: number;
   /**
-   * Flat monthly allowances — see MEDICAL_ALLOWANCE / CONVENIENCE_ALLOWANCE in
+   * Flat monthly allowances — see MEDICAL_ALLOWANCE / CONVEYANCE_ALLOWANCE in
    * src/data/payroll.ts. Optional because payslip documents written before
    * these existed carry neither, and a stored payslip is never rewritten.
+   *
+   * `conveyanceAllowance` was briefly named `convenienceAllowance`, between the
+   * commit that added it and this one. Nothing reads that key: the only writer
+   * of stored payslips is lib/seed.ts, and the readers fall back to 0 for a
+   * document that lacks the field, so a payslip seeded in that window shows
+   * ₹0 here rather than a wrong figure. Re-seeding restores it.
    */
   medicalAllowance?: number;
-  convenienceAllowance?: number;
+  conveyanceAllowance?: number;
   specialAllowance: number;
   bonus: number;
   pf: number; // deduction

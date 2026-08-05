@@ -4,7 +4,7 @@ import { PERSONAS } from './config';
 /**
  * The monthly salary breakdown, as the organisation defines it.
  *
- * Basic 50% and HRA 25% of the monthly gross, Medical and Convenience
+ * Basic 50% and HRA 25% of the monthly gross, Medical and Conveyance
  * Allowance a flat ₹1,492 each, and Special Allowance whatever is left. The
  * last of those is the part worth a test: it is a remainder, so it absorbs the
  * rupee or two that rounding Basic and HRA leaves behind, and the only way to
@@ -63,7 +63,7 @@ test.describe.serial('monthly salary breakdown', () => {
       'Basic Salary',
       'HRA',
       'Medical Allowance',
-      'Convenience Allowance',
+      'Conveyance Allowance',
       'Special Allowance',
     ]);
     expect(monthly).toBeGreaterThan(0);
@@ -74,9 +74,9 @@ test.describe.serial('monthly salary breakdown', () => {
     expect(components['HRA']).toBe(Math.round(monthly * 0.25));
   });
 
-  test('Medical and Convenience Allowance are flat amounts', async () => {
+  test('Medical and Conveyance Allowance are flat amounts', async () => {
     expect(components['Medical Allowance']).toBe(FLAT_ALLOWANCE);
-    expect(components['Convenience Allowance']).toBe(FLAT_ALLOWANCE);
+    expect(components['Conveyance Allowance']).toBe(FLAT_ALLOWANCE);
   });
 
   test('Special Allowance is exactly the remainder', async () => {
@@ -84,7 +84,7 @@ test.describe.serial('monthly salary breakdown', () => {
       components['Basic Salary'] +
       components['HRA'] +
       components['Medical Allowance'] +
-      components['Convenience Allowance'];
+      components['Conveyance Allowance'];
     expect(components['Special Allowance']).toBe(monthly - others);
   });
 
