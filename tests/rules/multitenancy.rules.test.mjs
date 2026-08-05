@@ -134,6 +134,16 @@ async function seed() {
         orgId: org, key: 'leavePolicies', valueJson: '[]',
       });
     }
+    // Two organisations that split a salary differently — org A pays half as
+    // Basic, org B a third. Neither may see the other's figures.
+    await setDoc(doc(db, 'org_settings', 'org-a__salaryStructure'), {
+      orgId: 'org-a', key: 'salaryStructure',
+      valueJson: JSON.stringify({ basicPercent: 50, hraPercent: 25, medicalAllowance: 1492, conveyanceAllowance: 1492 }),
+    });
+    await setDoc(doc(db, 'org_settings', 'org-b__salaryStructure'), {
+      orgId: 'org-b', key: 'salaryStructure',
+      valueJson: JSON.stringify({ basicPercent: 33, hraPercent: 20, medicalAllowance: 800, conveyanceAllowance: 600 }),
+    });
   });
 }
 
@@ -435,6 +445,76 @@ describe('multi-tenancy — organisation configuration', () => {
   it("HR of org B cannot write into org A", async () => {
     await assertFails(
       setDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__leavePolicies'), policies('org-a')),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // The salary structure specifically.
+  //
+  // It is one of these documents and is therefore covered by the rules above,
+  // but it is worth naming: it is the only setting whose value is a statement
+  // about how much of somebody's pay is Basic, and the failure mode of getting
+  // it wrong — one company's compensation policy applied to another's
+  // payslips — is not something an administrator would notice from the UI.
+  // -------------------------------------------------------------------------
+  const structure = (orgId, overrides = {}) => ({
+    orgId,
+    key: 'salaryStructure',
+    valueJson: JSON.stringify({
+      basicPercent: 50, hraPercent: 25, medicalAllowance: 1492, conveyanceAllowance: 1492,
+      ...overrides,
+    }),
+  });
+
+  it("an employee reads their own organisation's salary structure", async () => {
+    // Their own payslip breakdown is computed from it, so this must be a read
+    // an ordinary employee can make.
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_settings', 'org-a__salaryStructure')));
+  });
+
+  it("an employee of org B cannot read org A's salary structure", async () => {
+    await assertFails(getDoc(doc(as(USERS.employeeB), 'org_settings', 'org-a__salaryStructure')));
+  });
+
+  it("HR of org B cannot read org A's salary structure", async () => {
+    await assertFails(getDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__salaryStructure')));
+  });
+
+  it('HR sets their own organisation\'s salary structure', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'org_settings', 'org-a__salaryStructure'), structure('org-a', { basicPercent: 40 })),
+    );
+  });
+
+  it("HR of org B cannot overwrite org A's salary structure", async () => {
+    // Not a hypothetical: it would silently restate every org A payslip in org
+    // B's proportions.
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__salaryStructure'), structure('org-a')),
+    );
+  });
+
+  it("HR cannot file their own structure under another organisation's id", async () => {
+    // The id carries the tenant, so this is the attempt to publish org A's
+    // split into org B's slot while stamping it org-a.
+    await assertFails(
+      setDoc(doc(as(USERS.hrA), 'org_settings', 'org-b__salaryStructure'), structure('org-a')),
+    );
+  });
+
+  it('an employee cannot set the salary structure at all', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_settings', 'org-a__salaryStructure'), structure('org-a')),
+    );
+  });
+
+  it('clearing a structure is a write like any other, and stays inside the org', async () => {
+    // Clearing publishes `null` as the value. It must still be an
+    // administrator of that organisation doing it.
+    const cleared = { orgId: 'org-a', key: 'salaryStructure', valueJson: 'null' };
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_settings', 'org-a__salaryStructure'), cleared));
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'org_settings', 'org-a__salaryStructure'), { ...cleared }),
     );
   });
 
