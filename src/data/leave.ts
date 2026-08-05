@@ -316,50 +316,14 @@ export const leaveBalances: LeaveBalance[] = balanceSeeds.flatMap((s) => [
   { employeeId: s.empId, type: 'Earned' as LeaveType, total: s.earned[0], used: s.earned[1], available: s.earned[0] - s.earned[1] },
 ]);
 
-const leaveBalanceTypes = new Set<LeaveType>(['Casual', 'Sick', 'Earned']);
-const leaveRequestBaseStatus = new Map(leaveRequests.map((request) => [request.id, request.status]));
-
-function cloneBalances(): LeaveBalance[] {
-  return leaveBalances.map((balance) => ({ ...balance }));
-}
-
-function applyLeaveRequestDelta(balances: LeaveBalance[], requests: LeaveRequest[]) {
-  const balanceByEmployee = new Map<string, Map<LeaveType, LeaveBalance>>();
-
-  balances.forEach((balance) => {
-    const employeeBalances = balanceByEmployee.get(balance.employeeId) ?? new Map<LeaveType, LeaveBalance>();
-    employeeBalances.set(balance.type, balance);
-    balanceByEmployee.set(balance.employeeId, employeeBalances);
-  });
-
-  requests.forEach((request) => {
-    if (!leaveBalanceTypes.has(request.type)) return;
-
-    const baseStatus = leaveRequestBaseStatus.get(request.id) ?? 'Pending';
-    const currentApproved = request.status === 'Approved' ? 1 : 0;
-    const baseApproved = baseStatus === 'Approved' ? 1 : 0;
-    const delta = currentApproved - baseApproved;
-    if (delta === 0) return;
-
-    const employeeBalances = balanceByEmployee.get(request.employeeId);
-    const balance = employeeBalances?.get(request.type);
-    if (!balance) return;
-
-    balance.used = Math.max(0, balance.used + request.days * delta);
-    balance.available = Math.max(0, balance.total - balance.used);
-  });
-
-  return balances;
-}
-
-// Helper: get balances for a specific employee
-export function getEmployeeBalances(employeeId: string, requests: LeaveRequest[] = getLeaveRequests()): LeaveBalance[] {
-  return applyLeaveRequestDelta(cloneBalances(), requests).filter((balance) => balance.employeeId === employeeId);
-}
-
-export function getLeaveBalances(requests: LeaveRequest[] = getLeaveRequests()): LeaveBalance[] {
-  return applyLeaveRequestDelta(cloneBalances(), requests);
-}
+// `leaveBalances` above is the seed pushed into Firestore by lib/seed.ts, and
+// nothing else. What an employee's balance *is* — accrued so far, used this
+// financial year, what remains — is derived in data/leaveEntitlements.ts and
+// read from there by every surface that shows it. The readers that used to sit
+// here returned a fixed total that existed for these fourteen employees and
+// nobody else, so a profile, the Dashboard and the Leave module could each
+// answer the same question differently; tests/e2e/leave-balance.spec.ts now
+// holds them to one answer.
 
 // Helper: employees who are on approved leave on a given date
 export function getOnLeaveToday(date: string): LeaveRequest[] {
@@ -379,6 +343,3 @@ export function getApprovedThisMonth(month = currentMonthIso()): number {
     (r) => r.status === 'Approved' && r.appliedOn.startsWith(month),
   ).length;
 }
-
-// All unique employee IDs that have balance data (for the Balances tab)
-export const balanceEmployeeIds = Array.from(new Set(leaveBalances.map((b) => b.employeeId)));

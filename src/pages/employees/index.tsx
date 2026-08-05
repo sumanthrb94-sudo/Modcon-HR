@@ -61,7 +61,9 @@ import { syncHrRoleForEmployee } from '@/data/roleAssignments';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
-import { getEmployeeBalances, getLeaveRequests } from '@/data/leave';
+import { getLeaveRequests } from '@/data/leave';
+import { getEntitlements } from '@/data/leaveEntitlements';
+import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 
@@ -1841,9 +1843,15 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
   const dataRevision = useDashboardDataRevision();
 
   const requests = useMemo(() => getLeaveRequests(), [dataRevision]);
+  // Derived from the policy, the joining date and today — the same figures the
+  // Leave module and the Dashboard card show. The seeded balance rows this used
+  // to read are fixed totals that exist for the seed employees and nobody else,
+  // so a profile could report a different number from the two other surfaces,
+  // or no leave data at all for anyone added since.
+  const employee = useMemo(() => getEmployee(employeeId), [employeeId, dataRevision]);
   const balances = useMemo(
-    () => getEmployeeBalances(employeeId, requests),
-    [employeeId, requests],
+    () => (employee ? getEntitlements(employee, requests) : []),
+    [employee, requests],
   );
   const history = useMemo(
     () => requests
@@ -1854,12 +1862,12 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
     [requests, employeeId],
   );
 
-  const year = todayIso().slice(0, 4);
-
   return (
     <div className="space-y-5">
       <Card>
-        <CardHeader title="Leave Balances" subtitle={`Current year (Jan – Dec ${year})`} />
+        {/* Leave runs April–March, not January–December: the accrual, the reset
+            and the "used" figure are all counted per financial year. */}
+        <CardHeader title="Leave Balances" subtitle={`Accrued so far in ${financialYearLabel()}`} />
         {balances.length === 0 ? (
           <p className="py-6 text-center text-sm text-ink-400">
             No leave balance has been set up for this employee yet.
@@ -1867,19 +1875,29 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
         ) : (
           <div className="space-y-5">
             {balances.map((lb) => {
-              const usedPct = pct(lb.used, lb.total);
+              // Measured against the year as a whole, not against a granted
+              // figure that grows every month — otherwise the bar moves when
+              // nothing was taken. Matches the Leave module and the Dashboard.
+              const usedPct = pct(lb.used, lb.fullYear);
               return (
-                <div key={lb.type}>
+                <div
+                  key={lb.type}
+                  data-testid="leave-balance-row"
+                  data-leave-type={lb.type}
+                  data-leave-reading={lb.withheldReason ?? `${lb.available}/${lb.granted}`}
+                >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-ink-800">{lb.type} Leave</span>
-                    <div className="flex items-center gap-4 text-xs text-ink-500">
-                      <span><span className="font-semibold text-ink-700">{lb.used}</span> used</span>
-                      <span><span className="font-semibold text-emerald-600">{lb.available}</span> remaining</span>
-                      <span>of {lb.total} days</span>
-                    </div>
+                    {lb.withheldReason ? (
+                      <span className="text-xs text-ink-400">{lb.withheldReason}</span>
+                    ) : (
+                      <div className="flex items-center gap-4 text-xs text-ink-500">
+                        <span><span className="font-semibold text-ink-700">{lb.used}</span> used</span>
+                        <span><span className="font-semibold text-emerald-600">{lb.available}</span> remaining</span>
+                        <span>of {lb.granted} accrued · {lb.fullYear} for the year</span>
+                      </div>
+                    )}
                   </div>
-                  {/* Tone tracks how much of the entitlement is gone, rather
-                      than being fixed per leave type. */}
                   <ProgressBar value={usedPct} tone={usedPct > 75 ? 'amber' : 'brand'} showLabel />
                 </div>
               );

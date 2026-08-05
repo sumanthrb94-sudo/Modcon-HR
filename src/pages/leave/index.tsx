@@ -533,7 +533,14 @@ export function LeavePage() {
                   </div>
                   <div className="space-y-3">
                     {balances.map((b) => (
-                      <div key={b.type}>
+                      <div
+                        key={b.type}
+                        data-testid="leave-balance-row"
+                        data-leave-type={b.type}
+                        // See the same pair on the Dashboard card: the two
+                        // surfaces are compared on these attributes.
+                        data-leave-reading={b.withheldReason ?? `${b.available}/${b.granted}`}
+                      >
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <Badge tone={leaveTypeTone(b.type)} className="text-[10px]">
