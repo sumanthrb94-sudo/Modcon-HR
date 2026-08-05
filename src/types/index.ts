@@ -395,6 +395,42 @@ export interface HandbookVersion {
   notes: string;
 }
 
+/**
+ * A payslip PDF an administrator uploaded for one employee and one month.
+ *
+ * Distinct from `Payslip`, which the app *computes* from the employee's CTC and
+ * attendance. This is the document payroll actually issued: it is the record of
+ * what was paid, so where both exist the uploaded one is what the employee is
+ * shown.
+ *
+ * The id is deterministic — `<orgKey>__<employeeId>__<YYYY-MM>` — so re-uploading
+ * a month replaces that month rather than accumulating duplicates nobody can
+ * tell apart, and so a single month can be fetched by id without a query.
+ *
+ * The bytes live in this document for the same reason the handbook's do; see
+ * `src/lib/handbookStorage.ts` for why there is no Cloud Storage bucket.
+ */
+export interface PayslipDocument {
+  id: ID;
+  orgId: string;
+  employeeId: ID;
+  /** Denormalised so the payroll list can label rows without a directory hit. */
+  employeeCode: string;
+  /** `YYYY-MM`. */
+  month: string;
+  /** Original upload name, used as the download filename. */
+  fileName: string;
+  contentType: 'application/pdf';
+  sizeBytes: number;
+  /** The PDF itself, base64-encoded (no data-URL prefix). */
+  contentBase64: string;
+  uploadedAt: string;
+  /** Always the caller's own uid — the rules refuse any other value. */
+  uploadedByUid: ID;
+  /** Display only, resolved from the local directory at upload time. */
+  uploadedByName: string;
+}
+
 /** One per org: which version is currently published. */
 export interface HandbookPointer {
   id?: ID; // the org key — `default` for the legacy org

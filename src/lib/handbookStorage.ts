@@ -88,8 +88,12 @@ export async function encodeUpload(file: File): Promise<EncodedUpload> {
  *
  * FileReader rather than `btoa(String.fromCharCode(...bytes))`: spreading a
  * 700 KB byte array into an argument list overflows the call stack.
+ *
+ * Exported because payslip uploads store their PDF the same way and for the
+ * same reason (src/lib/payslipDocuments.ts). The seam described in this file's
+ * header is now shared by two features, so replacing it replaces both.
  */
-function readAsBase64(file: File): Promise<string> {
+export function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new HandbookUploadError('Could not read that file.'));

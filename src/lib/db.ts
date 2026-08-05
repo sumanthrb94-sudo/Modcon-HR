@@ -40,6 +40,7 @@ import type {
     Organization,
     HandbookVersion,
     HandbookPointer,
+    PayslipDocument,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -79,6 +80,10 @@ export const Collections = {
     // pointer per org keyed by org id. See src/lib/handbook.ts.
     handbookVersions: col<HandbookVersion>('handbook_versions'),
     handbook: col<HandbookPointer>('handbook'),
+    // Payslip PDFs uploaded by an administrator — the issued document, as
+    // opposed to the `payslips` figures the app computes. See
+    // src/lib/payslipDocuments.ts.
+    payslipDocuments: col<PayslipDocument>('payslip_documents'),
 } as const;
 
 // ---------------------------------------------------------------------------
