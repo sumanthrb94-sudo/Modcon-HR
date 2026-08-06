@@ -117,17 +117,58 @@ export function saveCompanyProfile(profile: CompanyProfile): Promise<boolean> {
   return publishOrgSetting(ORG_SETTINGS.companyProfile, profile);
 }
 
+function normalizeName(value: string) {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 /**
- * True when this job title carries the HR function for the company.
+ * The department whose people may carry the HR function.
+ *
+ * Nominating a job title is not on its own enough to make somebody an
+ * administrator, because a title is not unique to a department: an
+ * organisation whose engineering team happens to share a title with its people
+ * team would hand that engineer every employee's salary. Both have to agree.
+ *
+ * Matched exactly against the department's name, so an organisation that
+ * renames this department stops granting the role rather than granting it to
+ * the wrong people — failing closed is the only safe direction for a control
+ * that confers administrator access. Settings → Company Profile says so when
+ * the department is not there.
+ */
+export const HR_DEPARTMENT = 'Human Resources';
+
+/** True when this is the department that carries the HR function. */
+export function isHrDepartment(department: string): boolean {
+  return normalizeName(department) === normalizeName(HR_DEPARTMENT);
+}
+
+/**
+ * True when this job title is one the company nominated as carrying the HR
+ * function.
  *
  * Compared exactly rather than by substring, and normalised for case and
  * spacing so "hr executive" and "HR  Executive" are the same appointment.
+ *
+ * The title alone does **not** decide who administers the organisation — see
+ * `carriesHrFunction`. This answers the narrower question the Settings
+ * checkboxes ask, which is whether a title is on the nominated list.
  */
 export function isHrDesignation(designation: string): boolean {
-  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-  const target = normalize(designation ?? '');
+  const target = normalizeName(designation ?? '');
   if (!target) return false;
-  return getCompanyProfile().hrDesignations.some((item) => normalize(item) === target);
+  return getCompanyProfile().hrDesignations.some((item) => normalizeName(item) === target);
+}
+
+/**
+ * True when this employee carries the HR function: a nominated title, held in
+ * the HR department.
+ *
+ * The single answer to "is this person HR", used both by the grant
+ * (data/roleAssignments.ts) and by what HR can see (lib/dataScope.ts), so
+ * access and visibility cannot disagree about who HR is.
+ */
+export function carriesHrFunction(employee: { designation?: string; department?: string }): boolean {
+  return isHrDepartment(employee.department ?? '') && isHrDesignation(employee.designation ?? '');
 }
 
 if (typeof window !== 'undefined') {
