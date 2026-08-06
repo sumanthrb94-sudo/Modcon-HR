@@ -15,7 +15,6 @@ export const APP_MODULES = [
   'Payroll',
   'Recruitment',
   'Onboarding',
-  'Tasks',
   'Performance',
   'Expenses',
   'Assets',
@@ -50,12 +49,6 @@ export const defaultPermissions: PermissionMatrix = {
   Payroll: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
   Recruitment: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
   Onboarding: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
-  // `full` is the reach to assign to anyone in the organisation. A Manager has
-  // `view` and still assigns — to their own reports, which the reporting tree
-  // decides rather than this matrix, so a team lead or a supervisor needs no
-  // role of their own. `none` would take away seeing your own tasks, which is
-  // why Employee is `view` rather than absent. See src/lib/tasks.ts.
-  Tasks: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Performance: { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'none' },
   Expenses: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'full' },
   Assets: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
