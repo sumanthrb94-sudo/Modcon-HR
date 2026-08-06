@@ -53,6 +53,7 @@ import {
 } from '@/lib/employeeDocuments';
 import type { EmployeeDocument, DocumentStatus } from '@/types';
 import { departments, addDepartmentToDirectory } from '@/data/departments';
+import { addLocationToDirectory, normalizeLocation } from '@/data/locations';
 import type { Employee, EmployeeStatus, EmploymentType, Gender, WeekOffDay } from '@/types';
 import { WEEK_OFF_DAYS } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
@@ -614,6 +615,23 @@ export function EmployeesPage() {
     return name;
   }
 
+  /**
+   * Declare a location the organisation has not used before.
+   *
+   * The dropdown's derived half would pick it up anyway once this employee is
+   * saved — but only in this browser, and only for as long as somebody is
+   * posted there. Declaring it makes it the organisation's, like the
+   * department beside it. See data/locations.ts.
+   */
+  function ensureLocation(name: string): string {
+    const location = normalizeLocation(name);
+    if (!location) return name;
+    const known = locations.find((item) => item.toLowerCase() === location.toLowerCase());
+    if (known) return known;
+    void addLocationToDirectory(location);
+    return location;
+  }
+
   function handleAddEmployee(payload: NewEmployeePayload) {
     const directory = getEmployeeDirectory();
     const reportingManagerId = payload.reportingManagerId;
@@ -634,7 +652,7 @@ export function EmployeesPage() {
       dateOfBirth: payload.dateOfBirth,
       designation: payload.designation,
       department: ensureDepartment(payload.department),
-      location: payload.location,
+      location: ensureLocation(payload.location),
       employmentType: payload.employmentType,
       status: 'Active',
       dateOfJoining: payload.dateOfJoining,
@@ -2170,13 +2188,17 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   }
 
   /**
-   * Locations are not a managed list. `locations` is the set of places people
-   * actually are, recomputed from the directory on every change — so putting
-   * someone somewhere new is all it takes for that place to exist, and it
-   * stops existing once nobody is there.
+   * Declared for the organisation as well as applied to this person.
+   *
+   * `locations` was only ever the set of places people actually are, recomputed
+   * from the directory — so a new office existed in the browser that typed it
+   * and stopped existing once nobody was posted there. Both halves are wrong
+   * for a place: it is the company's, and it outlives its current occupants.
    */
   function createLocation(name: string) {
-    saveField({ location: name });
+    const location = normalizeLocation(name) || name;
+    void addLocationToDirectory(location);
+    saveField({ location });
   }
 
   /**

@@ -2,6 +2,7 @@ import type { Employee, Department, EmploymentType, EmployeeStatus, Gender, Week
 import { WEEK_OFF_DAY_INDEX } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
+import { mergeLocations, LOCATION_DIRECTORY_CHANGED_EVENT } from '@/data/locations';
 
 // ---------------------------------------------------------------------------
 // Master employee directory — the single source of truth for people data.
@@ -247,8 +248,11 @@ function syncDirectorySnapshots() {
   const directory = getEmployeeDirectory();
   employees.splice(0, employees.length, ...directory);
 
-  const uniqueLocations = Array.from(new Set(directory.map((employee) => employee.location))).sort();
-  locations.splice(0, locations.length, ...uniqueLocations);
+  // Declared locations first, then wherever people actually work. Derived alone
+  // meant a location existed only in the browser that invented it, and vanished
+  // with the last employee posted there — see data/locations.ts.
+  const merged = mergeLocations(directory.map((employee) => employee.location));
+  locations.splice(0, locations.length, ...merged);
 }
 
 export function getNextEmployeeSequence(directory: Employee[] = getEmployeeDirectory()): number {
@@ -372,5 +376,14 @@ if (typeof window !== 'undefined') {
     if (event.key === orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY) || event.key === orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY)) {
       syncDirectorySnapshots();
     }
+  });
+
+  // The `locations` snapshot is half declared configuration, so it goes stale
+  // when that half changes — including at sign-in, when startOrgSettingsSync
+  // hydrates the organisation's list from Firestore into a cache this module
+  // already read at import time.
+  window.addEventListener(LOCATION_DIRECTORY_CHANGED_EVENT, () => {
+    syncDirectorySnapshots();
+    notifyEmployeeDirectoryChanged();
   });
 }
