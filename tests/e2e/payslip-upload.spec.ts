@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
-import { EMULATOR_HOST, FIRESTORE_BASE, signInPersona } from './firestore';
+import { employeeLinkFor, signInPersona } from './firestore';
 
 /**
  * An administrator uploads a month's payslips; each employee gets their own.
@@ -143,26 +143,21 @@ test.describe.serial('an administrator uploads payslips', () => {
   });
 
   test('the employee is offered their own payslip on Finance', async () => {
-    // The link is what the rules read to decide "your own" (src/data/employeeLinks.ts);
-    // it is written by an administrator, which against the emulator means the
-    // owner bypass. Nothing here can run against the live project.
-    test.skip(!EMULATOR_HOST, 'needs the Firestore emulator to write employee_links');
-
+    // The link is what the rules read to decide "your own"
+    // (src/data/employeeLinks.ts). This used to write it here with the
+    // emulator's owner bypass, because adding somebody to the directory did not
+    // — which meant the test arranged the one precondition it should have been
+    // checking, and would have gone on passing the day the app stopped
+    // establishing it. Adding the employee above is now what links them, so
+    // this asserts instead of arranges.
     const { uid } = await signInPersona(EMPLOYEE.email, EMPLOYEE.password);
     expect(uid).toBeTruthy();
-    const res = await fetch(`${FIRESTORE_BASE}/employee_links/${uid}`, {
-      method: 'PATCH',
-      headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fields: {
-          uid: { stringValue: uid },
-          employeeId: { stringValue: employeeId },
-          orgId: { stringValue: 'default' },
-          linkedBy: { stringValue: 'e2e' },
-        },
-      }),
-    });
-    expect(res.ok, `seeding employee_links/${uid} failed: ${res.status}`).toBe(true);
+    await expect
+      .poll(async () => (await employeeLinkFor(uid as string))?.employeeId, {
+        message: 'adding the employee never linked their existing account',
+        timeout: 15_000,
+      })
+      .toBe(employeeId);
 
     await page.locator('button[title="Sign out"]').click();
     await expect(page.locator('#username')).toBeVisible({ timeout: 20_000 });

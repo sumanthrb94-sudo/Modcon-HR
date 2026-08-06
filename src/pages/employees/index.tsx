@@ -61,6 +61,7 @@ import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
+import { linkAccountForEmployee } from '@/data/employeeLinks';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -667,6 +668,26 @@ export function EmployeesPage() {
         setRoleNotice(`${nextEmployee.fullName} was added as ${nextEmployee.designation} and now has administrator access for this company.`);
       } else if (outcome === 'failed') {
         setRoleNotice(`${nextEmployee.fullName} was added, but granting HR administrator access failed. Set their role from the Admin dashboard.`);
+      }
+    });
+
+    // If this person already has an account, point it at the record just
+    // created. Without the link firestore.rules resolves that account to no
+    // employee, so they read none of their own salary or leave and cannot file
+    // their own documents — silently, on the ordinary hiring path. See
+    // linkAccountForEmployee, which refuses to guess and reports instead.
+    void linkAccountForEmployee({
+      employeeId: nextEmployee.id,
+      email: nextEmployee.email,
+      orgId: profile?.orgId || undefined,
+      linkedBy: profile?.email ?? profile?.uid ?? 'unknown',
+    }).then((outcome) => {
+      if (outcome.status === 'ambiguous') {
+        setRoleNotice(`${nextEmployee.fullName} was added, but ${outcome.count} accounts share ${nextEmployee.email}, so none was linked to this record. Link it from the Admin dashboard.`);
+      } else if (outcome.status === 'conflict') {
+        setRoleNotice(`${nextEmployee.fullName} was added, but the account for ${nextEmployee.email} is already linked to another employee record. Repoint it from the Admin dashboard if that is wrong.`);
+      } else if (outcome.status === 'failed') {
+        setRoleNotice(`${nextEmployee.fullName} was added, but linking their existing account to this record failed. Run the identity backfill from Settings → Database.`);
       }
     });
   }

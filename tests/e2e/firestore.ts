@@ -88,7 +88,7 @@ export async function adminToken(): Promise<string | null> {
  * resolves to the unassigned sentinel and every org-scoped write is refused.
  */
 /**
- * Point a persona's account at an employee record, the way an administrator does.
+ * Which employee record an account is pointed at, read straight from Firestore.
  *
  * `employee_links/{uid}` is what `isSelf()` in firestore.rules resolves against,
  * and nothing else can stand in for it: the employee directory the app renders
@@ -96,38 +96,19 @@ export async function adminToken(): Promise<string | null> {
  * no weight on the server. That is the whole point of the collection — see
  * src/data/employeeLinks.ts.
  *
- * The app writes this link when an administrator *creates the account*
- * (src/lib/accountInvites.ts) or runs the identity backfill, both of which match
- * against the Firestore `employees` collection. A spec that adds someone to the
- * directory through the UI has not been through either, so its employee is
- * unlinked and every own-record rule fails closed against them — correctly, and
- * unhelpfully for a test that wants to exercise the own-record case. This writes
- * the link the administrator would have.
- *
- * Emulator only. Against a live project it is a no-op rather than a real write
- * to the organisation's identity data.
+ * Read rather than written, deliberately. Writing it here would let a spec
+ * arrange the precondition the app is supposed to establish, and the day the
+ * app stopped establishing it every test would still pass.
  */
-export async function linkPersonaToEmployee(
-  uid: string,
-  employeeId: string,
-  orgId = 'default',
-): Promise<void> {
-  if (!EMULATOR_HOST) return;
+export async function employeeLinkFor(uid: string): Promise<{ employeeId: string } | null> {
+  const token = await adminToken();
+  if (!token) return null;
   const res = await fetch(`${FIRESTORE_BASE}/employee_links/${uid}`, {
-    method: 'PATCH',
-    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fields: {
-        uid: { stringValue: uid },
-        employeeId: { stringValue: employeeId },
-        orgId: { stringValue: orgId },
-        linkedBy: { stringValue: 'e2e' },
-      },
-    }),
+    headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) {
-    throw new Error(`[e2e] linking ${uid} to ${employeeId} failed: ${res.status} ${await res.text()}`);
-  }
+  if (res.status !== 200) return null;
+  const employeeId = (await res.json()).fields?.employeeId?.stringValue;
+  return typeof employeeId === 'string' ? { employeeId } : null;
 }
 
 export async function seedPersonaProfiles(): Promise<void> {

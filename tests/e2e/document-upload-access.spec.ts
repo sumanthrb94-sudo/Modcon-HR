@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { HR_PERSONA, PERSONAS } from './config';
-import { linkPersonaToEmployee, signInPersona } from './firestore';
+import { employeeLinkFor, signInPersona } from './firestore';
 
 /**
  * Who is offered which document upload.
@@ -93,17 +93,21 @@ test.describe.serial('document uploads are offered by section and role', () => {
     await expect(page.getByRole('button', { name: COMPULSORY })).toHaveCount(0);
     await expect(page.getByText('Uploaded by the employee themselves or by HR.')).toBeVisible();
 
-    // Point the employee's account at the record just created, which is what an
-    // administrator does when they create the account. Adding somebody to the
-    // directory does not do it — the directory is localStorage and the link is
-    // Firestore — and without it firestore.rules resolves this account to no
-    // employee, so the own-record upload below is refused however the page is
-    // rendered. See linkPersonaToEmployee.
+    // Adding somebody to the directory must also point their existing account
+    // at the record, or firestore.rules resolves that account to no employee
+    // and the own-record upload below is refused however the page is rendered.
+    // Asserted here rather than arranged by the test: it is the app's job, and
+    // a helper that wrote the link would hide the day the app stopped.
     const employeeId = new URL(page.url()).pathname.split('/').pop() ?? '';
     expect(employeeId, 'could not read the new employee id from the URL').not.toBe('');
     const { uid } = await signInPersona(EMPLOYEE.email, EMPLOYEE.password);
     expect(uid, 'could not resolve the employee persona uid').not.toBeNull();
-    await linkPersonaToEmployee(uid as string, employeeId);
+    await expect
+      .poll(async () => (await employeeLinkFor(uid as string))?.employeeId, {
+        message: 'adding the employee never linked their existing account',
+        timeout: 15_000,
+      })
+      .toBe(employeeId);
   });
 
   test('an employee may submit their own primary documents, and no optional ones', async () => {
