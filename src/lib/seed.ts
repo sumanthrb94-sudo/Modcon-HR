@@ -26,7 +26,7 @@ import { DEFAULT_ORG_KEY } from './orgScope';
 import { employees } from '@/data/employees';
 import { attendanceRecords, getRegularizationRequests } from '@/data/attendance';
 import { leaveRequests, leaveBalances } from '@/data/leave';
-import { payslips, payrollRuns } from '@/data/payroll';
+import { seedPayslips, payrollRuns } from '@/data/payroll';
 import { jobOpenings, candidates } from '@/data/recruitment';
 import { onboardings } from '@/data/onboarding';
 import { goals, reviews as performanceReviews } from '@/data/performance';
@@ -212,7 +212,9 @@ export async function seedFirestore(
                 managerChainIds: managerChains.get(b.employeeId) ?? [],
             })),
         },
-        { name: 'payslips', data: payslips },
+        // Computed here rather than imported as a constant, so a seed run
+        // writes the organisation's *current* salary split into Firestore.
+        { name: 'payslips', data: seedPayslips() },
         { name: 'payroll_runs', data: payrollRuns },
         { name: 'jobs', data: jobOpenings },
         { name: 'candidates', data: candidates },

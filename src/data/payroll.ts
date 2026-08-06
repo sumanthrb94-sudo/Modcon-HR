@@ -168,7 +168,22 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
 // Current month payslips — all employees, May 2026
 // ---------------------------------------------------------------------------
 
-export const payslips: Payslip[] = isMockDataCleared() ? [] : employees.map((e) => buildPayslip(e, '2026-05', 'Paid'));
+/**
+ * The demo month's computed payslips — built on demand, never at module load.
+ *
+ * This was a module-level `const`, which was harmless while the components were
+ * literals. It stopped being harmless when they became the organisation's own
+ * split: `buildPayslip` now reads `getSalaryStructure()`, and a value captured
+ * at module load is captured before `startOrgSettingsSync` has hydrated the
+ * cache from Firestore and before an administrator has changed anything in
+ * Settings. The Payroll page seeds its list from here, so a frozen array meant
+ * its payslip modal kept showing the split that was in effect when the tab was
+ * first opened — while the Compensation tab, which recomputes on every render,
+ * showed the new one.
+ */
+export function seedPayslips(): Payslip[] {
+  return isMockDataCleared() ? [] : employees.map((e) => buildPayslip(e, '2026-05', 'Paid'));
+}
 
 // ---------------------------------------------------------------------------
 // Payroll runs — last 6 months
@@ -246,10 +261,13 @@ export const PAYROLL_RUNS_CHANGED_EVENT = payrollRunStore.changedEvent;
 export const getPayrollRuns = () => payrollRunStore.get();
 export const savePayrollRuns = (next: PayrollRun[]) => payrollRunStore.save(next);
 
+// The seed is a thunk on purpose: `get()` falls back to it whenever this
+// organisation has no stored payslips, and that fallback must reflect the
+// salary structure as it stands at the moment of the call, not at import time.
 const payslipStore = persistentCollection<Payslip>(
   'modcon.hr.payslips',
   'modcon-hr-payslips-changed',
-  () => payslips,
+  seedPayslips,
 );
 
 export const PAYSLIPS_CHANGED_EVENT = payslipStore.changedEvent;

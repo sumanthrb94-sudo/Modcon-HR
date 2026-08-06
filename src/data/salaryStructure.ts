@@ -170,8 +170,15 @@ export function splitMonthlyGross(
   // No structure, no split. Returning zeros would render a breakdown claiming
   // the whole salary is Special Allowance, which is a statement, not a blank.
   if (!safe) return null;
-  const basic = Math.round(monthly * (safe.basicPercent / 100));
-  const hra = Math.round(monthly * (safe.hraPercent / 100));
+  const basic = Math.min(Math.round(monthly * (safe.basicPercent / 100)), monthly);
+  // Capped by what Basic leaves, not just by its own percentage. Rounding the
+  // two independently can put them a rupee over the gross whenever they total
+  // exactly 100% — Basic 50 / HRA 50 on a gross of ₹8,333 rounds to 4,167 each,
+  // which is ₹8,334. Special Allowance cannot absorb that (there is nothing
+  // left for it to give back), so the breakdown would show components summing
+  // to a rupee more than the gross printed above them. Basic wins the rupee,
+  // because it is what statutory deductions are computed from.
+  const hra = Math.min(Math.round(monthly * (safe.hraPercent / 100)), monthly - basic);
   const afterPercentages = Math.max(0, monthly - basic - hra);
   const medicalAllowance = Math.min(safe.medicalAllowance, afterPercentages);
   const conveyanceAllowance = Math.min(
