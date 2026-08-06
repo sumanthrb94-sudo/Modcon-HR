@@ -13,7 +13,7 @@ import {
 import type { Column } from '@/components/ui';
 import { Select } from '@/components/ui';
 import { employees } from '@/data/employees';
-import { getCompanyProfile, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
+import { HR_DEPARTMENT, getCompanyProfile, isHrDepartment, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -255,13 +255,36 @@ function CompanyProfile() {
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  // Every distinct title in the directory, plus any the company has already
-  // nominated that nobody currently holds — dropping those from the list would
-  // silently deselect them on the next save.
+  // Every distinct title held **in the HR department**, plus any the company
+  // has already nominated that nobody currently holds.
+  //
+  // The department filter is the point: this list used to be every title in the
+  // company, so "Application Developer" was offered as a designation that
+  // carries the HR function, and ticking it would have handed that engineer
+  // every employee's salary. Nominating a title is a statement about the people
+  // team, not about a string.
+  //
+  // Already-nominated titles stay listed even when nobody in HR holds them —
+  // including ones nominated before this was fixed. Dropping them would
+  // silently deselect them on the next save, and a title that should not be
+  // there is one somebody has to be able to see in order to untick. It confers
+  // nothing on its own now: `carriesHrFunction` also checks the department.
   const designationOptions = useMemo(() => {
-    const inUse = employees.map((employee) => employee.designation).filter(Boolean);
-    return Array.from(new Set([...inUse, ...form.hrDesignations])).sort((a, b) => a.localeCompare(b));
+    const inHrDepartment = employees
+      .filter((employee) => isHrDepartment(employee.department))
+      .map((employee) => employee.designation)
+      .filter(Boolean);
+    return Array.from(new Set([...inHrDepartment, ...form.hrDesignations])).sort((a, b) => a.localeCompare(b));
   }, [directoryRevision, form.hrDesignations]);
+
+  /** Nominated, but held by nobody in the HR department — so it grants nothing. */
+  function isInertDesignation(designation: string) {
+    return !employees.some(
+      (employee) =>
+        isHrDepartment(employee.department) &&
+        employee.designation.trim().toLowerCase() === designation.trim().toLowerCase(),
+    );
+  }
 
   function toggleHrDesignation(designation: string) {
     const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -405,8 +428,10 @@ function CompanyProfile() {
             HR Designations
           </label>
           <p className="text-xs text-ink-400 mb-3">
-            Job titles that carry the HR function. Anyone appointed to one of these administers this
-            organisation and can see every employee&apos;s records, including top management.
+            Job titles in {HR_DEPARTMENT} that carry the HR function. Anyone in that department
+            appointed to one of these administers this organisation and can see every
+            employee&apos;s records, including top management. A title held outside{' '}
+            {HR_DEPARTMENT} confers nothing.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-auto rounded-lg border border-ink-100 p-3">
             {designationOptions.map((designation) => {
@@ -421,12 +446,21 @@ function CompanyProfile() {
                     checked={checked}
                     onChange={() => toggleHrDesignation(designation)}
                   />
-                  <span>{designation}</span>
+                  <span>
+                    {designation}
+                    {isInertDesignation(designation) && (
+                      <span className="block text-xs text-ink-400">Nobody in {HR_DEPARTMENT} holds this — it grants nothing</span>
+                    )}
+                  </span>
                 </label>
               );
             })}
             {designationOptions.length === 0 ? (
-              <p className="text-sm text-ink-400">No designations recorded yet.</p>
+              <p className="text-sm text-ink-400">
+                Nobody is recorded in {HR_DEPARTMENT} yet, so there are no titles to nominate. Add
+                someone to that department first — a title held anywhere else does not carry the HR
+                function.
+              </p>
             ) : null}
           </div>
           {form.hrDesignations.length === 0 ? (

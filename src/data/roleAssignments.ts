@@ -24,7 +24,7 @@ import { db } from '@/lib/firebase';
 import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import type { UserProfile, UserRole } from '@/lib/auth';
 import type { Employee } from '@/types';
-import { isHrDesignation } from '@/data/companyProfile';
+import { carriesHrFunction } from '@/data/companyProfile';
 
 export interface RoleAssignment {
   email: string;
@@ -124,13 +124,15 @@ async function applyRoleToExistingAccount(email: string, role: UserRole): Promis
  * user rather than silently dropping it.
  */
 export async function syncHrRoleForEmployee(
-  employee: Pick<Employee, 'email' | 'designation'>,
+  employee: Pick<Employee, 'email' | 'designation' | 'department'>,
   actor: UserProfile | null,
 ): Promise<'granted' | 'revoked' | 'unchanged' | 'failed'> {
   const email = roleAssignmentId(employee.email ?? '');
   if (!email) return 'unchanged';
 
-  const shouldBeHr = isHrDesignation(employee.designation ?? '');
+  // Both halves, or a nominated title held anywhere in the company would
+  // confer administrator access — see carriesHrFunction.
+  const shouldBeHr = carriesHrFunction(employee);
 
   try {
     const existing = await getRoleAssignment(email);

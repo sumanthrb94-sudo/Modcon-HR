@@ -27,21 +27,24 @@
 import type { Employee } from '@/types';
 import type { UserProfile } from '@/lib/auth';
 import { getEmployeeDirectory } from '@/data/employees';
-import { isHrDesignation } from '@/data/companyProfile';
+import { carriesHrFunction } from '@/data/companyProfile';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 
 /**
  * The employee records that represent the HR Manager(s).
  *
- * Anyone holding one of the job titles the company nominated as carrying the
- * HR function (Settings → Company Profile) — the same list that grants them
- * administrator access, so the two cannot disagree about who HR is. A company
+ * Anyone in the HR department holding one of the job titles the company
+ * nominated as carrying the HR function (Settings → Company Profile) — the
+ * same test that grants them administrator access, so the two cannot disagree
+ * about who HR is. The department half matters: a title is not unique to one,
+ * and without it an engineer sharing a title with the people team would read
+ * every salary in the company. A company
  * that has nominated none has no HR Manager, and the Manager scope below simply
  * falls back to its own subtree.
  */
 export function getHrManagers(directory: Employee[] = getEmployeeDirectory()): Employee[] {
-  return directory.filter((employee) => isHrDesignation(employee.designation));
+  return directory.filter(carriesHrFunction);
 }
 
 /** Every employee at or beneath `rootId` in the reporting tree, including it. */
