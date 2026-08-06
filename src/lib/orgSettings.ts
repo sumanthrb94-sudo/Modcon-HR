@@ -71,6 +71,10 @@ export const ORG_SETTINGS = {
   holidays: setting('holidays', 'modcon.hr.holidays', 'modcon-hr-holidays-changed'),
   customDepartments: setting('customDepartments', 'modcon.hr.customDepartments', 'modcon-hr-department-directory-changed'),
   removedDepartments: setting('removedDepartments', 'modcon.hr.removedDepartments', 'modcon-hr-department-directory-changed'),
+  // Work locations the organisation has added. The list the app shows is the
+  // union of these and the places its people already work — see
+  // data/locations.ts for why the derived half is not enough on its own.
+  customLocations: setting('customLocations', 'modcon.hr.customLocations', 'modcon-hr-location-directory-changed'),
   // How a monthly gross is split into Basic, HRA and the flat allowances. A
   // company's own policy, not a platform constant — see data/salaryStructure.ts.
   salaryStructure: setting('salaryStructure', 'modcon.hr.salaryStructure', 'modcon-hr-salary-structure-changed'),

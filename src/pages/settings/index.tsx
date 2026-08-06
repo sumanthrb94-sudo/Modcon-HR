@@ -5,7 +5,7 @@ import {
   Plug, CreditCard, ChevronRight, Check, X,
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
-  AlertCircle, CheckCircle2, Star, Database, Trash2, Wallet,
+  AlertCircle, CheckCircle2, Star, Database, Trash2, Wallet, MapPin,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
@@ -19,6 +19,16 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { getLeavePolicies, saveLeavePolicies, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy, type LeaveAccrual } from '@/data/leavePolicies';
 import { getLeaveRequests } from '@/data/leave';
+import {
+  addLocationToDirectory,
+  buildLocationDirectory,
+  normalizeLocation,
+  removeLocationFromDirectory,
+  renameLocationInDirectory,
+  type LocationRecord,
+} from '@/data/locations';
+import { getEmployeeDirectory, reassignEmployeeLocation } from '@/data/employees';
+import { useLocationDirectoryRevision } from '@/lib/useLocationDirectoryRevision';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import {
   getSalaryStructure,
@@ -2934,6 +2944,233 @@ function DatabaseSection() {
 }
 
 // ===========================================================================
+// Section: Locations
+// ===========================================================================
+/**
+ * The places this organisation works from.
+ *
+ * A location arrives here one of two ways: declared, by somebody adding it —
+ * here or in Add Employee — or inferred, because an employee record says
+ * somebody works there. Only a declared one can be renamed or withdrawn. An
+ * inferred one has no record of its own to edit, and it stops being offered on
+ * its own once the last person posted there moves; withdrawing it would mean
+ * hiding a place people are actually in, which shows on their profile as a
+ * location the form insists does not exist.
+ */
+function LocationsSection() {
+  const save = useSaveIndicator();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const locationRevision = useLocationDirectoryRevision();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [originalName, setOriginalName] = useState('');
+  const [editingName, setEditingName] = useState('');
+  const [newName, setNewName] = useState('');
+  const [addError, setAddError] = useState('');
+  const [editError, setEditError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const rows: LocationRecord[] = useMemo(
+    () => buildLocationDirectory(getEmployeeDirectory().map((employee) => employee.location)),
+    [directoryRevision, locationRevision],
+  );
+
+  function clashes(name: string, except = '') {
+    return rows.some(
+      (row) => row.name.toLowerCase() === name.toLowerCase() && row.name.toLowerCase() !== except.toLowerCase(),
+    );
+  }
+
+  function handleAdd() {
+    const name = normalizeLocation(newName);
+    if (!name) {
+      setAddError('Location name is required.');
+      return;
+    }
+    if (clashes(name)) {
+      setAddError('This organisation already has a location with that name.');
+      return;
+    }
+    save.track(addLocationToDirectory(name));
+    setAddOpen(false);
+    setNewName('');
+    setAddError('');
+    setNotice('');
+  }
+
+  function handleRename() {
+    const name = normalizeLocation(editingName);
+    if (!name) {
+      setEditError('Location name is required.');
+      return;
+    }
+    if (clashes(name, originalName)) {
+      setEditError('This organisation already has a location with that name.');
+      return;
+    }
+    // The employees move with it — see renameLocationInDirectory.
+    const { moved, published } = renameLocationInDirectory(originalName, name, reassignEmployeeLocation);
+    save.track(published);
+    setEditOpen(false);
+    setEditError('');
+    setNotice(
+      moved > 0
+        ? `Renamed to ${name}, and moved ${moved} ${moved === 1 ? 'person' : 'people'} with it.`
+        : `Renamed to ${name}.`,
+    );
+  }
+
+  function handleRemove(row: LocationRecord) {
+    if (row.headcount > 0) {
+      setNotice(`${row.headcount} ${row.headcount === 1 ? 'person is' : 'people are'} posted at ${row.name}. Move them somewhere else before withdrawing it.`);
+      return;
+    }
+    setNotice('');
+    save.track(removeLocationFromDirectory(row.name));
+  }
+
+  const cols: Column<LocationRecord>[] = [
+    {
+      key: 'name',
+      header: 'Location',
+      render: (r) => (
+        <span className="flex items-center gap-2 font-medium text-ink-900">
+          <MapPin size={13} className="text-ink-400" />
+          {r.name}
+        </span>
+      ),
+    },
+    {
+      key: 'people',
+      header: 'People',
+      render: (r) => <span className="text-sm text-ink-600">{r.headcount}</span>,
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      render: (r) => (
+        <Badge tone={r.declared ? 'blue' : 'gray'}>{r.declared ? 'Declared' : 'In use'}</Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (r) => (
+        <div className="flex items-center justify-end gap-1">
+          {/* An inferred location has no declaration to edit. Offering the
+              buttons and refusing on click would be worse than not offering
+              them — the row already says which kind it is. */}
+          {r.declared ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Edit2 size={13} />}
+                onClick={() => {
+                  setOriginalName(r.name);
+                  setEditingName(r.name);
+                  setEditError('');
+                  setEditOpen(true);
+                }}
+              >
+                Rename
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Trash2 size={13} />}
+                onClick={() => handleRemove(r)}
+                title={r.headcount > 0 ? 'Move this location\'s people before withdrawing it' : 'Withdraw location'}
+              >
+                Withdraw
+              </Button>
+            </>
+          ) : (
+            <span className="text-xs text-ink-400">From an employee record</span>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <SettingsSection
+      title="Locations"
+      subtitle="The places this organisation works from, offered wherever someone picks a location."
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card padding={false}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
+          <p className="text-sm text-ink-500">{rows.length} locations offered</p>
+          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Location</Button>
+        </div>
+        {notice && (
+          <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2" role="status">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+            <p className="text-sm text-amber-800">{notice}</p>
+          </div>
+        )}
+        <Table columns={cols} data={rows} keyExtractor={(r) => r.name} emptyMessage="No locations yet" />
+      </Card>
+
+      <Modal
+        open={addOpen}
+        onClose={() => { setAddOpen(false); setNewName(''); setAddError(''); }}
+        title="Add Location"
+        subtitle="Offer a new place to work from"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setAddOpen(false); setNewName(''); setAddError(''); }}>Cancel</Button>
+            <Button variant="primary" onClick={handleAdd}>Add Location</Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <label className="block text-xs font-semibold text-ink-600" htmlFor="new-location">Location name</label>
+          <input
+            id="new-location"
+            className="input w-full"
+            aria-label="New location name"
+            placeholder="e.g. Chennai"
+            value={newName}
+            onChange={(event) => { setNewName(event.target.value); setAddError(''); }}
+          />
+          {addError && <p className="text-xs text-red-600">{addError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={() => { setEditOpen(false); setEditError(''); }}
+        title="Rename Location"
+        subtitle="Everyone posted here moves with it"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setEditOpen(false); setEditError(''); }}>Cancel</Button>
+            <Button variant="primary" onClick={handleRename}>Save Location</Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <label className="block text-xs font-semibold text-ink-600" htmlFor="edit-location">Location name</label>
+          <input
+            id="edit-location"
+            className="input w-full"
+            aria-label="Location name"
+            value={editingName}
+            onChange={(event) => { setEditingName(event.target.value); setEditError(''); }}
+          />
+          {editError && <p className="text-xs text-red-600">{editError}</p>}
+        </div>
+      </Modal>
+    </SettingsSection>
+  );
+}
+
+// ===========================================================================
 // Section: Salary Structure
 // ===========================================================================
 /** The gross a preview is worked out against — an example, not anyone's salary. */
@@ -3179,6 +3416,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'company', label: 'Company Profile', icon: <Building2 size={17} />, description: 'Brand, legal & contact info' },
   { id: 'departments', label: 'Departments', icon: <Users size={17} />, description: 'Org structure & heads' },
+  { id: 'locations', label: 'Locations', icon: <MapPin size={17} />, description: 'Where the company works' },
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
   { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
@@ -3232,6 +3470,7 @@ export function SettingsPage() {
     switch (active) {
       case 'company': return <CompanyProfile />;
       case 'departments': return <DepartmentsSection />;
+      case 'locations': return <LocationsSection />;
       case 'leave': return <LeavePolicies />;
       case 'salary': return <SalaryStructureSection />;
       case 'roles': return <RolesPermissions />;

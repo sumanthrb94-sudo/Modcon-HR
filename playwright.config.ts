@@ -97,7 +97,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * is identical across engines, the same argument that keeps ROLE_SPECS on one
  * engine.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|location-directory)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.
