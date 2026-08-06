@@ -42,6 +42,7 @@ import type {
     HandbookPointer,
     PayslipDocument,
     EmployeeDocument,
+    Task,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -89,6 +90,9 @@ export const Collections = {
     // localStorage because who may file which kind is a rule, and a rule needs
     // a server to refuse the write. See src/lib/employeeDocuments.ts.
     employeeDocuments: col<EmployeeDocument>('employee_documents'),
+    // Work assigned to an employee. Who it is for decides who may read it, so
+    // it is a Firestore collection with its own rules — see src/lib/tasks.ts.
+    tasks: col<Task>('tasks'),
 } as const;
 
 // ---------------------------------------------------------------------------

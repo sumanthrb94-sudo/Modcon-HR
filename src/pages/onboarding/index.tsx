@@ -12,6 +12,7 @@ import {
   Calendar,
   User,
   Tag,
+  Plus,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -21,11 +22,16 @@ import {
   Card,
   ProgressBar,
   Modal,
+  Button,
 } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
-import { getOnboardings, saveOnboardings } from '@/data/onboarding';
+import { getOnboardings, saveOnboardings, standardTaskTemplate } from '@/data/onboarding';
+import { getEmployeeDirectory } from '@/data/employees';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
+import { getPermissionLevel, resolveAppRole } from '@/lib/accessControl';
+import { useAuth } from '@/lib/auth';
 import { orgScopedKey } from '@/lib/orgScope';
-import type { Onboarding, OnboardingTask, TaskStatus } from '@/types';
+import type { Employee, Onboarding, OnboardingTask, TaskStatus } from '@/types';
 
 const ONBOARDING_STATE_STORAGE_KEY = 'modcon.hr.onboarding.state';
 
@@ -404,8 +410,60 @@ export function OnboardingPage() {
     );
   }, []);
 
+  const { profile } = useAuth();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const [startOpen, setStartOpen] = useState(false);
+  // HR and Admin. There was no way to start one at all, so the page could only
+  // ever show what the seed happened to contain — an organisation that hired
+  // somebody had nowhere to say so, and every figure above read 0.
+  const canManageOnboarding = getPermissionLevel('Onboarding', resolveAppRole(profile)) === 'full';
+
+  /** Everyone who has no onboarding record yet — the rest are already tracked. */
+  const startableEmployees = useMemo(
+    () => {
+      const tracked = new Set(onboardings.map((ob) => ob.employeeId));
+      return getEmployeeDirectory().filter((employee) => !tracked.has(employee.id));
+    },
+    [onboardings, directoryRevision],
+  );
+
+  const handleStartOnboarding = useCallback(
+    (employeeId: string, startDate: string, buddy: string) => {
+      const employee = getEmployeeDirectory().find((item) => item.id === employeeId);
+      if (!employee) return;
+      const id = `ob-${employeeId}-${Date.now().toString(36)}`;
+      const tasks: OnboardingTask[] = standardTaskTemplate.map((template, index) => ({
+        ...template,
+        id: `${id}-t${String(index + 1).padStart(2, '0')}`,
+        // The template carries no dates — they only mean anything relative to
+        // the day somebody actually starts.
+        dueDate: startDate,
+      }));
+      setOnboardings((prev) => [
+        {
+          id,
+          employeeId,
+          employeeName: employee.fullName,
+          designation: employee.designation,
+          department: employee.department,
+          startDate,
+          buddy,
+          progress: computeProgress(tasks),
+          tasks,
+        },
+        ...prev,
+      ]);
+      setStartOpen(false);
+    },
+    [setOnboardings],
+  );
+
   const stats = useMemo(() => {
-    const inProgress = onboardings.filter((o) => o.progress < 100 && o.progress > 0).length;
+    // `> 0` used to be part of this, so an onboarding whose first task had not
+    // been ticked yet counted as nothing at all — a new hire on day one is the
+    // clearest case of one in progress, and the card read 0 for exactly the
+    // people it exists to track.
+    const inProgress = onboardings.filter((o) => o.progress < 100).length;
     const completedThisMonth = onboardings.filter(isCompletedThisMonth).length;
     const tasksPending = onboardings.reduce(
       (sum, o) => sum + o.tasks.filter((t) => t.status === 'Pending').length,
@@ -423,6 +481,11 @@ export function OnboardingPage() {
       <PageHeader
         title="Onboarding"
         subtitle="Track new hire progress, manage tasks, and ensure a smooth first-day experience."
+        actions={canManageOnboarding ? (
+          <Button variant="primary" icon={<Plus size={16} />} onClick={() => setStartOpen(true)}>
+            Start Onboarding
+          </Button>
+        ) : undefined}
       />
 
       {/* Stat Cards */}
@@ -463,6 +526,122 @@ export function OnboardingPage() {
           />
         ))}
       </div>
+
+      <StartOnboardingModal
+        open={startOpen}
+        onClose={() => setStartOpen(false)}
+        employees={startableEmployees}
+        onStart={handleStartOnboarding}
+      />
     </div>
+  );
+}
+
+/**
+ * Begin a checklist for somebody who has joined.
+ *
+ * The tasks come from `standardTaskTemplate` rather than being typed here: the
+ * point of a template is that every hire gets the same start, and a checklist
+ * assembled by hand each time is one that quietly differs per hire.
+ */
+function StartOnboardingModal({
+  open,
+  onClose,
+  employees,
+  onStart,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employees: Employee[];
+  onStart: (employeeId: string, startDate: string, buddy: string) => void;
+}) {
+  const [employeeId, setEmployeeId] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [buddy, setBuddy] = useState('');
+  const [error, setError] = useState('');
+
+  function reset() {
+    setEmployeeId('');
+    setStartDate('');
+    setBuddy('');
+    setError('');
+  }
+
+  function handleStart() {
+    if (!employeeId) {
+      setError('Pick the person who has joined.');
+      return;
+    }
+    if (!startDate) {
+      setError('A start date is what every task in the checklist is dated from.');
+      return;
+    }
+    onStart(employeeId, startDate, buddy.trim() || '—');
+    reset();
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => { reset(); onClose(); }}
+      title="Start Onboarding"
+      subtitle="Open the standard checklist for a new hire"
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={() => { reset(); onClose(); }}>Cancel</Button>
+          <Button variant="primary" onClick={handleStart}>Start Onboarding</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            {error}
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">New hire</label>
+          {/* Anyone not already tracked. Somebody with a checklist open is
+              absent rather than disabled — a second one would split their
+              progress across two records. */}
+          <select
+            className="input w-full"
+            aria-label="Onboarding employee"
+            value={employeeId}
+            onChange={(event) => { setEmployeeId(event.target.value); setError(''); }}
+          >
+            <option value="">Select an employee</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.fullName} — {employee.designation}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Start date</label>
+            <input
+              className="input w-full"
+              type="date"
+              aria-label="Onboarding start date"
+              value={startDate}
+              onChange={(event) => { setStartDate(event.target.value); setError(''); }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-600 mb-1.5">Buddy</label>
+            <input
+              className="input w-full"
+              aria-label="Onboarding buddy"
+              placeholder="Who is showing them around"
+              value={buddy}
+              onChange={(event) => setBuddy(event.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
