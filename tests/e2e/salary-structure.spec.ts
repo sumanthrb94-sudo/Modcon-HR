@@ -37,6 +37,15 @@ const CHANGED = { basic: 40, hra: 30, medical: 2000, conveyance: 1000 };
 const HIGH_EARNER = 'Aarav Sharma';
 const LOWER_EARNER = 'Riya Sharma';
 
+/**
+ * ₹25,00,000 a year — a monthly gross of ₹2,08,333, which is **odd**.
+ *
+ * That matters for the 50/50 case below: an even gross divides cleanly and
+ * would prove nothing. Rounding half of an odd number twice is what used to put
+ * the components a rupee above the gross.
+ */
+const ODD_GROSS_EARNER = 'Anjali Singh';
+
 async function login(page: Page) {
   await page.goto('/login');
   await page.locator('#username').fill(ADMIN.email);
@@ -95,6 +104,37 @@ async function breakdownFor(page: Page, name: string): Promise<Breakdown> {
   const monthly = Number(await page.getByTestId('monthly-gross').getAttribute('data-amount'));
 
   const rows = page.getByTestId('salary-component');
+  await expect(rows.first()).toBeVisible();
+  const components = Object.fromEntries(
+    (await rows.evaluateAll((nodes) =>
+      nodes.map((node) => [
+        node.getAttribute('data-component') ?? '',
+        Number(node.getAttribute('data-amount')),
+      ]),
+    )) as Array<[string, number]>,
+  );
+  return { monthly, components };
+}
+
+/**
+ * Open one employee's payslip on the Payroll page and read its earnings rows.
+ *
+ * Navigates by clicking, never `page.goto` — a full document load re-evaluates
+ * every module and would hide the very thing this checks.
+ */
+async function payslipComponentsFor(page: Page, name: string): Promise<Breakdown> {
+  await page.getByRole('link', { name: 'Payroll', exact: true }).first().click();
+  // Anchored: "Upload payslips" is also a button on this page, and the tab
+  // carries its count ("Payslips42").
+  await page.getByRole('button', { name: /^Payslips\d*$/ }).click();
+  await page.getByPlaceholder('Search employee…').fill(name);
+  await page.getByRole('row').filter({ hasText: name }).first().click();
+
+  const gross = page.getByTestId('payslip-gross');
+  await expect(gross).toBeVisible();
+  const monthly = Number(await gross.getAttribute('data-amount'));
+
+  const rows = page.getByTestId('payslip-component');
   await expect(rows.first()).toBeVisible();
   const components = Object.fromEntries(
     (await rows.evaluateAll((nodes) =>
@@ -169,6 +209,23 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     await expect(page.getByRole('button', { name: 'Save Structure' })).toBeDisabled();
   });
 
+  test('a negative percentage or allowance is refused, not silently zeroed', async () => {
+    // `min={0}` on the input is not enforced, and normalizeSalaryStructure
+    // clamps a negative to 0 — so without this the form saved a structure the
+    // administrator never typed, while the preview row was still captioned
+    // "-10% of gross".
+    await openSalaryStructure(page);
+    await page.getByLabel('Basic percent').fill('-10');
+    await expect(page.getByRole('alert')).toContainText('cannot be negative');
+    await expect(page.getByRole('button', { name: 'Save Structure' })).toBeDisabled();
+    await expect(page.getByTestId('salary-structure-preview')).toHaveCount(0);
+
+    await page.getByLabel('Basic percent').fill(String(DEMO.basic));
+    await page.getByLabel('Conveyance allowance').fill('-1');
+    await expect(page.getByRole('alert')).toContainText('cannot be negative');
+    await expect(page.getByRole('button', { name: 'Save Structure' })).toBeDisabled();
+  });
+
   test('a saved change reaches the organisation and the breakdown follows it', async () => {
     await openSalaryStructure(page);
     await setStructure(page, CHANGED);
@@ -231,6 +288,48 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     );
     expect(high.components['Medical Allowance']).toBe(lower.components['Medical Allowance']);
     expect(high.components['Conveyance Allowance']).toBe(lower.components['Conveyance Allowance']);
+  });
+
+  test('the Payroll payslip follows a structure change made without a reload', async () => {
+    // Put a known structure in place first, so this test does not depend on
+    // what the one before it left behind — the change below has to be a real
+    // change for any of it to mean anything.
+    await openSalaryStructure(page);
+    await setStructure(page, CHANGED);
+
+    // Land on Payroll, so data/payroll.ts is evaluated *before* the change.
+    // Its payslips used to be a module-level `const` computed at that moment,
+    // and the Payroll page seeds its list from it — so the modal kept showing
+    // the split it was imported under while the Compensation tab, which
+    // recomputes every render, showed the new one. Everything after this point
+    // navigates by clicking; a `goto` would re-evaluate the module and pass
+    // whether or not the bug is fixed.
+    await page.goto('/payroll');
+    await expect(page.getByRole('button', { name: /^Payslips\d*$/ })).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole('link', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Salary Structure' }).click();
+    await expect(page.getByRole('heading', { name: 'Salary Structure' })).toBeVisible();
+    await setStructure(page, DEMO);
+
+    const { monthly, components } = await payslipComponentsFor(page, HIGH_EARNER);
+    expect(components['Basic Salary']).toBe(Math.round(monthly * (DEMO.basic / 100)));
+    expect(components['House Rent Allowance']).toBe(Math.round(monthly * (DEMO.hra / 100)));
+    expect(components['Medical Allowance']).toBe(DEMO.medical);
+  });
+
+  test('components add up to the gross even when Basic and HRA total 100%', async () => {
+    // Rounding half of an odd gross twice put the pair a rupee over it, and
+    // Special Allowance — the remainder — had nothing left to give back. The
+    // breakdown then listed components summing to ₹1 more than the gross
+    // printed above them.
+    await openSalaryStructure(page);
+    await setStructure(page, { basic: 50, hra: 50, medical: 0, conveyance: 0 });
+
+    const { monthly, components } = await breakdownFor(page, ODD_GROSS_EARNER);
+    expect(monthly % 2, `${ODD_GROSS_EARNER}'s monthly gross must be odd for this to prove anything`).toBe(1);
+    expect(Object.values(components).reduce((sum, amount) => sum + amount, 0)).toBe(monthly);
+    expect(components['Special Allowance']).toBeGreaterThanOrEqual(0);
   });
 
   test('clearing the structure hides the breakdown rather than falling back to a default', async () => {

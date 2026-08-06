@@ -87,6 +87,30 @@ export async function adminToken(): Promise<string | null> {
  * `orgId: 'default'` matters as much as the role — without it `myOrgKey()`
  * resolves to the unassigned sentinel and every org-scoped write is refused.
  */
+/**
+ * Which employee record an account is pointed at, read straight from Firestore.
+ *
+ * `employee_links/{uid}` is what `isSelf()` in firestore.rules resolves against,
+ * and nothing else can stand in for it: the employee directory the app renders
+ * from is localStorage, so the client's claim about which employee it is carries
+ * no weight on the server. That is the whole point of the collection — see
+ * src/data/employeeLinks.ts.
+ *
+ * Read rather than written, deliberately. Writing it here would let a spec
+ * arrange the precondition the app is supposed to establish, and the day the
+ * app stopped establishing it every test would still pass.
+ */
+export async function employeeLinkFor(uid: string): Promise<{ employeeId: string } | null> {
+  const token = await adminToken();
+  if (!token) return null;
+  const res = await fetch(`${FIRESTORE_BASE}/employee_links/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status !== 200) return null;
+  const employeeId = (await res.json()).fields?.employeeId?.stringValue;
+  return typeof employeeId === 'string' ? { employeeId } : null;
+}
+
 export async function seedPersonaProfiles(): Promise<void> {
   if (!EMULATOR_HOST) return;
 

@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { PERSONAS } from './tests/e2e/config';
+import { PERSONAS, SUPER_ADMIN } from './tests/e2e/config';
 
 /**
  * Playwright E2E configuration.
@@ -97,7 +97,25 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * is identical across engines, the same argument that keeps ROLE_SPECS on one
  * engine.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|org-isolation)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure)\.spec\.ts$/;
+
+/**
+ * …and org-isolation is a third writer that has to run after, not alongside.
+ *
+ * `fullyParallel` parallelises across *files*, so putting this in the project
+ * above only kept it off the other engines — inside the project it still ran in
+ * its own worker at the same time as the other two. It asserts that the default
+ * organisation's salary structure is the demo split, which is exactly the
+ * document salary-structure.spec.ts spends its run changing and restores only in
+ * its afterAll. The two therefore contradicted each other on timing alone, and
+ * the failure looked like a tenant leak, which is the one thing this spec exists
+ * to detect.
+ *
+ * Playwright has no per-project worker count, so the ordering is expressed as a
+ * dependency: this project starts once the other has finished and put the demo
+ * split back.
+ */
+const ORG_ISOLATION_SPECS = /org-isolation\.spec\.ts$/;
 
 /**
  * …and they do not run against the live project by default.
@@ -177,11 +195,21 @@ export default defineConfig({
     // One engine, one worker's worth of writers against the shared document —
     // and only when the run is allowed to touch it at all (see above).
     ...(ORG_SETTINGS_ENABLED
-      ? [{
-          name: 'org-settings',
-          testMatch: SHARED_CONFIG_SPECS,
-          use: useFor(ROLE_ENGINE),
-        }]
+      ? [
+          {
+            name: 'org-settings',
+            testMatch: SHARED_CONFIG_SPECS,
+            use: useFor(ROLE_ENGINE),
+          },
+          {
+            name: 'org-isolation',
+            testMatch: ORG_ISOLATION_SPECS,
+            use: useFor(ROLE_ENGINE),
+            // Never concurrently with the specs that rewrite the same document
+            // — see ORG_ISOLATION_SPECS.
+            dependencies: ['org-settings'],
+          },
+        ]
       : []),
     {
       name: 'role-employee',
@@ -208,10 +236,21 @@ export default defineConfig({
     // E2E_FIRESTORE_EMULATOR=<host:port> builds a bundle whose Firestore talks
     // to the emulator instead of the live project — see src/lib/firebase.ts and
     // `npm run test:e2e:emulator`. Absent, the build is unchanged.
+    // The persona addresses go into the build from the same constants the specs
+    // sign in with. They were literals in src/lib/auth.tsx while these were
+    // env-overridable, so overriding one produced an account with none of the
+    // role its spec was written to exercise — and a failure nowhere near the
+    // cause.
     command: `VITE_ENABLE_E2E_ACCOUNTS=true ${
       FIRESTORE_EMULATOR ? `VITE_FIRESTORE_EMULATOR_HOST=${FIRESTORE_EMULATOR} ` : ''
     }${
       AUTH_EMULATOR ? `VITE_AUTH_EMULATOR_HOST=${AUTH_EMULATOR} ` : ''
+    }VITE_E2E_ADMIN_EMAIL=${PERSONAS.admin.email} ${
+      ''
+    }VITE_E2E_MANAGER_EMAIL=${PERSONAS.manager.email} ${
+      ''
+    }VITE_E2E_SUPER_ADMIN_EMAIL=${SUPER_ADMIN.email} ${
+      ''
     }npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,

@@ -25,7 +25,8 @@ import {
     type InviteAccountResult,
 } from '@/lib/accountInvites';
 import { useAuth, ADMIN_EMAILS, type UserProfile, type UserRole } from '@/lib/auth';
-import { updateDocumentStatus, useAllEmployeeDocumentLibraries, type EmployeeDocumentLibrary, type DocumentStatus } from '@/data/documents';
+import { setEmployeeDocumentStatus, useEmployeeDocuments } from '@/lib/employeeDocuments';
+import type { EmployeeDocument, DocumentStatus } from '@/types';
 import { getEmployeeName } from '@/data/employees';
 import {
     PageHeader,
@@ -200,7 +201,10 @@ export function AdminDashboardPage() {
     const [search, setSearch] = useState('');
     const [docSearch, setDocSearch] = useState('');
     const [docStatusFilter, setDocStatusFilter] = useState('Pending');
-    const allDocuments = useAllEmployeeDocumentLibraries();
+    // The whole organisation's filed documents. Org-scoped by the query, which
+    // is not merely a narrowing: the rules fail a list whole if one document in
+    // it belongs to another tenant.
+    const { documents: allDocuments } = useEmployeeDocuments(profile);
 
     const filteredDocuments = useMemo(() => {
         return allDocuments.filter((d) => {
@@ -232,7 +236,7 @@ export function AdminDashboardPage() {
     const pendingExpenses = expenses.filter((e) => e.status === 'Submitted').length;
     const lastPayrollRun = payrollRuns[0];
 
-    const documentColumns: Column<EmployeeDocumentLibrary>[] = [
+    const documentColumns: Column<EmployeeDocument>[] = [
         {
             key: 'employeeId',
             header: 'Employee',
@@ -267,7 +271,7 @@ export function AdminDashboardPage() {
                 <select
                     className="input !py-1 !text-xs w-32"
                     value={d.status}
-                    onChange={(event) => void updateDocumentStatus(d.employeeId, d.id, event.target.value as DocumentStatus)}
+                    onChange={(event) => void setEmployeeDocumentStatus(profile, d.id, event.target.value as DocumentStatus)}
                 >
                     <option value="Verified">Verified</option>
                     <option value="Pending">Pending</option>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   BarChart,
   Bar,
@@ -168,14 +168,29 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
                 ]
               : []
             ).map((row) => (
-              <div key={row.label} className="flex items-center justify-between">
+              <div
+                key={row.label}
+                className="flex items-center justify-between"
+                // Unformatted, so tests/e2e/salary-structure.spec.ts can check
+                // that this modal followed a structure change rather than
+                // re-deriving the figure from "₹1,04,167".
+                data-testid="payslip-component"
+                data-component={row.label}
+                data-amount={row.value}
+              >
                 <span className="text-sm text-ink-600">{row.label}</span>
                 <span className="text-sm font-medium text-ink-900">{formatINR(row.value)}</span>
               </div>
             ))}
             <div className="flex items-center justify-between border-t border-ink-200 pt-2 mt-2">
               <span className="text-sm font-semibold text-ink-800">Gross Earnings</span>
-              <span className="text-sm font-bold text-emerald-700">{formatINR(payslip.grossEarnings)}</span>
+              <span
+                className="text-sm font-bold text-emerald-700"
+                data-testid="payslip-gross"
+                data-amount={payslip.grossEarnings}
+              >
+                {formatINR(payslip.grossEarnings)}
+              </span>
             </div>
           </div>
         </div>
@@ -230,7 +245,7 @@ export function PayrollPage() {
   const departmentRevision = useDepartmentDirectoryRevision();
   // Payslip figures are derived from the organisation's split, which an
   // administrator can change while this page is open.
-  useSalaryStructureRevision();
+  const salaryStructureRevision = useSalaryStructureRevision();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -250,9 +265,19 @@ export function PayrollPage() {
   const [payrollRunList, setPayrollRunListRaw] = useState(() => getPayrollRuns());
   const setPayrollRunList = (updater: Parameters<typeof setPayrollRunListRaw>[0]) =>
     setPayrollRunListRaw((prev) => savePayrollRuns(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
-    const [payslipList, setPayslipListRaw] = useState(() => getPayslips());
+  const [payslipList, setPayslipListRaw] = useState(() => getPayslips());
   const setPayslipList = (updater: Parameters<typeof setPayslipListRaw>[0]) =>
     setPayslipListRaw((prev) => savePayslips(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+
+  // Re-read the store when the organisation's split changes. Re-rendering alone
+  // is not enough: this list is state seeded once, so without this the modal
+  // kept the components it was mounted with. `getPayslips()` returns *stored*
+  // payslips unchanged — a payslip that was actually issued keeps the split it
+  // was issued under — and recomputes only the unstored seed, which is a
+  // statement rather than a document.
+  useEffect(() => {
+    setPayslipListRaw(getPayslips());
+  }, [salaryStructureRevision]);
 
   // Salaries are disbursed on the last day of the month.
   const nextPayDate = useMemo(() => {

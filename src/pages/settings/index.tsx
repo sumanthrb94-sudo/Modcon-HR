@@ -2985,9 +2985,16 @@ function SalaryStructureSection() {
   };
   const percentTotal = parsed.basicPercent + parsed.hraPercent;
   const overspent = percentTotal > 100;
+  // `min={0}` on a bare input is not enforced outside form validation, and
+  // `Number('-10') || 0` keeps the -10. Caught here rather than left to
+  // normalizeSalaryStructure, which clamps a negative to 0 on save: that turned
+  // a typo into a saved structure the administrator never typed, under a
+  // preview row still captioned "-10% of gross".
+  const negative = FORM_FIELDS.some((field) => parsed[field] < 0);
+  const invalid = overspent || negative;
   // The same function payroll computes a payslip with, so the preview cannot
   // promise a split the payslip does not pay.
-  const preview = complete && !overspent ? splitMonthlyGross(SAMPLE_MONTHLY_GROSS, parsed) : null;
+  const preview = complete && !invalid ? splitMonthlyGross(SAMPLE_MONTHLY_GROSS, parsed) : null;
 
   function set(key: keyof SalaryStructureForm, value: string) {
     setDirty(true);
@@ -2995,7 +3002,7 @@ function SalaryStructureSection() {
   }
 
   function handleSave() {
-    if (overspent || !complete) return;
+    if (invalid || !complete) return;
     setDirty(false);
     save.track(saveSalaryStructure(parsed));
   }
@@ -3112,6 +3119,14 @@ function SalaryStructureSection() {
             </div>
           )}
 
+          {negative && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Percentages and allowances cannot be negative. A salary component is an amount paid,
+              not one taken back.
+            </div>
+          )}
+
           {/* The preview exists only once all four fields are filled: a partial
               form has no split to show, and inventing one from the blanks would
               be the default this page exists to avoid. */}
@@ -3139,7 +3154,7 @@ function SalaryStructureSection() {
           )}
 
           <div className="flex items-center gap-2">
-            <Button variant="primary" onClick={handleSave} disabled={overspent || !complete}>
+            <Button variant="primary" onClick={handleSave} disabled={invalid || !complete}>
               Save Structure
             </Button>
             {configured && (

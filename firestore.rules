@@ -892,6 +892,116 @@ service cloud.firestore {
         request.resource.data.fileName.size() <= 200;
     }
 
+    /**
+     * Documents filed against an employee — identity records and company paperwork.
+     *
+     * This library used to live in localStorage, which meant the rule about who
+     * may file what was enforced by hiding a button. Anyone could put the button
+     * back. It is stated here now, and src/lib/employeeDocuments.ts carries the
+     * matching copy so the page offers the right controls; this block is what
+     * decides.
+     *
+     * Reads stay org-wide rather than owner-only, matching what the app has
+     * always shown: a profile's Documents tab is visible to whoever can open the
+     * profile. Only metadata is stored — a name, a type, a status — never the
+     * file, so this is a list of what was filed, not the contents.
+     */
+    match /employee_documents/{docId} {
+      allow get: if isSignedIn() && inMyOrg();
+      // Legal only because the client filters on orgId: a list is evaluated
+      // against every document it returns and fails whole if one is disallowed.
+      allow list: if isSignedIn() && inMyOrg();
+
+      // A filed document always arrives unverified. It says nothing about
+      // itself; an administrator says whether it checks out.
+      allow create: if writingToMyOrg() &&
+        validEmployeeDocument(docId) &&
+        request.resource.data.uploadedByUid == request.auth.uid &&
+        request.resource.data.status == 'Pending' &&
+        mayFileEmployeeDocument(request.resource.data);
+
+      // Two different writes land here, and they are not the same permission.
+      //
+      // Re-filing is the create rule again — the id is deterministic, so a
+      // replacement lands on what it replaces — and it is still a filing, so it
+      // still arrives Pending. Without that clause an employee re-files their
+      // own PAN card as `status: 'Verified'` and has verified it themselves.
+      //
+      // Verifying is an administrator's call, changes nothing but the status,
+      // and leaves the person who filed it as the person who filed it.
+      //
+      // Identity is pinned across both: otherwise "verify" is a rename, and a
+      // rename across the primary boundary undoes the whole rule — file
+      // anything as "Employment Contract", then call it "PAN Card".
+      allow update: if inMyOrg() && writingToMyOrg() &&
+        validEmployeeDocument(docId) &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.name == resource.data.name &&
+        (
+          (mayFileEmployeeDocument(request.resource.data) &&
+            request.resource.data.uploadedByUid == request.auth.uid &&
+            request.resource.data.status == 'Pending')
+          ||
+          (isAdmin() &&
+            request.resource.data.uploadedByUid == resource.data.uploadedByUid)
+        );
+
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    /**
+     * Which names are the employee's own identity and bank records.
+     *
+     * Mirrors PRIMARY_DOCUMENT_NAMES in src/lib/employeeDocuments.ts. Exact
+     * matches, never a substring test: "Aadhaar Card Verification Note" is the
+     * organisation's paperwork about the employee, not the employee's Aadhaar
+     * card, and the two are filed by different people.
+     */
+    function isPrimaryDocumentName(name) {
+      return name.lower().trim() in [
+        'aadhaar card',
+        'aadhar card',
+        'pan card',
+        'bank account details'
+      ];
+    }
+
+    /**
+     * Primary: the employee themselves, or HR on their behalf. Deliberately not
+     * a platform admin — filing somebody else's PAN card is not their job.
+     * Secondary: an administrator or HR, and not the employee.
+     */
+    function mayFileEmployeeDocument(data) {
+      return isPrimaryDocumentName(data.name)
+        ? (isHR() || isSelf(data.employeeId))
+        : isOrgAdmin();
+    }
+
+    function validEmployeeDocument(docId) {
+      return request.resource.data.id == docId &&
+        // The id carries the org, so a document cannot be filed into one
+        // organisation's namespace while claiming to belong to another.
+        docId.split('__')[0] == request.resource.data.orgId &&
+        request.resource.data.employeeId is string &&
+        request.resource.data.employeeId.size() > 0 &&
+        // Attribution is asserted by the callers above rather than here: on a
+        // create and a re-file the filer must be the caller, but an
+        // administrator verifying somebody else's document must leave their
+        // name on it, so the two cannot share one clause.
+        request.resource.data.uploadedByUid is string &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 200 &&
+        request.resource.data.type is string &&
+        request.resource.data.type.size() <= 20 &&
+        request.resource.data.status in ['Verified', 'Pending', 'Expired'] &&
+        // YYYY-MM-DD.
+        request.resource.data.uploaded is string &&
+        request.resource.data.uploaded.size() == 10 &&
+        request.resource.data.size is string &&
+        request.resource.data.size.size() <= 20;
+    }
+
     match /handbook/{orgKey} {
       // The document id *is* the organisation key, so the tenant test is on the
       // id and needs no field lookup.
