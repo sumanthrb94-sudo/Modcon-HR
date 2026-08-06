@@ -22,6 +22,7 @@ const FinancePage = lazy(() => import('@/pages/finance').then((m) => ({ default:
 const PayrollPage = lazy(() => import('@/pages/payroll').then((m) => ({ default: m.PayrollPage })));
 const RecruitmentPage = lazy(() => import('@/pages/recruitment').then((m) => ({ default: m.RecruitmentPage })));
 const OnboardingPage = lazy(() => import('@/pages/onboarding').then((m) => ({ default: m.OnboardingPage })));
+const TasksPage = lazy(() => import('@/pages/tasks').then((m) => ({ default: m.TasksPage })));
 const PerformancePage = lazy(() => import('@/pages/performance').then((m) => ({ default: m.PerformancePage })));
 const ExpensesPage = lazy(() => import('@/pages/expenses').then((m) => ({ default: m.ExpensesPage })));
 const AssetsPage = lazy(() => import('@/pages/assets').then((m) => ({ default: m.AssetsPage })));
@@ -172,6 +173,7 @@ function AppRoutes() {
         <Route path="payroll" element={<RequireModuleAccess module="Payroll"><PayrollPage /></RequireModuleAccess>} />
         <Route path="recruitment" element={<RequireModuleAccess module="Recruitment"><RecruitmentPage /></RequireModuleAccess>} />
         <Route path="onboarding" element={<RequireModuleAccess module="Onboarding"><OnboardingPage /></RequireModuleAccess>} />
+        <Route path="tasks" element={<RequireModuleAccess module="Tasks"><TasksPage /></RequireModuleAccess>} />
         <Route path="performance" element={<RequireModuleAccess module="Performance"><PerformancePage /></RequireModuleAccess>} />
         <Route path="expenses" element={<RequireModuleAccess module="Expenses"><ExpensesPage /></RequireModuleAccess>} />
         <Route path="assets" element={<RequireModuleAccess module="Assets"><AssetsPage /></RequireModuleAccess>} />

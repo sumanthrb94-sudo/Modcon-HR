@@ -67,6 +67,24 @@ Payslips exist twice, and the difference matters. `buildPayslip` (`src/data/payr
 - **Reads are per employee, not per org.** `firestore.rules` allows `isOrgAdmin()` or `isSelf(employeeId)` against `employee_links`, so an employee's query *must* filter on `employeeId` as well as `orgId` — a list is evaluated against every document it returns and fails whole otherwise. `tests/rules/payslip-documents.rules.test.mjs` is what proves a colleague cannot read someone else's salary; the E2E suite drives the client and cannot.
 - **Bulk upload matches files to people by the employee code in the filename**, and shows the match list before writing anything. Files that match nobody are listed, never dropped — a file silently ignored looks exactly like one successfully uploaded.
 
+### Tasks, and who may assign them
+
+Work assigned to an employee lives in the Firestore collection `tasks` ([src/lib/tasks.ts](src/lib/tasks.ts)), id `<orgKey>__<employeeId>__<base36 stamp>`. Distinct from `OnboardingTask`, which is a template step whose `assignee` is free text like `'IT Admin'` — a task here is assigned to an employee *record*, because who it belongs to decides who may read it.
+
+- **Assigning is the reporting tree, not a role.** Team lead, project manager, supervisor, executive and "senior employee" are all the same structural fact — somebody has people under them — and the tree already holds it. So: `full` on the `Tasks` module (Admin, HR Manager) assigns anywhere in the organisation; anyone else assigns to their own subtree; everyone else assigns to nobody and still sees their own tasks. **No new role was added**, and a company that organises differently tunes the module in Settings → Roles & Permissions.
+- **Clients and customers are not accounts.** Every read is scoped to members of an organisation, so an outsider signing in is a different and much larger decision. A task carries optional `requestedBy` / `requestedByCompany`, recorded by the internal person raising it, shown on the row so whoever does the work knows who asked.
+- **Reads are the assignee, the assigner, the chain above the assignee, and org admins** — so an employee's query *must* filter on `assigneeId` and a lead's on `managerChainIds array-contains` their own id; a list is evaluated against every document it returns and fails whole otherwise. Same denormalised chain as leave, same staleness caveat (`src/lib/reportingChains.ts`).
+- **A filing always arrives `Pending`, and the assignee may change `status`/`completedAt` and nothing else.** Without that restriction "track your own tasks" is also "reassign them" or "quietly change what you were asked to do". Identity is pinned on every update: a task that could change assignee could be moved to somebody its assigner was never allowed to assign to.
+- **A client that lies about `managerChainIds` can assign outside its tree.** Documented in `tests/rules/tasks.rules.test.mjs` rather than prevented: the chain is computed from the localStorage directory, which the client owns anyway, and it grants no *read* the forger did not already have. Closing it means the reporting tree living in Firestore.
+- `tests/rules/tasks.rules.test.mjs` is where the access-control claims are proved; `tests/e2e/tasks.spec.ts` drives the UI and can only show what the client chose to do.
+
+### Onboarding
+
+`standardTaskTemplate` in [src/data/onboarding.ts](src/data/onboarding.ts) is cloned per hire. HR and Admin (`full` on the Onboarding module) start one from the page; there was previously **no way to create a record at all**, so the page could only show what the seed contained and every stat card read 0 for an organisation that had hired somebody.
+
+- **"Onboarding In Progress" counts every record under 100%.** It required `progress > 0` as well, so a new hire on day one — the clearest case of one in progress — counted as none.
+- Employees already tracked are absent from the picker rather than disabled: a second checklist would split one person's progress across two records.
+
 ### Employee documents
 
 The documents filed against an employee live in the Firestore collection `employee_documents` (`src/lib/employeeDocuments.ts`), one document per name per person, id `<orgKey>__<employeeId>__<slug>` so re-filing replaces rather than duplicates. Metadata only — a name, a type, a status — never the file.

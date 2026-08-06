@@ -19,6 +19,7 @@ import {
   Building2,
   BookOpen,
   type LucideIcon,
+  ListChecks,
 } from 'lucide-react';
 import { canAccessModule, type AppModule, type AppRole } from '@/lib/accessControl';
 
@@ -46,6 +47,7 @@ export const navItems: NavItem[] = [
   { label: 'Payroll', path: '/payroll', icon: Wallet, group: 'Operations', module: 'Payroll' },
   { label: 'Recruitment', path: '/recruitment', icon: Briefcase, group: 'Operations', module: 'Recruitment' },
   { label: 'Onboarding', path: '/onboarding', icon: UserPlus, group: 'Operations', module: 'Onboarding' },
+  { label: 'Tasks', path: '/tasks', icon: ListChecks, group: 'Operations', module: 'Tasks' },
   { label: 'Performance', path: '/performance', icon: Target, group: 'Operations', module: 'Performance' },
   { label: 'Expenses', path: '/expenses', icon: IndianRupee, group: 'Operations', module: 'Expenses' },
   { label: 'Assets', path: '/assets', icon: Laptop, group: 'Operations', module: 'Assets' },

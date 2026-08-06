@@ -906,6 +906,104 @@ service cloud.firestore {
      * profile. Only metadata is stored — a name, a type, a status — never the
      * file, so this is a list of what was filed, not the contents.
      */
+    /**
+     * Work assigned to an employee.
+     *
+     * Readable by the person it is for, the person who assigned it, anyone above
+     * the assignee in the reporting tree, and the organisation's administrators.
+     * The reporting half is `managesSubject`, which reads the `managerChainIds`
+     * denormalised onto the task — the same mechanism as leave, and for the same
+     * reason: `reportingManagerId` lives in the localStorage directory, which is
+     * a claim the client controls rather than evidence.
+     *
+     * Assigning is deliberately not a role. Team leads, project managers,
+     * supervisors and executives are all "somebody with people under them", a
+     * fact the tree already holds — so `isOrgAdmin()` covers the org-wide case
+     * and the chain covers everyone else, and no new role had to exist.
+     *
+     * Clients and customers appear only as `requestedBy`, a name recorded by the
+     * person raising the task. They are not accounts and nothing here grants
+     * them one.
+     */
+    match /tasks/{taskId} {
+      function mayReadTask() {
+        return isOrgAdmin() ||
+          isSelf(resource.data.assigneeId) ||
+          resource.data.assignedByUid == request.auth.uid ||
+          managesSubject(resource.data);
+      }
+
+      allow get: if isSignedIn() && inMyOrg() && mayReadTask();
+      // Legal only because the client narrows the query — to its own
+      // `assigneeId`, or to `managerChainIds array-contains` its own employee id.
+      // A list is evaluated against every document it returns and fails whole if
+      // one is disallowed, so an unfiltered read is denied rather than trimmed.
+      allow list: if isSignedIn() && inMyOrg() && mayReadTask();
+
+      // Assigning to somebody beneath you, or anywhere in the organisation if
+      // you administer it. `managerChainIds` on the payload is what "beneath
+      // you" means, and validTask() pins it to the assignee it was computed for.
+      allow create: if writingToMyOrg() &&
+        validTask(taskId) &&
+        request.resource.data.assignedByUid == request.auth.uid &&
+        request.resource.data.status == 'Pending' &&
+        (isOrgAdmin() || myEmployeeId() in request.resource.data.managerChainIds);
+
+      // Two different writes, and they are not the same permission.
+      //
+      // The assignee moves their own work along — status and the completion
+      // stamp, nothing else. Without the field restriction "track your own
+      // tasks" would also be "reassign your own tasks to somebody else", or
+      // quietly change what you were asked to do.
+      //
+      // Whoever can assign it can edit it, and identity is pinned either way:
+      // a task that could change assignee is a task that could be moved to
+      // somebody its assigner was never allowed to assign to.
+      allow update: if inMyOrg() && writingToMyOrg() &&
+        request.resource.data.assigneeId == resource.data.assigneeId &&
+        request.resource.data.assignedByUid == resource.data.assignedByUid &&
+        (
+          (isSelf(resource.data.assigneeId) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'completedAt']) &&
+            request.resource.data.status in ['Pending', 'In Progress', 'Completed'])
+          ||
+          ((isOrgAdmin() || managesSubject(resource.data) ||
+            resource.data.assignedByUid == request.auth.uid) &&
+            validTask(taskId))
+        );
+
+      // Withdrawn by whoever raised it, or by an administrator. Not by the
+      // assignee: deleting the record of what you were asked to do is not a way
+      // of having done it.
+      allow delete: if inMyOrg() &&
+        (isOrgAdmin() || resource.data.assignedByUid == request.auth.uid);
+    }
+
+    function validTask(taskId) {
+      return request.resource.data.id == taskId &&
+        // The id carries the org and the assignee, so a task cannot be filed
+        // into one organisation's namespace while claiming another's.
+        taskId.split('__')[0] == request.resource.data.orgId &&
+        taskId.split('__')[1] == request.resource.data.assigneeId &&
+        request.resource.data.assigneeId is string &&
+        request.resource.data.assigneeId.size() > 0 &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 200 &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 2000 &&
+        request.resource.data.status in ['Pending', 'In Progress', 'Completed'] &&
+        request.resource.data.priority in ['Low', 'Medium', 'High'] &&
+        request.resource.data.managerChainIds is list &&
+        request.resource.data.managerChainIds.size() <= 20 &&
+        // A client is a name on a record, never an account.
+        request.resource.data.get('requestedBy', '') is string &&
+        request.resource.data.get('requestedBy', '').size() <= 120 &&
+        request.resource.data.get('requestedByCompany', '') is string &&
+        request.resource.data.get('requestedByCompany', '').size() <= 120;
+    }
+
     match /employee_documents/{docId} {
       allow get: if isSignedIn() && inMyOrg();
       // Legal only because the client filters on orgId: a list is evaluated
