@@ -320,6 +320,28 @@ export function reassignEmployeeDepartment(fromDepartment: string, toDepartment:
   return moved.length;
 }
 
+/**
+ * Move everyone posted at one location to another. Returns how many moved.
+ *
+ * The location counterpart of reassignEmployeeDepartment, and it exists for the
+ * same reason: renaming a place must not leave the people in it pointing at a
+ * name the organisation no longer offers, which reads on their profile as a
+ * location the form insists does not exist.
+ */
+export function reassignEmployeeLocation(fromLocation: string, toLocation: string): number {
+  const affected = getEmployeeDirectory().filter((employee) => employee.location === fromLocation);
+  if (!affected.length) return 0;
+
+  const movedIds = new Set(affected.map((employee) => employee.id));
+  const untouched = readCustomEmployees().filter((employee) => !movedIds.has(employee.id));
+  const moved = affected.map((employee) => ({ ...employee, location: toLocation }));
+
+  writeCustomEmployees([...moved, ...untouched]);
+  syncDirectorySnapshots();
+  notifyEmployeeDirectoryChanged();
+  return moved.length;
+}
+
 export const getEmployee = (id: string): Employee | undefined => getEmployeeDirectory().find((employee) => employee.id === id);
 
 export const getEmployeeByEmail = (email: string): Employee | undefined =>

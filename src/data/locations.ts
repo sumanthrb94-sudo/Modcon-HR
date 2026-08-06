@@ -95,6 +95,73 @@ export function removeLocationFromDirectory(name: string): Promise<boolean> {
   return publishOrgSetting(ORG_SETTINGS.customLocations, next);
 }
 
+export interface LocationRecord {
+  name: string;
+  /** People currently posted here. */
+  headcount: number;
+  /**
+   * True when the organisation declared it, rather than it being inferred from
+   * somebody's record. Only a declared location can be renamed or withdrawn —
+   * an inferred one has nothing to edit, and it disappears on its own when the
+   * last person leaves it.
+   */
+  declared: boolean;
+}
+
+/**
+ * Rename a location, taking everyone posted there with it.
+ *
+ * Both halves have to move. Leaving the people behind would put them at a name
+ * the organisation no longer offers, which shows on their profile as a location
+ * the form insists does not exist; leaving the declaration behind would put the
+ * old name back in the list the moment anybody looked.
+ *
+ * `reassign` is passed in rather than imported, for the same reason `derived`
+ * is below: data/employees.ts imports this module, so importing it back would
+ * make a cycle. Callers pass `reassignEmployeeLocation`.
+ *
+ * Returns how many employee records moved.
+ */
+export function renameLocationInDirectory(
+  oldName: string,
+  newName: string,
+  reassign: (from: string, to: string) => number,
+): { moved: number; published: Promise<boolean> } {
+  const from = normalizeLocation(oldName);
+  const to = normalizeLocation(newName);
+  if (!from || !to || from === to) return { moved: 0, published: Promise.resolve(true) };
+
+  const moved = reassign(from, to);
+  const next = getCustomLocations().filter(
+    (item) => item.toLowerCase() !== from.toLowerCase() && item.toLowerCase() !== to.toLowerCase(),
+  );
+  next.push(to);
+
+  window.localStorage.setItem(orgScopedKey(STORAGE_KEY), JSON.stringify(next));
+  notifyChanged();
+  return { moved, published: publishOrgSetting(ORG_SETTINGS.customLocations, next) };
+}
+
+/**
+ * Every location the organisation offers, with who is posted where.
+ *
+ * The list Settings edits. `derived` is passed in for the same reason as
+ * `mergeLocations` — this module must not import the employee directory back.
+ */
+export function buildLocationDirectory(employeeLocations: string[]): LocationRecord[] {
+  const headcount = new Map<string, number>();
+  employeeLocations.map(normalizeLocation).forEach((name) => {
+    if (name) headcount.set(name.toLowerCase(), (headcount.get(name.toLowerCase()) ?? 0) + 1);
+  });
+  const declared = new Set(getCustomLocations().map((name) => name.toLowerCase()));
+
+  return mergeLocations(employeeLocations).map((name) => ({
+    name,
+    headcount: headcount.get(name.toLowerCase()) ?? 0,
+    declared: declared.has(name.toLowerCase()),
+  }));
+}
+
 /**
  * Every location the organisation offers: declared, plus wherever people work.
  *

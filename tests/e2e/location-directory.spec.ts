@@ -21,6 +21,8 @@ import { FIRESTORE_BASE, adminToken } from './firestore';
  * there, and it restores what it added.
  */
 const NEW_LOCATION = 'E2E Kochi';
+const RENAMED_LOCATION = 'E2E Kochi Central';
+const EMPTY_LOCATION = 'E2E Nowhere';
 const SETTING_DOC = 'org_settings/default__customLocations';
 
 async function login(page: Page) {
@@ -122,4 +124,55 @@ test.describe.serial('a work location belongs to the organisation', () => {
     }
   });
 
+  test('Settings lists it, and renaming it takes its people along', async () => {
+    await page.goto('/settings?tab=locations');
+    await expect(page.getByRole('heading', { name: 'Locations' })).toBeVisible({ timeout: 20_000 });
+
+    const row = page.getByRole('row', { name: new RegExp(NEW_LOCATION) });
+    await expect(row).toBeVisible();
+    // Declared, not merely inferred from the employee posted there — the
+    // distinction is what decides whether it can be renamed at all.
+    await expect(row).toContainText('Declared');
+    await expect(row).toContainText('1');
+
+    await row.getByRole('button', { name: 'Rename' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Location name').fill(RENAMED_LOCATION);
+    await dialog.getByRole('button', { name: 'Save Location' }).click();
+    await expect(dialog).toBeHidden();
+    // The rename is only real if the person moved with it. Left behind, they
+    // would sit at a name the organisation no longer offers.
+    await expect(page.getByRole('status')).toContainText('moved 1 person');
+
+    await expect
+      .poll(async () => await publishedLocations(), { timeout: 20_000 })
+      .toContain(RENAMED_LOCATION);
+    expect(await publishedLocations()).not.toContain(NEW_LOCATION);
+  });
+
+  test('a location with people in it cannot be withdrawn', async () => {
+    const row = page.getByRole('row', { name: new RegExp(RENAMED_LOCATION) });
+    await row.getByRole('button', { name: 'Withdraw' }).click();
+    await expect(page.getByRole('status')).toContainText('posted at');
+    // Refused, not merely warned about: it is still offered.
+    await expect(await publishedLocations()).toContain(RENAMED_LOCATION);
+  });
+
+  test('an unoccupied one is withdrawn, and stops being offered', async () => {
+    await page.goto('/settings?tab=locations');
+    await expect(page.getByRole('heading', { name: 'Locations' })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Add Location' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('New location name').fill(EMPTY_LOCATION);
+    await dialog.getByRole('button', { name: 'Add Location' }).click();
+    await expect(dialog).toBeHidden();
+
+    const row = page.getByRole('row', { name: new RegExp(EMPTY_LOCATION) });
+    await expect(row).toContainText('Declared');
+    await row.getByRole('button', { name: 'Withdraw' }).click();
+
+    await expect
+      .poll(async () => (await publishedLocations()) ?? [], { timeout: 20_000 })
+      .not.toContain(EMPTY_LOCATION);
+  });
 });
