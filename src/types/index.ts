@@ -263,58 +263,6 @@ export interface Onboarding {
   tasks: OnboardingTask[];
 }
 
-// ---- Tasks ---------------------------------------------------------------
-
-export type TaskPriority = 'Low' | 'Medium' | 'High';
-
-/**
- * A piece of work assigned to one employee.
- *
- * Distinct from `OnboardingTask`, which is a template step in somebody's first
- * thirty days and carries a free-text `assignee` like "IT Admin". This is
- * assigned to an employee *record*, because who it belongs to decides who may
- * read it — see the `tasks` block in firestore.rules.
- */
-export interface Task {
-  id: ID;
-  orgId: string;
-  title: string;
-  details: string;
-  /** The employee the work is for. */
-  assigneeId: ID;
-  /** Denormalised for the list; the record is the authority. */
-  assigneeName: string;
-  /**
-   * The reporting chain above the assignee, newest manager first.
-   *
-   * Denormalised at write time so `managesSubject()` in firestore.rules can
-   * answer "do I manage this person" — it cannot walk `reportingManagerId`,
-   * which lives in the localStorage directory. Same mechanism, and the same
-   * staleness caveat, as the chain on leave documents: see
-   * src/lib/reportingChains.ts.
-   */
-  managerChainIds: ID[];
-  status: TaskStatus;
-  priority: TaskPriority;
-  /** `YYYY-MM-DD`, or empty when the work has no date. */
-  dueDate: string;
-  /** Always the caller's own uid — the rules refuse any other value. */
-  assignedByUid: ID;
-  assignedByName: string;
-  /**
-   * Who outside the company asked for this, if anyone — a client or a customer.
-   *
-   * A name and a company, recorded by the person raising the task. They are not
-   * accounts and never sign in: every read in this app is scoped to members of
-   * the organisation, and letting outsiders in is a different and much larger
-   * decision than recording who asked.
-   */
-  requestedBy?: string;
-  requestedByCompany?: string;
-  createdAt: string;
-  completedAt?: string;
-}
-
 // ---- Performance ---------------------------------------------------------
 export type GoalStatus = 'On Track' | 'At Risk' | 'Behind' | 'Completed';
 export type ReviewStatus = 'Not Started' | 'Self Review' | 'Manager Review' | 'Calibration' | 'Completed';
