@@ -423,6 +423,40 @@ export interface HandbookVersion {
  * The bytes live in this document for the same reason the handbook's do; see
  * `src/lib/handbookStorage.ts` for why there is no Cloud Storage bucket.
  */
+/**
+ * One document filed against an employee — the metadata, not the file.
+ *
+ * Who may file which kind is a rule, not a preference: identity and bank
+ * records (`primary`) are submitted by the person they belong to or by HR, and
+ * the organisation's own paperwork (`secondary`) by an administrator or HR.
+ * That rule is enforced in firestore.rules, which is why these live in
+ * Firestore and no longer in localStorage. See src/lib/employeeDocuments.ts.
+ *
+ * No bytes are stored. The library records that a document was filed, its type
+ * and its verification status; the file itself has never been kept, and adding
+ * it is the same base64-in-the-document decision written up in
+ * src/lib/handbookStorage.ts.
+ */
+export interface EmployeeDocument {
+  /** `<orgId>__<employeeId>__<slug of name>` — one document per name per person. */
+  id: ID;
+  orgId: string;
+  employeeId: ID;
+  /** Display name, e.g. "Aadhaar Card". Decides primary vs secondary. */
+  name: string;
+  /** File kind badge: `PDF`, `ZIP`, … */
+  type: string;
+  status: DocumentStatus;
+  /** `YYYY-MM-DD`. */
+  uploaded: string;
+  /** Human-readable, e.g. "245 KB". */
+  size: string;
+  /** Always the caller's own uid — the rules refuse any other value. */
+  uploadedByUid: ID;
+}
+
+export type DocumentStatus = 'Verified' | 'Pending' | 'Expired';
+
 export interface PayslipDocument {
   id: ID;
   orgId: string;

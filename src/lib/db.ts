@@ -41,6 +41,7 @@ import type {
     HandbookVersion,
     HandbookPointer,
     PayslipDocument,
+    EmployeeDocument,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -84,6 +85,10 @@ export const Collections = {
     // opposed to the `payslips` figures the app computes. See
     // src/lib/payslipDocuments.ts.
     payslipDocuments: col<PayslipDocument>('payslip_documents'),
+    // Documents filed against an employee. In Firestore rather than
+    // localStorage because who may file which kind is a rule, and a rule needs
+    // a server to refuse the write. See src/lib/employeeDocuments.ts.
+    employeeDocuments: col<EmployeeDocument>('employee_documents'),
 } as const;
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { HR_PERSONA, PERSONAS } from './config';
+import { linkPersonaToEmployee, signInPersona } from './firestore';
 
 /**
  * Who is offered which document upload.
@@ -21,11 +22,14 @@ import { HR_PERSONA, PERSONAS } from './config';
  * hidden control and a control that was renamed both satisfy the latter, and
  * only one of them is the guard working.
  *
- * This is the UI half. There is no server half to test: the document library
- * lives in localStorage (src/data/documents.ts), so nothing refuses the write
- * once the control is on screen. When it moves to Firestore this rule has to be
- * restated in firestore.rules and tested there — see the note on
- * `canUploadDocuments` in src/pages/employees/index.tsx.
+ * This is the UI half, and only the UI half. What the page offers is not what
+ * the page permits: the library lives in Firestore, and the rule is stated
+ * again in firestore.rules, which is the copy that decides. A user who puts the
+ * hidden button back gets the modal and then permission-denied.
+ *
+ * The server half is tests/rules/employee-documents.rules.test.mjs, and it has
+ * to be there rather than here — these specs drive the client, so they can only
+ * ever prove what the client chose to do.
  */
 const ADMIN = PERSONAS.admin;
 const EMPLOYEE = PERSONAS.employee;
@@ -88,6 +92,18 @@ test.describe.serial('document uploads are offered by section and role', () => {
     await expect(page.getByRole('button', { name: OPTIONAL })).toBeVisible();
     await expect(page.getByRole('button', { name: COMPULSORY })).toHaveCount(0);
     await expect(page.getByText('Uploaded by the employee themselves or by HR.')).toBeVisible();
+
+    // Point the employee's account at the record just created, which is what an
+    // administrator does when they create the account. Adding somebody to the
+    // directory does not do it — the directory is localStorage and the link is
+    // Firestore — and without it firestore.rules resolves this account to no
+    // employee, so the own-record upload below is refused however the page is
+    // rendered. See linkPersonaToEmployee.
+    const employeeId = new URL(page.url()).pathname.split('/').pop() ?? '';
+    expect(employeeId, 'could not read the new employee id from the URL').not.toBe('');
+    const { uid } = await signInPersona(EMPLOYEE.email, EMPLOYEE.password);
+    expect(uid, 'could not resolve the employee persona uid').not.toBeNull();
+    await linkPersonaToEmployee(uid as string, employeeId);
   });
 
   test('an employee may submit their own primary documents, and no optional ones', async () => {

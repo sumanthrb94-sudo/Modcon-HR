@@ -42,8 +42,34 @@ import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees'
 // enables them (VITE_ENABLE_E2E_ACCOUNTS=true), so production deployments never
 // ship privileged test logins.
 const E2E_ACCOUNTS_ENABLED = import.meta.env.VITE_ENABLE_E2E_ACCOUNTS === 'true';
-const E2E_ADMIN_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-admin@modcon-hr.test'] : [];
-const E2E_MANAGER_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-manager@modcon-hr.test'] : [];
+
+/**
+ * One E2E persona's address, from the build that the suite configured.
+ *
+ * The addresses used to be literals here while tests/e2e/config.ts let each one
+ * be overridden with an `E2E_*_EMAIL` environment variable. Overriding one then
+ * left the two halves disagreeing about who the persona was, and the suite
+ * failed somewhere far from the cause — the account signed in fine and simply
+ * had none of the role it was written to exercise. playwright.config.ts now
+ * passes the same values into the build (VITE_E2E_*_EMAIL), so there is one
+ * source for them; the literal is the default both sides start from.
+ *
+ * Empty unless the build opted in, so production ships no privileged test login
+ * whatever the environment says.
+ */
+function e2eEmail(configured: string | undefined, fallback: string): string[] {
+    if (!E2E_ACCOUNTS_ENABLED) return [];
+    return [(configured || fallback).trim().toLowerCase()];
+}
+
+const E2E_ADMIN_EMAILS = e2eEmail(
+    import.meta.env.VITE_E2E_ADMIN_EMAIL,
+    'playwright-e2e-admin@modcon-hr.test',
+);
+const E2E_MANAGER_EMAILS = e2eEmail(
+    import.meta.env.VITE_E2E_MANAGER_EMAIL,
+    'playwright-e2e-manager@modcon-hr.test',
+);
 // The one persona that can act across organisations, so the suite can prove a
 // second organisation sees none of the first's configuration. It is a platform
 // admin as well, because every super admin is (see SUPER_ADMIN_EMAILS below).
@@ -53,7 +79,10 @@ const E2E_MANAGER_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-manager@modco
 // only re-affirm the flag a document already carries, so the seeded profile in
 // tests/e2e/firestore.ts is what makes this account a super admin, and no build
 // of the app can promote itself into one.
-const E2E_SUPER_ADMIN_EMAILS = E2E_ACCOUNTS_ENABLED ? ['playwright-e2e-super@modcon-hr.test'] : [];
+const E2E_SUPER_ADMIN_EMAILS = e2eEmail(
+    import.meta.env.VITE_E2E_SUPER_ADMIN_EMAIL,
+    'playwright-e2e-super@modcon-hr.test',
+);
 
 export const ADMIN_EMAILS = [
     'sumanthbolla97@gmail.com',

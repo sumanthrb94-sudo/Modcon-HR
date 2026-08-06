@@ -41,7 +41,17 @@ import {
   CardHeader,
 } from '@/components/ui';
 import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
-import { addDocumentToLibrary, updateDocumentStatus, useEmployeeDocumentLibrary, type DocumentRecord, type DocumentStatus } from '@/data/documents';
+import {
+  EmployeeDocumentError,
+  canFileDocuments,
+  canVerifyDocuments,
+  documentCategory,
+  fileEmployeeDocument,
+  setEmployeeDocumentStatus,
+  useEmployeeDocuments,
+  type DocumentCategory,
+} from '@/lib/employeeDocuments';
+import type { EmployeeDocument, DocumentStatus } from '@/types';
 import { departments, addDepartmentToDirectory } from '@/data/departments';
 import type { Employee, EmployeeStatus, EmploymentType, Gender, WeekOffDay } from '@/types';
 import { WEEK_OFF_DAYS } from '@/types';
@@ -1597,15 +1607,8 @@ function CompensationTab({ emp }: { emp: Employee }) {
 // Documents Tab
 // ---------------------------------------------------------------------------
 type DocStatus = DocumentStatus;
-type DocRecord = DocumentRecord;
-type DocumentUploadCategory = 'primary' | 'secondary';
-
-const PRIMARY_DOCUMENT_NAMES = new Set([
-  'aadhaar card',
-  'aadhar card',
-  'pan card',
-  'bank account details',
-]);
+type DocRecord = EmployeeDocument;
+type DocumentUploadCategory = DocumentCategory;
 
 const PRIMARY_DOCUMENT_OPTIONS = [
   { label: 'Aadhaar Card', value: 'Aadhaar Card' },
@@ -1619,43 +1622,14 @@ function docStatusTone(s: DocStatus): 'green' | 'amber' | 'red' {
   return 'red';
 }
 
-/**
- * Who may upload into each section.
- *
- * Primary documents are the employee's own identity and bank records — Aadhaar,
- * PAN, account details. They are submitted by the person they belong to, or by
- * HR on their behalf; an administrator uploading somebody else's identity
- * document is not a workflow this company has. "Employee" means the owner of
- * the record whatever their role, so a manager can still submit their own PAN.
- *
- * Secondary documents are the organisation's paperwork about the employee, so
- * they are the other way round: administrators and HR file them, and the
- * employee does not.
- *
- * This decides what the page offers. It is not a security boundary and cannot
- * be: the document library lives in localStorage (see data/documents.ts), so
- * there is no server to refuse the write. When it moves to Firestore this must
- * be restated in firestore.rules, which is where a rule of this kind belongs.
- */
-function canUploadDocuments(
-  category: DocumentUploadCategory,
-  role: ReturnType<typeof resolveAppRole>,
-  isOwnRecord: boolean,
-): boolean {
-  if (role === 'HR Manager') return true;
-  return category === 'primary' ? isOwnRecord : role === 'Admin';
-}
-
 function DocumentsTab({ employeeId }: { employeeId: string }) {
   const { profile } = useAuth();
-  const documents = useEmployeeDocumentLibrary(employeeId);
-  const canEditStatus = profile?.role === 'admin';
-  const viewerRole = resolveAppRole(profile);
-  const isOwnRecord = getCurrentEmployee(profile)?.id === employeeId;
-  const canUploadPrimary = canUploadDocuments('primary', viewerRole, isOwnRecord);
-  const canUploadSecondary = canUploadDocuments('secondary', viewerRole, isOwnRecord);
-  const primaryDocuments = documents.filter((document) => PRIMARY_DOCUMENT_NAMES.has(document.name.trim().toLowerCase()));
-  const secondaryDocuments = documents.filter((document) => !PRIMARY_DOCUMENT_NAMES.has(document.name.trim().toLowerCase()));
+  const { documents, error: documentsError } = useEmployeeDocuments(profile, employeeId);
+  const canEditStatus = canVerifyDocuments(profile);
+  const canUploadPrimary = canFileDocuments(profile, 'primary', employeeId);
+  const canUploadSecondary = canFileDocuments(profile, 'secondary', employeeId);
+  const primaryDocuments = documents.filter((document) => documentCategory(document.name) === 'primary');
+  const secondaryDocuments = documents.filter((document) => documentCategory(document.name) === 'secondary');
   const [uploadCategory, setUploadCategory] = useState<DocumentUploadCategory>('primary');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [primaryDocumentName, setPrimaryDocumentName] = useState('Aadhaar Card');
@@ -1705,16 +1679,6 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
   }
 
   async function handleUploadSubmit() {
-    // Re-checked here as well as at render: the section's button is hidden for
-    // anyone who may not upload, and a hidden control is not a closed one.
-    if (!canUploadDocuments(uploadCategory, viewerRole, isOwnRecord)) {
-      setUploadError(
-        uploadCategory === 'primary'
-          ? 'Primary documents are uploaded by the employee themselves or by HR.'
-          : 'Secondary documents are uploaded by an administrator or by HR.',
-      );
-      return;
-    }
     if (!selectedUploadFile) {
       setUploadError('Select a file to upload.');
       return;
@@ -1731,18 +1695,27 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
       return;
     }
 
-    const uploadedAt = todayIso();
-    const existingDocument = documents.find((document) => document.name.trim().toLowerCase() === documentName.trim().toLowerCase());
-    const nextDoc: DocRecord = {
-      id: existingDocument?.id ?? `doc-${Date.now()}`,
-      name: documentName,
-      type: detectDocumentType(selectedUploadFile.name),
-      status: 'Pending',
-      uploaded: uploadedAt,
-      size: formatUploadedSize(selectedUploadFile.size),
-    };
-
-    await addDocumentToLibrary(employeeId, nextDoc);
+    // The id is derived from the name, so re-filing replaces rather than
+    // duplicates — no need to hunt for the existing record first.
+    try {
+      await fileEmployeeDocument(profile, {
+        employeeId,
+        name: documentName,
+        type: detectDocumentType(selectedUploadFile.name),
+        uploaded: todayIso(),
+        size: formatUploadedSize(selectedUploadFile.size),
+      });
+    } catch (error) {
+      // Includes permission-denied from firestore.rules, which is the check
+      // that actually decides — the hidden button is only the page being
+      // polite about it.
+      setUploadError(
+        error instanceof EmployeeDocumentError
+          ? error.message
+          : 'That upload was refused. You may not file this kind of document for this employee.',
+      );
+      return;
+    }
     setUploadModalOpen(false);
     resetUploadForm(uploadCategory);
   }
@@ -1772,7 +1745,7 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
           <select
             className="input !py-1 !text-xs w-32"
             value={d.status}
-            onChange={(event) => void updateDocumentStatus(employeeId, d.id, event.target.value as DocStatus)}
+            onChange={(event) => void setEmployeeDocumentStatus(profile, d.id, event.target.value as DocStatus)}
           >
             <option value="Verified">Verified</option>
             <option value="Pending">Pending</option>
@@ -1855,6 +1828,15 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
         />
       </div>
       <div className="py-5 space-y-6">
+        {/* The rules deploy separately from the app, so a refused listener is a
+            real state — an empty list would otherwise read as "no documents
+            filed", which is a different and reassuring thing. */}
+        {documentsError && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" role="alert">
+            These documents could not be loaded. Your account may not have access to this
+            employee's records.
+          </p>
+        )}
         {renderDocumentSection(
           'Primary Documents',
           'Aadhaar Card, PAN Card, and Bank Account Details must be submitted.',

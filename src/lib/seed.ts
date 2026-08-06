@@ -19,7 +19,7 @@
  */
 
 import { writeBatch, doc, collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { DEFAULT_ORG_KEY } from './orgScope';
 
 // Static data imports
@@ -33,6 +33,7 @@ import { goals, reviews as performanceReviews } from '@/data/performance';
 import { expenseClaims } from '@/data/expenses';
 import { assets } from '@/data/assets';
 import { tickets } from '@/data/helpdesk';
+import { documentSlug } from '@/lib/employeeDocuments';
 
 // Firestore allows max 500 ops per batch
 const BATCH_SIZE = 400;
@@ -78,6 +79,7 @@ const SEEDED_COLLECTION_NAMES = [
     'assets',
     'helpdesk_tickets',
     'regularizations',
+    'employee_documents',
 ];
 
 /**
@@ -176,6 +178,44 @@ function buildManagerChains(): Map<string, string[]> {
     return chains;
 }
 
+/**
+ * The demo document library, for the six employees the seed covers.
+ *
+ * Secondary documents only — the organisation's own paperwork. The primary
+ * ones (Aadhaar, PAN, bank details) are deliberately absent: firestore.rules
+ * lets only the employee themselves or HR file those, so an administrator
+ * running the seed cannot write them, and a seed that quietly wrote them anyway
+ * would mean the rule had a hole in it. The profile pages show those sections
+ * as pending upload, which is what the compulsory-upload button is for.
+ */
+const DEMO_SECONDARY_DOCUMENTS = [
+    { name: 'Offer Letter', type: 'PDF', status: 'Verified', uploaded: '2021-01-15', size: '245 KB' },
+    { name: 'Employment Contract', type: 'PDF', status: 'Verified', uploaded: '2021-01-18', size: '512 KB' },
+    { name: 'Educational Certificates', type: 'ZIP', status: 'Pending', uploaded: '2021-02-10', size: '2.1 MB' },
+    { name: 'Previous Relieving Letter', type: 'PDF', status: 'Verified', uploaded: '2021-02-10', size: '310 KB' },
+    { name: 'Medical Insurance Form', type: 'PDF', status: 'Expired', uploaded: '2022-04-01', size: '88 KB' },
+] as const;
+
+const DEMO_DOCUMENT_EMPLOYEE_IDS = ['emp-001', 'emp-002', 'emp-003', 'emp-004', 'emp-005', 'emp-006'];
+
+function buildSeedEmployeeDocuments(orgKey: string, uid: string) {
+    return DEMO_DOCUMENT_EMPLOYEE_IDS.flatMap((employeeId) =>
+        DEMO_SECONDARY_DOCUMENTS.map((document) => ({
+            id: `${orgKey}__${employeeId}__${documentSlug(document.name)}`,
+            employeeId,
+            name: document.name,
+            type: document.type,
+            // Seeded as filed, not as verified — the same rule the rules apply
+            // to every other create. An administrator verifies from the Admin
+            // dashboard, which is the workflow this is meant to demonstrate.
+            status: 'Pending',
+            uploaded: document.uploaded,
+            size: document.size,
+            uploadedByUid: uid,
+        })),
+    );
+}
+
 export async function seedFirestore(
     onProgress?: (msg: string) => void,
     orgKey: string = DEFAULT_ORG_KEY,
@@ -225,6 +265,9 @@ export async function seedFirestore(
         { name: 'assets', data: assets },
         { name: 'helpdesk_tickets', data: tickets },
         { name: 'regularizations', data: getRegularizationRequests() },
+        // Skipped rather than written with a forged uid when nobody is signed
+        // in: `uploadedByUid` must be the caller, and the rules check it.
+        { name: 'employee_documents', data: auth.currentUser ? buildSeedEmployeeDocuments(orgKey, auth.currentUser.uid) : [] },
     ];
 
     for (const col of collections) {
