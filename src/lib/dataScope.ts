@@ -106,6 +106,87 @@ export function getVisibleEmployeeIds(
   return new Set(getVisibleEmployees(profile, directory).map((employee) => employee.id));
 }
 
+/**
+ * Whose leave a person may decide — a narrower question than whose records
+ * they may read, and one nothing asked until now.
+ *
+ *   HR Manager  every employee. HR administers leave for the organisation.
+ *   Admin       every employee. Platform-level administration.
+ *   Manager     everyone beneath them in the reporting tree, however many
+ *               levels deep, and nobody else.
+ *   Employee    nobody.
+ *
+ * Three things the Manager scope deliberately excludes, each of which
+ * `getVisibleEmployees` includes and this must not:
+ *
+ *   - themselves. "Below him" does not contain him, and a manager who could
+ *     approve their own request would be the only signature it ever needed.
+ *     Their leave is decided from above them, or by HR.
+ *   - the HR Manager, who is in a manager's *view* scope because HR reports up
+ *     to them on the org chart. Reading HR's leave is oversight; deciding it
+ *     from outside HR's own reporting line is not.
+ *   - everybody, when the app cannot tell which employee record the account
+ *     belongs to. An unlinked manager has an empty subtree, so the answer is
+ *     nobody rather than everyone — the direction a missing answer has to fail.
+ */
+export function getApprovableEmployeeIds(
+  profile: UserProfile | null,
+  directory: Employee[] = getEmployeeDirectory(),
+): Set<string> {
+  const role = resolveAppRole(profile);
+
+  if (role === 'Admin' || role === 'HR Manager') {
+    return new Set(directory.map((employee) => employee.id));
+  }
+  if (role !== 'Manager') return new Set();
+
+  const self = getCurrentEmployeeRecord(profile, directory);
+  if (!self) return new Set();
+
+  const reports = collectSubtree(self.id, directory);
+  reports.delete(self.id);
+  return reports;
+}
+
+/** True when `profile` may approve or decline this employee's leave. */
+export function canApproveLeaveFor(
+  profile: UserProfile | null,
+  employeeId: string,
+  directory: Employee[] = getEmployeeDirectory(),
+): boolean {
+  return getApprovableEmployeeIds(profile, directory).has(employeeId);
+}
+
+/**
+ * Why a decision is refused, phrased for the person who cannot make it.
+ *
+ * "You are not allowed to do that" and "this app does not know who you are"
+ * produce the same absent button, and only one of them is fixable by the
+ * person reading it.
+ */
+export function leaveApprovalRefusal(
+  profile: UserProfile | null,
+  employeeId: string,
+  directory: Employee[] = getEmployeeDirectory(),
+): string | null {
+  if (canApproveLeaveFor(profile, employeeId, directory)) return null;
+
+  if (resolveAppRole(profile) === 'Employee') return 'Only a manager can decide leave requests.';
+
+  const self = getCurrentEmployeeRecord(profile, directory);
+  if (!self) {
+    return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database.';
+  }
+  if (self.id === employeeId) {
+    return 'You cannot decide your own leave request — it goes to your reporting manager, or to HR.';
+  }
+
+  const subject = directory.find((employee) => employee.id === employeeId);
+  return subject
+    ? `${subject.fullName} does not report to you. Their leave is decided by their own reporting line, or by HR.`
+    : 'You can only decide leave for the people who report to you.';
+}
+
 /** True when `profile` may see this specific employee's records. */
 export function canViewEmployee(
   profile: UserProfile | null,

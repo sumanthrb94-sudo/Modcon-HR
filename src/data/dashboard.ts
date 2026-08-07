@@ -17,6 +17,8 @@ import { getRecordsByDate, getWeekSummary, getRegularizationRequests } from './a
 import { getOnboardings } from './onboarding';
 import { getCandidates, getJobOpenings } from './recruitment';
 import { getReviews } from './performance';
+import { getApprovableEmployeeIds } from '@/lib/dataScope';
+import type { UserProfile } from '@/lib/auth';
 import { todayDate, todayIso } from '@/lib/today';
 import { formatMonthShort, formatWeekdayShort } from '@/lib/utils';
 
@@ -233,8 +235,24 @@ export function avgTenureYears(): number {
 // 5. Pending approvals — counted from the actual queues
 //    "Urgent" is defined per queue and stated on the card, not guessed.
 // ---------------------------------------------------------------------------
-export function pendingApprovalsSummary(): ApprovalItem[] {
-  const leave = getLeaveRequests().filter((request) => request.status === 'Pending');
+/**
+ * `profile` scopes the Leave Requests row to the requests that viewer may
+ * actually decide, so the number on the card and the length of the queue
+ * behind it agree — a manager told twelve approvals were waiting, who opened
+ * the queue and found two, would reasonably conclude the app had lost ten.
+ * Omitted, it counts the whole organisation, which is what every caller did
+ * before the reporting-line rule existed.
+ *
+ * The other three rows stay organisation-wide for everybody. That is the same
+ * gap in a different workflow, left as it was rather than changed on the way
+ * past: expenses, regularizations and onboarding each have their own approval
+ * route and their own answer to who decides.
+ */
+export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalItem[] {
+  const decidable = profile === undefined ? null : getApprovableEmployeeIds(profile);
+  const leave = getLeaveRequests().filter(
+    (request) => request.status === 'Pending' && (!decidable || decidable.has(request.employeeId)),
+  );
   const expenses = getExpenseClaims().filter((claim) => claim.status === 'Submitted');
   const regularizations = getRegularizationRequests().filter((request) => request.status === 'Pending');
   const onboardingTasks = getOnboardings()

@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { pendingApprovalsSummary } from '@/data/dashboard';
+import { useAuth } from '@/lib/auth';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 
@@ -23,10 +24,14 @@ const APPROVAL_ROUTES: Record<string, string> = {
 
 export function PendingApprovalsPage() {
     const navigate = useNavigate();
+    const { profile } = useAuth();
     const directoryRevision = useEmployeeDirectoryRevision();
     const dataRevision = useDashboardDataRevision();
 
-    const pendingApprovals = useMemo(() => pendingApprovalsSummary(), [directoryRevision, dataRevision]);
+    const pendingApprovals = useMemo(
+        () => pendingApprovalsSummary(profile),
+        [profile, directoryRevision, dataRevision],
+    );
     const total = pendingApprovals.reduce((sum, item) => sum + item.count, 0);
     const urgentTotal = pendingApprovals.reduce((sum, item) => sum + item.urgentCount, 0);
 

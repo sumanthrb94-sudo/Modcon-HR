@@ -6,14 +6,18 @@ import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
 import { employees } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { formatDate } from '@/lib/utils';
 
 export function LeaveRequestsApprovalsPage() {
     const navigate = useNavigate();
     const { profile } = useAuth();
     const currentEmployee = getCurrentEmployee(profile);
+    const directoryRevision = useEmployeeDirectoryRevision();
     const [leaveRequests, setLeaveRequests] = useState(() => getLeaveRequests());
+    const [decisionNotice, setDecisionNotice] = useState<string | null>(null);
 
     useEffect(() => {
         function handleLeaveRequestsChanged() {
@@ -25,33 +29,51 @@ export function LeaveRequestsApprovalsPage() {
     }, []);
 
     function updateRequestStatus(requestId: string, nextStatus: 'Approved' | 'Rejected') {
-        const updated = updateLeaveRequestStatus(
-            requestId,
-            nextStatus,
+        const result = updateLeaveRequestStatus(requestId, nextStatus, {
+            profile,
             // Record whoever is signed in, not a fixed name. This previously
             // credited 'Ananya Reddy' with every approval in the system.
-            nextStatus === 'Approved'
-                ? {
-                    approverId: currentEmployee?.id ?? null,
-                    approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
-                }
-                : undefined,
-        );
-        setLeaveRequests(updated);
+            approverId: currentEmployee?.id ?? null,
+            approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
+        });
+        setDecisionNotice(result.ok ? null : result.reason);
+        setLeaveRequests(result.requests);
     }
+
+    // Whose leave this manager may decide: the people beneath them in the
+    // reporting tree, or the whole organisation for HR and Admin. The queue
+    // used to be every pending request in the company regardless of who was
+    // reading it, so a team lead was offered Approve on the leave of people
+    // they have no authority over — and on their own. See lib/dataScope.ts.
+    const approvableEmployeeIds = useMemo(
+        () => getApprovableEmployeeIds(profile),
+        [profile, directoryRevision],
+    );
 
     const pendingRequests = useMemo(
         () => leaveRequests
-            .filter((r) => r.status === 'Pending')
+            .filter((r) => r.status === 'Pending' && approvableEmployeeIds.has(r.employeeId))
             .sort((a, b) => new Date(b.appliedOn).getTime() - new Date(a.appliedOn).getTime()),
-        [leaveRequests],
+        [leaveRequests, approvableEmployeeIds],
     );
+
+    // An empty queue has three quite different causes, and only one of them is
+    // "nothing to do". A manager whose account was never linked to an employee
+    // record has no reporting line the app can see, which is fixable — but only
+    // by somebody who is told about it.
+    const emptyReason = useMemo(() => {
+        if (approvableEmployeeIds.size > 0) return 'No pending leave requests from your team';
+        if (getCurrentEmployeeRecord(profile)) {
+            return 'Nobody reports to you, so there are no leave requests for you to decide';
+        }
+        return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database.';
+    }, [approvableEmployeeIds, profile, directoryRevision]);
 
     return (
         <div className="space-y-6 animate-fade-in">
             <PageHeader
                 title="Leave Requests"
-                subtitle={`${pendingRequests.length} pending requests`}
+                subtitle={`${pendingRequests.length} pending requests you can decide`}
                 actions={
                     <Button variant="secondary" size="sm" icon={<ChevronLeft size={14} />} onClick={() => navigate('/dashboard/pending-approvals')}>
                         Back to Pending Approvals
@@ -59,10 +81,19 @@ export function LeaveRequestsApprovalsPage() {
                 }
             />
 
+            {decisionNotice && (
+                <div
+                    role="status"
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                >
+                    {decisionNotice}
+                </div>
+            )}
+
             <Card>
-                <CardHeader title="Pending Leave Approval Queue" subtitle="Only requests waiting for approval" />
+                <CardHeader title="Pending Leave Approval Queue" subtitle="Requests from your reporting line, waiting on you" />
                 {pendingRequests.length === 0 ? (
-                    <p className="text-sm text-ink-400 text-center py-6">No pending leave requests</p>
+                    <p className="text-sm text-ink-400 text-center py-6">{emptyReason}</p>
                 ) : (
                     <div className="space-y-3">
                         {pendingRequests.map((request) => {
