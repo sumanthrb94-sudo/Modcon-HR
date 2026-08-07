@@ -174,7 +174,10 @@ const ORG_SETTINGS_ENABLED =
 // org-settings.spec.ts signs in as the admin persona itself rather than
 // taking one from project metadata, so it does not belong here either — it
 // has its own single project, see SHARED_CONFIG_SPECS above.
-const ROLE_SPECS = /(roles|documents|leave-policy)\.spec\.ts$/;
+// leave-approval-scope.spec.ts is here for the same reason: who may decide a
+// leave request is a per-persona question, and asking it once per engine would
+// re-test app logic through three browsers to reach the same answer.
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',

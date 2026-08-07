@@ -36,7 +36,7 @@ import { useAuth } from '@/lib/auth';
 import { getApplicableEntitlements, getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
 import { checkLeaveApplication, policySummary } from '@/data/leaveApplication';
 import { financialYearLabel } from '@/lib/financialYear';
-import { getVisibleEmployeeIds } from '@/lib/dataScope';
+import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -75,6 +75,9 @@ export function LeavePage() {
   const [activeTab, setActiveTab] = useState('requests');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => getLeaveRequests());
   const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
+
+  // Why the last decision was refused, if it was. Cleared by the next one.
+  const [decisionNotice, setDecisionNotice] = useState<string | null>(null);
 
   // Request filters
   const [search, setSearch] = useState('');
@@ -155,6 +158,15 @@ export function LeavePage() {
     [leaveRequests, visibleEmployeeIds],
   );
 
+  // Seeing a request and deciding it are different permissions. A manager's
+  // view includes themselves and the HR Manager — neither is below them — so
+  // the Approve/Reject buttons follow this narrower set, and the row shows why
+  // it has none rather than an unexplained gap. See lib/dataScope.ts.
+  const approvableEmployeeIds = useMemo(
+    () => getApprovableEmployeeIds(profile),
+    [profile, directoryRevision],
+  );
+
   // Stats
   const pending = useMemo(() => scopedRequests.filter((r) => r.status === 'Pending').length, [scopedRequests]);
   const approvedThisMonth = useMemo(
@@ -199,22 +211,23 @@ export function LeavePage() {
   }, [scopedRequests, search, statusFilter, directoryRevision]);
 
   // Approve / Reject handlers
-  function approveLeave(id: string) {
-    if (isEmployee) return;
+  function decide(id: string, nextStatus: 'Approved' | 'Rejected') {
     // Record whoever is actually signed in. This used to stamp a fixed
     // 'emp-004 / Ananya Reddy' on every approval, so the audit trail named
     // one person regardless of who clicked Approve.
-    const updated = updateLeaveRequestStatus(id, 'Approved', {
+    const result = updateLeaveRequestStatus(id, nextStatus, {
+      profile,
       approverId: currentEmployee?.id ?? null,
       approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
     });
-    setLeaveRequests(updated);
+    // A refusal is reported, not swallowed: the buttons are hidden where the
+    // viewer has no authority, so reaching this means the two disagree and
+    // silence would look exactly like a decision that landed.
+    setDecisionNotice(result.ok ? null : result.reason);
+    setLeaveRequests(result.requests);
   }
-  function rejectLeave(id: string) {
-    if (isEmployee) return;
-    const updated = updateLeaveRequestStatus(id, 'Rejected');
-    setLeaveRequests(updated);
-  }
+  const approveLeave = (id: string) => decide(id, 'Approved');
+  const rejectLeave = (id: string) => decide(id, 'Rejected');
 
   // Submit apply leave
   function handleApplySubmit() {
@@ -319,7 +332,7 @@ export function LeavePage() {
       key: 'actions',
       header: 'Actions',
       render: (row) =>
-        !isEmployee && row.status === 'Pending' ? (
+        row.status === 'Pending' && approvableEmployeeIds.has(row.employeeId) ? (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -342,6 +355,10 @@ export function LeavePage() {
               Reject
             </Button>
           </div>
+        ) : row.status === 'Pending' && !isEmployee ? (
+          // Visible but not theirs to decide — their own request, or the HR
+          // Manager's. Saying so beats an empty cell that reads as a bug.
+          <span className="text-xs text-ink-400">Not yours to decide</span>
         ) : row.approverName ? (
           <span className="text-xs text-ink-400">{row.approverName}</span>
         ) : (
@@ -417,6 +434,15 @@ export function LeavePage() {
         subtitle="Manage leave requests, balances, and upcoming holidays"
         actions={<Button variant="primary" icon={<Plus size={16} />} onClick={() => setApplyOpen(true)}>Apply Leave</Button>}
       />
+
+      {decisionNotice && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          {decisionNotice}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">

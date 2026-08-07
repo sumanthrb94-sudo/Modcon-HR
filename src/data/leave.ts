@@ -1,4 +1,6 @@
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
+import type { UserProfile } from '@/lib/auth';
+import { leaveApprovalRefusal } from '@/lib/dataScope';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { orgScopedKey } from '@/lib/orgScope';
@@ -256,23 +258,58 @@ export function saveLeaveRequests(requests: LeaveRequest[]) {
   notifyLeaveRequestsChanged();
 }
 
+/**
+ * The outcome of a decision. A refusal still carries the request list, so a
+ * caller can re-render from it: refused is not the same as unknown, and a page
+ * left holding its own copy would go on showing a decision that never happened.
+ */
+export type LeaveDecision =
+  | { ok: true; requests: LeaveRequest[] }
+  | { ok: false; reason: string; requests: LeaveRequest[] };
+
+/**
+ * Approve or decline a request — the one place a leave status is written, and
+ * therefore the one place authority is checked.
+ *
+ * Who may decide is `lib/dataScope.ts`: a manager decides for the people
+ * beneath them in the reporting tree and nobody else; HR and Admin for the
+ * whole organisation. The check lives here rather than in the pages that call
+ * it because leave requests are a localStorage overlay with no server behind
+ * them — there is no second copy of this rule to fall back on, so a third
+ * approval surface written later cannot skip it by forgetting to ask. That is
+ * a property of where these records live, not a lighter permission: anyone who
+ * reaches the devtools can still write the store directly.
+ *
+ * `decider.profile` is required rather than optional for the same reason —
+ * optional, every existing call site would have kept compiling and kept
+ * approving everybody.
+ */
 export function updateLeaveRequestStatus(
   requestId: string,
   nextStatus: LeaveStatus,
-  approver?: { approverId?: string | null; approverName?: string },
-) {
-  const updated = getLeaveRequests().map((request) =>
-    request.id === requestId
+  decider: { profile: UserProfile | null; approverId?: string | null; approverName?: string },
+): LeaveDecision {
+  const current = getLeaveRequests();
+  const request = current.find((r) => r.id === requestId);
+  if (!request) {
+    return { ok: false, reason: 'That leave request no longer exists.', requests: current };
+  }
+
+  const refusal = leaveApprovalRefusal(decider.profile, request.employeeId);
+  if (refusal) return { ok: false, reason: refusal, requests: current };
+
+  const updated = current.map((r) =>
+    r.id === requestId
       ? {
-          ...request,
+          ...r,
           status: nextStatus,
-          approverId: nextStatus === 'Approved' ? (approver?.approverId ?? request.approverId) : null,
-          approverName: nextStatus === 'Approved' ? (approver?.approverName ?? request.approverName) : undefined,
+          approverId: nextStatus === 'Approved' ? (decider.approverId ?? r.approverId) : null,
+          approverName: nextStatus === 'Approved' ? (decider.approverName ?? r.approverName) : undefined,
         }
-      : request,
+      : r,
   );
   saveLeaveRequests(updated);
-  return updated;
+  return { ok: true, requests: updated };
 }
 
 // ---- Leave Balances ---------------------------------------------------------

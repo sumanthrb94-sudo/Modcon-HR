@@ -593,8 +593,8 @@ function AdminDashboard() {
   });
 
   const visiblePendingApprovals = useMemo(
-    () => pendingApprovalsSummary().filter((item) => item.count > 0),
-    [directory, dataRevision],
+    () => pendingApprovalsSummary(profile).filter((item) => item.count > 0),
+    [profile, directory, dataRevision],
   );
 
   const totalVisiblePendingItems = useMemo(

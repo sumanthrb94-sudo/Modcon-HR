@@ -74,6 +74,17 @@ Payslips exist twice, and the difference matters. `buildPayslip` (`src/data/payr
 - **"Onboarding In Progress" counts every record under 100%.** It required `progress > 0` as well, so a new hire on day one — the clearest case of one in progress — counted as none.
 - Employees already tracked are absent from the picker rather than disabled: a second checklist would split one person's progress across two records.
 
+### Deciding leave — seeing a request is not authority over it
+
+`getVisibleEmployeeIds` answers whose records you may read; `getApprovableEmployeeIds` ([src/lib/dataScope.ts](src/lib/dataScope.ts)) answers whose leave you may decide, and they are deliberately different sets. A **Manager decides for their subtree only** — everyone beneath them in the reporting tree, however deep. HR and Admin decide for the whole organisation.
+
+- **The queue used to be the whole company, for everyone who could open the page.** `/dashboard/pending-approvals/leave-requests` filtered on `status === 'Pending'` and nothing else, so a team lead was offered Approve on other departments' leave, on their own manager's, and on their own — and the button worked.
+- **A manager's approval scope excludes three things their view includes**: themselves (their leave goes up, or to HR — a self-approving manager is the only signature their own request ever needs), the HR Manager (in view scope because HR reports up to them; oversight is not authority), and everybody, when the account resolves to no employee record — an unlinked manager approves nobody rather than everybody, and the page says which of those it is.
+- **`updateLeaveRequestStatus` is the enforcement point, not the pages.** Leave requests are a localStorage overlay with no server behind them, so there is no second copy of this rule; putting the check in the one function that writes a status is what stops a fourth approval surface from skipping it. The deciding `profile` is a **required** argument for that reason — optional, every existing call site would have kept compiling and kept approving everyone. As with the recruitment overlay, the client check is the whole gate there: a property of where these records live, not a lighter permission.
+- **It returns `{ ok }`, and a refusal is shown.** The buttons are already hidden where authority is absent, so reaching a refusal means the UI and the rule disagree, and silence would look exactly like a decision that landed.
+- **`pendingApprovalsSummary(profile)` scopes the Leave Requests count to the same set**, or the card promises twelve approvals and the queue behind it holds two. The other three rows are still organisation-wide — the same gap in a different workflow, left alone rather than changed on the way past.
+- `tests/e2e/leave-approval-scope.spec.ts` is the guard, in the role projects (Chromium, once per persona — this is app logic, not engine behaviour). It seeds a reporting line into `modcon.hr.customEmployees` and `modcon.hr.leaveRequests` directly, because the personas match no employee record and a Manager has `view` on Employee Directory, so no persona can hire its own reports through the UI.
+
 ### Employee documents
 
 The documents filed against an employee live in the Firestore collection `employee_documents` (`src/lib/employeeDocuments.ts`), one document per name per person, id `<orgKey>__<employeeId>__<slug>` so re-filing replaces rather than duplicates. Metadata only — a name, a type, a status — never the file.
