@@ -360,6 +360,7 @@ function EmployeeDetailsFields({
           <label className="block text-xs font-semibold text-ink-600 mb-1.5">Department</label>
           <SelectOrCreate
             label={`${fieldPrefix} department`}
+            noun="department"
             value={draft.department}
             onChange={(value) => set('department', value)}
             options={departments}
@@ -372,6 +373,7 @@ function EmployeeDetailsFields({
           <label className="block text-xs font-semibold text-ink-600 mb-1.5">Location</label>
           <SelectOrCreate
             label={`${fieldPrefix} location`}
+            noun="location"
             value={draft.location}
             onChange={(value) => set('location', value)}
             options={locations}
@@ -628,7 +630,16 @@ export function EmployeesPage() {
     if (!location) return name;
     const known = locations.find((item) => item.toLowerCase() === location.toLowerCase());
     if (known) return known;
-    void addLocationToDirectory(location);
+    // The local half of this write is synchronous and has already happened by
+    // the time the promise settles, so the list shows the new location either
+    // way — which is exactly the problem when the organisation's copy was
+    // refused. The next sign-in re-hydrates from Firestore and the location
+    // silently disappears, looking like the app never accepted it. Say so.
+    void addLocationToDirectory(location).then((published) => {
+      if (!published) {
+        setRoleNotice(`"${location}" was saved on this employee, but could not be added to the company's location list. It may disappear from the list later — ask an administrator to add it in Settings → Locations.`);
+      }
+    });
     return location;
   }
 
@@ -1011,77 +1022,126 @@ function InlineEditTrigger({
  * it must not create anything on its own — typing a name only sets the field.
  * Whoever handles the save decides whether the name is new and creates it
  * then, which is what keeps Cancel from leaving a department behind.
+ *
+ * Adding one is a **button beside the list**, not only an entry buried at the
+ * bottom of it. The entry on its own had two problems, and both read as the
+ * form refusing to work rather than as a control that had to be hunted for:
+ *
+ *   - A `<select>` fires no change event when the option picked is the one it
+ *     is already showing. An organisation with no locations yet — a company
+ *     created after the demo data, or any company after Settings → Delete Mock
+ *     Data — was offered a dropdown whose *only* entry was the add-new one, so
+ *     opening it and choosing that entry did nothing at all, every time.
+ *     Starting in create mode when the list is empty removes the case rather
+ *     than working around it. (Playwright's `selectOption` dispatches the event
+ *     itself, so location-directory.spec.ts passed throughout.)
+ *   - Nothing said what typing a name would do. It is filed for the whole
+ *     company on save, so the field now says so.
  */
 function SelectOrCreate({
   label,
+  noun,
   value,
   options,
   onChange,
   disabled,
 }: {
+  /** Accessible name — the visible <label> is not associated by id. */
   label: string;
+  /** Plain wording for the visible text; falls back to the accessible name. */
+  noun?: string;
   value: string;
   options: string[];
   onChange: (next: string) => void;
   disabled?: boolean;
 }) {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(options.length === 0 && !disabled);
   // What to fall back to if the new value is abandoned.
   const previous = useRef(value);
+  const word = noun ?? label.toLowerCase();
+
+  function startCreating() {
+    previous.current = value;
+    onChange('');
+    setCreating(true);
+  }
 
   if (creating) {
+    // Cancelling is only offered when there is a list to go back to. With none,
+    // it would restore the empty dropdown this mode exists to avoid.
+    const canCancel = options.length > 0 || previous.current !== '';
+    const cancel = () => {
+      onChange(previous.current);
+      setCreating(false);
+    };
+
     return (
-      <div className="flex items-center gap-2">
-        <input
-          autoFocus
-          type="text"
-          aria-label={`New ${label.toLowerCase()}`}
-          placeholder={`New ${label.toLowerCase()}`}
-          className="input w-full"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              onChange(previous.current);
-              setCreating(false);
-            }
-          }}
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            onChange(previous.current);
-            setCreating(false);
-          }}
-        >
-          Cancel
-        </Button>
+      <div>
+        <div className="flex items-center gap-2">
+          <input
+            autoFocus
+            type="text"
+            aria-label={`New ${label.toLowerCase()}`}
+            placeholder={`Type the new ${word}`}
+            className="input w-full"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter means "that is the name", not "save the employee" — the
+              // rest of the form may still be empty. It hands the field back to
+              // the dropdown, which lists the typed name as the chosen one.
+              if (event.key === 'Enter' && value.trim()) {
+                event.preventDefault();
+                setCreating(false);
+              }
+              if (event.key === 'Escape' && canCancel) cancel();
+            }}
+          />
+          {canCancel && (
+            <Button variant="secondary" size="sm" onClick={cancel}>Cancel</Button>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-ink-500">
+          {`This ${word} is added to the company list when you save.`}
+        </p>
       </div>
     );
   }
 
   return (
-    <Select
-      ariaLabel={label}
-      value={value}
-      disabled={disabled}
-      onChange={(next) => {
-        if (next === CREATE_OPTION) {
-          previous.current = value;
-          onChange('');
-          setCreating(true);
-          return;
-        }
-        onChange(next);
-      }}
-      options={[
-        // The person's current value survives the org renaming or removing it.
-        ...(options.includes(value) || !value ? [] : [{ label: value, value }]),
-        ...options.map((option) => ({ label: option, value: option })),
-        { label: `+ Add new ${label.toLowerCase()}\u2026`, value: CREATE_OPTION },
-      ]}
-    />
+    <div className="flex items-center gap-2">
+      <Select
+        ariaLabel={label}
+        className="w-full flex-1 min-w-0"
+        value={value}
+        disabled={disabled}
+        onChange={(next) => {
+          if (next === CREATE_OPTION) {
+            startCreating();
+            return;
+          }
+          onChange(next);
+        }}
+        options={[
+          // The person's current value survives the org renaming or removing
+          // it \u2014 and it is also how a name typed a moment ago stays selected.
+          ...(options.includes(value) || !value ? [] : [{ label: value, value }]),
+          ...options.map((option) => ({ label: option, value: option })),
+          { label: `+ Add new ${label.toLowerCase()}\u2026`, value: CREATE_OPTION },
+        ]}
+      />
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={disabled}
+        onClick={startCreating}
+        title={`Add a ${word} that is not in the list`}
+      >
+        {/* The noun is spoken but not shown: two of these sit side by side in
+            the form, and "+ New" alone names them both. */}
+        + New<span className="sr-only"> {word}</span>
+      </Button>
+    </div>
   );
 }
 
