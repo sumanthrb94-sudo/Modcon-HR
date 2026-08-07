@@ -110,37 +110,37 @@ export function getVisibleEmployeeIds(
  * Whose leave a person may decide — a narrower question than whose records
  * they may read, and one nothing asked until now.
  *
- *   HR Manager  every employee. HR administers leave for the organisation.
+ * Approving is a **position in the reporting tree, not a role**. Whoever an
+ * employee reports to decides their leave, and so does anyone further up that
+ * same line; no role grants it organisation-wide.
+ *
  *   Manager     everyone beneath them in the reporting tree, however many
  *               levels deep, and nobody else.
- *   Admin       nobody. Platform administration is not a place in the
- *               reporting line: an admin exists to run the deployment, and
- *               leave is decided by the person somebody actually reports to,
- *               or by HR. This is the one scope where Admin is narrower than
- *               HR rather than equal to it.
- *   Employee    nobody.
+ *   HR Manager  the same — their own reporting line, and only it. HR reads
+ *               every employee's records, which is what oversight needs, but
+ *               reading a request is not authority over it.
+ *   Admin       the same, which in practice is nobody: platform
+ *               administration sits nowhere in an org chart.
+ *   Employee    nobody, whatever the org chart says. The Leave module is
+ *               self-service at that permission level, and a person recorded
+ *               above somebody else without being made a manager has not been
+ *               given the job.
  *
- * Three things the Manager scope deliberately excludes, each of which
- * `getVisibleEmployees` includes and this must not:
+ * Nobody approves their own request at any level — `self` is removed from the
+ * subtree it roots. So an employee with no reporting manager recorded has
+ * nobody who can decide their leave, and that is the honest answer rather than
+ * a defect: somebody has to be named on the profile before anyone can act for
+ * them. It is also the one thing that used to hide behind HR's blanket scope.
  *
- *   - themselves. "Below him" does not contain him, and a manager who could
- *     approve their own request would be the only signature it ever needed.
- *     Their leave is decided from above them, or by HR.
- *   - the HR Manager, who is in a manager's *view* scope because HR reports up
- *     to them on the org chart. Reading HR's leave is oversight; deciding it
- *     from outside HR's own reporting line is not.
- *   - everybody, when the app cannot tell which employee record the account
- *     belongs to. An unlinked manager has an empty subtree, so the answer is
- *     nobody rather than everyone — the direction a missing answer has to fail.
+ * An account the app cannot match to an employee record decides nothing
+ * either: no record means no place in the tree, so the answer is nobody rather
+ * than everyone — the direction a missing answer has to fail.
  */
 export function getApprovableEmployeeIds(
   profile: UserProfile | null,
   directory: Employee[] = getEmployeeDirectory(),
 ): Set<string> {
-  const role = resolveAppRole(profile);
-
-  if (role === 'HR Manager') return new Set(directory.map((employee) => employee.id));
-  if (role !== 'Manager') return new Set();
+  if (resolveAppRole(profile) === 'Employee') return new Set();
 
   const self = getCurrentEmployeeRecord(profile, directory);
   if (!self) return new Set();
@@ -173,23 +173,21 @@ export function leaveApprovalRefusal(
 ): string | null {
   if (canApproveLeaveFor(profile, employeeId, directory)) return null;
 
-  const role = resolveAppRole(profile);
-  if (role === 'Admin') {
-    return 'Leave is decided by the employee’s reporting manager, or by HR — not from platform administration.';
+  if (resolveAppRole(profile) === 'Employee') {
+    return 'Leave requests are decided by the reporting manager of the person who applied.';
   }
-  if (role === 'Employee') return 'Only a manager or HR can decide leave requests.';
 
   const self = getCurrentEmployeeRecord(profile, directory);
   if (!self) {
     return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database.';
   }
   if (self.id === employeeId) {
-    return 'You cannot decide your own leave request — it goes to your reporting manager, or to HR.';
+    return 'You cannot decide your own leave request — it goes to whoever you report to.';
   }
 
   const subject = directory.find((employee) => employee.id === employeeId);
   return subject
-    ? `${subject.fullName} does not report to you. Their leave is decided by their own reporting line, or by HR.`
+    ? `${subject.fullName} does not report to you. Only their reporting manager, or somebody further up that line, can decide this.`
     : 'You can only decide leave for the people who report to you.';
 }
 

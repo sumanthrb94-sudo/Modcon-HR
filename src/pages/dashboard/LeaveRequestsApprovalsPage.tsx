@@ -6,7 +6,6 @@ import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
 import { employees } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
-import { resolveAppRole } from '@/lib/accessControl';
 import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -41,11 +40,11 @@ export function LeaveRequestsApprovalsPage() {
         setLeaveRequests(result.requests);
     }
 
-    // Whose leave this manager may decide: the people beneath them in the
-    // reporting tree, or the whole organisation for HR and Admin. The queue
-    // used to be every pending request in the company regardless of who was
-    // reading it, so a team lead was offered Approve on the leave of people
-    // they have no authority over — and on their own. See lib/dataScope.ts.
+    // Whose leave this account may decide: the people beneath it in the
+    // reporting tree, whatever its role. The queue used to be every pending
+    // request in the company regardless of who was reading it, so anyone who
+    // could open the page was offered Approve on the leave of people they have
+    // no authority over — and on their own. See lib/dataScope.ts.
     const approvableEmployeeIds = useMemo(
         () => getApprovableEmployeeIds(profile),
         [profile, directoryRevision],
@@ -59,16 +58,11 @@ export function LeaveRequestsApprovalsPage() {
     );
 
     // An empty queue has three quite different causes, and only one of them is
-    // "nothing to do". A manager whose account was never linked to an employee
-    // record has no reporting line the app can see, which is fixable — but only
-    // by somebody who is told about it.
+    // "nothing to do". An account that was never linked to an employee record
+    // has no reporting line the app can see, which is fixable — but only by
+    // somebody who is told about it.
     const emptyReason = useMemo(() => {
         if (approvableEmployeeIds.size > 0) return 'No pending leave requests from your team';
-        // The same resolver the scope itself uses, so the empty page and the
-        // rule behind it cannot give different accounts of why it is empty.
-        if (resolveAppRole(profile) === 'Admin') {
-            return 'Leave is decided by the employee’s reporting manager, or by HR — not from platform administration.';
-        }
         if (getCurrentEmployeeRecord(profile)) {
             return 'Nobody reports to you, so there are no leave requests for you to decide';
         }

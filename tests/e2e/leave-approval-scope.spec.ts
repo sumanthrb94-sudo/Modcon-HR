@@ -1,5 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import { type Persona } from './config';
+import { HR_PERSONA, type Persona } from './config';
 
 /**
  * A manager decides leave for the people below them, and for nobody else.
@@ -37,7 +37,9 @@ const OUTSIDER_NAME = 'E2E Other Department';
 
 const APPROVALS_URL = '/dashboard/pending-approvals/leave-requests';
 
-async function login(page: Page, p: Persona) {
+// Takes credentials rather than a Persona: HR is not one of the three role
+// personas, and its `role: 'hr'` does not fit that union.
+async function login(page: Page, p: { email: string; password: string }) {
   await page.goto('/login');
   await page.locator('#username').fill(p.email);
   await page.locator('#password').fill(p.password);
@@ -159,13 +161,40 @@ test.describe.serial('leave approval follows the reporting line', () => {
       // The assertion the whole change is about. Before it, this row was here.
       await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
     } else {
-      // An administrator runs the deployment; they are nobody's reporting
-      // manager, so they decide no leave at all — not even for the person
-      // seeded below a manager. The page says so rather than sitting empty.
+      // An administrator runs the deployment and sits nowhere in the org
+      // chart, so they decide no leave at all — not even the request seeded
+      // below a manager. The page says which of the two empty-queue reasons
+      // this is rather than sitting blank.
       await expect(page.getByText(REPORT_NAME)).toHaveCount(0);
       await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
-      await expect(page.getByText(/not from platform administration/)).toBeVisible();
+      await expect(page.getByText(/cannot tell who reports to you/)).toBeVisible();
       await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    }
+  });
+
+  test('HR gets no organisation-wide approval either', async ({ browser }) => {
+    // Runs once rather than once per project: the claim is about the HR
+    // persona, who is nobody's persona here.
+    test.skip(persona().role !== 'manager', 'asserted once, from the manager project');
+
+    // HR reads every employee's records — that is what oversight needs — and
+    // used to decide every employee's leave along with it. In this app the
+    // organisation's own administrator holds exactly this role, so "the admin
+    // must not approve" is mostly a statement about this account.
+    const fresh = await browser.newContext();
+    const hr = await fresh.newPage();
+    try {
+      await login(hr, HR_PERSONA);
+      await seedReportingLine(hr, 'e2e-unclaimed@modcon-hr.test');
+      await hr.goto(APPROVALS_URL);
+      await expect(hr.getByRole('heading', { name: 'Leave Requests' })).toBeVisible({ timeout: 20_000 });
+
+      await expect(hr.getByText(REPORT_NAME)).toHaveCount(0);
+      await expect(hr.getByText(OUTSIDER_NAME)).toHaveCount(0);
+      await expect(hr.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    } finally {
+      await hr.close();
+      await fresh.close();
     }
   });
 
