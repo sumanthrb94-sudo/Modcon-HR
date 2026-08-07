@@ -540,6 +540,7 @@ export function LeavePage() {
                         // See the same pair on the Dashboard card: the two
                         // surfaces are compared on these attributes.
                         data-leave-reading={b.withheldReason ?? `${b.available}/${b.granted}`}
+                        data-leave-pending={b.pending}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
@@ -560,6 +561,9 @@ export function LeavePage() {
                           ) : (
                             <span className="text-xs text-ink-500">
                               <span className="font-semibold text-ink-800">{b.available}</span>/{b.granted} available
+                              {b.pending > 0 && (
+                                <span className="text-ink-400"> · {b.remaining} left to apply</span>
+                              )}
                             </span>
                           )}
                         </div>
@@ -567,12 +571,21 @@ export function LeavePage() {
                             happened: a monthly type reads 5 accrued now out of
                             the 12 the year will bring, and the bar measures
                             what is used against the full year rather than
-                            against a figure that grows every month. */}
+                            against a figure that grows every month.
+
+                            Pending days are named here because they are the
+                            difference between what this card says and what the
+                            Apply Leave dialog will let the employee take. */}
                         <div className="flex items-center justify-between mb-1 text-[10px] text-ink-400">
                           <span>
                             {b.fullYear} day{b.fullYear === 1 ? '' : 's'} for {financialYearLabel()}
                           </span>
-                          <span>{b.used} used</span>
+                          <span>
+                            {b.used} used
+                            {b.pending > 0 && (
+                              <span className="text-amber-600"> · {b.pending} pending</span>
+                            )}
+                          </span>
                         </div>
                         <ProgressBar
                           value={pct(b.used, b.fullYear)}
@@ -752,12 +765,18 @@ export function LeavePage() {
             >
               {leaveTypeOptions.map((t) => {
                 const ent = applicableEntitlements.find((e) => e.type === t);
+                // What may actually be applied for, not what has accrued: a
+                // type reading "5 of 5 available" that the submit button then
+                // refuses because 4 are pending is the disagreement this whole
+                // change is about.
                 const suffix = !ent
                   ? ''
                   : ent.withheldReason
                     ? ` — ${ent.withheldReason.toLowerCase()}`
                     : ent.granted > 0
-                      ? ` — ${ent.available} of ${ent.granted} available`
+                      ? ent.pending > 0
+                        ? ` — ${ent.remaining} of ${ent.granted} left (${ent.pending} pending)`
+                        : ` — ${ent.available} of ${ent.granted} available`
                       : ' — no accrued balance';
                 return (
                   <option key={t} value={t}>
@@ -780,6 +799,8 @@ export function LeavePage() {
                         {policyCheck.entitlement.available}
                       </span>{' '}
                       of {policyCheck.entitlement.granted} available · {policyCheck.entitlement.used} used
+                      {policyCheck.entitlement.pending > 0 &&
+                        ` · ${policyCheck.entitlement.pending} pending`}
                       {' '}({financialYearLabel()})
                     </span>
                   ) : (

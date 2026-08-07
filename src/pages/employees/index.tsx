@@ -2015,6 +2015,7 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
                   data-testid="leave-balance-row"
                   data-leave-type={lb.type}
                   data-leave-reading={lb.withheldReason ?? `${lb.available}/${lb.granted}`}
+                  data-leave-pending={lb.pending}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-ink-800">{lb.type} Leave</span>
@@ -2023,7 +2024,19 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
                     ) : (
                       <div className="flex items-center gap-4 text-xs text-ink-500">
                         <span><span className="font-semibold text-ink-700">{lb.used}</span> used</span>
-                        <span><span className="font-semibold text-emerald-600">{lb.available}</span> remaining</span>
+                        {/* The card below lists this employee's pending
+                            requests. Without this the two disagreed: a 4-day
+                            Pending request showed there and changed nothing
+                            here. */}
+                        {lb.pending > 0 && (
+                          <span><span className="font-semibold text-amber-600">{lb.pending}</span> pending</span>
+                        )}
+                        {/* `remaining`, not `available`: with a day awaiting
+                            approval the three figures must still add up to what
+                            has accrued, or the row reads "0 used · 1 pending ·
+                            5 remaining of 5". Identical to `available` whenever
+                            nothing is pending. */}
+                        <span><span className="font-semibold text-emerald-600">{lb.remaining}</span> remaining</span>
                         <span>of {lb.granted} accrued · {lb.fullYear} for the year</span>
                       </div>
                     )}

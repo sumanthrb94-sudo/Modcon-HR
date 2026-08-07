@@ -31,6 +31,19 @@ async function login(page: Page, email: string, password: string) {
   await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
 }
 
+/** Days awaiting approval per leave type, as each balance surface reports them. */
+async function readPending(page: Page) {
+  const rows = page.locator('[data-testid="leave-balance-row"]');
+  await expect(rows.first()).toBeVisible();
+  const entries = await rows.evaluateAll((nodes) =>
+    nodes.map((node) => [
+      node.getAttribute('data-leave-type') ?? '',
+      node.getAttribute('data-leave-pending') ?? '',
+    ]),
+  );
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
 /** Every "<available>/<granted> available" reading on the page, keyed by leave type. */
 async function readBalances(page: Page, scope = page.locator('body')) {
   const rows = scope.locator('[data-testid="leave-balance-row"]');
@@ -113,5 +126,76 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
     await page.getByRole('button', { name: 'Time Off' }).click();
     await expect(page.getByText(/Accrued so far in FY/).first()).toBeVisible();
     expect(await readBalances(page)).toEqual(fromLeaveModule);
+  });
+
+  /**
+   * Leave awaiting approval must show up in the balance, on every surface.
+   *
+   * It did not. `usedDays` counted approved leave only, so a Pending request
+   * sat visible in Recent Leave Activity and in the Requests table while all
+   * three balance cards reported the days as untouched — and then the Apply
+   * Leave dialog refused the next request with "N available less M already
+   * pending", a subtraction that existed nowhere the employee could see it.
+   *
+   * The assertion is deliberately against the dialog's own "Charged: N day(s)"
+   * rather than a literal: the charge excludes holidays and this employee's
+   * week-offs, so a hardcoded 1 would break on whichever day the suite runs.
+   */
+  test('a pending request is counted as pending on every balance surface', async () => {
+    await page.getByRole('link', { name: 'Leave', exact: true }).first().click();
+    await expect(page.getByRole('heading', { name: 'Leave Management' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Apply Leave' }).click();
+    const dialog = page.getByRole('dialog');
+    // The employee field is a read-only input for this persona, so the only
+    // select in the dialog is the leave type. Chosen by value, not label — the
+    // label carries the live balance as a suffix.
+    await dialog.locator('select').first().selectOption('Casual');
+
+    // A day far enough out to be free, stepped forward until the policy has no
+    // objection: the first candidate can land on a holiday, a week-off, or an
+    // existing request, all of which block submission.
+    const charged = await (async () => {
+      for (let offset = 14; offset < 30; offset += 1) {
+        const day = new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+        await dialog.locator('input[type="date"]').first().fill(day);
+        await dialog.locator('input[type="date"]').nth(1).fill(day);
+        const summary = dialog.getByText(/^Charged:/);
+        if (await summary.isVisible().catch(() => false)) {
+          const submit = dialog.getByRole('button', { name: 'Submit Request' });
+          if (await submit.isEnabled()) {
+            const text = (await summary.textContent()) ?? '';
+            return Number(text.match(/Charged:\s*([\d.]+)\s*day/)?.[1] ?? '0');
+          }
+        }
+      }
+      return 0;
+    })();
+    expect(charged).toBeGreaterThan(0);
+
+    await dialog.getByPlaceholder('Briefly describe the reason for leave…').fill('Pending balance guard.');
+    await dialog.getByRole('button', { name: 'Submit Request' }).click();
+    await expect(dialog).toBeHidden();
+
+    // 1. The Leave module's own balances tab.
+    await page.getByRole('button', { name: 'My Leave Balance' }).click();
+    expect(await readPending(page)).toMatchObject({ Casual: String(charged) });
+
+    // 2. The Dashboard card.
+    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+    await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening),/ })).toBeVisible();
+    expect(await readPending(page)).toMatchObject({ Casual: String(charged) });
+
+    // 3. The profile's Time Off tab — where the balances card and the Recent
+    //    Leave Activity card sit one above the other, which is where the
+    //    contradiction was plainest.
+    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Time Off' }).click();
+    await expect(page.getByText(/Accrued so far in FY/).first()).toBeVisible();
+    expect(await readPending(page)).toMatchObject({ Casual: String(charged) });
+    // The activity card lists the very request those pending days came from.
+    await expect(
+      page.getByText('Casual Leave').first(),
+    ).toBeVisible();
   });
 });

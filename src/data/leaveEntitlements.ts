@@ -48,7 +48,27 @@ export interface Entitlement {
   fullYear: number;
   /** Approved days taken within this financial year. */
   used: number;
+  /**
+   * Days committed to requests of this type that are still awaiting approval,
+   * within this financial year.
+   *
+   * Pending leave is not `used` — it may yet be rejected — but it is not free
+   * either: the Apply Leave check refuses a request the balance cannot fund
+   * once pending days are counted (data/leaveApplication.ts). Before this field
+   * existed that subtraction happened only inside the check, so every balance
+   * surface showed an employee days that the very next dialog told them were
+   * already spoken for.
+   */
+  pending: number;
+  /** Granted so far, less approved leave. What the year has actually cost. */
   available: number;
+  /**
+   * What may still be applied for: `available` less what is already pending.
+   *
+   * This — not `available` — is the figure a new application is measured
+   * against. The two differ only while a request is awaiting a decision.
+   */
+  remaining: number;
   /** True when the days arrived month by month rather than in one annual grant. */
   monthly: boolean;
   /** Set when the employee does not yet qualify, e.g. the one-year Earned gate. */
@@ -116,10 +136,18 @@ function appliesToEmployee(
   return true;
 }
 
-/** Approved days of `type` taken by `employee` within the financial year of `asOf`. */
-function usedDays(
+/**
+ * Days of `type` this employee holds at `status`, within the financial year of
+ * `asOf`.
+ *
+ * Approved and Pending are counted the same way deliberately: they are the two
+ * halves of one balance, and a rule that applied to one and not the other is
+ * how the balance cards and the Apply Leave dialog came to disagree.
+ */
+function daysAtStatus(
   employeeId: string,
   type: LeaveType,
+  status: LeaveRequest['status'],
   requests: LeaveRequest[],
   asOf: string,
 ): number {
@@ -129,7 +157,7 @@ function usedDays(
       (r) =>
         r.employeeId === employeeId &&
         r.type === type &&
-        r.status === 'Approved' &&
+        r.status === status &&
         // Attributed to the year the leave starts in. A request spanning the
         // year boundary counts once, against the year it began — splitting it
         // would need day-level apportioning the model does not carry.
@@ -156,14 +184,18 @@ export function getApplicableEntitlements(
     .map((policy) => {
       const type = normalizeLeaveTypeValue(policy.type);
       const { granted, withheldReason } = grantedDays(policy, employee, asOf);
-      const used = usedDays(employee.id, type, requests, asOf);
+      const used = daysAtStatus(employee.id, type, 'Approved', requests, asOf);
+      const pending = daysAtStatus(employee.id, type, 'Pending', requests, asOf);
+      const available = Math.max(0, granted - used);
       return {
         type,
         policy,
         granted,
         fullYear: grantedDays(policy, employee, financialYearEnd(asOf)).granted,
         used,
-        available: Math.max(0, granted - used),
+        pending,
+        available,
+        remaining: Math.max(0, available - pending),
         monthly: isMonthlyPolicy(policy),
         withheldReason,
       };
@@ -187,6 +219,11 @@ export function getEntitlement(
  * Off at 0) are omitted — a row reading "0 of 0" is noise. A type withheld by
  * a tenure gate is kept, with `withheldReason`, because "you get this after a
  * year" is information the employee wants.
+ *
+ * A type carrying only pending days is kept for the same reason: an unearned
+ * Comp Off grants nothing, so it used to be dropped here while the employee's
+ * pending Comp Off request sat visible in Recent Leave Activity beside a
+ * balances card that did not mention the type at all.
  */
 export function getEntitlements(
   employee: Pick<Employee, 'id' | 'dateOfJoining' | 'gender'>,
@@ -194,7 +231,7 @@ export function getEntitlements(
   asOf: string = todayIso(),
 ): Entitlement[] {
   return getApplicableEntitlements(employee, requests, asOf).filter(
-    (e) => e.granted > 0 || e.used > 0 || e.withheldReason,
+    (e) => e.granted > 0 || e.used > 0 || e.pending > 0 || e.withheldReason,
   );
 }
 
