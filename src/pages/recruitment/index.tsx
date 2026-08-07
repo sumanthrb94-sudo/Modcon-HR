@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Briefcase,
   Users,
@@ -12,6 +12,11 @@ import {
   ChevronRight,
   BarChart3,
   Layers,
+  Globe,
+  Download,
+  Copy,
+  Check,
+  Send,
 } from 'lucide-react';
 import {
   BarChart,
@@ -47,9 +52,31 @@ import { getDepartmentRecord } from '@/data/departments';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { departments } from '@/data/departments';
+import { useMyEmployeeId } from '@/lib/useMyEmployeeId';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { todayIso } from '@/lib/today';
+import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
+import {
+  careersJobPath,
+  careersPath,
+  publishJobOpening,
+  unpublishJobOpening,
+  useOrgJobPostings,
+} from '@/lib/publishedJobs';
+import {
+  JobApplicationError,
+  RESUME_MAX_BYTES,
+  applicationIdFromCandidateId,
+  asCandidate,
+  formatBytes,
+  isPlausibleEmail,
+  resumeBlobUrl,
+  setJobApplicationStage,
+  submitJobApplication,
+  useJobApplications,
+} from '@/lib/jobApplications';
+import type { JobApplication } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -224,6 +251,9 @@ interface PostJobForm {
   type: string;
   openings: string;
   experience: string;
+  description: string;
+  /** Put it on the public careers page as well as this board. */
+  publish: boolean;
 }
 
 const emptyForm: PostJobForm = {
@@ -233,18 +263,21 @@ const emptyForm: PostJobForm = {
   type: 'Full-time',
   openings: '1',
   experience: '',
+  description: '',
+  publish: true,
 };
 
 interface PostJobModalProps {
   open: boolean;
+  canPublish: boolean;
   onClose: () => void;
   onSubmit: (form: PostJobForm) => void;
 }
 
-function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
+function PostJobModal({ open, canPublish, onClose, onSubmit }: PostJobModalProps) {
   const [form, setForm] = useState<PostJobForm>(emptyForm);
 
-  function handleChange(field: keyof PostJobForm, value: string) {
+  function handleChange(field: keyof PostJobForm, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -342,6 +375,33 @@ function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
             onChange={(e) => handleChange('experience', e.target.value)}
           />
         </div>
+        <div>
+          <label className="label">About the role</label>
+          <textarea
+            className="input mt-1 min-h-[100px]"
+            placeholder="What the person will do, and what you are looking for. This is what candidates read on the careers page."
+            value={form.description}
+            onChange={(e) => handleChange('description', e.target.value)}
+            maxLength={4000}
+          />
+        </div>
+        {canPublish && (
+          <label className="flex items-start gap-2.5 rounded-xl border border-ink-100 p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={form.publish}
+              onChange={(e) => handleChange('publish', e.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-medium text-ink-800">Publish to the careers page</span>
+              <span className="block text-xs text-ink-500 mt-0.5">
+                Candidates outside the company can see this role and apply for it. It can be
+                published or withdrawn later from the role's own page.
+              </span>
+            </span>
+          </label>
+        )}
       </div>
     </Modal>
   );
@@ -353,10 +413,51 @@ function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
 
 interface CandidateDetailModalProps {
   candidate: Candidate | null;
+  /** Set when this card came from an application rather than the local overlay. */
+  application: JobApplication | null;
+  canAdvance: boolean;
+  /** Why not, when `canAdvance` is false. Never left blank — see below. */
+  advanceHint: string;
+  onStageChange: (stage: CandidateStage) => void;
   onClose: () => void;
 }
 
-function CandidateDetailModal({ candidate, onClose }: CandidateDetailModalProps) {
+/**
+ * Downloads the attached resume.
+ *
+ * The Blob URL is created on click and revoked immediately after the download
+ * is handed to the browser, rather than held for the life of the modal: a
+ * resume is most of a megabyte and the pipeline can hold a lot of them.
+ */
+function ResumeDownload({ application }: { application: JobApplication }) {
+  function download() {
+    const url = resumeBlobUrl(application.resumeContentBase64);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = application.resumeFileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Button variant="secondary" size="sm" icon={<Download size={13} />} onClick={download}>
+      {application.resumeFileName} ({formatBytes(application.resumeSizeBytes)})
+    </Button>
+  );
+}
+
+const ADVANCE_STAGES: CandidateStage[] = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+
+function CandidateDetailModal({
+  candidate,
+  application,
+  canAdvance,
+  advanceHint,
+  onStageChange,
+  onClose,
+}: CandidateDetailModalProps) {
   if (!candidate) return null;
   return (
     <Modal
@@ -402,6 +503,54 @@ function CandidateDetailModal({ candidate, onClose }: CandidateDetailModalProps)
             <p className="text-ink-800 mt-0.5">{formatDate(candidate.appliedOn)}</p>
           </div>
         </div>
+
+        {application && (
+          <div className="space-y-4 border-t border-ink-100 pt-4">
+            <div>
+              <p className="text-xs text-ink-400 font-medium uppercase tracking-wide">Resume</p>
+              <div className="mt-1.5">
+                <ResumeDownload application={application} />
+              </div>
+            </div>
+
+            {application.coverNote && (
+              <div>
+                <p className="text-xs text-ink-400 font-medium uppercase tracking-wide">Why this role</p>
+                <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink-600">
+                  {application.coverNote}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* The pipeline controls, for applications and for the candidates a
+            recruiter typed in alike. Whichever store the card came from, the
+            board behaves the same way — a row of buttons on some cards and
+            nothing on others reads as a bug, not as a permission. */}
+        <div className="space-y-2 border-t border-ink-100 pt-4">
+          <p className="text-xs text-ink-400 font-medium uppercase tracking-wide">Move to</p>
+          {canAdvance ? (
+            <div className="flex flex-wrap gap-1.5">
+              {ADVANCE_STAGES.filter((stage) => stage !== candidate.stage).map((stage) => (
+                <Button
+                  key={stage}
+                  variant={stage === 'Rejected' ? 'ghost' : 'secondary'}
+                  size="sm"
+                  className={stage === 'Rejected' ? 'text-rose-600 hover:bg-rose-50' : undefined}
+                  onClick={() => onStageChange(stage)}
+                >
+                  {stage}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            // Never simply hidden. "You are not this role's hiring manager" and
+            // "nobody has told this app who you are" produce the same absence
+            // of buttons, and only one of them is the reader's to fix.
+            <p className="text-xs text-ink-500">{advanceHint}</p>
+          )}
+        </div>
       </div>
     </Modal>
   );
@@ -414,14 +563,43 @@ function CandidateDetailModal({ candidate, onClose }: CandidateDetailModalProps)
 interface JobDetailModalProps {
   job: JobOpening | null;
   candidates: Candidate[];
+  orgId: string;
+  /** True when this role is currently on the public careers page. */
+  published: boolean;
+  canPublish: boolean;
+  onPublish: (job: JobOpening) => void;
+  onUnpublish: (job: JobOpening) => void;
+  onApply: (job: JobOpening) => void;
   onClose: () => void;
   onDelete: () => void;
 }
 
-function JobDetailModal({ job, candidates: candidateList, onClose, onDelete }: JobDetailModalProps) {
+function JobDetailModal({
+  job,
+  candidates: candidateList,
+  orgId,
+  published,
+  canPublish,
+  onPublish,
+  onUnpublish,
+  onApply,
+  onClose,
+  onDelete,
+}: JobDetailModalProps) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [job?.id]);
+
   if (!job) return null;
   const manager = getEmployeeName(job.hiringManagerId);
   const jobCandidates = candidateList.filter((c) => c.jobId === job.id);
+  const careersUrl =
+    typeof window === 'undefined'
+      ? careersJobPath(orgId, job.id)
+      : `${window.location.origin}${careersJobPath(orgId, job.id)}`;
+
   return (
     <Modal
       open={!!job}
@@ -453,6 +631,72 @@ function JobDetailModal({ job, candidates: candidateList, onClose, onDelete }: J
             <p className="text-ink-800 mt-1">{formatDate(job.postedOn)}</p>
           </div>
         </div>
+        {/* Publishing, and what it means. A role lives in this browser's local
+            overlay until it is published; the careers page is on the server,
+            so an unpublished role is invisible to every candidate. Saying so
+            here is the difference between "nobody has applied yet" and "nobody
+            could have". */}
+        <div className="rounded-xl border border-ink-100 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Globe size={15} className={published ? 'mt-0.5 text-emerald-600' : 'mt-0.5 text-ink-400'} />
+              <div>
+                <p className="text-sm font-medium text-ink-800">
+                  {published ? 'Live on the careers page' : 'Not on the careers page'}
+                </p>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  {published
+                    ? job.status === 'Open'
+                      ? 'Candidates can see this role and apply for it.'
+                      : `Published, but candidates cannot see it while its status is ${job.status} — only Open roles are listed.`
+                    : 'Publish it to let candidates outside the company see it and apply.'}
+                </p>
+              </div>
+            </div>
+            {canPublish && (
+              <div className="flex items-center gap-2">
+                {published ? (
+                  <Button variant="secondary" size="sm" onClick={() => onUnpublish(job)}>
+                    Unpublish
+                  </Button>
+                ) : (
+                  <Button variant="primary" size="sm" icon={<Globe size={13} />} onClick={() => onPublish(job)}>
+                    Publish
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+          {published && (
+            <div className="mt-3 flex items-center gap-2 border-t border-ink-100 pt-3">
+              <code className="flex-1 truncate rounded-lg bg-ink-50 px-2 py-1.5 text-xs text-ink-600">
+                {careersUrl}
+              </code>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={copied ? <Check size={13} /> : <Copy size={13} />}
+                onClick={() => {
+                  navigator.clipboard?.writeText(careersUrl).then(
+                    () => setCopied(true),
+                    // A refused clipboard (insecure context, denied permission)
+                    // must not look like a copy that worked.
+                    () => setCopied(false),
+                  );
+                }}
+              >
+                {copied ? 'Copied' : 'Copy link'}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {published && job.status === 'Open' && (
+          <Button variant="secondary" icon={<Send size={14} />} onClick={() => onApply(job)}>
+            Apply for this role
+          </Button>
+        )}
+
         {jobCandidates.length > 0 && (
           <div>
             <p className="text-xs text-ink-400 font-medium uppercase tracking-wide mb-2">Candidates ({jobCandidates.length})</p>
@@ -479,6 +723,175 @@ function JobDetailModal({ job, candidates: candidateList, onClose, onDelete }: J
           </Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Applying from inside the app (internal mobility)
+// ---------------------------------------------------------------------------
+
+interface InternalApplyModalProps {
+  job: JobOpening | null;
+  orgId: string;
+  uid: string | null;
+  /** Prefill, from the applicant's own employee record. */
+  prefill: { name: string; email: string; phone: string; company: string };
+  onClose: () => void;
+}
+
+/**
+ * The same application a candidate files from the careers page, filed by
+ * somebody who already works here.
+ *
+ * Deliberately the same record and the same pipeline rather than a parallel
+ * "internal referral" object: the hiring manager is comparing all the people
+ * who want the job, and splitting them across two lists by where they came
+ * from is how one of the lists stops being read. Where they came from is the
+ * `source` field, which the rules pin — this path may only ever write
+ * 'Internal', and an unauthenticated one only ever 'Website'.
+ */
+function InternalApplyModal({ job, orgId, uid, prefill, onClose }: InternalApplyModalProps) {
+  const [name, setName] = useState(prefill.name);
+  const [email, setEmail] = useState(prefill.email);
+  const [phone, setPhone] = useState(prefill.phone);
+  const [company, setCompany] = useState(prefill.company);
+  const [years, setYears] = useState('');
+  const [note, setNote] = useState('');
+  const [resume, setResume] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    setName(prefill.name);
+    setEmail(prefill.email);
+    setPhone(prefill.phone);
+    setCompany(prefill.company);
+    setYears('');
+    setNote('');
+    setResume(null);
+    setMessage('');
+    setDone(false);
+  }, [job?.id, prefill.name, prefill.email, prefill.phone, prefill.company]);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!job) return;
+    setMessage('');
+
+    if (!resume) {
+      setMessage('Please attach your resume as a PDF.');
+      return;
+    }
+    if (!isPlausibleEmail(email)) {
+      setMessage('Please enter a valid email address.');
+      return;
+    }
+    const experienceYears = Number(years);
+    if (!Number.isInteger(experienceYears) || experienceYears < 0 || experienceYears > 60) {
+      setMessage('Years of experience must be a whole number between 0 and 60.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await submitJobApplication({
+        orgId,
+        jobId: job.id,
+        jobTitle: job.title,
+        source: 'Internal',
+        submittedByUid: uid ?? undefined,
+        draft: { name, email, phone, currentCompany: company, experienceYears, coverNote: note, resume },
+      });
+      setDone(true);
+    } catch (err) {
+      setMessage(
+        err instanceof JobApplicationError
+          ? err.message
+          : 'Your application could not be submitted. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!job) return null;
+
+  return (
+    <Modal
+      open={!!job}
+      onClose={onClose}
+      title={done ? 'Application received' : `Apply — ${job.title}`}
+      subtitle={done ? undefined : `${job.department} · ${job.location}`}
+      size="md"
+      footer={
+        done ? (
+          <Button variant="primary" onClick={onClose}>Done</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" disabled={submitting} onClick={handleSubmit}>
+              {submitting ? 'Submitting…' : 'Submit application'}
+            </Button>
+          </>
+        )
+      }
+    >
+      {done ? (
+        <p className="text-sm text-ink-600">
+          Your application for {job.title} is in the pipeline. The hiring team will be in touch
+          on {email.trim().toLowerCase()}.
+        </p>
+      ) : (
+        <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Full name <span className="text-rose-500">*</span></label>
+              <input className="input mt-1" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div>
+              <label className="label">Email <span className="text-rose-500">*</span></label>
+              <input className="input mt-1" type="email" value={email} maxLength={200} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div>
+              <label className="label">Phone <span className="text-rose-500">*</span></label>
+              <input className="input mt-1" value={phone} maxLength={32} onChange={(e) => setPhone(e.target.value)} required />
+            </div>
+            <div>
+              <label className="label">Years of experience <span className="text-rose-500">*</span></label>
+              <input className="input mt-1" type="number" min={0} max={60} step={1} value={years} onChange={(e) => setYears(e.target.value)} required />
+            </div>
+          </div>
+          <div>
+            <label className="label">Current team or company</label>
+            <input className="input mt-1" value={company} maxLength={120} onChange={(e) => setCompany(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Resume (PDF) <span className="text-rose-500">*</span></label>
+            <input
+              className="input mt-1 py-2"
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => {
+                setResume(e.target.files?.[0] ?? null);
+                setMessage('');
+              }}
+              required
+            />
+            <p className="mt-1 text-xs text-ink-400">
+              {resume ? `${resume.name} · ${formatBytes(resume.size)}` : `PDF only, up to ${formatBytes(RESUME_MAX_BYTES)}.`}
+            </p>
+          </div>
+          <div>
+            <label className="label">Why this role?</label>
+            <textarea className="input mt-1 min-h-[100px]" value={note} maxLength={4000} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {message && (
+            <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{message}</p>
+          )}
+        </form>
+      )}
     </Modal>
   );
 }
@@ -743,7 +1156,7 @@ function resolveHiringManagerId(department: string, posterId?: string): string {
 }
 
 export function RecruitmentPage() {
-  const { profile } = useAuth();
+  const { profile, isAdmin, isHR, isManager } = useAuth();
   const currentEmployee = getCurrentEmployee(profile);
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
@@ -754,6 +1167,100 @@ export function RecruitmentPage() {
   const [selectedJob, setSelectedJob] = useState<JobOpening | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JobOpening | null>(null);
+  const [applyTarget, setApplyTarget] = useState<JobOpening | null>(null);
+  const [publishError, setPublishError] = useState('');
+
+  const orgId = profile?.orgId || DEFAULT_ORG_KEY;
+  // Who administers the careers page, and who may only look at it. Both reads
+  // are gated on `isManager` so a role with no access to the pipeline never
+  // opens a listener the rules will refuse — a denied subscription is a real
+  // console error and an empty board that looks like an empty pipeline.
+  const canReadApplications = isManager;
+  const canPublish = isAdmin || isHR;
+  const { applications } = useJobApplications(orgId, canReadApplications);
+  const { published } = useOrgJobPostings(orgId, canReadApplications);
+
+  /**
+   * The pipeline, from both stores at once.
+   *
+   * Candidates a recruiter typed in live in the local overlay; people who
+   * applied live in Firestore. A board that showed only the first would report
+   * an empty pipeline for a role the organisation had just published and
+   * received applications for, which is the moment the board matters most.
+   */
+  const applicationsById = useMemo(
+    () => new Map(applications.map((application) => [application.id, application])),
+    [applications],
+  );
+  const pipeline = useMemo(
+    () => [...applications.map(asCandidate), ...candidateList],
+    [applications, candidateList],
+  );
+
+  const selectedApplication = useMemo(() => {
+    if (!selectedCandidate) return null;
+    const applicationId = applicationIdFromCandidateId(selectedCandidate.id);
+    return applicationId ? applicationsById.get(applicationId) ?? null : null;
+  }, [selectedCandidate, applicationsById]);
+
+  /**
+   * Who may move somebody through the pipeline.
+   *
+   * The organisation's administrators, and the manager the job itself names as
+   * its hiring manager — the person running that shortlist, who otherwise had
+   * to ask HR to record decisions they had already taken.
+   *
+   * Identity comes from `employee_links` (`useMyEmployeeId`), never from the
+   * localStorage directory: the rules resolve it that way, and offering a
+   * button the server will refuse is worse than not offering it. For an
+   * application the rule below is a courtesy — firestore.rules decides. For a
+   * candidate out of the local overlay there is no server involved, so this
+   * *is* the whole gate; that is a property of where those records live, not a
+   * judgement that they matter less.
+   */
+  const { employeeId: myEmployeeId, resolved: employeeIdResolved } = useMyEmployeeId(profile);
+
+  function jobFor(jobId: string): JobOpening | undefined {
+    return published.get(jobId) ?? jobs.find((job) => job.id === jobId);
+  }
+
+  function isHiringManagerFor(jobId: string): boolean {
+    if (!isManager || !myEmployeeId) return false;
+    return jobFor(jobId)?.hiringManagerId === myEmployeeId;
+  }
+
+  const canAdvanceSelected = selectedCandidate
+    ? canPublish || isHiringManagerFor(selectedCandidate.jobId)
+    : false;
+
+  /** Why the buttons are absent. Always a specific answer, never silence. */
+  const advanceHint = useMemo(() => {
+    if (!selectedCandidate || canAdvanceSelected) return '';
+    if (!isManager) {
+      return 'Moving a candidate through the pipeline is done by the role’s hiring manager, HR or an administrator.';
+    }
+    if (!employeeIdResolved) return 'Checking which roles you are hiring for…';
+    if (!myEmployeeId) {
+      return 'Your account is not linked to an employee record, so this app cannot tell which roles you are the hiring manager for. An administrator can link it from the Admin dashboard.';
+    }
+    const owner = jobFor(selectedCandidate.jobId)?.hiringManagerId;
+    if (!owner) {
+      return `${selectedCandidate.jobTitle} has no hiring manager recorded, so only HR or an administrator can move this candidate.`;
+    }
+    // getEmployeeName falls back to 'Unknown' for an id the directory does not
+    // hold — which happens for a manager who has left, and reads as a bug
+    // rather than as an answer. Name them only when there is a name.
+    const ownerName = getEmployeeDirectory().find((employee) => employee.id === owner)?.fullName;
+    return ownerName
+      ? `${ownerName} is the hiring manager for ${selectedCandidate.jobTitle}. Only they, HR or an administrator can move this candidate.`
+      : `You are not the hiring manager for ${selectedCandidate.jobTitle}. Only they, HR or an administrator can move this candidate.`;
+  }, [selectedCandidate, canAdvanceSelected, isManager, employeeIdResolved, myEmployeeId, jobs, published]);
+
+  // The open modal holds a snapshot; without this, advancing a stage leaves the
+  // badge in the modal reading whatever it read when it was opened.
+  useEffect(() => {
+    if (selectedApplication) setSelectedCandidate(asCandidate(selectedApplication));
+  }, [selectedApplication?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handleJobOpeningsChanged() {
@@ -773,13 +1280,13 @@ export function RecruitmentPage() {
 
   const stats = useMemo(() => {
     const open = jobs.filter((j) => j.status === 'Open').reduce((s, j) => s + j.openings, 0);
-    const totalApplicants = candidateList.length;
-    const inInterview = candidateList.filter((c) => c.stage === 'Interview').length;
-    const offers = candidateList.filter((c) => c.stage === 'Offer').length;
+    const totalApplicants = pipeline.length;
+    const inInterview = pipeline.filter((c) => c.stage === 'Interview').length;
+    const offers = pipeline.filter((c) => c.stage === 'Offer').length;
     return { open, totalApplicants, inInterview, offers };
-  }, [jobs, candidateList, directoryRevision, departmentRevision]);
+  }, [jobs, pipeline, directoryRevision, departmentRevision]);
 
-  function handlePostJob(form: { title: string; department: string; location: string; type: string; openings: string; experience: string }) {
+  async function handlePostJob(form: { title: string; department: string; location: string; type: string; openings: string; experience: string; description: string; publish: boolean }) {
     const newJob: JobOpening = {
       id: `job-new-${Date.now()}`,
       title: form.title,
@@ -792,23 +1299,79 @@ export function RecruitmentPage() {
       postedOn: todayIso(),
       hiringManagerId: resolveHiringManagerId(form.department, currentEmployee?.id),
       experience: form.experience || 'Not specified',
-      description: '',
+      description: form.description,
     };
     setJobs(addJobOpening(newJob));
+    if (form.publish) await handlePublish(newJob);
   }
 
-  function handleDeleteJob(job: JobOpening) {
+  async function handlePublish(job: JobOpening) {
+    setPublishError('');
+    try {
+      await publishJobOpening(orgId, job);
+    } catch {
+      setPublishError(
+        `“${job.title}” was posted to the board but could not be published to the careers page. It is not visible to candidates.`,
+      );
+    }
+  }
+
+  async function handleUnpublish(job: JobOpening) {
+    setPublishError('');
+    try {
+      await unpublishJobOpening(job.id);
+    } catch {
+      setPublishError(`“${job.title}” could not be taken off the careers page. It is still visible to candidates.`);
+    }
+  }
+
+  /**
+   * Move the selected card to a stage, in whichever store it came from.
+   *
+   * One handler rather than two call sites, because the pipeline is one board:
+   * the difference between an application and an overlay candidate is where
+   * the write lands, and that is this function's business and nobody else's.
+   */
+  async function handleStageChange(stage: CandidateStage) {
+    if (!selectedCandidate) return;
+    setPublishError('');
+
+    if (selectedApplication) {
+      try {
+        await setJobApplicationStage(selectedApplication.id, stage);
+      } catch {
+        // The rules refuse a stage change from anyone but the job's hiring
+        // manager or an administrator, so this is reachable — a manager
+        // reassigned off the role between render and click lands here.
+        setPublishError(
+          `${selectedApplication.name} could not be moved to ${stage}. You may no longer be the hiring manager for ${selectedApplication.jobTitle}.`,
+        );
+      }
+      return;
+    }
+
+    const next = updateCandidateStage(selectedCandidate.id, stage);
+    setCandidateList(next);
+    setSelectedCandidate(next.find((c) => c.id === selectedCandidate.id) ?? null);
+  }
+
+  async function handleDeleteJob(job: JobOpening) {
     setJobs(deleteJobOpening(job.id));
     setCandidateList(removeCandidatesForJob(job.id));
     if (selectedJob?.id === job.id) setSelectedJob(null);
     setDeleteTarget(null);
+    // Deleting the opening takes it off the careers page too, or the role
+    // stays advertised and keeps collecting applications for a job that no
+    // longer exists on the board. Applications already received are kept —
+    // see unpublishJobOpening.
+    if (published.has(job.id)) await handleUnpublish(job);
   }
 
   const tabItems = TABS.map((t) => ({
     id: t.id,
     label: t.label,
     count: t.id === 'openings' ? jobs.filter((j) => j.status === 'Open').length
-      : t.id === 'pipeline' ? candidateList.filter((c) => c.stage !== 'Rejected').length
+      : t.id === 'pipeline' ? pipeline.filter((c) => c.stage !== 'Rejected').length
       : undefined,
   }));
 
@@ -818,15 +1381,36 @@ export function RecruitmentPage() {
         title="Recruitment"
         subtitle="Manage job openings, track candidates, and analyse your hiring pipeline."
         actions={
-          <Button
-            variant="primary"
-            icon={<Plus size={16} />}
-            onClick={() => setPostJobOpen(true)}
-          >
-            Post a Job
-          </Button>
+          <div className="flex items-center gap-2">
+            <a
+              href={careersPath(orgId)}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary px-4 py-2 text-sm"
+            >
+              <Globe size={15} />
+              Careers page
+            </a>
+            <Button
+              variant="primary"
+              icon={<Plus size={16} />}
+              onClick={() => setPostJobOpen(true)}
+            >
+              Post a Job
+            </Button>
+          </div>
         }
       />
+
+      {/* A publish that did not land is the failure mode that reads as success:
+          the role sits on this board looking posted while no candidate can see
+          it. It is a separate write from the local one, so it fails separately
+          and has to be said out loud. */}
+      {publishError && (
+        <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+          {publishError}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -863,24 +1447,56 @@ export function RecruitmentPage() {
         <JobOpeningsTab jobs={jobs} onJobClick={setSelectedJob} onDeleteJob={setDeleteTarget} />
       )}
       {activeTab === 'pipeline' && (
-        <CandidatePipelineTab candidates={candidateList} onCandidateClick={setSelectedCandidate} />
+        <CandidatePipelineTab candidates={pipeline} onCandidateClick={setSelectedCandidate} />
       )}
-      {activeTab === 'analytics' && <AnalyticsTab jobs={jobs} candidates={candidateList} />}
+      {activeTab === 'analytics' && <AnalyticsTab jobs={jobs} candidates={pipeline} />}
 
       <PostJobModal
         open={postJobOpen}
+        canPublish={canPublish}
         onClose={() => setPostJobOpen(false)}
         onSubmit={handlePostJob}
       />
       <JobDetailModal
         job={selectedJob}
-        candidates={candidateList}
+        candidates={pipeline}
+        orgId={orgId}
+        published={selectedJob ? published.has(selectedJob.id) : false}
+        canPublish={canPublish}
+        onPublish={handlePublish}
+        onUnpublish={handleUnpublish}
+        onApply={(job) => {
+          setSelectedJob(null);
+          setApplyTarget(job);
+        }}
         onClose={() => setSelectedJob(null)}
         onDelete={() => {
           if (selectedJob) setDeleteTarget(selectedJob);
         }}
       />
-      <CandidateDetailModal candidate={selectedCandidate} onClose={() => setSelectedCandidate(null)} />
+      <CandidateDetailModal
+        candidate={selectedCandidate}
+        application={selectedApplication}
+        canAdvance={canAdvanceSelected}
+        advanceHint={advanceHint}
+        onStageChange={handleStageChange}
+        onClose={() => setSelectedCandidate(null)}
+      />
+      <InternalApplyModal
+        job={applyTarget}
+        orgId={orgId}
+        uid={profile?.uid ?? null}
+        prefill={{
+          name: currentEmployee?.fullName ?? profile?.displayName ?? '',
+          // The applicant's own address, not the account's, when the two
+          // differ — the application is keyed on it and it is what the hiring
+          // team will reply to.
+          email: currentEmployee?.email ?? profile?.email ?? '',
+          phone: currentEmployee?.phone ?? '',
+          company: currentEmployee?.department ?? '',
+        }}
+        onClose={() => setApplyTarget(null)}
+      />
 
       <Modal
         open={!!deleteTarget}
