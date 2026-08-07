@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "firebase:serve": "firebase emulators:start --only hosting",
     "firebase:deploy": "firebase deploy --only hosting",
-    "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project modcon-hr \"node --test --test-concurrency=1 tests/rules/*.test.mjs\""
+    "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project modcon-hr \"node --test --test-concurrency=1 tests/rules/*.test.mjs\"",
+    "test:sim": "node tests/simulation/build.mjs && node --test --test-concurrency=1 tests/simulation/*.test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

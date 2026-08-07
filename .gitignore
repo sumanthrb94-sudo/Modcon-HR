@@ -33,3 +33,6 @@ coverage
 
 # Per-machine agent permission overrides; .claude/settings.json is shared
 /.claude/settings.local.json
+
+# Simulation bundle (tests/simulation/build.mjs regenerates it)
+tests/simulation/.build
