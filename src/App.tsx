@@ -43,6 +43,10 @@ const HolidayCalendarPage = lazy(() => import('@/pages/dashboard/HolidayCalendar
 const RecentActivityPage = lazy(() => import('@/pages/dashboard/RecentActivityPage').then((m) => ({ default: m.RecentActivityPage })));
 const NotFoundPage = lazy(() => import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })));
 const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.LoginPage })));
+// The public careers page. Its own chunk, and deliberately outside AppLayout:
+// it is read by candidates who have no account here — see src/pages/careers.
+const CareersPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersPage })));
+const CareersJobPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersJobPage })));
 
 function PageLoader() {
   return (
@@ -161,6 +165,14 @@ function AppRoutes() {
         path="login"
         element={!loading && user ? <Navigate to="/" replace /> : <LoginPage />}
       />
+      {/* Public, and unlike /login not redirected away from when somebody is
+          signed in: a careers page is a page anybody may read, including an
+          employee looking at what their own company has advertised. Declared
+          above the authenticated block so the catch-all inside it — which
+          sends an unknown path to the sign-in screen — never claims these. */}
+      <Route path="careers" element={<CareersPage />} />
+      <Route path="careers/:orgKey" element={<CareersPage />} />
+      <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
         <Route index element={<RequireModuleAccess module="Dashboard"><DashboardPage /></RequireModuleAccess>} />
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />

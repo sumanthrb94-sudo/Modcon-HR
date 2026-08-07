@@ -42,6 +42,7 @@ import type {
     HandbookPointer,
     PayslipDocument,
     EmployeeDocument,
+    JobApplication,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -89,6 +90,11 @@ export const Collections = {
     // localStorage because who may file which kind is a rule, and a rule needs
     // a server to refuse the write. See src/lib/employeeDocuments.ts.
     employeeDocuments: col<EmployeeDocument>('employee_documents'),
+    // Applications submitted against a published job opening. The only
+    // collection in this file an unauthenticated caller can write to — a
+    // candidate applying from the public careers page has no account here.
+    // See src/lib/jobApplications.ts and the rules block of the same name.
+    jobApplications: col<JobApplication>('job_applications'),
 } as const;
 
 // ---------------------------------------------------------------------------

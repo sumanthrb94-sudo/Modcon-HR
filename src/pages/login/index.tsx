@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -203,6 +203,16 @@ export function LoginPage() {
                         <Button type="submit" className="w-full justify-center" disabled={submitting}>
                             {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Sign In'}
                         </Button>
+
+                        {/* The way in for somebody who does not have an account
+                            and is not supposed to: a candidate. This is the only
+                            page they would think to look at. */}
+                        <p className="text-center text-sm text-ink-500">
+                            Looking for a job?{' '}
+                            <Link to="/careers" className="font-medium text-brand-600 hover:underline">
+                                See our open roles
+                            </Link>
+                        </p>
 
                         {/*
                           * SECURITY: a "Quick Demo Login" block used to live here with a

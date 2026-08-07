@@ -630,7 +630,23 @@ service cloud.firestore {
     }
 
     match /jobs/{docId} {
-      allow get, list: if isSignedIn() && inMyOrg();
+      // A published Open role is public, and has to be: the careers page
+      // (src/pages/careers) is read by a candidate with no account in this
+      // organisation, who could not have one — you do not get a login at a
+      // company before it hires you.
+      //
+      // Only `status == 'Open'` is exposed, and only per document. A list is
+      // evaluated against every row it returns, so an unauthenticated query
+      // must filter on both `orgId` and `status` or it is denied whole rather
+      // than trimmed — see usePublicJobOpenings.
+      //
+      // `.get('status', '')` rather than `.status`: a document with no status
+      // field would error on the dereference, and an error denies the whole
+      // rule including the signed-in clause beside it. The legacy openings
+      // written before this field existed stay readable by their own org and
+      // stay off the careers page, which is the right answer to both.
+      allow get, list: if (isSignedIn() && inMyOrg()) ||
+        resource.data.get('status', '') == 'Open';
       allow create: if isOrgAdmin() && writingToMyOrg();
       // update/delete additionally check the stored document: without
       // inMyOrg() here, overwriting another org's record while stamping
@@ -647,6 +663,179 @@ service cloud.firestore {
       // your own orgId would be allowed, which is a takeover, not a write.
       allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
       allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    // -------------------------------------------------------------------
+    // Job applications
+    //
+    // The only unauthenticated write path in this file. It exists because a
+    // candidate applying for a job posted here has no account in this
+    // organisation and cannot be given one before they are hired, so requiring
+    // a sign-in would mean nobody outside the company could ever apply.
+    //
+    // What makes it safe is not authentication, it is the size of the hole.
+    // The rule accepts exactly one shape of document, only against a job the
+    // organisation has actually published as Open, only at a document id
+    // recomputed here from the payload, and it grants no read whatsoever: an
+    // applicant cannot read back what they wrote, cannot edit or delete it,
+    // and cannot see anybody else's. The stage is pinned to 'Applied' and the
+    // source to 'Website', so an applicant cannot arrive already shortlisted
+    // or dressed up as an internal referral.
+    //
+    // What it cannot do is rate-limit — rules have no request counter. A flood
+    // of applications under varying addresses will land, and this project has
+    // already lost a day to an exhausted Firestore quota. App Check is the
+    // real answer and is not provisioned on this project; until it is, the
+    // deterministic id (one application per address per job) is the bound.
+    // -------------------------------------------------------------------
+    match /job_applications/{docId} {
+      // The organisation's to read, never the applicant's. `isManager()` — so
+      // managers, HR and admins — rather than `isOrgAdmin()`, because the
+      // permission matrix gives Manager `view` on Recruitment and a hiring
+      // manager who could open the pipeline but never see anyone in it would
+      // be failing closed silently. Moving an application is still an
+      // administrator's act: `view` is not permission to advance anybody.
+      allow get, list: if isManager() && inMyOrg();
+
+      // The public careers page. `submittedByUid` must be absent: it names a
+      // signed-in account, and this caller is not one.
+      allow create: if request.auth == null &&
+        !request.resource.data.keys().hasAny(['submittedByUid']) &&
+        request.resource.data.source == 'Website' &&
+        validJobApplication(docId);
+
+      // The Apply button inside the app: internal mobility, somebody who works
+      // here applying for another role. Stamped with the caller and confined to
+      // the caller's own organisation like every other signed-in write.
+      allow create: if isSignedIn() && writingToMyOrg() &&
+        request.resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.source == 'Internal' &&
+        validJobApplication(docId);
+
+      // Moving an application through the pipeline. Two people may: an
+      // administrator of the organisation, and the manager the job itself
+      // names as its hiring manager — the person actually running that
+      // shortlist, who otherwise had to ask HR to record every decision they
+      // had already made.
+      //
+      // Named on *that* job, not "holds the Manager role": a manager in Sales
+      // is not running the Engineering shortlist, and the permission matrix's
+      // Manager entry is a client-side rendering decision that cannot be the
+      // boundary here.
+      //
+      // Whatever the route, it changes nothing but the stage. Without the
+      // affectedKeys() clause "advance to Interview" is also a licence to
+      // rewrite the name, the address and the resume — which is not advancing
+      // an application, it is replacing one person's with another's under the
+      // same id.
+      allow update: if inMyOrg() && writingToMyOrg() &&
+        (isOrgAdmin() || isHiringManagerFor(resource.data.jobId)) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage']) &&
+        request.resource.data.stage in
+          ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    /**
+     * True when the caller is the manager the job `jobId` names as its own.
+     *
+     * `myEmployeeId()` — the administrator-authored `employee_links/{uid}`
+     * document — never the client's claim about which employee it is. The
+     * directory the app renders from is localStorage, so `hiringManagerId ==
+     * <whatever this browser says I am>` would let anyone appoint themselves
+     * to any shortlist. Same reasoning as isSelf(); see that block.
+     *
+     * An account with no link resolves to null, which matches no
+     * `hiringManagerId` and so grants nothing. That is the right direction to
+     * fail, but it is silent — the Recruitment page says so on screen rather
+     * than just withholding the buttons.
+     *
+     * `isManager()` as well as the name match: the job's hiring manager field
+     * can hold any employee id, including the HR administrator who posted it
+     * or a department head who is a plain employee, and the pipeline is not
+     * something an employee-role account should be able to move.
+     *
+     * The job is checked to be in the caller's organisation too. Employee ids
+     * are per-org sequences — `emp-002` exists in every tenant — so without it
+     * a manager linked to `emp-002` in one organisation would match another
+     * organisation's job that happens to name the same id.
+     */
+    function isHiringManagerFor(jobId) {
+      return isManager() &&
+        jobId is string &&
+        exists(/databases/$(database)/documents/jobs/$(jobId)) &&
+        orgKeyOf(get(/databases/$(database)/documents/jobs/$(jobId)).data) == myOrgKey() &&
+        get(/databases/$(database)/documents/jobs/$(jobId)).data.get('hiringManagerId', '') ==
+          myEmployeeId();
+    }
+
+    /**
+     * True when `jobId` is a role this organisation has published as Open.
+     *
+     * The anchor for the unauthenticated create: without it the write is an
+     * open door onto a collection, and with it an applicant can only write
+     * against something the organisation itself put on the careers page. The
+     * org is taken from the payload and checked against the job's own, so
+     * stamping a foreign orgId does not smuggle an application into another
+     * tenant's pipeline.
+     */
+    function isPublishedOpenJob(orgId, jobId) {
+      return exists(/databases/$(database)/documents/jobs/$(jobId)) &&
+        orgKeyOf(get(/databases/$(database)/documents/jobs/$(jobId)).data) == orgId &&
+        get(/databases/$(database)/documents/jobs/$(jobId)).data.get('status', '') == 'Open';
+    }
+
+    /**
+     * The one shape of application document this collection accepts.
+     *
+     * `hasOnly` as well as `hasAll`: without the whitelist an applicant can
+     * attach arbitrary extra fields to a document nobody is checking, and the
+     * cheapest version of that is a megabyte of them. Every size limit here is
+     * mirrored in src/lib/jobApplications.ts, where it is UX; this copy is the
+     * one that holds, because a hostile client does not run the other.
+     *
+     * The document id is recomputed from the payload rather than trusted. It
+     * is what makes "one application per address per job" true — a random id
+     * would let one caller write documents without limit.
+     */
+    function validJobApplication(docId) {
+      let d = request.resource.data;
+      return d.keys().hasAll([
+          'orgId', 'jobId', 'jobTitle', 'name', 'email', 'phone',
+          'experienceYears', 'source', 'stage', 'appliedOn', 'submittedAt',
+          'resumeFileName', 'resumeContentType', 'resumeSizeBytes', 'resumeContentBase64'
+        ]) &&
+        d.keys().hasOnly([
+          'orgId', 'jobId', 'jobTitle', 'name', 'email', 'phone', 'currentCompany',
+          'experienceYears', 'coverNote', 'source', 'stage', 'appliedOn', 'submittedAt',
+          'submittedByUid', 'resumeFileName', 'resumeContentType', 'resumeSizeBytes',
+          'resumeContentBase64'
+        ]) &&
+        d.orgId is string && d.jobId is string &&
+        docId == d.orgId + '__' + d.jobId + '__' + d.email &&
+        // An application always arrives at the start of the pipeline. It says
+        // nothing about how it did; the organisation says that.
+        d.stage == 'Applied' &&
+        d.email is string && d.email.size() <= 200 &&
+        d.email == d.email.lower() &&
+        d.email.matches('^[^@\\s]+@[^@\\s]+[.][^@\\s]+$') &&
+        d.name is string && d.name.size() > 0 && d.name.size() <= 120 &&
+        d.phone is string && d.phone.size() > 0 && d.phone.size() <= 32 &&
+        d.jobTitle is string && d.jobTitle.size() <= 160 &&
+        d.get('currentCompany', '') is string && d.get('currentCompany', '').size() <= 120 &&
+        d.get('coverNote', '') is string && d.get('coverNote', '').size() <= 4000 &&
+        d.experienceYears is int && d.experienceYears >= 0 && d.experienceYears <= 60 &&
+        d.appliedOn is string && d.appliedOn.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        d.submittedAt is string && d.submittedAt.size() <= 40 &&
+        // A resume is required, and it is a PDF. `RESUME_MAX_BYTES` is 720 KB;
+        // base64 costs 4 bytes per 3, and Firestore's ceiling is 1 MiB for the
+        // whole document, so the encoded string is capped just under that.
+        d.resumeContentType == 'application/pdf' &&
+        d.resumeFileName is string && d.resumeFileName.size() > 0 && d.resumeFileName.size() <= 200 &&
+        d.resumeSizeBytes is int && d.resumeSizeBytes > 0 && d.resumeSizeBytes <= 737280 &&
+        d.resumeContentBase64 is string && d.resumeContentBase64.size() <= 983040 &&
+        isPublishedOpenJob(d.orgId, d.jobId);
     }
 
     match /onboarding/{docId} {

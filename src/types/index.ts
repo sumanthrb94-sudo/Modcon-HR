@@ -239,6 +239,58 @@ export interface Candidate {
   experienceYears: number;
 }
 
+/**
+ * Where an application came in from.
+ *
+ * Two entry points, one record. 'Website' is the public careers page — a
+ * candidate with no account here, and no way to get one before they are hired.
+ * 'Internal' is the Apply button inside the app, which is internal mobility:
+ * somebody who already works here applying for another role. The two are
+ * separated in `firestore.rules`, where the unauthenticated path may only ever
+ * write 'Website' and the signed-in path only ever 'Internal'.
+ */
+export type JobApplicationSource = 'Website' | 'Internal';
+
+/**
+ * An application a candidate submitted against a published job opening.
+ *
+ * Distinct from `Candidate`, which is the recruiter's own record of somebody in
+ * the pipeline and lives in the local overlay like the rest of `src/data/*.ts`.
+ * An application is written by the applicant, so it lives in Firestore: it has
+ * to survive the browser that created it, and every field on it is a claim the
+ * writer makes about themselves, which is why the rules pin the ones that are
+ * not (`stage`, `source`, `submittedByUid`, the document id).
+ *
+ * The resume PDF rides inside the document, base64-encoded, for the reason
+ * written up in src/lib/handbookStorage.ts — this project has no Cloud Storage
+ * bucket, and Storage rules cannot read Firestore to check a role.
+ */
+export interface JobApplication {
+  id: ID;
+  orgId: string;
+  jobId: ID;
+  /** Denormalised so the pipeline reads correctly after a job is deleted. */
+  jobTitle: string;
+  name: string;
+  /** Lowercased. It is part of the document id — see `jobApplicationId`. */
+  email: string;
+  phone: string;
+  currentCompany?: string;
+  experienceYears: number;
+  coverNote?: string;
+  source: JobApplicationSource;
+  /** Always 'Applied' on arrival; only an org administrator may move it. */
+  stage: CandidateStage;
+  appliedOn: string;
+  submittedAt: string;
+  /** The signed-in applicant, for internal moves. Absent on public ones. */
+  submittedByUid?: string;
+  resumeFileName: string;
+  resumeContentType: string;
+  resumeSizeBytes: number;
+  resumeContentBase64: string;
+}
+
 // ---- Onboarding ----------------------------------------------------------
 export type TaskStatus = 'Pending' | 'In Progress' | 'Completed';
 
