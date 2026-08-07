@@ -111,9 +111,13 @@ export function getVisibleEmployeeIds(
  * they may read, and one nothing asked until now.
  *
  *   HR Manager  every employee. HR administers leave for the organisation.
- *   Admin       every employee. Platform-level administration.
  *   Manager     everyone beneath them in the reporting tree, however many
  *               levels deep, and nobody else.
+ *   Admin       nobody. Platform administration is not a place in the
+ *               reporting line: an admin exists to run the deployment, and
+ *               leave is decided by the person somebody actually reports to,
+ *               or by HR. This is the one scope where Admin is narrower than
+ *               HR rather than equal to it.
  *   Employee    nobody.
  *
  * Three things the Manager scope deliberately excludes, each of which
@@ -135,9 +139,7 @@ export function getApprovableEmployeeIds(
 ): Set<string> {
   const role = resolveAppRole(profile);
 
-  if (role === 'Admin' || role === 'HR Manager') {
-    return new Set(directory.map((employee) => employee.id));
-  }
+  if (role === 'HR Manager') return new Set(directory.map((employee) => employee.id));
   if (role !== 'Manager') return new Set();
 
   const self = getCurrentEmployeeRecord(profile, directory);
@@ -171,7 +173,11 @@ export function leaveApprovalRefusal(
 ): string | null {
   if (canApproveLeaveFor(profile, employeeId, directory)) return null;
 
-  if (resolveAppRole(profile) === 'Employee') return 'Only a manager can decide leave requests.';
+  const role = resolveAppRole(profile);
+  if (role === 'Admin') {
+    return 'Leave is decided by the employee’s reporting manager, or by HR — not from platform administration.';
+  }
+  if (role === 'Employee') return 'Only a manager or HR can decide leave requests.';
 
   const self = getCurrentEmployeeRecord(profile, directory);
   if (!self) {

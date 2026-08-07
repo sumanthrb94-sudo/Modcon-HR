@@ -10,8 +10,9 @@ import { type Persona } from './config';
  * manager's leave, and on their own request — and the button worked, because
  * `updateLeaveRequestStatus` asked nothing about who was clicking it.
  *
- * This runs once per role project, so each persona states its own half of the
- * rule: the manager gets one queue, the administrator gets the other, and the
+ * This runs once per role project, so each persona states its own part of the
+ * rule: the manager gets the queue, the administrator gets none of it — an
+ * admin runs the deployment and is nobody's reporting manager — and the
  * employee cannot reach the page at all.
  *
  * The reporting line has to be seeded rather than driven through the UI. The
@@ -153,20 +154,23 @@ test.describe.serial('leave approval follows the reporting line', () => {
     await page.goto(APPROVALS_URL);
     await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible({ timeout: 20_000 });
 
-    await expect(page.getByText(REPORT_NAME)).toBeVisible();
     if (persona().role === 'manager') {
+      await expect(page.getByText(REPORT_NAME)).toBeVisible();
       // The assertion the whole change is about. Before it, this row was here.
       await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
     } else {
-      // Admin administers the organisation, so the reporting tree does not
-      // bound them — a rule that scoped everybody would read as working right
-      // up until HR could not approve anything either.
-      await expect(page.getByText(OUTSIDER_NAME)).toBeVisible();
+      // An administrator runs the deployment; they are nobody's reporting
+      // manager, so they decide no leave at all — not even for the person
+      // seeded below a manager. The page says so rather than sitting empty.
+      await expect(page.getByText(REPORT_NAME)).toHaveCount(0);
+      await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
+      await expect(page.getByText(/not from platform administration/)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     }
   });
 
   test('a decision this account may make still goes through', async () => {
-    test.skip(persona().role === 'employee', 'employees have no approval queue');
+    test.skip(persona().role !== 'manager', 'only the manager has anyone to decide for');
 
     await page.goto(APPROVALS_URL);
     await expect(page.getByText(REPORT_NAME)).toBeVisible({ timeout: 20_000 });

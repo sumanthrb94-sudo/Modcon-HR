@@ -6,6 +6,7 @@ import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
 import { employees } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { resolveAppRole } from '@/lib/accessControl';
 import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -63,6 +64,11 @@ export function LeaveRequestsApprovalsPage() {
     // by somebody who is told about it.
     const emptyReason = useMemo(() => {
         if (approvableEmployeeIds.size > 0) return 'No pending leave requests from your team';
+        // The same resolver the scope itself uses, so the empty page and the
+        // rule behind it cannot give different accounts of why it is empty.
+        if (resolveAppRole(profile) === 'Admin') {
+            return 'Leave is decided by the employee’s reporting manager, or by HR — not from platform administration.';
+        }
         if (getCurrentEmployeeRecord(profile)) {
             return 'Nobody reports to you, so there are no leave requests for you to decide';
         }
