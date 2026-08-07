@@ -110,12 +110,17 @@ function EmployeeDashboard() {
   const { profile } = useAuth();
   const currentEmployee = getCurrentEmployee(profile);
   const holidayRevision = useHolidayDirectoryRevision();
+  // Both cards below read leave records, so both go stale without this: a
+  // request approved in another tab, or leave applied for on /leave while this
+  // page stayed mounted, left "Recent Leave Requests" and "My Leave Balance"
+  // showing the figures they were built with.
+  const dataRevision = useDashboardDataRevision();
   const displayName = currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Employee';
   const firstName = displayName.split(' ')[0].split('@')[0];
 
   const leaveRequests = useMemo(
     () => (currentEmployee ? getLeaveRequests().filter((request) => request.employeeId === currentEmployee.id) : []),
-    [currentEmployee],
+    [currentEmployee, dataRevision],
   );
   // The same derived entitlements the Leave module's Balances tab shows —
   // policy accrual, the April reset and the tenure gates — rather than the
@@ -123,7 +128,7 @@ function EmployeeDashboard() {
   // reported a different figure for the same employee on the same day.
   const leaveBalances = useMemo(
     () => (currentEmployee ? getEntitlements(currentEmployee, getLeaveRequests()) : []),
-    [currentEmployee],
+    [currentEmployee, dataRevision],
   );
   const employeeExpenses = useMemo(
     () => (currentEmployee ? getExpenseClaims().filter((claim) => claim.employeeId === currentEmployee.id) : []),
@@ -242,13 +247,19 @@ function EmployeeDashboard() {
                   // tests/e2e/leave-balance.spec.ts can hold it against the
                   // Leave module's without re-deriving either.
                   data-leave-reading={balance.withheldReason ?? `${balance.available}/${balance.granted}`}
+                  data-leave-pending={balance.pending}
                 >
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-ink-700">{balance.type}</span>
                     {balance.withheldReason ? (
                       <span className="text-xs text-ink-400">{balance.withheldReason}</span>
                     ) : (
-                      <span className="text-ink-500">{balance.available}/{balance.granted} available</span>
+                      <span className="text-ink-500">
+                        {balance.available}/{balance.granted} available
+                        {balance.pending > 0 && (
+                          <span className="text-ink-400"> · {balance.remaining} left to apply</span>
+                        )}
+                      </span>
                     )}
                   </div>
                   {/* Used measured against the year as a whole, not against a
@@ -256,7 +267,12 @@ function EmployeeDashboard() {
                       moves when nothing was taken. Matches the Leave module. */}
                   <div className="flex items-center justify-between text-[11px] text-ink-400">
                     <span>{balance.fullYear} day{balance.fullYear === 1 ? '' : 's'} for {financialYearLabel()}</span>
-                    <span>{balance.used} used</span>
+                    <span>
+                      {balance.used} used
+                      {balance.pending > 0 && (
+                        <span className="text-amber-600"> · {balance.pending} pending</span>
+                      )}
+                    </span>
                   </div>
                   <ProgressBar value={pct(balance.used, balance.fullYear)} tone={pct(balance.used, balance.fullYear) > 75 ? 'amber' : 'brand'} size="sm" />
                 </div>

@@ -162,14 +162,12 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
   // Pending requests of the same type are not deducted from the balance —
   // `used` counts approved leave only — so without this the same four days
   // could be applied for three times over and every request would look funded.
-  const pendingDays = requests
-    .filter(
-      (r) =>
-        r.employeeId === employee.id &&
-        r.type === type &&
-        r.status === 'Pending',
-    )
-    .reduce((sum, r) => sum + r.days, 0);
+  //
+  // Read off the entitlement rather than recounted here: this check used to own
+  // the only copy of that arithmetic, so the refusal it produced ("5 available
+  // less 4 already pending") contradicted every balance card in the app, which
+  // knew nothing about pending days. One definition, in data/leaveEntitlements.ts.
+  const pendingDays = entitlement.pending;
 
   const clash = requests.find(
     (r) =>
@@ -190,7 +188,7 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
   }
 
   const noBalance = carriesNoBalance(entitlement);
-  const remaining = entitlement.available - pendingDays;
+  const remaining = entitlement.remaining;
   const balanceAfter = noBalance ? null : remaining - chargeableDays;
 
   if (!noBalance && !entitlement.withheldReason && chargeableDays > remaining) {
