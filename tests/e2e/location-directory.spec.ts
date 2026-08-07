@@ -88,7 +88,13 @@ test.describe.serial('a work location belongs to the organisation', () => {
     await dialog.getByLabel('Employee date of birth').fill('1995-04-12');
     await dialog.getByLabel('Employee date of joining').fill('2021-04-01');
     await dialog.getByLabel('Employee ctc').fill('1800000');
-    await dialog.getByLabel('Employee location').selectOption('__create__');
+    // The button, not `selectOption('__create__')`. Playwright dispatches the
+    // change event itself, so picking the sentinel from the dropdown passes
+    // here even in the case where a person clicking it gets nothing at all —
+    // when the organisation has no locations yet, that entry is the one the
+    // closed select is already showing, and re-picking it fires no event. The
+    // button is the path a person actually has, so it is the path this asserts.
+    await dialog.getByRole('button', { name: '+ New location' }).click();
     await dialog.getByLabel('New employee location').fill(NEW_LOCATION);
     await dialog.getByRole('button', { name: 'Save Employee' }).click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
