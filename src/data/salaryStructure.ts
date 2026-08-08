@@ -196,8 +196,278 @@ export function splitMonthlyGross(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Per-employee salary structures
+// ---------------------------------------------------------------------------
+
+/**
+ * employee id → the split **that person** is paid on.
+ *
+ * A whole structure per person, not a sparse set of overrides — which is the
+ * opposite of how per-employee leave policies work, and deliberately so. The
+ * four numbers here are not independent: Basic and HRA are capped against each
+ * other, the flat allowances are capped by what those two leave, and Special
+ * Allowance is whatever remains. Taking one field from an individual and three
+ * from the organisation would produce a split nobody at this company agreed to,
+ * and it would move under them the next time Settings was edited. A negotiated
+ * compensation structure is agreed whole, so it is stored whole.
+ *
+ * The cost is worth knowing: an individual's structure does **not** follow a
+ * later change to the organisation's. That is what "custom" means here, and the
+ * Settings list names everyone it is true of.
+ */
+export type EmployeeSalaryStructures = Record<string, SalaryStructure>;
+
+const EMPLOYEE_STRUCTURES_STORAGE_KEY = ORG_SETTINGS.employeeSalaryStructures.storageKey;
+
+/** Every stored per-employee structure, normalized. `{}` when there are none. */
+export function getEmployeeSalaryStructures(): EmployeeSalaryStructures {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(orgScopedKey(EMPLOYEE_STRUCTURES_STORAGE_KEY));
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: EmployeeSalaryStructures = {};
+    for (const [employeeId, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const structure = normalizeSalaryStructure(value);
+      // An entry that normalizes to nothing is dropped rather than kept: "no
+      // structure recorded for this person" falls back to the organisation's,
+      // which is the honest reading of an unusable one.
+      if (structure) out[employeeId] = structure;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The split **this employee** is paid on — their own, or the organisation's.
+ *
+ * The one function payroll should ask. `getSalaryStructure()` still answers
+ * "what does this organisation split a gross on by default", which is what
+ * Settings edits and what everyone without a custom structure is paid on.
+ *
+ * Called with no id — a surface with no particular employee in view, such as the
+ * Settings preview — it is exactly `getSalaryStructure()`. Still `null` when
+ * neither exists, so every breakdown goes on saying "not set" rather than
+ * inventing one.
+ */
+export function getSalaryStructureFor(employeeId?: string): SalaryStructure | null {
+  if (!employeeId) return getSalaryStructure();
+  const own = getEmployeeSalaryStructures()[employeeId];
+  return own ? { ...own } : getSalaryStructure();
+}
+
+/** True when this employee is paid on something other than the organisation's split. */
+export function hasEmployeeSalaryStructure(employeeId: string): boolean {
+  return employeeId in getEmployeeSalaryStructures();
+}
+
+/** Replace the whole map. Resolves once the organisation's copy has caught up. */
+export function saveEmployeeSalaryStructures(
+  structures: EmployeeSalaryStructures,
+): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  const normalized: EmployeeSalaryStructures = {};
+  for (const [employeeId, value] of Object.entries(structures)) {
+    const structure = normalizeSalaryStructure(value);
+    if (structure) normalized[employeeId] = structure;
+  }
+  window.localStorage.setItem(
+    orgScopedKey(EMPLOYEE_STRUCTURES_STORAGE_KEY),
+    JSON.stringify(normalized),
+  );
+  notifyChanged();
+  return publishOrgSetting(ORG_SETTINGS.employeeSalaryStructures, normalized);
+}
+
+/**
+ * Set one person's structure, or with `null` put them back on the organisation's.
+ *
+ * Reads the current map and writes it whole — the setting is one document, so
+ * there is no partial write to make. Two administrators editing different people
+ * at the same moment is last-write-wins, exactly as the organisation's own
+ * structure is.
+ */
+export function setEmployeeSalaryStructure(
+  employeeId: string,
+  structure: SalaryStructure | null,
+): Promise<boolean> {
+  const next = { ...getEmployeeSalaryStructures() };
+  if (structure === null) delete next[employeeId];
+  else next[employeeId] = structure;
+  return saveEmployeeSalaryStructures(next);
+}
+
+// ---------------------------------------------------------------------------
+// Upload
+// ---------------------------------------------------------------------------
+
+/** One employee identified by code, so the parser needs no directory module. */
+export interface SalaryStructureCsvSubject {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+}
+
+export interface SalaryStructureCsvMatch {
+  employee: SalaryStructureCsvSubject;
+  structure: SalaryStructure;
+  /** True when this person is already on a custom structure. */
+  replaces: boolean;
+  /** 1-based line in the uploaded file, for the review list. */
+  line: number;
+}
+
+export interface SalaryStructureCsvMiss {
+  line: number;
+  text: string;
+  reason: string;
+}
+
+export interface SalaryStructureCsvResult {
+  matched: SalaryStructureCsvMatch[];
+  unmatched: SalaryStructureCsvMiss[];
+}
+
+/** The columns the upload expects, in order. Shown on the page, skipped if present. */
+export const EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER =
+  'employee_code,basic_percent,hra_percent,medical_allowance,conveyance_allowance';
+
+/** Codes compare on their characters, not their punctuation: `MC-090` = `mc090`. */
+function squashCode(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Read an uploaded CSV into per-employee salary structures.
+ *
+ * Nothing is written from here — the caller shows the two lists and HR applies
+ * them. A row that cannot be used is **reported**, never skipped: a line
+ * silently dropped looks exactly like a line applied, and the person it named
+ * goes on being paid on the organisation's split while the upload appears to
+ * have covered them.
+ *
+ * All four figures are required on every row. A partial row is refused rather
+ * than completed from the organisation's structure, for the same reason
+ * `EmployeeSalaryStructures` is not sparse: three of somebody's own numbers
+ * beside one of the company's is a split nobody negotiated.
+ */
+export function parseEmployeeSalaryStructureCsv(
+  text: string,
+  employees: SalaryStructureCsvSubject[],
+  existing: EmployeeSalaryStructures = {},
+): SalaryStructureCsvResult {
+  const byCode = new Map<string, SalaryStructureCsvSubject>();
+  for (const employee of employees) {
+    const code = squashCode(employee.employeeCode ?? '');
+    if (code) byCode.set(code, employee);
+  }
+
+  const matched: SalaryStructureCsvMatch[] = [];
+  const unmatched: SalaryStructureCsvMiss[] = [];
+  const claimed = new Map<string, number>(); // employee id -> the line that took them
+
+  text.split(/\r?\n/).forEach((raw, index) => {
+    const line = index + 1;
+    const trimmed = raw.trim();
+    if (trimmed === '') return;
+    const cells = trimmed.split(',').map((cell) => cell.trim());
+    const code = squashCode(cells[0] ?? '');
+    // The header, in whatever case or spacing the spreadsheet wrote it. Skipped
+    // rather than reported: it is not a row anybody expected to be applied.
+    if (code === 'employeecode' || code === 'employeeid') return;
+
+    if (cells.length < 5) {
+      unmatched.push({ line, text: trimmed, reason: 'Needs five columns' });
+      return;
+    }
+
+    const employee = code ? byCode.get(code) : undefined;
+    if (!employee) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: code ? `No employee with code ${cells[0]}` : 'No employee code',
+      });
+      return;
+    }
+
+    const already = claimed.get(employee.id);
+    if (already !== undefined) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: `${employee.employeeCode} is already set on line ${already}`,
+      });
+      return;
+    }
+
+    // Blank is not zero here: every figure is required, and `Number('')` is 0,
+    // which would read an empty cell as "pays no HRA" rather than as a gap.
+    const values = cells.slice(1, 5).map((cell) => (cell === '' ? NaN : Number(cell)));
+    if (values.some((value) => !Number.isFinite(value))) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: 'Basic %, HRA %, medical and conveyance must all be numbers',
+      });
+      return;
+    }
+    const [basicPercent, hraPercent, medicalAllowance, conveyanceAllowance] = values;
+
+    if (values.some((value) => value < 0)) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: 'A salary component is an amount paid, not one taken back',
+      });
+      return;
+    }
+    // Refused rather than left to `normalizeSalaryStructure`, which clamps HRA
+    // down to whatever Basic leaves: clamping would apply a split this row does
+    // not state, under a review list showing figures HR never typed.
+    if (basicPercent + hraPercent > 100) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: `Basic and HRA come to ${basicPercent + hraPercent}% — together they cannot exceed 100%`,
+      });
+      return;
+    }
+
+    const structure = normalizeSalaryStructure({
+      basicPercent,
+      hraPercent,
+      medicalAllowance,
+      conveyanceAllowance,
+    });
+    if (!structure) {
+      unmatched.push({ line, text: trimmed, reason: 'Not a usable salary structure' });
+      return;
+    }
+
+    claimed.set(employee.id, line);
+    matched.push({
+      employee,
+      structure,
+      replaces: employee.id in existing,
+      line,
+    });
+  });
+
+  return { matched, unmatched };
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === orgScopedKey(STORAGE_KEY)) notifyChanged();
+    if (
+      event.key === orgScopedKey(STORAGE_KEY) ||
+      event.key === orgScopedKey(EMPLOYEE_STRUCTURES_STORAGE_KEY)
+    ) {
+      notifyChanged();
+    }
   });
 }

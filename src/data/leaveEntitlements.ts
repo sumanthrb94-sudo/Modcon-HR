@@ -25,7 +25,7 @@
  * last March".
  */
 import type { Employee, Gender, LeaveBalance, LeaveRequest, LeaveType } from '@/types';
-import { getLeavePolicies, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy } from './leavePolicies';
+import { getLeavePoliciesFor, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy } from './leavePolicies';
 import { accrualMonthsElapsed, financialYearEnd, financialYearOf, financialYearStart, monthsBetween } from '@/lib/financialYear';
 import { todayIso } from '@/lib/today';
 
@@ -179,7 +179,12 @@ export function getApplicableEntitlements(
   requests: LeaveRequest[],
   asOf: string = todayIso(),
 ): Entitlement[] {
-  return getLeavePolicies()
+  // The policies **this employee** is on: the organisation's, with their own
+  // quota applied where HR has uploaded one for them. Asked per employee rather
+  // than once for the page, because two people on the same screen — the Leave
+  // module's team view, a manager's queue — can legitimately be on different
+  // entitlements for the same type.
+  return getLeavePoliciesFor(employee.id)
     .filter((policy) => appliesToEmployee(policy, employee.gender))
     .map((policy) => {
       const type = normalizeLeaveTypeValue(policy.type);

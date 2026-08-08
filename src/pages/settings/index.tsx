@@ -5,7 +5,8 @@ import {
   Plug, CreditCard, ChevronRight, Check, X,
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
-  AlertCircle, CheckCircle2, Star, Database, Trash2, Wallet, MapPin,
+  AlertCircle, AlertTriangle, CheckCircle2, Star, Database, Trash2, Wallet, MapPin,
+  Upload, Download, RefreshCw,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
@@ -17,7 +18,21 @@ import { HR_DEPARTMENT, getCompanyProfile, isHrDepartment, saveCompanyProfile, t
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
-import { getLeavePolicies, saveLeavePolicies, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy, type LeaveAccrual } from '@/data/leavePolicies';
+import {
+  getLeavePolicies,
+  saveLeavePolicies,
+  isMonthlyPolicy,
+  normalizeLeaveTypeValue,
+  describeLeavePolicyOverride,
+  getEmployeeLeavePolicies,
+  saveEmployeeLeavePolicies,
+  setEmployeeLeavePolicy,
+  parseEmployeeLeavePolicyCsv,
+  EMPLOYEE_LEAVE_POLICY_CSV_HEADER,
+  type LeavePolicy,
+  type LeaveAccrual,
+  type LeavePolicyCsvResult,
+} from '@/data/leavePolicies';
 import { getLeaveRequests } from '@/data/leave';
 import {
   addLocationToDirectory,
@@ -34,7 +49,13 @@ import {
   getSalaryStructure,
   saveSalaryStructure,
   splitMonthlyGross,
+  getEmployeeSalaryStructures,
+  saveEmployeeSalaryStructures,
+  setEmployeeSalaryStructure,
+  parseEmployeeSalaryStructureCsv,
+  EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER,
   type SalaryStructure,
+  type SalaryStructureCsvResult,
 } from '@/data/salaryStructure';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import {
@@ -1391,6 +1412,297 @@ function LeavePolicies() {
           {editError && <p className="text-sm text-rose-600">{editError}</p>}
         </div>
       </Modal>
+    </SettingsSection>
+  );
+}
+
+// ===========================================================================
+// Section: Per-employee leave policies
+// ===========================================================================
+/**
+ * Upload the people whose entitlement is not the organisation's own.
+ *
+ * A CSV rather than a form per person: the reason to have this at all is a list
+ * of exceptions that arrived from an offer letter or a settlement — twenty
+ * people on a negotiated Earned Leave, a cohort of interns on half the casual
+ * quota — and typing them back in one at a time is how they end up wrong.
+ * Nothing is written until HR has seen which row went to whom, what it replaces,
+ * and which rows could not be used.
+ *
+ * The heading deliberately avoids the words "leave policies": Playwright matches
+ * an accessible name by substring, and a second heading containing that phrase
+ * makes the section above it ambiguous to every spec that opens it.
+ */
+function EmployeeLeavePoliciesSection() {
+  const save = useSaveIndicator();
+  // Both the exceptions and the organisation's list are behind this event, so an
+  // incoming hydration from Firestore re-renders what is shown here.
+  const revision = useLeavePoliciesRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [result, setResult] = useState<LeavePolicyCsvResult | null>(null);
+  const [applied, setApplied] = useState<number | null>(null);
+  const [readError, setReadError] = useState('');
+
+  const overrides = useMemo(() => getEmployeeLeavePolicies(), [revision]);
+  const policies = useMemo(() => getLeavePolicies(), [revision]);
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
+  const byId = useMemo(() => new Map(directory.map((emp) => [emp.id, emp])), [directory]);
+
+  function reset() {
+    setResult(null);
+    setFileName('');
+    setReadError('');
+    if (fileInput.current) fileInput.current.value = '';
+  }
+
+  async function handleFile(file: File | undefined) {
+    setApplied(null);
+    setReadError('');
+    if (!file) { reset(); return; }
+    try {
+      const text = await file.text();
+      setFileName(file.name);
+      setResult(parseEmployeeLeavePolicyCsv(
+        text,
+        getEmployeeDirectory(),
+        getLeavePolicies(),
+        getEmployeeLeavePolicies(),
+      ));
+    } catch {
+      reset();
+      setReadError('That file could not be read. Save it as CSV and try again.');
+    }
+  }
+
+  function handleApply() {
+    if (!result || result.matched.length === 0) return;
+    // Merged at both levels, not replaced: a file covering three people is a
+    // statement about those three, and a row about their Earned Leave says
+    // nothing about the Casual Leave exception they already have.
+    const next = { ...getEmployeeLeavePolicies() };
+    for (const match of result.matched) {
+      next[match.employee.id] = { ...next[match.employee.id], [match.typeKey]: match.override };
+    }
+    setApplied(result.matched.length);
+    save.track(saveEmployeeLeavePolicies(next));
+    reset();
+  }
+
+  function handleRemove(employeeId: string) {
+    setApplied(null);
+    // Back onto the organisation's policy, not onto nothing.
+    save.track(setEmployeeLeavePolicy(employeeId, null));
+  }
+
+  function handleTemplate() {
+    // Prefilled from the organisation's own policy for each type, so the figure
+    // in the file is the one being departed from rather than an invented one.
+    // Only the column that type actually accrues by is filled: an annual figure
+    // against a monthly policy is a row the parser refuses, and a template must
+    // not hand out rows that cannot be applied.
+    const code = directory[0]?.employeeCode ?? 'MC-001';
+    const rows = policies.slice(0, 3).map((policy) => (
+      isMonthlyPolicy(policy)
+        ? `${code},${policy.type},,${policy.monthlyAccrual},${policy.minTenureMonths}`
+        : `${code},${policy.type},${policy.annual},,${policy.minTenureMonths}`
+    ));
+    const blob = new Blob([[EMPLOYEE_LEAVE_POLICY_CSV_HEADER, ...rows].join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'employee-leave-policies.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const entries = Object.entries(overrides);
+
+  return (
+    <SettingsSection
+      title="Custom entitlements for individual employees"
+      subtitle="Anyone whose leave quota is not the organisation's own"
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="space-y-5">
+          <p className="text-sm text-ink-500">
+            Upload a CSV of exceptions. Each row is one person and one leave type, matched by
+            employee code; everyone not listed keeps accruing on the policy above. A blank cell
+            leaves the organisation's figure alone, so a row can change the quota without touching
+            the tenure gate. Nothing is saved until you have seen the match list.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="leave-policy-csv">
+                Entitlements CSV
+              </label>
+              <input
+                id="leave-policy-csv"
+                ref={fileInput}
+                type="file"
+                accept=".csv,text/csv"
+                className="input w-full"
+                aria-label="Employee leave entitlements CSV"
+                onChange={(event) => { void handleFile(event.target.files?.[0]); }}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                Columns: <span className="font-mono">{EMPLOYEE_LEAVE_POLICY_CSV_HEADER}</span>
+              </p>
+            </div>
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={handleTemplate}>
+                <Download size={14} /> Download template
+              </Button>
+            </div>
+          </div>
+
+          {readError && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              {readError}
+            </div>
+          )}
+
+          {applied !== null && (
+            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              {applied} custom entitlement{applied === 1 ? '' : 's'} saved for your organisation.
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-ink-100" data-testid="leave-policy-csv-matched">
+                <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+                  <span>From {fileName} — matched to an employee</span>
+                  <span data-testid="leave-policy-csv-matched-count">{result.matched.length}</span>
+                </div>
+                {result.matched.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-ink-400">
+                    No row in this file names both an employee code this organisation uses and a
+                    leave type it grants.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-ink-50">
+                    {result.matched.map((match) => (
+                      <li
+                        key={`${match.employee.id}-${match.typeKey}`}
+                        className="flex items-center gap-3 px-4 py-2.5"
+                        data-testid="leave-policy-csv-match"
+                        data-employee-code={match.employee.employeeCode}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-ink-900">
+                            {match.employee.fullName}
+                          </p>
+                          <p className="truncate text-xs text-ink-400">
+                            {match.employee.employeeCode} ·{' '}
+                            {describeLeavePolicyOverride(match.policyType, match.override)}
+                          </p>
+                        </div>
+                        <span className="ml-auto shrink-0 text-xs">
+                          {match.replaces ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700">
+                              <RefreshCw size={12} /> replaces existing
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-700">
+                              <CheckCircle2 size={12} /> new
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Listed, never dropped: a row silently ignored looks exactly like
+                  a row applied, and the person it named keeps the org's quota. */}
+              {result.unmatched.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50">
+                  <div className="flex items-center gap-2 border-b border-amber-200 px-4 py-2 text-xs font-semibold text-amber-800">
+                    <AlertTriangle size={13} />
+                    Not applied
+                    <span className="ml-auto" data-testid="leave-policy-csv-unmatched-count">
+                      {result.unmatched.length}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-amber-100">
+                    {result.unmatched.map((miss) => (
+                      <li key={miss.line} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                        <span className="shrink-0 text-xs text-amber-700">Line {miss.line}</span>
+                        <span className="truncate font-mono text-xs text-ink-800">{miss.text}</span>
+                        <span className="ml-auto shrink-0 text-xs text-amber-800">{miss.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button variant="primary" onClick={handleApply} disabled={result.matched.length === 0}>
+                  <Upload size={14} /> Save {result.matched.length} entitlement
+                  {result.matched.length === 1 ? '' : 's'}
+                </Button>
+                <Button variant="secondary" onClick={reset}>Cancel</Button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-ink-100" data-testid="leave-policy-overrides">
+            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+              <span>Employees on their own entitlement</span>
+              <span data-testid="leave-policy-override-count">{entries.length}</span>
+            </div>
+            {entries.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-ink-400">
+                Nobody yet — everyone accrues on the organisation's policy.
+              </p>
+            ) : (
+              <ul className="divide-y divide-ink-50">
+                {entries.map(([employeeId, byType]) => {
+                  const employee = byId.get(employeeId);
+                  const name = employee ? employee.fullName : employeeId;
+                  return (
+                    <li
+                      key={employeeId}
+                      className="flex items-start gap-3 px-4 py-2.5"
+                      data-testid="leave-policy-override"
+                      data-employee-id={employeeId}
+                    >
+                      <div className="min-w-0">
+                        {/* An id rather than a name when the record has been
+                            deleted: the exception is still stored and still
+                            removable, and hiding it would strand it. */}
+                        <p className="truncate text-sm font-medium text-ink-900">{name}</p>
+                        <p className="text-xs text-ink-400">
+                          {employee ? `${employee.employeeCode} · ` : 'No employee record · '}
+                          {Object.entries(byType)
+                            .map(([type, override]) => describeLeavePolicyOverride(type, override))
+                            .join(' · ')}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="ml-auto shrink-0 rounded-lg p-1.5 text-ink-400 hover:bg-ink-50 hover:text-rose-600"
+                        aria-label={`Remove custom entitlement for ${name}`}
+                        onClick={() => handleRemove(employeeId)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Card>
     </SettingsSection>
   );
 }
@@ -3440,6 +3752,316 @@ function SalaryStructureSection() {
   );
 }
 
+// ===========================================================================
+// Section: Per-employee salary structures
+// ===========================================================================
+/**
+ * Upload the people whose split is not the organisation's own.
+ *
+ * A CSV rather than a form per person, for the same reason the leave exceptions
+ * are one: the list arrives from offer letters or a revision cycle covering
+ * dozens of people at once, and typing them back in one at a time is how they
+ * end up wrong. Nothing is written until HR has seen which row went to whom,
+ * what it replaces, and which rows could not be used.
+ *
+ * Unlike a leave exception, a row here carries the **whole** split — all four
+ * figures, every time. Three of somebody's own numbers beside one of the
+ * company's is a structure nobody negotiated; see EmployeeSalaryStructures.
+ *
+ * The heading avoids the words "salary structure": Playwright matches an
+ * accessible name by substring, and a second heading containing that phrase
+ * makes the section above it ambiguous to every spec that opens it.
+ */
+function describeStructure(structure: SalaryStructure): string {
+  return [
+    `${structure.basicPercent}% basic`,
+    `${structure.hraPercent}% HRA`,
+    `${formatINR(structure.medicalAllowance)} medical`,
+    `${formatINR(structure.conveyanceAllowance)} conveyance`,
+  ].join(' · ');
+}
+
+function EmployeeSalaryStructuresSection() {
+  const save = useSaveIndicator();
+  // Both the individual structures and the organisation's own are behind this
+  // event, so an incoming hydration from Firestore re-renders what is shown.
+  const revision = useSalaryStructureRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [result, setResult] = useState<SalaryStructureCsvResult | null>(null);
+  const [applied, setApplied] = useState<number | null>(null);
+  const [readError, setReadError] = useState('');
+
+  const structures = useMemo(() => getEmployeeSalaryStructures(), [revision]);
+  const orgStructure = useMemo(() => getSalaryStructure(), [revision]);
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
+  const byId = useMemo(() => new Map(directory.map((emp) => [emp.id, emp])), [directory]);
+
+  function reset() {
+    setResult(null);
+    setFileName('');
+    setReadError('');
+    if (fileInput.current) fileInput.current.value = '';
+  }
+
+  async function handleFile(file: File | undefined) {
+    setApplied(null);
+    setReadError('');
+    if (!file) { reset(); return; }
+    try {
+      const text = await file.text();
+      setFileName(file.name);
+      setResult(parseEmployeeSalaryStructureCsv(
+        text,
+        getEmployeeDirectory(),
+        getEmployeeSalaryStructures(),
+      ));
+    } catch {
+      reset();
+      setReadError('That file could not be read. Save it as CSV and try again.');
+    }
+  }
+
+  function handleApply() {
+    if (!result || result.matched.length === 0) return;
+    // Merged, not replaced: a file covering three people is a statement about
+    // those three and says nothing about anyone already on their own structure.
+    const next = { ...getEmployeeSalaryStructures() };
+    for (const match of result.matched) next[match.employee.id] = match.structure;
+    setApplied(result.matched.length);
+    save.track(saveEmployeeSalaryStructures(next));
+    reset();
+  }
+
+  function handleRemove(employeeId: string) {
+    setApplied(null);
+    // Back onto the organisation's structure, not onto nothing.
+    save.track(setEmployeeSalaryStructure(employeeId, null));
+  }
+
+  function handleTemplate() {
+    // Prefilled from the organisation's own split, so the figures in the file
+    // are the ones being departed from rather than invented ones. Zeroes when
+    // the organisation has not set one — a template cannot hand out a default
+    // this app deliberately does not have.
+    const code = directory[0]?.employeeCode ?? 'MC-001';
+    const base = orgStructure ?? {
+      basicPercent: 0, hraPercent: 0, medicalAllowance: 0, conveyanceAllowance: 0,
+    };
+    const row = [
+      code,
+      base.basicPercent,
+      base.hraPercent,
+      base.medicalAllowance,
+      base.conveyanceAllowance,
+    ].join(',');
+    const blob = new Blob([[EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER, row].join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'employee-salary-structures.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const entries = Object.entries(structures);
+
+  return (
+    <SettingsSection
+      title="Custom splits for individual employees"
+      subtitle="Anyone whose salary is divided differently from the organisation's own"
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="space-y-5">
+          <p className="text-sm text-ink-500">
+            Upload a CSV of exceptions. Each row is one person, matched by employee code, and
+            carries the whole split — all four figures, every time. Everyone not listed is paid on
+            the structure above. Gross and net pay are unaffected either way: only how the month's
+            pay is divided into components changes. Nothing is saved until you have seen the match
+            list.
+          </p>
+
+          {!orgStructure && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Your organisation has not set a structure of its own. Anyone you upload here gets a
+              component breakdown; everyone else keeps showing "not set".
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="salary-structure-csv">
+                Salary structures CSV
+              </label>
+              <input
+                id="salary-structure-csv"
+                ref={fileInput}
+                type="file"
+                accept=".csv,text/csv"
+                className="input w-full"
+                aria-label="Employee salary structures CSV"
+                onChange={(event) => { void handleFile(event.target.files?.[0]); }}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                Columns: <span className="font-mono">{EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER}</span>
+              </p>
+            </div>
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={handleTemplate}>
+                <Download size={14} /> Download template
+              </Button>
+            </div>
+          </div>
+
+          {readError && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              {readError}
+            </div>
+          )}
+
+          {applied !== null && (
+            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              {applied} custom salary structure{applied === 1 ? '' : 's'} saved for your organisation.
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-ink-100" data-testid="salary-structure-csv-matched">
+                <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+                  <span>From {fileName} — matched to an employee</span>
+                  <span data-testid="salary-structure-csv-matched-count">{result.matched.length}</span>
+                </div>
+                {result.matched.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-ink-400">
+                    No row in this file names an employee code this organisation uses, with a
+                    complete split beside it.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-ink-50">
+                    {result.matched.map((match) => (
+                      <li
+                        key={match.employee.id}
+                        className="flex items-center gap-3 px-4 py-2.5"
+                        data-testid="salary-structure-csv-match"
+                        data-employee-code={match.employee.employeeCode}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-ink-900">
+                            {match.employee.fullName}
+                          </p>
+                          <p className="truncate text-xs text-ink-400">
+                            {match.employee.employeeCode} · {describeStructure(match.structure)}
+                          </p>
+                        </div>
+                        <span className="ml-auto shrink-0 text-xs">
+                          {match.replaces ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700">
+                              <RefreshCw size={12} /> replaces existing
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-700">
+                              <CheckCircle2 size={12} /> new
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Listed, never dropped: a row silently ignored looks exactly like
+                  a row applied, and the person it named goes on being paid on
+                  the organisation's split. */}
+              {result.unmatched.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50">
+                  <div className="flex items-center gap-2 border-b border-amber-200 px-4 py-2 text-xs font-semibold text-amber-800">
+                    <AlertTriangle size={13} />
+                    Not applied
+                    <span className="ml-auto" data-testid="salary-structure-csv-unmatched-count">
+                      {result.unmatched.length}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-amber-100">
+                    {result.unmatched.map((miss) => (
+                      <li key={miss.line} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                        <span className="shrink-0 text-xs text-amber-700">Line {miss.line}</span>
+                        <span className="truncate font-mono text-xs text-ink-800">{miss.text}</span>
+                        <span className="ml-auto shrink-0 text-xs text-amber-800">{miss.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button variant="primary" onClick={handleApply} disabled={result.matched.length === 0}>
+                  <Upload size={14} /> Save {result.matched.length} structure
+                  {result.matched.length === 1 ? '' : 's'}
+                </Button>
+                <Button variant="secondary" onClick={reset}>Cancel</Button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-ink-100" data-testid="employee-salary-structures">
+            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+              <span>Employees on their own structure</span>
+              <span data-testid="employee-salary-structure-count">{entries.length}</span>
+            </div>
+            {entries.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-ink-400">
+                Nobody yet — everyone is paid on the organisation's structure.
+              </p>
+            ) : (
+              <ul className="divide-y divide-ink-50">
+                {entries.map(([employeeId, structure]) => {
+                  const employee = byId.get(employeeId);
+                  const name = employee ? employee.fullName : employeeId;
+                  return (
+                    <li
+                      key={employeeId}
+                      className="flex items-start gap-3 px-4 py-2.5"
+                      data-testid="employee-salary-structure"
+                      data-employee-id={employeeId}
+                    >
+                      <div className="min-w-0">
+                        {/* An id rather than a name when the record has been
+                            deleted: the structure is still stored and still
+                            removable, and hiding it would strand it. */}
+                        <p className="truncate text-sm font-medium text-ink-900">{name}</p>
+                        <p className="text-xs text-ink-400">
+                          {employee ? `${employee.employeeCode} · ` : 'No employee record · '}
+                          {describeStructure(structure)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="ml-auto shrink-0 rounded-lg p-1.5 text-ink-400 hover:bg-ink-50 hover:text-rose-600"
+                        aria-label={`Remove custom salary structure for ${name}`}
+                        onClick={() => handleRemove(employeeId)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Card>
+    </SettingsSection>
+  );
+}
+
 interface NavItem {
   id: string;
   label: string;
@@ -3505,8 +4127,18 @@ export function SettingsPage() {
       case 'company': return <CompanyProfile />;
       case 'departments': return <DepartmentsSection />;
       case 'locations': return <LocationsSection />;
-      case 'leave': return <LeavePolicies />;
-      case 'salary': return <SalaryStructureSection />;
+      case 'leave': return (
+        <>
+          <LeavePolicies />
+          <EmployeeLeavePoliciesSection />
+        </>
+      );
+      case 'salary': return (
+        <>
+          <SalaryStructureSection />
+          <EmployeeSalaryStructuresSection />
+        </>
+      );
       case 'roles': return <RolesPermissions />;
       case 'holidays': return <HolidaysSection />;
       case 'notifications': return <NotificationsSection />;

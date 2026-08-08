@@ -5,7 +5,7 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 import { getAttendanceRecords } from '@/data/attendance';
-import { splitMonthlyGross } from '@/data/salaryStructure';
+import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
 
 // ---------------------------------------------------------------------------
 // Salary component builder
@@ -97,11 +97,12 @@ export function buildPayslipComponents(
   month: string = currentMonthIso(),
 ): PayslipComponents {
   const monthly = Math.round(employee.ctc / 12);
-  // The organisation's own split, read at call time rather than captured at
-  // module load: an administrator can change it in Settings, and every surface
-  // that shows a breakdown re-renders on the change event. Null when the
-  // organisation has not set one — see `splitConfigured`.
-  const split = splitMonthlyGross(monthly);
+  // The split *this employee* is paid on — their own where HR has uploaded one,
+  // the organisation's otherwise. Read at call time rather than captured at
+  // module load: an administrator can change either in Settings, and every
+  // surface that shows a breakdown re-renders on the change event. Null when
+  // neither exists — see `splitConfigured`.
+  const split = splitMonthlyGross(monthly, getSalaryStructureFor(employee.id));
   const { basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance } =
     split ?? { basic: 0, hra: 0, medicalAllowance: 0, conveyanceAllowance: 0, specialAllowance: 0 };
   const bonus = 0; // no bonus in regular month

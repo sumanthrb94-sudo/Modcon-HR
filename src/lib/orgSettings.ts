@@ -67,6 +67,11 @@ function setting(key: string, storageKey: string, changedEvent: string): OrgSett
  */
 export const ORG_SETTINGS = {
   leavePolicies: setting('leavePolicies', 'modcon.hr.leavePolicies', 'modcon-hr-leave-policies-changed'),
+  // The people whose entitlement is not the organisation's own. Shares the leave
+  // policy change event on purpose: every surface that re-renders when the
+  // organisation's quota moves has to re-render when an individual's does too,
+  // and entitlement is what unpaid-absence deductions are computed from.
+  employeeLeavePolicies: setting('employeeLeavePolicies', 'modcon.hr.employeeLeavePolicies', 'modcon-hr-leave-policies-changed'),
   companyProfile: setting('companyProfile', 'modcon.hr.companyProfile', 'modcon-hr-company-profile-changed'),
   holidays: setting('holidays', 'modcon.hr.holidays', 'modcon-hr-holidays-changed'),
   customDepartments: setting('customDepartments', 'modcon.hr.customDepartments', 'modcon-hr-department-directory-changed'),
@@ -78,6 +83,11 @@ export const ORG_SETTINGS = {
   // How a monthly gross is split into Basic, HRA and the flat allowances. A
   // company's own policy, not a platform constant — see data/salaryStructure.ts.
   salaryStructure: setting('salaryStructure', 'modcon.hr.salaryStructure', 'modcon-hr-salary-structure-changed'),
+  // The people whose split is not the organisation's own. Shares the salary
+  // structure change event on purpose: every surface that re-renders when the
+  // organisation's split moves has to re-render when an individual's does too,
+  // and a breakdown left stale is a wrong statement about somebody's pay.
+  employeeSalaryStructures: setting('employeeSalaryStructures', 'modcon.hr.employeeSalaryStructures', 'modcon-hr-salary-structure-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it

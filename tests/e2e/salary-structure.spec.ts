@@ -27,10 +27,20 @@ import { FIRESTORE_BASE, adminToken } from './firestore';
  */
 const ADMIN = PERSONAS.admin;
 const STRUCTURE_DOC = 'org_settings/default__salaryStructure';
+const EMPLOYEE_STRUCTURES_DOC = 'org_settings/default__employeeSalaryStructures';
 
 /** ModCon Builders' own split — the demo organisation's data, not a platform default. */
 const DEMO = { basic: 50, hra: 25, medical: 1492, conveyance: 1492 };
 const CHANGED = { basic: 40, hra: 30, medical: 2000, conveyance: 1000 };
+
+/**
+ * One person's own split, and deliberately unlike DEMO in all four figures.
+ *
+ * Sharing even one number with the organisation's structure would let a test
+ * pass while the individual's split was being ignored.
+ */
+const CUSTOM = { basic: 30, hra: 20, medical: 3000, conveyance: 500 };
+const LOWER_EARNER_CODE = 'MC-090';
 
 // Two very different salaries: a flat allowance must be the same rupee figure
 // on both, and a percentage one must not be.
@@ -83,6 +93,46 @@ async function publishedStructure(): Promise<Record<string, number> | null> {
   const raw = (await res.json()).fields?.valueJson?.stringValue;
   if (typeof raw !== 'string') return null;
   return JSON.parse(raw) as Record<string, number> | null;
+}
+
+/** What the organisation's Firestore copy holds for the per-employee splits. */
+async function publishedEmployeeStructures(): Promise<Record<string, Record<string, number>>> {
+  const token = await adminToken();
+  if (!token) return {};
+  const res = await fetch(`${FIRESTORE_BASE}/${EMPLOYEE_STRUCTURES_DOC}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status !== 200) return {};
+  const raw = (await res.json()).fields?.valueJson?.stringValue;
+  if (typeof raw !== 'string') return {};
+  return JSON.parse(raw) as Record<string, Record<string, number>>;
+}
+
+/** Upload a CSV to the per-employee section and wait for the review list. */
+async function uploadStructures(page: Page, csv: string) {
+  await page.getByLabel('Employee salary structures CSV').setInputFiles({
+    name: 'structures.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csv, 'utf-8'),
+  });
+  await expect(page.getByTestId('salary-structure-csv-matched')).toBeVisible();
+}
+
+/**
+ * Put everyone back on the organisation's structure.
+ *
+ * The same reasoning as restoring the structure itself: this is the
+ * organisation's shared configuration, and a custom split left behind is a
+ * standing wrong statement about somebody's pay on every payslip surface.
+ */
+async function clearCustomStructures(page: Page) {
+  const removals = page.getByRole('button', { name: /^Remove custom salary structure for / });
+  // Re-counted each pass: removing one re-renders the list underneath it.
+  for (let remaining = await removals.count(); remaining > 0; remaining -= 1) {
+    await removals.first().click();
+    await expect(removals).toHaveCount(remaining - 1, { timeout: 20_000 });
+  }
+  await expect(page.getByTestId('employee-salary-structure-count')).toHaveText('0');
 }
 
 interface Breakdown {
@@ -154,8 +204,11 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     page = await browser.newPage();
     await login(page);
     // Start from a known structure rather than whatever a previous run left,
-    // so the assertions below are about this test's own changes.
+    // so the assertions below are about this test's own changes. Including the
+    // per-employee splits: an interrupted run leaves those behind too, and one
+    // stale exception makes "everyone else is untouched" untestable.
     await openSalaryStructure(page);
+    await clearCustomStructures(page);
     await setStructure(page, DEMO);
   });
 
@@ -164,6 +217,7 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     // behind. Restoring is not tidiness; skipping it changes every payslip.
     try {
       await openSalaryStructure(page);
+      await clearCustomStructures(page);
       await setStructure(page, DEMO);
     } finally {
       await page?.close();
@@ -360,6 +414,95 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
     await setStructure(page, DEMO);
 
     const { monthly, components } = await breakdownFor(page, HIGH_EARNER);
+    expect(components['Basic Salary']).toBe(Math.round(monthly * (DEMO.basic / 100)));
+    expect(components['Medical Allowance']).toBe(DEMO.medical);
+  });
+
+  // -------------------------------------------------------------------------
+  // Per-employee structures — HR uploads the people whose split is their own
+  // -------------------------------------------------------------------------
+
+  test('an uploaded structure is reviewed before anything is written', async () => {
+    await openSalaryStructure(page);
+    await expect(page.getByTestId('employee-salary-structure-count')).toHaveText('0');
+
+    await uploadStructures(
+      page,
+      `employee_code,basic_percent,hra_percent,medical_allowance,conveyance_allowance\n${
+        LOWER_EARNER_CODE},${CUSTOM.basic},${CUSTOM.hra},${CUSTOM.medical},${CUSTOM.conveyance}`,
+    );
+
+    await expect(page.getByTestId('salary-structure-csv-matched-count')).toHaveText('1');
+    await expect(page.getByTestId('salary-structure-csv-match')).toHaveAttribute(
+      'data-employee-code',
+      LOWER_EARNER_CODE,
+    );
+    // Reviewed, not applied: choosing the file must not change anybody's pay.
+    await expect(page.getByTestId('employee-salary-structure-count')).toHaveText('0');
+    expect(await publishedEmployeeStructures()).toEqual({});
+  });
+
+  test('applying it changes that employee\'s split and nobody else\'s', async () => {
+    await page.getByRole('button', { name: /^Save 1 structure$/ }).click();
+    await expect(page.getByTestId('employee-salary-structure-count')).toHaveText('1');
+
+    // It reached the organisation, so another administrator's browser hydrates
+    // to the same split rather than to the organisation's default.
+    await expect
+      .poll(async () => Object.keys(await publishedEmployeeStructures()).length, { timeout: 20_000 })
+      .toBe(1);
+    expect(Object.values(await publishedEmployeeStructures())[0]).toMatchObject({
+      basicPercent: CUSTOM.basic,
+      hraPercent: CUSTOM.hra,
+      medicalAllowance: CUSTOM.medical,
+      conveyanceAllowance: CUSTOM.conveyance,
+    });
+
+    const mine = await breakdownFor(page, LOWER_EARNER);
+    expect(mine.components['Basic Salary']).toBe(Math.round(mine.monthly * (CUSTOM.basic / 100)));
+    expect(mine.components['HRA']).toBe(Math.round(mine.monthly * (CUSTOM.hra / 100)));
+    expect(mine.components['Medical Allowance']).toBe(CUSTOM.medical);
+    expect(mine.components['Conveyance Allowance']).toBe(CUSTOM.conveyance);
+    // Still the whole month's pay: a custom split divides the gross, it does
+    // not change it.
+    expect(Object.values(mine.components).reduce((sum, amount) => sum + amount, 0))
+      .toBe(mine.monthly);
+
+    // The point of the whole feature — everyone else is untouched.
+    const other = await breakdownFor(page, HIGH_EARNER);
+    expect(other.components['Basic Salary']).toBe(Math.round(other.monthly * (DEMO.basic / 100)));
+    expect(other.components['Medical Allowance']).toBe(DEMO.medical);
+  });
+
+  test('a row that cannot be used is reported, never silently dropped', async () => {
+    await openSalaryStructure(page);
+    await uploadStructures(
+      page,
+      [
+        'employee_code,basic_percent,hra_percent,medical_allowance,conveyance_allowance',
+        `${LOWER_EARNER_CODE},70,40,1000,1000`, // 110% — nothing left for the allowances
+        'MC-999,30,20,3000,500',                // nobody has this code
+        'MC-001,30,,3000,500',                  // a split is uploaded whole or not at all
+      ].join('\n'),
+    );
+
+    await expect(page.getByTestId('salary-structure-csv-matched-count')).toHaveText('0');
+    await expect(page.getByTestId('salary-structure-csv-unmatched-count')).toHaveText('3');
+    // The upload is refused as a whole; the earlier exception stands unaltered.
+    await expect(page.getByTestId('employee-salary-structure-count')).toHaveText('1');
+    await page.getByRole('button', { name: 'Cancel' }).click();
+  });
+
+  test('removing an exception puts that employee back on the organisation\'s split', async () => {
+    await openSalaryStructure(page);
+    await clearCustomStructures(page);
+
+    await expect
+      .poll(async () => Object.keys(await publishedEmployeeStructures()).length, { timeout: 20_000 })
+      .toBe(0);
+
+    // Back on the organisation's structure — not onto no structure at all.
+    const { monthly, components } = await breakdownFor(page, LOWER_EARNER);
     expect(components['Basic Salary']).toBe(Math.round(monthly * (DEMO.basic / 100)));
     expect(components['Medical Allowance']).toBe(DEMO.medical);
   });
