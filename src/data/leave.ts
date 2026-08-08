@@ -1,7 +1,10 @@
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
+import type { UserProfile } from '@/lib/auth';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { orgScopedKey } from '@/lib/orgScope';
+import { getVisibleEmployeeIds } from '@/lib/dataScope';
+import { resolveAppRole } from '@/lib/accessControl';
 
 const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
 export const LEAVE_REQUESTS_CHANGED_EVENT = 'modcon-hr-leave-requests-changed';
@@ -256,18 +259,76 @@ export function saveLeaveRequests(requests: LeaveRequest[]) {
   notifyLeaveRequestsChanged();
 }
 
+/**
+ * A fresh request id.
+ *
+ * This was `lr-${requests.length + 1}`, which is unique only for a list that
+ * never shrinks. Delete one request and the next application is issued an id
+ * that is already in use — and `updateLeaveRequestStatus` below rewrites every
+ * match, so one decision would silently change two people's leave.
+ */
+export function newLeaveRequestId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `lr-${uuid}`;
+  // Older Safari has crypto but not randomUUID. Random rather than sequential,
+  // because sequence is exactly what could not be trusted here.
+  return `lr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Raised when someone tries to decide leave that is not theirs to decide. */
+export class LeaveScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaveScopeError';
+  }
+}
+
+export interface LeaveDecider {
+  /** The signed-in account making the decision. */
+  profile: UserProfile | null;
+  /** Their employee record, for the audit trail. */
+  employeeId?: string | null;
+  name?: string;
+}
+
+/**
+ * Approve or reject a request, on behalf of someone entitled to.
+ *
+ * The scope check lives here rather than in the pages because it was missing
+ * from one of them: the Leave page filtered its list through
+ * `getVisibleEmployeeIds`, and the dedicated approvals queue
+ * (dashboard/LeaveRequestsApprovalsPage) filtered on status alone — so it
+ * listed every request in the organisation and offered Approve on each. A
+ * manager could decide leave for someone in a reporting line they cannot see.
+ *
+ * A guarantee that depends on every page remembering to filter is not a
+ * guarantee, so the decision itself now refuses. Employees are refused
+ * outright: their visible set is exactly themselves, so scope alone would let
+ * them approve their own leave.
+ */
 export function updateLeaveRequestStatus(
   requestId: string,
   nextStatus: LeaveStatus,
-  approver?: { approverId?: string | null; approverName?: string },
+  decider: LeaveDecider,
 ) {
-  const updated = getLeaveRequests().map((request) =>
+  const requests = getLeaveRequests();
+  const target = requests.find((request) => request.id === requestId);
+  if (!target) throw new LeaveScopeError('That leave request no longer exists.');
+
+  if (resolveAppRole(decider.profile) === 'Employee') {
+    throw new LeaveScopeError('Leave is decided by your manager, not by you.');
+  }
+  if (!getVisibleEmployeeIds(decider.profile).has(target.employeeId)) {
+    throw new LeaveScopeError('That request belongs to someone outside your team.');
+  }
+
+  const updated = requests.map((request) =>
     request.id === requestId
       ? {
           ...request,
           status: nextStatus,
-          approverId: nextStatus === 'Approved' ? (approver?.approverId ?? request.approverId) : null,
-          approverName: nextStatus === 'Approved' ? (approver?.approverName ?? request.approverName) : undefined,
+          approverId: nextStatus === 'Approved' ? (decider.employeeId ?? request.approverId) : null,
+          approverName: nextStatus === 'Approved' ? (decider.name ?? request.approverName) : undefined,
         }
       : request,
   );
@@ -316,69 +377,63 @@ export const leaveBalances: LeaveBalance[] = balanceSeeds.flatMap((s) => [
   { employeeId: s.empId, type: 'Earned' as LeaveType, total: s.earned[0], used: s.earned[1], available: s.earned[0] - s.earned[1] },
 ]);
 
-const leaveBalanceTypes = new Set<LeaveType>(['Casual', 'Sick', 'Earned']);
-const leaveRequestBaseStatus = new Map(leaveRequests.map((request) => [request.id, request.status]));
+// `leaveBalances` above is the demo dataset's snapshot, and the only thing that
+// still reads it is src/lib/seed.ts, which pushes it into Firestore.
+//
+// It used to back three surfaces as well — the Leave page's Balances tab, the
+// dashboard's own-balance card, and the employee Time Off tab — through a
+// `getEmployeeBalances` that replayed approvals against these rows. Because the
+// rows are seeded only for the demo organisation, all three rendered nothing
+// for a real company, while data/leaveEntitlements.ts held correct, policy-
+// driven figures for the same people. Those surfaces read the entitlements now,
+// and the replay machinery that connected them to the seed is gone rather than
+// left as a second, disagreeing source of the same number.
 
-function cloneBalances(): LeaveBalance[] {
-  return leaveBalances.map((balance) => ({ ...balance }));
+// ---------------------------------------------------------------------------
+// Aggregates
+//
+// Each takes the viewer, because none of them used to and every surface built
+// on them reported the whole organisation's figures to whoever asked — a
+// manager included, whose own leave page beside it showed only their reporting
+// line. Passing `null` still means "everyone", which is what the seed scripts
+// and the org-wide reports want; it is now a decision at the call site rather
+// than the only available behaviour.
+// ---------------------------------------------------------------------------
+
+function scopeFilter(profile: UserProfile | null | undefined) {
+  if (profile === null || profile === undefined) return () => true;
+  const visible = getVisibleEmployeeIds(profile);
+  return (request: LeaveRequest) => visible.has(request.employeeId);
 }
 
-function applyLeaveRequestDelta(balances: LeaveBalance[], requests: LeaveRequest[]) {
-  const balanceByEmployee = new Map<string, Map<LeaveType, LeaveBalance>>();
-
-  balances.forEach((balance) => {
-    const employeeBalances = balanceByEmployee.get(balance.employeeId) ?? new Map<LeaveType, LeaveBalance>();
-    employeeBalances.set(balance.type, balance);
-    balanceByEmployee.set(balance.employeeId, employeeBalances);
-  });
-
-  requests.forEach((request) => {
-    if (!leaveBalanceTypes.has(request.type)) return;
-
-    const baseStatus = leaveRequestBaseStatus.get(request.id) ?? 'Pending';
-    const currentApproved = request.status === 'Approved' ? 1 : 0;
-    const baseApproved = baseStatus === 'Approved' ? 1 : 0;
-    const delta = currentApproved - baseApproved;
-    if (delta === 0) return;
-
-    const employeeBalances = balanceByEmployee.get(request.employeeId);
-    const balance = employeeBalances?.get(request.type);
-    if (!balance) return;
-
-    balance.used = Math.max(0, balance.used + request.days * delta);
-    balance.available = Math.max(0, balance.total - balance.used);
-  });
-
-  return balances;
-}
-
-// Helper: get balances for a specific employee
-export function getEmployeeBalances(employeeId: string, requests: LeaveRequest[] = getLeaveRequests()): LeaveBalance[] {
-  return applyLeaveRequestDelta(cloneBalances(), requests).filter((balance) => balance.employeeId === employeeId);
-}
-
-export function getLeaveBalances(requests: LeaveRequest[] = getLeaveRequests()): LeaveBalance[] {
-  return applyLeaveRequestDelta(cloneBalances(), requests);
-}
-
-// Helper: employees who are on approved leave on a given date
-export function getOnLeaveToday(date: string): LeaveRequest[] {
+/** Employees on approved leave on a given date, as far as `profile` may see. */
+export function getOnLeaveToday(date: string, profile?: UserProfile | null): LeaveRequest[] {
+  const inScope = scopeFilter(profile);
   return getLeaveRequests().filter(
-    (r) => r.status === 'Approved' && r.startDate <= date && r.endDate >= date,
+    (r) => r.status === 'Approved' && r.startDate <= date && r.endDate >= date && inScope(r),
   );
 }
 
-// Helper: pending count
-export function getPendingCount(): number {
-  return getLeaveRequests().filter((r) => r.status === 'Pending').length;
+/** Requests awaiting a decision from `profile`. */
+export function getPendingCount(profile?: UserProfile | null): number {
+  const inScope = scopeFilter(profile);
+  return getLeaveRequests().filter((r) => r.status === 'Pending' && inScope(r)).length;
 }
 
-// Helper: approved this month
-export function getApprovedThisMonth(month = currentMonthIso()): number {
+/**
+ * Approved leave *taken* in `month`.
+ *
+ * Matched on `startDate`. It used to match `appliedOn`, so leave applied for in
+ * May and taken in June was reported in May — the label says "this month", and
+ * what a leave report means by that is the month the person was away.
+ */
+export function getApprovedThisMonth(
+  month = currentMonthIso(),
+  profile?: UserProfile | null,
+): number {
+  const inScope = scopeFilter(profile);
   return getLeaveRequests().filter(
-    (r) => r.status === 'Approved' && r.appliedOn.startsWith(month),
+    (r) => r.status === 'Approved' && r.startDate.startsWith(month) && inScope(r),
   ).length;
 }
 
-// All unique employee IDs that have balance data (for the Balances tab)
-export const balanceEmployeeIds = Array.from(new Set(leaveBalances.map((b) => b.employeeId)));

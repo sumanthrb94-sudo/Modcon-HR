@@ -136,6 +136,14 @@ async function runMonthFor(org) {
     hrDesignations: [HR_DESIGNATION],
   });
 
+  // --- HR enters the organisation's own holiday calendar. ---
+  app.saveHolidayDirectory([
+    { id: 'h-ind', name: 'Independence Day', date: '2026-08-13', type: 'National' },
+    // Optional holidays stay working days: a restricted holiday is one an
+    // employee may take, not one the company closes for.
+    { id: 'h-opt', name: 'Local festival', date: '2026-08-12', type: 'Optional' },
+  ]);
+
   // --- HR adds the ten people, exactly as the Employees page does. ---
   function addPerson({ first, last, designation, managerId, doj }) {
     const directory = app.getEmployeeDirectory();
@@ -184,40 +192,53 @@ async function runMonthFor(org) {
 
   // --- The month: applications, then the manager's decisions. ---
   const applied = [];
+  const rejectedApplications = [];
   APPLICATIONS.forEach((application) => {
     const person = staff[application.who];
     const requests = app.getLeaveRequests();
-    // Constructed the way src/pages/leave/index.tsx:186-201 constructs it,
-    // including its id scheme and its day count — both are findings below.
+    // The real application path: the same validator and the same day count the
+    // Leave page uses, so what the form would accept is what is filed here.
+    const check = app.checkLeaveApplication(
+      { employee: person, type: application.type, startDate: application.start, endDate: application.end },
+      requests,
+      application.appliedOn,
+    );
+    if (check.error) {
+      rejectedApplications.push({ who: person.id, start: application.start, error: check.error });
+      return;
+    }
     const request = {
-      id: `lr-${String(requests.length + 1).padStart(3, '0')}`,
+      id: app.newLeaveRequestId(),
       employeeId: person.id,
       type: application.type,
       startDate: application.start,
       endDate: application.end,
-      days: calendarDays(application.start, application.end),
+      days: check.days,
       reason: application.reason,
       status: 'Pending',
       appliedOn: application.appliedOn,
       approverId: null,
     };
     app.saveLeaveRequests([request, ...requests]);
-    applied.push({ ...request, decide: application.decide });
+    applied.push({ ...request, decide: application.decide, breakdown: check.breakdown });
   });
 
   // What the manager is told before deciding anything.
   const queueNotification = app.getNotifications(managerProfile).find((n) => n.id === 'n1');
-  // The same moment, counted the way LeaveRequestsApprovalsPage counts it:
-  // status alone, no viewer.
-  const pendingAtQueueTime = app.getLeaveRequests().filter((r) => r.status === 'Pending').length;
+  // The same moment, counted the way LeaveRequestsApprovalsPage counts it now:
+  // pending *and* within the viewer's scope.
+  const managerScope = app.getVisibleEmployeeIds(managerProfile);
+  const pendingVisibleToManagerAtQueueTime = app.getLeaveRequests()
+    .filter((r) => r.status === 'Pending' && managerScope.has(r.employeeId)).length;
   const employeeNotificationIds = app.getNotifications(employeeProfile).map((n) => n.id);
 
   // The manager actions the queue.
   for (const request of applied) {
     if (!request.decide) continue;
     app.updateLeaveRequestStatus(request.id, request.decide, {
-      approverId: manager.id,
-      approverName: manager.fullName,
+      profile: managerProfile,
+      employeeId: manager.id,
+      name: manager.fullName,
     });
   }
 
@@ -239,7 +260,7 @@ async function runMonthFor(org) {
     emails: app.getEmployeeDirectory().map((e) => e.email),
 
     ids: { hr: hr.id, manager: manager.id, staff: staff.map((s) => s.id) },
-    applied: applied.map((r) => ({ id: r.id, employeeId: r.employeeId, days: r.days, decide: r.decide, start: r.startDate, end: r.endDate })),
+    applied: applied.map((r) => ({ id: r.id, employeeId: r.employeeId, days: r.days, decide: r.decide, start: r.startDate, end: r.endDate, breakdown: r.breakdown })),
     requests: finalRequests.map((r) => ({ ...r })),
 
     visible: {
@@ -248,12 +269,15 @@ async function runMonthFor(org) {
       hr: [...app.getVisibleEmployeeIds(hrProfile)].sort(),
     },
     queueNotification: queueNotification ? { ...queueNotification } : null,
-    pendingAtQueueTime,
+    pendingVisibleToManagerAtQueueTime,
     employeeNotificationIds,
 
-    pendingCount: app.getPendingCount(),
-    approvedThisMonth: app.getApprovedThisMonth('2026-06'),
-    onLeaveMidMonth: app.getOnLeaveToday('2026-06-16').length,
+    pendingCountForManager: app.getPendingCount(managerProfile),
+    pendingCountOrgWide: app.getPendingCount(null),
+    approvedThisMonth: app.getApprovedThisMonth('2026-06', null),
+    approvedThisMonthForManager: app.getApprovedThisMonth('2026-06', managerProfile),
+    onLeaveMidMonth: app.getOnLeaveToday('2026-06-16', null).length,
+    rejectedApplications,
 
     entitlements: {
       asha: entitlementsFor(staff[0], '2026-06-30'),
@@ -261,9 +285,35 @@ async function runMonthFor(org) {
       hari: entitlementsFor(staff[7], '2026-07-31'),
     },
 
-    // The two seed-derived surfaces, observed rather than assumed.
-    balanceEmployeeIds: [...app.balanceEmployeeIds],
-    seedBalancesForAsha: app.getEmployeeBalances(staff[0].id, finalRequests),
+    // The surface HR actually reads: entitlements for every visible employee,
+    // which is what the Balances tab is built from now.
+    balanceRowsHrCanSee: app.getVisibleEmployees(hrProfile)
+      .map((emp) => ({ id: emp.id, rows: app.getEntitlementBalances(emp, finalRequests).length })),
+
+    newId: () => app.newLeaveRequestId(),
+
+    // A working week containing one company holiday.
+    holidayAwareCount: app.leaveDayBreakdown('2026-08-10', '2026-08-14'),
+    // A Saturday and a Sunday.
+    weekendOnlyCheck: app.checkLeaveApplication(
+      { employee: staff[0], type: 'Casual', startDate: '2026-06-06', endDate: '2026-06-07' },
+      finalRequests, '2026-06-05',
+    ),
+    // Dates Asha already has approved leave for.
+    overlapCheck: app.checkLeaveApplication(
+      { employee: staff[0], type: 'Casual', startDate: '2026-06-02', endDate: '2026-06-03' },
+      finalRequests, '2026-06-01',
+    ),
+    // Far more Casual leave than anyone accrues in a year.
+    overBalanceCheck: app.checkLeaveApplication(
+      { employee: staff[3], type: 'Casual', startDate: '2026-09-01', endDate: '2026-10-30' },
+      finalRequests, '2026-08-25',
+    ),
+    // Last March.
+    backdatedCheck: app.checkLeaveApplication(
+      { employee: staff[3], type: 'Casual', startDate: '2026-03-02', endDate: '2026-03-03' },
+      finalRequests, '2026-06-30',
+    ),
 
     outOfLine: outOfLineOutcome(),
   };
@@ -279,14 +329,33 @@ async function runMonthFor(org) {
    */
   function outOfLineOutcome() {
     const request = finalRequests.find((r) => r.employeeId === staff[7].id);
-    app.updateLeaveRequestStatus(request.id, 'Approved', {
-      approverId: manager.id,
-      approverName: manager.fullName,
-    });
+    let refusal = null;
+    try {
+      app.updateLeaveRequestStatus(request.id, 'Approved', {
+        profile: managerProfile,
+        employeeId: manager.id,
+        name: manager.fullName,
+      });
+    } catch (err) {
+      refusal = { name: err.name, message: err.message };
+    }
     const after = app.getLeaveRequests().find((r) => r.id === request.id);
+    // The employee's own attempt to approve their own leave, for the same reason.
+    let selfRefusal = null;
+    try {
+      app.updateLeaveRequestStatus(request.id, 'Approved', {
+        profile: profileFor(staff[7], 'employee', org.key),
+        employeeId: staff[7].id,
+        name: staff[7].fullName,
+      });
+    } catch (err) {
+      selfRefusal = { name: err.name, message: err.message };
+    }
     return {
       requestId: request.id,
       employeeId: request.employeeId,
+      refusal,
+      selfRefusal,
       statusAfter: after.status,
       approverIdAfter: after.approverId,
     };
@@ -352,7 +421,7 @@ describe('a month of leave — the flow completes', () => {
     });
 
     it(`${org.name}: one request is still pending at month end`, () => {
-      assert.equal(results.get(org.key).pendingCount, 1);
+      assert.equal(results.get(org.key).pendingCountOrgWide, 1);
     });
   }
 
@@ -367,7 +436,8 @@ describe('a month of leave — the flow completes', () => {
   it('the two organisations reached the same figures from the same month', () => {
     const a = northwind();
     const b = sterling();
-    assert.equal(a.pendingCount, b.pendingCount);
+    assert.equal(a.pendingCountOrgWide, b.pendingCountOrgWide);
+    assert.equal(a.approvedThisMonth, b.approvedThisMonth);
     assert.deepEqual(a.entitlements.asha, b.entitlements.asha);
   });
 
@@ -441,112 +511,129 @@ describe('a month of leave — balances at month end', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Findings — asserted as they behave today, so a fix breaks the assertion
+// 4. The seven findings this simulation first turned up, now fixed
+//
+// Each of these asserted the broken behaviour when it was written. They assert
+// the corrected behaviour now, so the fix cannot silently regress.
 // ---------------------------------------------------------------------------
 
-describe('a month of leave — findings, pinned as current behaviour', () => {
-  it('FINDING leave is counted in calendar days, so weekends are deducted', () => {
-    // Chitra's 8–19 June block is ten working days across two weekends. The
-    // app records twelve, because src/pages/leave/index.tsx:186-188 subtracts
-    // two dates. `src/data/holidays.ts` exists and is not consulted either, so
-    // a public holiday inside a block is deducted as leave as well.
-    const r = northwind();
-    const block = r.applied.find((a) => a.start === '2026-06-08');
-    assert.equal(block.days, 12, 'recorded as calendar days');
-    assert.equal(workingDays(block.start, block.end), 10, 'ten working days in reality');
-    assert.notEqual(block.days, workingDays(block.start, block.end));
+describe('a month of leave — leave is counted in working days', () => {
+  it('a block spanning two weekends costs ten days, not twelve', () => {
+    // Was `Math.ceil((end - start) / 86400000) + 1`, so 8-19 June was recorded
+    // as twelve. The figure is what the entitlement engine deducts and what any
+    // payroll deduction is computed from, so it was wrong everywhere at once.
+    const block = northwind().applied.find((a) => a.start === '2026-06-08');
+    assert.equal(block.days, 10);
+    assert.equal(block.breakdown.calendarDays, 12);
+    assert.equal(block.breakdown.weekendDays, 2);
+    assert.equal(workingDays(block.start, block.end), block.days);
+    assert.notEqual(calendarDays(block.start, block.end), block.days);
   });
 
-  it('FINDING "approved this month" counts when it was applied for, not when it is taken', () => {
-    // Six approved requests fall in June. getApprovedThisMonth matches on
-    // `appliedOn`, so Asha's 1–2 June leave — applied for on 28 May — is
-    // reported in May's figure and missing from June's.
+  it("the organisation's own holidays are excluded too", () => {
+    const r = northwind();
+    assert.equal(r.holidayAwareCount.days, 4, 'five weekdays, one of them a company holiday');
+    assert.equal(r.holidayAwareCount.holidayDays, 1);
+  });
+
+  it('a range that is entirely non-working is refused rather than filed as zero', () => {
+    assert.match(northwind().weekendOnlyCheck.error, /non-working/);
+  });
+});
+
+describe('a month of leave — "approved this month" means the month it is taken', () => {
+  it('counts the six approvals that fall in June, including the one applied for in May', () => {
+    // Was matched on `appliedOn`, so Asha's 1-2 June leave — applied for on
+    // 28 May — was reported in May and missing from June.
     const r = northwind();
     const approvedInJune = r.requests.filter(
       (x) => x.status === 'Approved' && x.startDate.startsWith('2026-06'),
     ).length;
     assert.equal(approvedInJune, 6);
-    assert.equal(r.approvedThisMonth, 5, 'one approval is filed under the wrong month');
+    assert.equal(r.approvedThisMonth, 6);
   });
+});
 
-  it('FINDING a new organisation has no seed balances, so two surfaces show nothing', () => {
-    // `leaveBalances` is built from a seed array that is empty for any
-    // organisation but the demo one (isMockDataCleared). Two consequences:
-    //
-    //   balanceEmployeeIds  drives the Leave page's Balances tab for HR and
-    //                       managers (src/pages/leave/index.tsx:321) — so it
-    //                       lists nobody, for ever, however many people the
-    //                       organisation has.
-    //   getEmployeeBalances backs the dashboard's own-balance card
-    //                       (src/pages/dashboard/index.tsx:119) and the
-    //                       employee detail page — so both render empty.
-    //
-    // The entitlement engine computes the right figures for the same people
-    // (asserted above); nothing routes them to these two surfaces.
+describe('a month of leave — balances reach every surface that shows them', () => {
+  it('HR sees a balance row for every employee, not for nobody', () => {
+    // The Balances tab was driven by `balanceEmployeeIds`, derived from the
+    // demo seed, so for a real organisation it listed nobody however many
+    // people it had. It reads the entitlement engine now — the same engine
+    // that was always computing the right figures.
+    const rows = northwind().balanceRowsHrCanSee;
+    assert.equal(rows.length, 10, 'one per employee in the organisation');
+    for (const row of rows) assert.ok(row.rows > 0, `${row.id} has entitlement rows`);
+  });
+});
+
+describe('a month of leave — the approval queue is scoped, and so is the decision', () => {
+  it('the notification and the queue page now agree', () => {
+    // The notification counted the manager's own line; the queue page filtered
+    // on status alone and listed the whole organisation, with an Approve
+    // button on each. Both are scoped through getVisibleEmployeeIds now.
     const r = northwind();
-    assert.deepEqual(r.balanceEmployeeIds, [], 'no employee has a seed balance row');
-    assert.deepEqual(r.seedBalancesForAsha, [], 'though her entitlement is computed correctly');
-    assert.ok(r.entitlements.asha.length > 0, 'the entitlement engine does know about her');
+    assert.equal(r.queueNotification.count, 7);
+    assert.equal(r.pendingVisibleToManagerAtQueueTime, 7);
   });
 
-  it('FINDING the manager is notified about 7 requests and sent to a page listing 8', () => {
-    // The notification counts what dataScope says is theirs
-    // (src/data/notifications.ts:61). The page it links to,
-    // LeaveRequestsApprovalsPage, imports no scoping at all — it filters on
-    // `status === 'Pending'` and nothing else — so it lists every request in
-    // the organisation, Hari's included, and offers Approve on each.
-    const r = northwind();
-    assert.equal(r.queueNotification.count, 7, 'the notification counts their own line');
-    assert.equal(r.pendingAtQueueTime, 8, 'the page it links to counts the organisation');
-    assert.notEqual(
-      r.queueNotification.count, r.pendingAtQueueTime,
-      'they disagree by exactly the out-of-line request',
-    );
-
-    // And at month end the divergence is total: the only request left is one
-    // this manager is not supposed to see, so the badge reads zero while the
-    // page reads one.
-    const pendingAtMonthEnd = r.requests.filter((x) => x.status === 'Pending');
-    const minePendingAtMonthEnd = pendingAtMonthEnd.filter(
-      (x) => r.visible.manager.includes(x.employeeId),
-    );
-    assert.equal(pendingAtMonthEnd.length, 1);
-    assert.equal(minePendingAtMonthEnd.length, 0);
-  });
-
-  it('FINDING nothing stops a manager approving leave outside their reporting line', () => {
-    // updateLeaveRequestStatus takes a request id and an approver and applies
-    // no visibility check (src/data/leave.ts:259). Hari reports to HR, is
-    // absent from this manager's scope — and the manager's approval lands
-    // anyway, stamped with their name.
+  it('a manager cannot decide leave outside their reporting line', () => {
+    // updateLeaveRequestStatus took a request id and an approver and applied no
+    // visibility check, so the refusal depended on every page remembering to
+    // filter. It refuses at the decision now.
     const r = northwind();
     assert.equal(r.visible.manager.includes(r.outOfLine.employeeId), false);
-    assert.equal(r.outOfLine.statusAfter, 'Approved');
-    assert.equal(r.outOfLine.approverIdAfter, r.ids.manager);
+    assert.equal(r.outOfLine.refusal.name, 'LeaveScopeError');
+    assert.match(r.outOfLine.refusal.message, /outside your team/);
+    assert.equal(r.outOfLine.statusAfter, 'Pending', 'the request was left alone');
   });
 
-  it('FINDING the organisation-wide pending count is reported to whoever asks', () => {
-    // getPendingCount() takes no viewer and applies no dataScope filter, so
-    // every surface built on it reports the whole organisation's queue
-    // regardless of who is looking.
-    assert.equal(northwind().pendingCount, 1, 'Hari\'s, which this manager cannot see');
+  it('an employee cannot approve their own leave', () => {
+    const r = northwind();
+    assert.equal(r.outOfLine.selfRefusal.name, 'LeaveScopeError');
+    assert.equal(r.outOfLine.statusAfter, 'Pending');
   });
 
-  it('FINDING request ids are derived from the list length, so they can collide', () => {
-    // `lr-${requests.length + 1}` (src/pages/leave/index.tsx:187). Ids are
-    // unique across this month only because nothing was ever deleted. Remove
-    // one request and the next application reuses a live id — and
-    // updateLeaveRequestStatus maps over every match, so one decision would
-    // change two requests.
+  it('the pending count answers for the viewer who asked', () => {
+    const r = northwind();
+    assert.equal(r.pendingCountOrgWide, 1, "Hari's, which HR would action");
+    assert.equal(r.pendingCountForManager, 0, 'nothing left in this manager\'s line');
+  });
+});
+
+describe('a month of leave — request ids are unique by construction', () => {
+  it('ids do not depend on the length of a list that can shrink', () => {
+    // Was `lr-${requests.length + 1}`: delete one request and the next
+    // application reuses a live id, and updateLeaveRequestStatus rewrites every
+    // match — so one decision would change two people's leave.
     const r = northwind();
     const ids = r.requests.map((x) => x.id);
-    assert.equal(new Set(ids).size, ids.length, 'unique today');
+    assert.equal(new Set(ids).size, ids.length);
+    for (const id of ids) assert.ok(id.length > 'lr-000'.length, `${id} is not a sequence number`);
 
-    const afterDeletion = r.requests.filter((x) => x.id !== 'lr-004');
-    const nextId = `lr-${String(afterDeletion.length + 1).padStart(3, '0')}`;
-    assert.ok(
-      afterDeletion.some((x) => x.id === nextId),
-      `the next id issued would be ${nextId}, which is already in use`,
-    );
+    // The property that matters: an id issued after a deletion still collides
+    // with nothing.
+    const fresh = Array.from({ length: 50 }, () => northwind().newId());
+    assert.equal(new Set([...ids, ...fresh]).size, ids.length + fresh.length);
+  });
+});
+
+describe('a month of leave — an application is checked before it is filed', () => {
+  it('overlapping leave for the same person is refused', () => {
+    assert.match(northwind().overlapCheck.error, /already have/);
+  });
+
+  it('an application beyond the remaining balance is refused, and says by how much', () => {
+    const check = northwind().overBalanceCheck;
+    assert.match(check.error, /too many/);
+    assert.match(check.error, /Unpaid Leave/);
+  });
+
+  it('leave dated far in the past is refused', () => {
+    assert.match(northwind().backdatedCheck.error, /in the past/);
+  });
+
+  it('nothing in the month itself was refused — the checks do not block ordinary use', () => {
+    assert.deepEqual(northwind().rejectedApplications, []);
+    assert.deepEqual(sterling().rejectedApplications, []);
   });
 });

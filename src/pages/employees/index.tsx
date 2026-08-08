@@ -60,7 +60,8 @@ import { syncHrRoleForEmployee } from '@/data/roleAssignments';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
-import { getEmployeeBalances, getLeaveRequests } from '@/data/leave';
+import { getLeaveRequests } from '@/data/leave';
+import { getEntitlementBalances } from '@/data/leaveEntitlements';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 
@@ -1839,10 +1840,12 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
   const dataRevision = useDashboardDataRevision();
 
   const requests = useMemo(() => getLeaveRequests(), [dataRevision]);
-  const balances = useMemo(
-    () => getEmployeeBalances(employeeId, requests),
-    [employeeId, requests],
-  );
+  // Entitlements rather than the seed's balance rows, for the reason given on
+  // the dashboard's own card: the seed is empty outside the demo organisation.
+  const balances = useMemo(() => {
+    const employee = getEmployee(employeeId);
+    return employee ? getEntitlementBalances(employee, requests) : [];
+  }, [employeeId, requests]);
   const history = useMemo(
     () => requests
       .filter((request) => request.employeeId === employeeId)

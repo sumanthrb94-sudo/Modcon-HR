@@ -18,7 +18,8 @@ import {
   StatCard, ProgressBar, PageHeader, QuickAddMenu, NotificationsMenu,
 } from '@/components/ui';
 import { getEmployeeDirectory } from '@/data/employees';
-import { getLeaveRequests, getEmployeeBalances } from '@/data/leave';
+import { getLeaveRequests } from '@/data/leave';
+import { getEntitlementBalances } from '@/data/leaveEntitlements';
 import { getExpenseClaims } from '@/data/expenses';
 import { getTickets } from '@/data/helpdesk';
 import { announcements } from '@/data/common';
@@ -115,8 +116,12 @@ function EmployeeDashboard() {
     () => (currentEmployee ? getLeaveRequests().filter((request) => request.employeeId === currentEmployee.id) : []),
     [currentEmployee],
   );
+  // Entitlements, not the demo seed's balance rows. `getEmployeeBalances` reads
+  // an array that is empty for every organisation but the demo one, so this
+  // card rendered blank for real companies while the entitlement engine held
+  // the right figures for the same person. See data/leaveEntitlements.ts.
   const leaveBalances = useMemo(
-    () => (currentEmployee ? getEmployeeBalances(currentEmployee.id, getLeaveRequests()) : []),
+    () => (currentEmployee ? getEntitlementBalances(currentEmployee, getLeaveRequests()) : []),
     [currentEmployee],
   );
   const employeeExpenses = useMemo(

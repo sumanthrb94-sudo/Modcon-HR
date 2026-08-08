@@ -31,6 +31,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
 import { startOrgSettingsSync } from './orgSettings';
+import { startSubscriptionSync } from './subscriptionSync';
 import { startOrgFeatureSync } from './features';
 import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
 
@@ -274,9 +275,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // rules: configuration the organisation owns, versus a platform
         // decision about which tenants a change has reached yet.
         const stopFeatures = startOrgFeatureSync(profile);
+        // Whether this organisation has paid. A third subscription rather than
+        // a field on one of the above, because it is written by the payment
+        // webhook and by nothing in this client — see lib/subscriptionSync.ts.
+        const stopSubscription = startSubscriptionSync(profile);
         return () => {
             stopSettings();
             stopFeatures();
+            stopSubscription();
         };
     }, [profile?.uid, profile?.orgId]);
 

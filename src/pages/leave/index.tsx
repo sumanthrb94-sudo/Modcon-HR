@@ -25,17 +25,18 @@ import {
 } from '@/components/ui';
 import {
   getLeaveRequests,
-  getEmployeeBalances,
-  balanceEmployeeIds,
+  newLeaveRequestId,
   saveLeaveRequests,
   updateLeaveRequestStatus,
   LEAVE_REQUESTS_CHANGED_EVENT,
 } from '@/data/leave';
 import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies';
 import { getHolidayDirectory } from '@/data/holidays';
-import { employees, getEmployee, getEmployeeName } from '@/data/employees';
+import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
+import { leaveDayBreakdown } from '@/lib/leaveDays';
+import { checkLeaveApplication } from '@/lib/leaveApplication';
 import { financialYearLabel } from '@/lib/financialYear';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -95,6 +96,9 @@ export function LeavePage() {
   const [formEnd, setFormEnd] = useState('');
   const [formReason, setFormReason] = useState('');
   const [formError, setFormError] = useState('');
+  // A refused decision (a request outside this viewer's team) has to say so
+  // rather than appear to have done nothing.
+  const [decisionError, setDecisionError] = useState('');
 
   useEffect(() => {
     if (isEmployee && currentEmployee) {
@@ -156,22 +160,29 @@ export function LeavePage() {
   }, [scopedRequests, search, statusFilter, directoryRevision]);
 
   // Approve / Reject handlers
-  function approveLeave(id: string) {
-    if (isEmployee) return;
-    // Record whoever is actually signed in. This used to stamp a fixed
-    // 'emp-004 / Ananya Reddy' on every approval, so the audit trail named
-    // one person regardless of who clicked Approve.
-    const updated = updateLeaveRequestStatus(id, 'Approved', {
-      approverId: currentEmployee?.id ?? null,
-      approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
-    });
-    setLeaveRequests(updated);
+  // Record whoever is actually signed in. This used to stamp a fixed
+  // 'emp-004 / Ananya Reddy' on every approval, so the audit trail named one
+  // person regardless of who clicked Approve. The decider is also what
+  // updateLeaveRequestStatus checks the request against, so a decision on
+  // someone outside this viewer's team is refused rather than silently applied.
+  function decider() {
+    return {
+      profile,
+      employeeId: currentEmployee?.id ?? null,
+      name: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
+    };
   }
-  function rejectLeave(id: string) {
+  function decideLeave(id: string, nextStatus: 'Approved' | 'Rejected') {
     if (isEmployee) return;
-    const updated = updateLeaveRequestStatus(id, 'Rejected');
-    setLeaveRequests(updated);
+    try {
+      setLeaveRequests(updateLeaveRequestStatus(id, nextStatus, decider()));
+      setDecisionError('');
+    } catch (err) {
+      setDecisionError(err instanceof Error ? err.message : 'That decision could not be recorded.');
+    }
   }
+  function approveLeave(id: string) { decideLeave(id, 'Approved'); }
+  function rejectLeave(id: string) { decideLeave(id, 'Rejected'); }
 
   // Submit apply leave
   function handleApplySubmit() {
@@ -179,17 +190,26 @@ export function LeavePage() {
       setFormError('Please fill all required fields.');
       return;
     }
-    if (formEnd < formStart) {
-      setFormError('End date must be on or after start date.');
+    const applicant = getEmployee(formEmpId);
+    if (!applicant) {
+      setFormError('Select who this leave is for.');
       return;
     }
-    const start = new Date(formStart);
-    const end = new Date(formEnd);
-    const diffMs = end.getTime() - start.getTime();
-    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    // Overlap, balance, backdating and the working-day count, in one place —
+    // see lib/leaveApplication.ts for why each is worth checking here rather
+    // than leaving for the approver to catch.
+    const check = checkLeaveApplication(
+      { employee: applicant, type: formType, startDate: formStart, endDate: formEnd },
+      leaveRequests,
+    );
+    if (check.error) {
+      setFormError(check.error);
+      return;
+    }
+    const days = check.days;
 
     const newRequest: LeaveRequest = {
-      id: `lr-${String(leaveRequests.length + 1).padStart(3, '0')}`,
+      id: newLeaveRequestId(),
       employeeId: formEmpId,
       type: formType,
       startDate: formStart,
@@ -318,13 +338,14 @@ export function LeavePage() {
       return [{ emp: currentEmployee, balances: getEntitlements(currentEmployee, scopedRequests) }];
     }
 
-    return balanceEmployeeIds
-      .filter((empId) => visibleEmployeeIds.has(empId))
-      .map((empId) => {
-        const emp = getEmployee(empId);
-        return emp ? { emp, balances: getEntitlements(emp, scopedRequests) } : undefined;
-      })
-      .filter((b): b is BalanceViewItem => b !== undefined);
+    // Every employee this viewer may see, not `balanceEmployeeIds` — that is
+    // derived from the demo seed's balance rows, so for any organisation but
+    // the demo one it is empty and this tab listed nobody however many people
+    // the company had. The entitlements below were always computed correctly;
+    // nothing was reaching them.
+    return getEmployeeDirectory()
+      .filter((emp) => visibleEmployeeIds.has(emp.id))
+      .map((emp) => ({ emp, balances: getEntitlements(emp, scopedRequests) }));
   }, [scopedRequests, isEmployee, currentEmployee, visibleEmployeeIds]);
 
   // ---- Who's Off Tab ----
@@ -400,6 +421,11 @@ export function LeavePage() {
         {/* REQUESTS TAB */}
         {activeTab === 'requests' && (
           <>
+            {decisionError && (
+              <div className="mx-5 mt-5 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">
+                {decisionError}
+              </div>
+            )}
             <div className="p-5 border-b border-ink-100 flex flex-col sm:flex-row sm:items-center gap-3">
               <p className="text-sm text-ink-500 flex-1">
                 Showing <span className="font-medium text-ink-800">{filteredRequests.length}</span> requests

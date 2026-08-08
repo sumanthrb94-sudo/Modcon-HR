@@ -1,7 +1,12 @@
-# A month of leave, two organisations — what needs improving
+# A month of leave, two organisations — findings, and their fixes
+
+> **Status: all seven fixed.** This document records what the simulation found
+> and what was done about each. The simulation asserts the corrected behaviour
+> now, so a regression breaks a test rather than this document going stale.
+> `npm run test:sim` — 54 assertions.
 
 Two organisations, ten people each, one month of ordinary leave, run through the
-application's own modules: `tests/simulation/leave-month.test.mjs`, **30
+application's own modules: `tests/simulation/leave-month.test.mjs`, **37
 assertions**, `npm run test:sim`.
 
 **The flow works end to end.** Applications are filed, the manager is notified,
@@ -9,9 +14,10 @@ decisions stick, the approver is recorded, a rejection credits nobody,
 entitlements accrue and net off correctly, and the two organisations never touch
 each other's records. That is the headline and it is not a small one.
 
-**Seven things need improving.** Three would be visible to a customer in their
-first month; two are correctness bugs waiting for a second reporting line or a
-deleted record; two are reporting inaccuracies.
+**Seven things needed improving.** Three would have been visible to a customer
+in their first month; two were correctness bugs waiting for a second reporting
+line or a deleted record; two were reporting inaccuracies. Each is described
+below as it was, followed by what changed.
 
 ---
 
@@ -176,17 +182,35 @@ day count as the form is filled in.
 
 ---
 
-## Suggested order
+## What changed
 
-1. **#1** — a manager acting on another line's leave is the one with a
-   confidentiality dimension, and the fix is small.
-2. **#2** — wrong day counts propagate into balances and pay.
-3. **#3** — HR of a new organisation cannot see anybody's balance; the fix is to
-   call a function that already exists.
-4. **#4** — silent data corruption, but only once deletion exists.
-5. **#5, #6, #7** — reporting accuracy and input validation.
+| | Fix |
+|---|---|
+| **1** | `LeaveRequestsApprovalsPage` filters through `getVisibleEmployeeIds`, and `updateLeaveRequestStatus` now takes the deciding profile and throws `LeaveScopeError` for a subject outside their scope — so the guarantee no longer depends on every page remembering. Employees are refused outright, since their own visible set is themselves. The row also reads the live directory instead of the seed export, so locally-added people render as names rather than raw ids. |
+| **2** | New `src/lib/leaveDays.ts` counts working days, excluding weekends and the organisation's own holiday calendar, and returns a breakdown so the form can explain why twelve calendar days cost ten. Optional (restricted) holidays stay working days. |
+| **3** | The Balances tab iterates the visible directory instead of `balanceEmployeeIds`; the dashboard card and the employee Time Off tab call `getEntitlementBalances`, which existed and was unused. The seed-replay machinery behind `getEmployeeBalances` is deleted rather than left as a second, disagreeing source of the same number. |
+| **4** | `newLeaveRequestId()` — `crypto.randomUUID()` with a fallback for older Safari. |
+| **5** | `getApprovedThisMonth` matches on `startDate`. |
+| **6** | `getPendingCount`, `getOnLeaveToday` and `getApprovedThisMonth` all take the viewer. Passing `null` still means "everyone" — now a decision at the call site rather than the only behaviour. |
+| **7** | New `src/lib/leaveApplication.ts`: overlap, remaining balance (naming the shortfall and pointing at Unpaid Leave), backdating beyond 30 days, and a range that is entirely non-working. |
 
-None is architectural. #3 is close to a one-line change.
+None was architectural. #3 came down to calling a function that already existed.
+
+### One more, found while verifying
+
+**Attendance marked at the weekend was written and then unreachable.**
+`getCurrentWeekDates()` returned Monday to Friday, but marking attendance writes
+`date: todayIso()` and then selects that date — so on a Saturday or Sunday the
+record was saved and had no option to appear under. An admin marking a Saturday
+support shift saw nothing happen, and the record stayed invisible until Monday.
+Weekend work is ordinary here: release support, and the Saturday shifts many
+Indian companies run.
+
+It surfaced as an E2E failure in `regularizations.spec.ts`, whose helper looks
+for the "(Today)" option — so the suite had been failing every weekend. Verified
+pre-existing by stashing this branch's changes and reproducing on a clean tree.
+`getCurrentWeekDates()` now appends today when it falls outside the working
+week, and all ten specs pass.
 
 ---
 
@@ -199,6 +223,12 @@ npm run test:sim
 No emulator and no network: the simulation imports the application's real
 domain modules (bundled by `tests/simulation/build.mjs`, since `src/` needs the
 `@/` alias, JSX, and a definition for `import.meta.env`) and runs them against
-an in-memory `localStorage`. Findings are asserted **as they behave today**, so
-the assertion fails the day someone fixes one and this document gets revisited
-rather than quietly going stale.
+an in-memory `localStorage`.
+
+The month itself now runs through the real application path — the same
+validator, the same id generator and the same working-day count the Leave page
+uses — so what the form would accept is what the simulation files.
+
+One honest limit: the page-level JSX is not executed here. The scoping fix in #1
+is asserted through `updateLeaveRequestStatus`, which is where it now lives; the
+queue page's own filter is verified by reading.

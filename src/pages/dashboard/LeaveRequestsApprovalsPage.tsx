@@ -4,9 +4,11 @@ import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
-import { employees } from '@/data/employees';
+import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { getVisibleEmployeeIds } from '@/lib/dataScope';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { formatDate } from '@/lib/utils';
 
 export function LeaveRequestsApprovalsPage() {
@@ -14,6 +16,8 @@ export function LeaveRequestsApprovalsPage() {
     const { profile } = useAuth();
     const currentEmployee = getCurrentEmployee(profile);
     const [leaveRequests, setLeaveRequests] = useState(() => getLeaveRequests());
+    const [decisionError, setDecisionError] = useState('');
+    const directoryRevision = useEmployeeDirectoryRevision();
 
     useEffect(() => {
         function handleLeaveRequestsChanged() {
@@ -25,26 +29,35 @@ export function LeaveRequestsApprovalsPage() {
     }, []);
 
     function updateRequestStatus(requestId: string, nextStatus: 'Approved' | 'Rejected') {
-        const updated = updateLeaveRequestStatus(
-            requestId,
-            nextStatus,
+        try {
             // Record whoever is signed in, not a fixed name. This previously
             // credited 'Ananya Reddy' with every approval in the system.
-            nextStatus === 'Approved'
-                ? {
-                    approverId: currentEmployee?.id ?? null,
-                    approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
-                }
-                : undefined,
-        );
-        setLeaveRequests(updated);
+            setLeaveRequests(updateLeaveRequestStatus(requestId, nextStatus, {
+                profile,
+                employeeId: currentEmployee?.id ?? null,
+                name: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
+            }));
+            setDecisionError('');
+        } catch (err) {
+            setDecisionError(err instanceof Error ? err.message : 'That decision could not be recorded.');
+        }
     }
+
+    // Scoped to this viewer's own reporting line, as the Leave page and the
+    // notification count already were. This page filtered on status alone, so
+    // it listed every pending request in the organisation and offered Approve
+    // on each — the badge in the menu said "3 awaiting approval" and the page
+    // it linked to showed nine. See lib/dataScope.ts.
+    const visibleEmployeeIds = useMemo(
+        () => getVisibleEmployeeIds(profile),
+        [profile, directoryRevision],
+    );
 
     const pendingRequests = useMemo(
         () => leaveRequests
-            .filter((r) => r.status === 'Pending')
+            .filter((r) => r.status === 'Pending' && visibleEmployeeIds.has(r.employeeId))
             .sort((a, b) => new Date(b.appliedOn).getTime() - new Date(a.appliedOn).getTime()),
-        [leaveRequests],
+        [leaveRequests, visibleEmployeeIds],
     );
 
     return (
@@ -60,13 +73,22 @@ export function LeaveRequestsApprovalsPage() {
             />
 
             <Card>
-                <CardHeader title="Pending Leave Approval Queue" subtitle="Only requests waiting for approval" />
+                <CardHeader title="Pending Leave Approval Queue" subtitle="Requests from your team waiting for approval" />
+                {decisionError && (
+                    <div className="mb-3 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">
+                        {decisionError}
+                    </div>
+                )}
                 {pendingRequests.length === 0 ? (
                     <p className="text-sm text-ink-400 text-center py-6">No pending leave requests</p>
                 ) : (
                     <div className="space-y-3">
                         {pendingRequests.map((request) => {
-                            const employee = employees.find((e) => e.id === request.employeeId);
+                            // The live directory, not the seed export: an
+                            // organisation whose people were added in-app has
+                            // an empty seed, so every row rendered its raw
+                            // employee id instead of a name.
+                            const employee = getEmployeeDirectory().find((e) => e.id === request.employeeId);
                             return (
                                 <div key={request.id} className="rounded-xl border border-ink-100 bg-white p-4">
                                     <div className="flex items-start gap-3">

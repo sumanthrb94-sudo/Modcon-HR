@@ -43,13 +43,16 @@ export {
   getLeaveRequests,
   saveLeaveRequests,
   updateLeaveRequestStatus,
-  getEmployeeBalances,
-  getLeaveBalances,
+  newLeaveRequestId,
+  LeaveScopeError,
   getOnLeaveToday,
   getPendingCount,
   getApprovedThisMonth,
-  balanceEmployeeIds,
 } from '@/data/leave';
+
+export { countLeaveDays, leaveDayBreakdown } from '@/lib/leaveDays';
+export { checkLeaveApplication } from '@/lib/leaveApplication';
+export { getHolidayDirectory, saveHolidayDirectory } from '@/data/holidays';
 
 export { getEntitlements, getEntitlementBalances } from '@/data/leaveEntitlements';
 
@@ -62,4 +65,16 @@ export {
 
 export { getNotifications } from '@/data/notifications';
 export { resolveAppRole } from '@/lib/accessControl';
-export { holidays } from '@/data/holidays';
+
+export {
+  PLAN,
+  PLAN_PRICE_PAISE,
+  GST_RATE,
+  GRACE_PERIOD_DAYS,
+  priceFor,
+  formatPaise,
+  accessState,
+  trialSubscription,
+  readCachedSubscription,
+  cacheSubscription,
+} from '@/data/subscription';

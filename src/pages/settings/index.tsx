@@ -49,6 +49,7 @@ import {
 } from '@/data/billing';
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
+import { SubscriptionPanel } from './SubscriptionPanel';
 import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
@@ -2114,29 +2115,12 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   ];
 
   return (
-    <SettingsSection title="Billing & Plan" subtitle="Manage your subscription, seats, and invoices.">
-      <Card className="mb-5 border-2 border-brand-200 bg-gradient-to-br from-brand-50 to-violet-50">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-brand-600 flex items-center justify-center">
-              <Star size={22} className="text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-ink-900 text-lg">{`ModCon HR ${planTier}`}</span>
-                <Badge tone="violet">Active</Badge>
-              </div>
-              <p className="text-sm text-ink-500">
-                {isEnterprise ? 'Enterprise plan with expanded seat capacity' : 'Billed annually · ₹4,999/seat/year'}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setManageOpen(true)}>Manage Subscription</Button>
-            <Button variant="ghost" size="sm" onClick={() => setInvoiceOpen(true)}>View Invoices</Button>
-          </div>
-        </div>
-      </Card>
+    <SettingsSection title="Billing & Plan" subtitle="One organisation, one price. Invoices below.">
+      {/* The authoritative statement of what this organisation pays, driven by
+          the subscription record. The seat-tiered cards that used to sit here
+          quoted a per-seat price beside a hardcoded next invoice, due date and
+          card number — see SubscriptionPanel.tsx. */}
+      <SubscriptionPanel />
 
       {actionNotice && (
         <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -2144,145 +2128,9 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        <Card className="md:col-span-2">
-          <CardHeader title="Seat Usage" subtitle={`${usedSeats} of ${totalSeats} seats used`} />
-          <div className="relative h-4 bg-ink-100 rounded-full overflow-hidden mb-2">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-700',
-                usedPct > 85 ? 'bg-rose-500' : usedPct > 70 ? 'bg-amber-500' : 'bg-brand-600',
-              )}
-              style={{ width: `${usedPct}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-xs text-ink-500 mb-4">
-            <span>{usedSeats} used</span>
-            <span className={cn('font-semibold', usedPct > 85 ? 'text-rose-600' : 'text-ink-600')}>
-              {totalSeats - usedSeats} remaining
-            </span>
-          </div>
-          {usedPct > 70 && (
-            <div className={cn(
-              'flex items-center gap-2 rounded-lg px-3 py-2 text-xs',
-              usedPct > 85 ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700',
-            )}>
-              <AlertCircle size={14} />
-              {usedPct > 85
-                ? isEnterprise
-                  ? 'Seat usage is high. Consider adding more buffer seats.'
-                  : 'You\'re nearly at capacity. Upgrade to add more seats.'
-                : isEnterprise
-                  ? 'Usage is growing steadily across your organisation.'
-                  : 'Consider upgrading soon to avoid disruption.'}
-            </div>
-          )}
-          <Button variant="primary" size="sm" className="mt-3" onClick={() => setAddSeatsOpen(true)}>Add Seats</Button>
-        </Card>
-
-        <Card>
-          <CardHeader title="Next Invoice" />
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-ink-500">
-                {isEnterprise ? 'Enterprise Plan' : `Pro Plan (${totalSeats} seats)`}
-              </span>
-              <span className="font-semibold">{formatAmount(299940)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-500">Due date</span>
-              <span className="font-semibold">01 Jan 2027</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-500">Payment method</span>
-              <span className="font-semibold">•••• 4242</span>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-ink-100 space-y-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                if (latestInvoice) {
-                  setSelectedInvoiceId(latestInvoice.id);
-                }
-                setInvoiceOpen(true);
-              }}
-            >
-              View Invoice Details
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onClick={() => latestInvoice && downloadInvoice(latestInvoice.id)}
-              disabled={!latestInvoice}
-            >
-              Download Last Invoice
-            </Button>
-          </div>
-        </Card>
-      </div>
-
-      <Card padding={false}>
-        <div className="px-5 py-4 border-b border-ink-100">
-          <h3 className="text-base font-semibold text-ink-900">Plan Comparison</h3>
-          <p className="text-sm text-ink-500 mt-0.5">Your current plan is highlighted</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-ink-200">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">Feature</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">Starter</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-600 uppercase tracking-wide bg-brand-50">
-                  Pro ✓
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-violet-600 uppercase tracking-wide">Enterprise</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ink-100">
-              {planFeatures.map((row) => (
-                <tr key={row.feature} className="hover:bg-ink-50">
-                  <td className="px-5 py-3 font-medium text-ink-800">{row.feature}</td>
-                  <td className="px-4 py-3 text-center">
-                    {typeof row.starter === 'string'
-                      ? <span className="text-ink-600">{row.starter}</span>
-                      : row.starter
-                        ? <Check size={16} className="text-emerald-500 mx-auto" />
-                        : <X size={16} className="text-ink-300 mx-auto" />}
-                  </td>
-                  <td className="px-4 py-3 text-center bg-brand-50">
-                    {typeof row.pro === 'string'
-                      ? <span className="font-semibold text-brand-700">{row.pro}</span>
-                      : row.pro
-                        ? <Check size={16} className="text-brand-600 mx-auto" />
-                        : <X size={16} className="text-ink-300 mx-auto" />}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {typeof row.enterprise === 'string'
-                      ? <span className="text-violet-700 font-semibold">{row.enterprise}</span>
-                      : row.enterprise
-                        ? <Check size={16} className="text-violet-500 mx-auto" />
-                        : <X size={16} className="text-ink-300 mx-auto" />}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-4 border-t border-ink-100">
-          <Button
-            variant="primary"
-            icon={<Zap size={15} />}
-            onClick={() => setUpgradeOpen(true)}
-            disabled={isEnterprise}
-          >
-            {isEnterprise ? 'Enterprise Active' : 'Upgrade to Enterprise'}
-          </Button>
-        </div>
-      </Card>
+      {/* There is no plan comparison any more: there is one plan. The table that
+          stood here compared Starter/Pro/Enterprise and offered an upgrade to a
+          tier that is not sold. */}
 
       <Modal
         open={manageOpen}

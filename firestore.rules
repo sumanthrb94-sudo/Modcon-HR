@@ -438,6 +438,37 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Subscriptions — whether an organisation has paid.
+    //
+    // Read by the organisation, written by nobody in the client. Every other
+    // thing an organisation owns it may edit; this one states whether it has
+    // paid us, and an organisation that could write it would write 'active'.
+    //
+    // So the only writer is a super admin, or the Razorpay webhook running
+    // with admin credentials — which bypasses these rules entirely, as the
+    // Admin SDK does. See src/data/subscription.ts and docs/billing-razorpay.md.
+    //
+    // Keyed by org id like /organizations, so nothing dereferences `resource`
+    // and a `get` on an organisation that has never subscribed is a clean miss
+    // rather than a denial. The client treats "no document" as "not
+    // subscribed", so a denial here would be indistinguishable from an unpaid
+    // account and would read as a billing failure to a paying customer.
+    //
+    // Note what is deliberately absent: no rule anywhere else in this file
+    // consults a subscription. Billing state is not an authorization
+    // predicate — a lapsed payment is a commercial matter, and locking a
+    // company out of its own employee records over a failed card is not a
+    // security decision this ruleset should be making. It would also cost a
+    // get() on every single evaluation.
+    // -------------------------------------------------------------------
+    match /subscriptions/{orgId} {
+      allow get: if isSignedIn() && (isSuperAdmin() || orgId == myOrgKey());
+      // Only a platform admin surveys every organisation's billing.
+      allow list: if isSuperAdmin();
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // -------------------------------------------------------------------
     // Core HR data — read: any signed-in user, write: organisation
     // administrators (admins and HR managers, see isOrgAdmin()).
     // Adjust per-collection if employees need to self-service specific

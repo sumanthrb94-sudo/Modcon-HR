@@ -300,14 +300,32 @@ export function getRecordsByDate(date: string): AttendanceRecord[] {
  * the real clock — surfaces that say "current week" must ask for the current
  * week, and get an empty result when nothing has been marked in it.
  */
+/**
+ * The working week, and today — which are not always the same thing.
+ *
+ * Monday to Friday, plus today when today is a Saturday or Sunday. The weekend
+ * day is appended rather than the week being widened to seven, because five
+ * columns is the view the page is built around and a permanently empty Sunday
+ * is noise.
+ *
+ * Today has to be in the list. Marking attendance writes `date: todayIso()` and
+ * then selects that date (see the attendance page), so on a weekend the record
+ * was written and then had no option to appear under — an admin marking a
+ * Saturday support shift saw nothing happen, and the record was unreachable
+ * until Monday. Weekend work is ordinary here: release support, and the
+ * Saturday shifts a lot of Indian companies run.
+ */
 export function getCurrentWeekDates(): string[] {
   const base = todayDate(); // UTC midnight, matching how record dates parse
   const sinceMonday = (base.getUTCDay() + 6) % 7;
-  return Array.from({ length: 5 }, (_, offset) => {
+  const weekdays = Array.from({ length: 5 }, (_, offset) => {
     const day = new Date(base);
     day.setUTCDate(base.getUTCDate() - sinceMonday + offset);
     return day.toISOString().slice(0, 10);
   });
+
+  const today = base.toISOString().slice(0, 10);
+  return weekdays.includes(today) ? weekdays : [...weekdays, today].sort();
 }
 
 export function getWeekSummary(): Array<{ date: string; Present: number; 'Work From Home': number; 'On Leave': number; Absent: number; 'Half Day': number }> {
