@@ -29,9 +29,12 @@ import {
   setEmployeeLeavePolicy,
   parseEmployeeLeavePolicyCsv,
   EMPLOYEE_LEAVE_POLICY_CSV_HEADER,
+  parseLeavePolicyCsv,
+  LEAVE_POLICY_CSV_HEADER,
   type LeavePolicy,
   type LeaveAccrual,
   type LeavePolicyCsvResult,
+  type LeavePolicyCsvUpload,
 } from '@/data/leavePolicies';
 import { getLeaveRequests } from '@/data/leave';
 import {
@@ -54,6 +57,8 @@ import {
   setEmployeeSalaryStructure,
   parseEmployeeSalaryStructureCsv,
   EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER,
+  parseSalaryStructureCsv,
+  SALARY_STRUCTURE_CSV_HEADER,
   type SalaryStructure,
   type SalaryStructureCsvResult,
 } from '@/data/salaryStructure';
@@ -997,6 +1002,11 @@ function LeavePolicies() {
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
   const [deleteBlocked, setDeleteBlocked] = useState('');
+  const uploadInput = useRef<HTMLInputElement | null>(null);
+  const [uploadName, setUploadName] = useState('');
+  const [upload, setUpload] = useState<LeavePolicyCsvUpload | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadApplied, setUploadApplied] = useState<number | null>(null);
   const save = useSaveIndicator();
 
   useEffect(() => {
@@ -1157,6 +1167,67 @@ function LeavePolicies() {
     setDeleteBlocked('');
   }
 
+  function resetUpload() {
+    setUpload(null);
+    setUploadName('');
+    setUploadError('');
+    if (uploadInput.current) uploadInput.current.value = '';
+  }
+
+  /**
+   * Read a policy file. The file is the organisation's whole policy, so a type
+   * it omits is being withdrawn — except the ones leave has actually been taken
+   * under, which the parser retains for the same reason `handleDeletePolicy`
+   * refuses to remove them.
+   */
+  async function handlePolicyFile(file: File | undefined) {
+    setUploadApplied(null);
+    setUploadError('');
+    if (!file) { resetUpload(); return; }
+    try {
+      const text = await file.text();
+      setUploadName(file.name);
+      const recorded = new Set(getLeaveRequests().map((request) => request.type));
+      setUpload(parseLeavePolicyCsv(text, getLeavePolicies(), [...recorded]));
+    } catch {
+      resetUpload();
+      setUploadError('That file could not be read. Save it as CSV and try again.');
+    }
+  }
+
+  function handleApplyUpload() {
+    if (!upload || upload.rows.length === 0) return;
+    setUploadApplied(upload.rows.length);
+    // The one save path the table's own edits take, so every balance, accrual
+    // and payroll deduction in the organisation follows the file immediately.
+    persist(upload.policies);
+    resetUpload();
+  }
+
+  function handlePolicyTemplate() {
+    // The organisation's current policy, written out — so the file HR edits
+    // starts from what is in force rather than from an invented example.
+    const rows = policies.map((policy) => [
+      policy.type,
+      policy.accrual,
+      isMonthlyPolicy(policy) ? policy.monthlyAccrual : policy.annual,
+      policy.minTenureMonths,
+      policy.carryForward ? 'yes' : 'no',
+      policy.encashment ? 'yes' : 'no',
+      policy.halfDay ? 'yes' : 'no',
+      policy.applicable,
+    ].join(','));
+    const blob = new Blob([[LEAVE_POLICY_CSV_HEADER, ...rows].join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'leave-policy.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const cols: Column<LeavePolicy>[] = [
     {
       key: 'type',
@@ -1257,6 +1328,168 @@ function LeavePolicies() {
           </div>
         )}
         <Table columns={cols} data={policies} keyExtractor={(r) => r.id} />
+      </Card>
+
+      {/* Upload the whole policy at once. The table above edits one type at a
+          time, which is the wrong shape for the case this exists for: a company
+          arriving with its leave policy already written down, or revising all of
+          it at once. Nothing is written until HR has seen what each row does. */}
+      <Card className="mt-6">
+        <div className="space-y-5">
+          <div>
+            <h3 className="text-sm font-semibold text-ink-900">Upload the organisation's policy</h3>
+            <p className="mt-1 text-sm text-ink-500">
+              One row per leave type. This replaces the list above, so a type the file leaves out is
+              withdrawn — except any that leave has already been taken under, which are kept and
+              listed. Everyone in the organisation accrues on what you save here, apart from the
+              individual exceptions below.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="leave-policy-upload">
+                Leave policy CSV
+              </label>
+              <input
+                id="leave-policy-upload"
+                ref={uploadInput}
+                type="file"
+                accept=".csv,text/csv"
+                className="input w-full"
+                aria-label="Organisation leave policy CSV"
+                onChange={(event) => { void handlePolicyFile(event.target.files?.[0]); }}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                Columns: <span className="font-mono">{LEAVE_POLICY_CSV_HEADER}</span>
+              </p>
+            </div>
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={handlePolicyTemplate}>
+                <Download size={14} /> Download current policy
+              </Button>
+            </div>
+          </div>
+
+          {uploadError && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              {uploadError}
+            </div>
+          )}
+
+          {uploadApplied !== null && (
+            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              {uploadApplied} leave type{uploadApplied === 1 ? '' : 's'} saved as your organisation's
+              policy.
+            </div>
+          )}
+
+          {upload && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-ink-100" data-testid="leave-policy-upload-rows">
+                <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+                  <span>From {uploadName}</span>
+                  <span data-testid="leave-policy-upload-count">{upload.rows.length}</span>
+                </div>
+                {upload.rows.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-ink-400">
+                    No row in this file states a leave type this app can apply.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-ink-50">
+                    {upload.rows.map((row) => (
+                      <li
+                        key={row.policy.id}
+                        className="flex items-center gap-3 px-4 py-2.5"
+                        data-testid="leave-policy-upload-row"
+                        data-leave-type={row.policy.type}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-ink-900">{row.policy.type}</p>
+                          <p className="truncate text-xs text-ink-400">
+                            {isMonthlyPolicy(row.policy)
+                              ? `${row.policy.monthlyAccrual} day${row.policy.monthlyAccrual === 1 ? '' : 's'}/month`
+                              : `${row.policy.annual} day${row.policy.annual === 1 ? '' : 's'}/year`}
+                            {' · '}
+                            {row.policy.minTenureMonths === 0
+                              ? 'from day one'
+                              : `after ${row.policy.minTenureMonths} months of service`}
+                            {' · '}{row.policy.applicable}
+                          </p>
+                        </div>
+                        <span className="ml-auto shrink-0 text-xs">
+                          {row.replaces ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700">
+                              <RefreshCw size={12} /> updates existing
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-700">
+                              <CheckCircle2 size={12} /> new
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* A type the file omits but that cannot be withdrawn. Said out
+                  loud: silence here would look like the file had removed it. */}
+              {upload.retained.length > 0 && (
+                <div className="rounded-xl border border-ink-200 bg-ink-50/50">
+                  <div className="flex items-center gap-2 border-b border-ink-200 px-4 py-2 text-xs font-semibold text-ink-600">
+                    <AlertCircle size={13} />
+                    Kept — not in this file
+                    <span className="ml-auto" data-testid="leave-policy-upload-retained-count">
+                      {upload.retained.length}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-ink-100">
+                    {upload.retained.map((entry) => (
+                      <li key={entry.policy.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                        <span className="font-medium text-ink-800">{entry.policy.type}</span>
+                        <span className="ml-auto text-xs text-ink-500">{entry.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Listed, never dropped: a row silently ignored looks exactly
+                  like a row applied, and the type it named keeps its old quota. */}
+              {upload.unmatched.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50">
+                  <div className="flex items-center gap-2 border-b border-amber-200 px-4 py-2 text-xs font-semibold text-amber-800">
+                    <AlertTriangle size={13} />
+                    Not applied
+                    <span className="ml-auto" data-testid="leave-policy-upload-unmatched-count">
+                      {upload.unmatched.length}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-amber-100">
+                    {upload.unmatched.map((miss) => (
+                      <li key={miss.line} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                        <span className="shrink-0 text-xs text-amber-700">Line {miss.line}</span>
+                        <span className="truncate font-mono text-xs text-ink-800">{miss.text}</span>
+                        <span className="ml-auto shrink-0 text-xs text-amber-800">{miss.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button variant="primary" onClick={handleApplyUpload} disabled={upload.rows.length === 0}>
+                  <Upload size={14} /> Save {upload.rows.length} leave type
+                  {upload.rows.length === 1 ? '' : 's'}
+                </Button>
+                <Button variant="secondary" onClick={resetUpload}>Cancel</Button>
+              </div>
+            </div>
+          )}
+        </div>
       </Card>
 
       <Modal
@@ -3551,6 +3784,9 @@ function SalaryStructureSection() {
   // company a policy it never chose and letting it save it by accident.
   const [form, setForm] = useState<SalaryStructureForm>(() => toForm(getSalaryStructure()));
   const [dirty, setDirty] = useState(false);
+  const uploadInput = useRef<HTMLInputElement | null>(null);
+  const [uploadNote, setUploadNote] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const configured = getSalaryStructure() !== null;
 
   useEffect(() => {
@@ -3581,17 +3817,75 @@ function SalaryStructureSection() {
 
   function set(key: keyof SalaryStructureForm, value: string) {
     setDirty(true);
+    setUploadNote('');
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /**
+   * Read a split out of a file into the form.
+   *
+   * The file fills the fields rather than saving them: the preview below is the
+   * review step, computed with the same function payroll pays on, and Save
+   * Structure is the one place this organisation's split is written. An upload
+   * that applied itself would put a consultant's spreadsheet onto every payslip
+   * without anybody at the company having seen what it pays.
+   */
+  async function handleStructureFile(file: File | undefined) {
+    setUploadNote('');
+    setUploadError('');
+    if (!file) {
+      if (uploadInput.current) uploadInput.current.value = '';
+      return;
+    }
+    try {
+      const text = await file.text();
+      const result = parseSalaryStructureCsv(text);
+      if (!result.structure) {
+        setUploadError(
+          result.line === null ? result.error : `Line ${result.line}: ${result.error}`,
+        );
+        return;
+      }
+      setDirty(true);
+      setForm(toForm(result.structure));
+      setUploadNote(`Loaded from ${file.name}. Check the example below, then save it.`);
+    } catch {
+      setUploadError('That file could not be read. Save it as CSV and try again.');
+    } finally {
+      if (uploadInput.current) uploadInput.current.value = '';
+    }
+  }
+
+  function handleTemplate() {
+    // The organisation's own figures where it has some, so the file HR edits
+    // starts from what is in force; the header alone where it has none, rather
+    // than an invented split that could be saved unchanged.
+    const current = getSalaryStructure();
+    const rows = current
+      ? [[current.basicPercent, current.hraPercent, current.medicalAllowance, current.conveyanceAllowance].join(',')]
+      : [];
+    const blob = new Blob([[SALARY_STRUCTURE_CSV_HEADER, ...rows].join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'salary-structure.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function handleSave() {
     if (invalid || !complete) return;
     setDirty(false);
+    setUploadNote('');
     save.track(saveSalaryStructure(parsed));
   }
 
   function handleClear() {
     setDirty(false);
+    setUploadNote('');
+    setUploadError('');
     setForm(toForm(null));
     // Cleared, not reset to a default: every breakdown in the organisation goes
     // back to saying the structure is not set.
@@ -3630,6 +3924,51 @@ function SalaryStructureSection() {
               <AlertCircle size={15} className="mt-0.5 shrink-0" />
               Your organisation has not set a salary structure. Until it does, no payslip or
               compensation page shows a component breakdown — gross and net pay are unaffected.
+            </div>
+          )}
+
+          {/* Upload the four figures rather than typing them. The company's
+              split usually arrives from payroll or an advisor as a sheet, and
+              re-keying it is how a percentage ends up one digit out. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="salary-structure-upload">
+                Salary structure CSV
+              </label>
+              <input
+                id="salary-structure-upload"
+                ref={uploadInput}
+                type="file"
+                accept=".csv,text/csv"
+                className="input w-full"
+                aria-label="Organisation salary structure CSV"
+                onChange={(event) => { void handleStructureFile(event.target.files?.[0]); }}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                One row. Columns: <span className="font-mono">{SALARY_STRUCTURE_CSV_HEADER}</span>
+              </p>
+            </div>
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={handleTemplate}>
+                <Download size={14} /> Download current structure
+              </Button>
+            </div>
+          </div>
+
+          {uploadError && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              {uploadError}
+            </div>
+          )}
+
+          {uploadNote && (
+            <div
+              className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800"
+              role="status"
+              data-testid="salary-structure-uploaded"
+            >
+              {uploadNote}
             </div>
           )}
 

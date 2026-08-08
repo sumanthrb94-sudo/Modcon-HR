@@ -160,6 +160,221 @@ export function normalizeLeaveTypeValue(type: string): LeaveType {
 }
 
 // ---------------------------------------------------------------------------
+// Upload — the organisation's own policy
+// ---------------------------------------------------------------------------
+
+/** The columns the organisation-wide upload expects, in order. */
+export const LEAVE_POLICY_CSV_HEADER =
+  'leave_type,accrual,days,min_tenure_months,carry_forward,encashment,half_day,applicable';
+
+export interface LeavePolicyCsvRow {
+  policy: LeavePolicy;
+  /** True when the organisation already grants this type — the row updates it. */
+  replaces: boolean;
+  /** 1-based line in the uploaded file, for the review list. */
+  line: number;
+}
+
+export interface LeavePolicyCsvRetained {
+  policy: LeavePolicy;
+  /** Why it survived a file that does not mention it. */
+  reason: string;
+}
+
+export interface LeavePolicyCsvUpload {
+  /** The list that would be saved: the file's types, then anything retained. */
+  policies: LeavePolicy[];
+  rows: LeavePolicyCsvRow[];
+  retained: LeavePolicyCsvRetained[];
+  unmatched: LeavePolicyCsvMiss[];
+}
+
+/** `yes`/`no` in any of the spellings a spreadsheet writes them. */
+function parseBooleanCell(value: string): boolean | null {
+  const clean = value.trim().toLowerCase();
+  if (clean === '' || clean === 'no' || clean === 'n' || clean === 'false' || clean === '0') return false;
+  if (clean === 'yes' || clean === 'y' || clean === 'true' || clean === '1') return true;
+  return null;
+}
+
+function parseAccrualCell(value: string): LeaveAccrual | null {
+  const clean = value.trim().toLowerCase();
+  if (clean === 'monthly' || clean === 'month') return 'monthly';
+  if (clean === 'annual' || clean === 'annually' || clean === 'yearly' || clean === 'year') return 'annual';
+  return null;
+}
+
+/**
+ * Everything after the nth comma, as typed.
+ *
+ * The last column is free text and may contain commas of its own, so it is read
+ * off the raw line rather than rejoined from the trimmed cells — `join(',')`
+ * gives back "All employees,including interns", losing the space somebody typed.
+ */
+function tailAfterColumns(line: string, columns: number): string {
+  let index = -1;
+  for (let i = 0; i < columns; i += 1) {
+    index = line.indexOf(',', index + 1);
+    if (index === -1) return '';
+  }
+  return line.slice(index + 1).trim();
+}
+
+function policyIdFor(type: string): string {
+  const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `lp-${slug || 'type'}`;
+}
+
+/**
+ * Read an uploaded CSV into the organisation's own leave policy.
+ *
+ * The file is the whole policy, not a patch: a type the organisation grants and
+ * the file omits is being withdrawn. Nothing is written from here — the caller
+ * shows the lists and HR applies them.
+ *
+ * A row that cannot be used is **reported**, never dropped, for the same reason
+ * the per-employee upload reports one: a line silently ignored looks exactly
+ * like a line applied, while the type it named goes on granting the old figure.
+ *
+ * `undeletableTypes` names the types leave has actually been taken under. Those
+ * are **retained** rather than withdrawn, because the requests carry the type by
+ * name and entitlement is derived by walking the policies — removing one would
+ * leave approved leave with no policy to be measured against, exactly as
+ * deleting it from the table is refused for. They are listed, so a file that did
+ * not mention them does not quietly appear to have removed them.
+ */
+export function parseLeavePolicyCsv(
+  text: string,
+  existing: LeavePolicy[] = getLeavePolicies(),
+  undeletableTypes: string[] = [],
+): LeavePolicyCsvUpload {
+  const byType = new Map<string, LeavePolicy>();
+  for (const policy of existing) {
+    byType.set(normalizeLeaveTypeValue(policy.type).toLowerCase(), policy);
+  }
+  const protectedTypes = new Set(
+    undeletableTypes.map((type) => normalizeLeaveTypeValue(type).toLowerCase()),
+  );
+
+  const rows: LeavePolicyCsvRow[] = [];
+  const unmatched: LeavePolicyCsvMiss[] = [];
+  const claimed = new Map<string, number>(); // normalized type -> the line that took it
+
+  text.split(/\r?\n/).forEach((raw, index) => {
+    const line = index + 1;
+    const trimmed = raw.trim();
+    if (trimmed === '') return;
+    const cells = trimmed.split(',').map((cell) => cell.trim());
+    const first = (cells[0] ?? '').toLowerCase().replace(/[^a-z]/g, '');
+    // The header, in whatever case or spacing the spreadsheet wrote it. Skipped
+    // rather than reported: it is not a row anybody expected to be applied.
+    if (first === 'leavetype' || first === 'type') return;
+
+    if (cells.length < 7) {
+      unmatched.push({ line, text: trimmed, reason: 'Needs at least seven columns' });
+      return;
+    }
+
+    const type = cells[0] ?? '';
+    if (!type) {
+      unmatched.push({ line, text: trimmed, reason: 'No leave type' });
+      return;
+    }
+    const key = normalizeLeaveTypeValue(type).toLowerCase();
+    const already = claimed.get(key);
+    if (already !== undefined) {
+      unmatched.push({ line, text: trimmed, reason: `${type} is already set on line ${already}` });
+      return;
+    }
+
+    const accrual = parseAccrualCell(cells[1] ?? '');
+    if (!accrual) {
+      unmatched.push({ line, text: trimmed, reason: 'Accrual must be monthly or annual' });
+      return;
+    }
+
+    const daysCell = (cells[2] ?? '').replace(/\s/g, '');
+    const days = daysCell === '' ? NaN : Number(daysCell);
+    if (!Number.isFinite(days) || days < 0) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: accrual === 'monthly'
+          ? 'Days must be a number — how many days accrue each month'
+          : 'Days must be a number — how many days are granted for the year',
+      });
+      return;
+    }
+
+    const tenureCell = (cells[3] ?? '').replace(/\s/g, '');
+    const minTenureMonths = tenureCell === '' ? 0 : Number(tenureCell);
+    if (!Number.isFinite(minTenureMonths) || minTenureMonths < 0) {
+      unmatched.push({ line, text: trimmed, reason: 'Minimum service must be a number of months' });
+      return;
+    }
+
+    const flags = [cells[4], cells[5], cells[6]].map((cell) => parseBooleanCell(cell ?? ''));
+    if (flags.some((flag) => flag === null)) {
+      unmatched.push({
+        line,
+        text: trimmed,
+        reason: 'Carry forward, encashment and half-day must each be yes or no',
+      });
+      return;
+    }
+    const [carryForward, encashment, halfDay] = flags as boolean[];
+
+    const applicable = tailAfterColumns(trimmed, 7) || 'All employees';
+
+    const current = byType.get(key);
+    claimed.set(key, line);
+    rows.push({
+      // The id is kept where the type already exists: it is what the table's edit
+      // and delete buttons address, and re-minting it on every upload would make
+      // each save look like a different policy to anything holding one.
+      policy: normalizePolicy({
+        id: current?.id ?? policyIdFor(type),
+        type,
+        accrual,
+        annual: accrual === 'monthly' ? days * 12 : days,
+        monthlyAccrual: accrual === 'monthly' ? days : 0,
+        carryForward,
+        // Monthly accrual carries within the year by construction; surviving the
+        // year-end is the separate question, and takes the same answer the Add
+        // Leave Type form gives it rather than asking for an eighth column.
+        carryForwardBeyondYear: accrual === 'monthly' ? false : carryForward,
+        encashment,
+        halfDay,
+        minTenureMonths: Math.round(minTenureMonths),
+        applicable,
+      }),
+      replaces: current !== undefined,
+      line,
+    });
+  });
+
+  const uploaded = new Set(
+    rows.map((row) => normalizeLeaveTypeValue(row.policy.type).toLowerCase()),
+  );
+  const retained: LeavePolicyCsvRetained[] = [];
+  for (const policy of existing) {
+    const key = normalizeLeaveTypeValue(policy.type).toLowerCase();
+    if (uploaded.has(key) || !protectedTypes.has(key)) continue;
+    retained.push({
+      policy,
+      reason: 'leave has been taken under this type, so it is kept rather than withdrawn',
+    });
+  }
+
+  return {
+    policies: [...rows.map((row) => row.policy), ...retained.map((entry) => entry.policy)],
+    rows,
+    retained,
+    unmatched,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Per-employee leave policies
 // ---------------------------------------------------------------------------
 

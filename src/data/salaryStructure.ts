@@ -197,6 +197,92 @@ export function splitMonthlyGross(
 }
 
 // ---------------------------------------------------------------------------
+// Upload — the organisation's own split
+// ---------------------------------------------------------------------------
+
+/** The columns the organisation-wide upload expects, in order. */
+export const SALARY_STRUCTURE_CSV_HEADER =
+  'basic_percent,hra_percent,medical_allowance,conveyance_allowance';
+
+export interface SalaryStructureCsvUpload {
+  /** The split the file states, or null when it states no usable one. */
+  structure: SalaryStructure | null;
+  /** 1-based line the split was read from, for the message. */
+  line: number | null;
+  /** Why nothing could be read. Empty when `structure` is set. */
+  error: string;
+}
+
+/**
+ * Read an uploaded CSV into the organisation's own salary structure.
+ *
+ * One row, because an organisation has one split. A file carrying several is
+ * refused rather than resolved to its first row: which of them the company
+ * intended is not this parser's guess to make, and the per-employee upload
+ * beneath it is where a row per person belongs.
+ *
+ * Nothing is written from here — the caller fills the form with what came back,
+ * so the same preview and the same Save button apply it.
+ */
+export function parseSalaryStructureCsv(text: string): SalaryStructureCsvUpload {
+  const rows: Array<{ cells: string[]; line: number }> = [];
+  text.split(/\r?\n/).forEach((raw, index) => {
+    const trimmed = raw.trim();
+    if (trimmed === '') return;
+    const cells = trimmed.split(',').map((cell) => cell.trim());
+    const first = (cells[0] ?? '').toLowerCase().replace(/[^a-z]/g, '');
+    // The header, in whatever case or spacing the spreadsheet wrote it.
+    if (first === 'basicpercent' || first === 'basic') return;
+    rows.push({ cells, line: index + 1 });
+  });
+
+  const miss = (error: string, line: number | null = null): SalaryStructureCsvUpload => (
+    { structure: null, line, error }
+  );
+
+  if (rows.length === 0) return miss('This file has no salary structure in it.');
+  if (rows.length > 1) {
+    return miss(
+      `This file has ${rows.length} rows. An organisation has one salary structure — `
+      + 'a row per employee belongs in the custom splits upload below.',
+      rows[1].line,
+    );
+  }
+
+  const { cells, line } = rows[0];
+  if (cells.length < 4) return miss('A row needs four columns.', line);
+
+  // Blank is not zero: every figure is required, and `Number('')` is 0, which
+  // would read an empty cell as "pays no HRA" rather than as a gap.
+  const values = cells.slice(0, 4).map((cell) => (cell === '' ? NaN : Number(cell)));
+  if (values.some((value) => !Number.isFinite(value))) {
+    return miss('Basic %, HRA %, medical and conveyance must all be numbers.', line);
+  }
+  if (values.some((value) => value < 0)) {
+    return miss('A salary component is an amount paid, not one taken back.', line);
+  }
+  const [basicPercent, hraPercent, medicalAllowance, conveyanceAllowance] = values;
+  // Refused rather than left to `normalizeSalaryStructure`, which clamps HRA down
+  // to whatever Basic leaves: clamping would load figures HR never typed into a
+  // form whose Save button applies them to every payslip in the organisation.
+  if (basicPercent + hraPercent > 100) {
+    return miss(
+      `Basic and HRA come to ${basicPercent + hraPercent}% — together they cannot exceed 100%.`,
+      line,
+    );
+  }
+
+  const structure = normalizeSalaryStructure({
+    basicPercent,
+    hraPercent,
+    medicalAllowance,
+    conveyanceAllowance,
+  });
+  if (!structure) return miss('Not a usable salary structure.', line);
+  return { structure, line, error: '' };
+}
+
+// ---------------------------------------------------------------------------
 // Per-employee salary structures
 // ---------------------------------------------------------------------------
 
