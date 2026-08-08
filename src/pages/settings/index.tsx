@@ -31,6 +31,7 @@ import {
   EMPLOYEE_LEAVE_POLICY_CSV_HEADER,
   parseLeavePolicyCsv,
   LEAVE_POLICY_CSV_HEADER,
+  inheritedDemoPolicies,
   type LeavePolicy,
   type LeaveAccrual,
   type LeavePolicyCsvResult,
@@ -1167,6 +1168,34 @@ function LeavePolicies() {
     setDeleteBlocked('');
   }
 
+  /**
+   * Remove the types this organisation never chose.
+   *
+   * A type leave has already been taken under is kept even here — the requests
+   * carry it by name and would be left with no policy to be measured against,
+   * which is the same reason a single delete is refused. Those are named rather
+   * than passed over: a partial clearance that looks total is how somebody
+   * concludes the inherited quota is gone when it is still accruing.
+   */
+  function handleClearInherited() {
+    const recorded = new Set(getLeaveRequests().map((request) => request.type));
+    const inherited = new Set(inheritedDemoPolicies(policies).map((policy) => policy.id));
+    const kept = policies.filter(
+      (policy) => !inherited.has(policy.id) || recorded.has(normalizeLeaveTypeValue(policy.type)),
+    );
+    const blocked = policies.filter(
+      (policy) => inherited.has(policy.id) && recorded.has(normalizeLeaveTypeValue(policy.type)),
+    );
+    persist(kept);
+    setDeleteBlocked(
+      blocked.length === 0
+        ? ''
+        : `${blocked.map((policy) => policy.type).join(', ')} ${blocked.length === 1 ? 'was' : 'were'} kept: `
+          + 'leave has already been taken under them, and removing them would leave those requests '
+          + 'with no policy to be measured against. Edit the figures instead.',
+    );
+  }
+
   function resetUpload() {
     setUpload(null);
     setUploadName('');
@@ -1227,6 +1256,10 @@ function LeavePolicies() {
     link.click();
     URL.revokeObjectURL(url);
   }
+
+  // Types still carrying the demo policy's identity. Empty for the demo
+  // organisation, whose list is its own, and for anyone who never inherited one.
+  const inherited = useMemo(() => inheritedDemoPolicies(policies), [policies]);
 
   const cols: Column<LeavePolicy>[] = [
     {
@@ -1325,6 +1358,41 @@ function LeavePolicies() {
           <div className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
             <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-600" />
             <p className="text-sm text-amber-800">{deleteBlocked}</p>
+          </div>
+        )}
+        {/* Types saved here before the demo policy stopped being offered to
+            other organisations. Gating the read cannot un-write them, and a
+            saved policy is indistinguishable from a chosen one downstream — so
+            the only honest thing is to say which ones nobody here chose and let
+            an administrator decide. Never removed automatically: by now this
+            organisation may well have edited them into its own. */}
+        {inherited.length > 0 && (
+          <div
+            className="mx-4 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5"
+            data-testid="leave-policies-inherited"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+              <div className="min-w-0">
+                <p className="text-sm text-amber-800">
+                  <strong>{inherited.length}</strong> of these leave{' '}
+                  {inherited.length === 1 ? 'type' : 'types'} —{' '}
+                  {inherited.map((policy) => policy.type).join(', ')} — came from ModCon HR's demo
+                  organisation rather than from anyone here. Earlier versions offered them to every
+                  organisation, and saving any change to this page kept them.
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Keep them if they match what you actually grant — editing one makes it yours.
+                  Otherwise remove them and set your own policy; nobody's balance survives a type
+                  that is withdrawn.
+                </p>
+                <div className="mt-2">
+                  <Button variant="secondary" size="sm" onClick={handleClearInherited}>
+                    Remove {inherited.length} inherited {inherited.length === 1 ? 'type' : 'types'}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         {/* An organisation that has set nothing, said plainly. An empty table

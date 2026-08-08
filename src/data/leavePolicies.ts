@@ -152,6 +152,40 @@ export function getLeavePolicies(): LeavePolicy[] {
   return policies.map(normalizePolicy);
 }
 
+/** The ids the demo policy is seeded with. Nothing else ever mints one. */
+const DEMO_POLICY_IDS = new Map(DEMO_LEAVE_POLICIES.map((policy) => [policy.id, policy.type]));
+
+/**
+ * The types in this organisation's list that came from ModCon Builders' demo
+ * policy rather than from anybody here.
+ *
+ * Gating `getLeavePolicies()` stops the demo policy being *offered* to another
+ * organisation, but it cannot un-write the copies already saved: while the
+ * inherited list was on screen, one toggle in Settings persisted all seven types
+ * as that organisation's own — and a saved policy is indistinguishable from a
+ * chosen one to every surface downstream.
+ *
+ * Identified by **id**, because that is the one thing an organisation cannot
+ * have produced. `lp1`..`lp7` are seeded literals; a type added here is
+ * `lp<timestamp>` and one uploaded is `lp-<slug>`. The type name has to agree
+ * too, so a coincidence cannot make a company's own policy look borrowed. The
+ * figures deliberately do not: the likeliest shape of this is a list where
+ * somebody flipped one carry-forward switch, which is what saved it.
+ *
+ * Empty for the demo organisation — that list is not inherited, it is theirs.
+ */
+export function inheritedDemoPolicies(
+  policies: LeavePolicy[] = getLeavePolicies(),
+): LeavePolicy[] {
+  if (!isMockDataCleared()) return [];
+  return policies.filter(carriesDemoIdentity);
+}
+
+/** True when this record still carries a seeded demo id under its own name. */
+function carriesDemoIdentity(policy: LeavePolicy): boolean {
+  return DEMO_POLICY_IDS.get(policy.id) === policy.type;
+}
+
 /**
  * The policy governing a leave type (`'Casual'`, not `'Casual Leave'`).
  *
@@ -353,13 +387,18 @@ export function parseLeavePolicyCsv(
     const applicable = tailAfterColumns(trimmed, 7) || 'All employees';
 
     const current = byType.get(key);
+    // A type this organisation states in its own file is its own, so it sheds an
+    // id inherited from the demo policy — otherwise remediating by upload leaves
+    // the list still answering to `inheritedDemoPolicies` forever.
+    const keepId = current !== undefined
+      && !(isMockDataCleared() && carriesDemoIdentity(current));
     claimed.set(key, line);
     rows.push({
-      // The id is kept where the type already exists: it is what the table's edit
-      // and delete buttons address, and re-minting it on every upload would make
-      // each save look like a different policy to anything holding one.
+      // The id is otherwise kept where the type already exists: it is what the
+      // table's edit and delete buttons address, and re-minting it on every
+      // upload would make each save look like a different policy.
       policy: normalizePolicy({
-        id: current?.id ?? policyIdFor(type),
+        id: keepId ? current.id : policyIdFor(type),
         type,
         accrual,
         annual: accrual === 'monthly' ? days * 12 : days,
