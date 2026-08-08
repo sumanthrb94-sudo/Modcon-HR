@@ -115,7 +115,7 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
     // Two different absences: the organisation does not grant this type at all,
     // or it grants it to someone else (the policy's `applicable` names a gender).
     errors.push(
-      getPolicyForType(type)
+      getPolicyForType(type, employee.id)
         ? `${type} Leave does not apply to this employee.`
         : `${type} Leave is not part of your organisation's leave policy.`,
     );

@@ -75,6 +75,7 @@ import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
 import { getLeaveRequests } from '@/data/leave';
 import { getEntitlements } from '@/data/leaveEntitlements';
+import { hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
@@ -2057,7 +2058,16 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
       <Card>
         {/* Leave runs April–March, not January–December: the accrual, the reset
             and the "used" figure are all counted per financial year. */}
-        <CardHeader title="Leave Balances" subtitle={`Accrued so far in ${financialYearLabel()}`} />
+        <CardHeader
+          title="Leave Balances"
+          subtitle={`Accrued so far in ${financialYearLabel()}`}
+          // Said out loud: these figures are meant to differ from the policy in
+          // Settings for this person, and an unexplained difference reads as a
+          // defect in the accrual rather than as the exception it is.
+          action={hasEmployeeLeavePolicy(employeeId)
+            ? <Badge tone="violet">Custom entitlement</Badge>
+            : undefined}
+        />
         {balances.length === 0 ? (
           <p className="py-6 text-center text-sm text-ink-400">
             No leave balance has been set up for this employee yet.

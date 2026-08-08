@@ -29,7 +29,7 @@ import {
   updateLeaveRequestStatus,
   LEAVE_REQUESTS_CHANGED_EVENT,
 } from '@/data/leave';
-import { getLeavePolicies, normalizeLeaveTypeValue } from '@/data/leavePolicies';
+import { getLeavePolicies, hasEmployeeLeavePolicy, normalizeLeaveTypeValue } from '@/data/leavePolicies';
 import { getHolidayDirectory } from '@/data/holidays';
 import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
@@ -556,6 +556,14 @@ export function LeavePage() {
                       <p className="font-semibold text-ink-900 text-sm">{emp.fullName}</p>
                       <p className="text-xs text-ink-400">{emp.designation}</p>
                     </div>
+                    {/* Said out loud, because these figures are meant to differ
+                        from the policy in Settings and an unexplained
+                        difference reads as a defect in the accrual. */}
+                    {hasEmployeeLeavePolicy(emp.id) && (
+                      <span className="ml-auto" data-testid="custom-entitlement">
+                        <Badge tone="violet" className="text-[10px]">Custom entitlement</Badge>
+                      </span>
+                    )}
                   </div>
                   <div className="space-y-3">
                     {balances.map((b) => (
