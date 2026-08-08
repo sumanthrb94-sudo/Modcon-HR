@@ -40,7 +40,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
+import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, suggestEmployeeCode, isEmployeeCodeTaken, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
 import {
   EmployeeDocumentError,
   canFileDocuments,
@@ -141,6 +141,7 @@ function ProfileField({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------
 /** One person's details as the form holds them — every field a string. */
 interface EmployeeDetailsDraft {
+  employeeCode: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -159,6 +160,7 @@ interface EmployeeDetailsDraft {
 
 /** The same details, cleaned and typed, ready to become an Employee. */
 interface EmployeeDetails {
+  employeeCode: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -178,6 +180,10 @@ type NewEmployeePayload = EmployeeDetails;
 
 function emptyDetailsDraft(): EmployeeDetailsDraft {
   return {
+    // Pre-filled with the code this hire would have been given automatically,
+    // so HR types one only when their numbering differs — but it is a value in
+    // the form like any other, and theirs to overwrite.
+    employeeCode: suggestEmployeeCode(),
     firstName: '',
     lastName: '',
     email: '',
@@ -200,9 +206,18 @@ function emptyDetailsDraft(): EmployeeDetailsDraft {
 
 function validateDetailsDraft(draft: EmployeeDetailsDraft): Record<string, string> {
   const errors: Record<string, string> = {};
+  const cleanCode = draft.employeeCode.trim();
   const cleanEmail = draft.email.trim();
   const annualCtc = Number(draft.ctc);
 
+  if (!cleanCode) {
+    errors.employeeCode = 'Employee code is required.';
+  } else if (isEmployeeCodeTaken(cleanCode)) {
+    // Two people on one code is not a duplicate row, it is an ambiguity every
+    // upload that matches on the code has to refuse — payslips, salary splits
+    // and leave entitlements all name people this way.
+    errors.employeeCode = 'Another employee already has this code.';
+  }
   if (!draft.firstName.trim()) errors.firstName = 'First name is required.';
   if (!draft.lastName.trim()) errors.lastName = 'Last name is required.';
   if (!cleanEmail) {
@@ -231,6 +246,7 @@ function validateDetailsDraft(draft: EmployeeDetailsDraft): Record<string, strin
 
 function toEmployeeDetails(draft: EmployeeDetailsDraft): EmployeeDetails {
   return {
+    employeeCode: draft.employeeCode.trim(),
     firstName: draft.firstName.trim(),
     lastName: draft.lastName.trim(),
     email: draft.email.trim().toLowerCase(),
@@ -283,6 +299,7 @@ function EmployeeDetailsFields({
   showErrors,
   fieldPrefix,
   managerControl,
+  canEditEmployeeCode,
 }: {
   form: DetailsForm;
   showErrors: boolean;
@@ -290,6 +307,9 @@ function EmployeeDetailsFields({
    *  associated with their inputs by id. */
   fieldPrefix: string;
   managerControl: ReactNode;
+  /** HR numbers this company's people; everyone else is shown what the code
+   *  will be, so the form still says which record is about to be created. */
+  canEditEmployeeCode: boolean;
 }) {
   const { draft, set, errors } = form;
   const error = (key: string) =>
@@ -297,6 +317,23 @@ function EmployeeDetailsFields({
 
   return (
     <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-ink-600 mb-1.5">Employee Code</label>
+          {canEditEmployeeCode ? (
+            <input
+              className="input w-full font-mono"
+              aria-label={`${fieldPrefix} code`}
+              placeholder="e.g. MC-090"
+              value={draft.employeeCode}
+              onChange={(event) => set('employeeCode', event.target.value)}
+            />
+          ) : (
+            <p className="input w-full font-mono bg-ink-50 text-ink-500">{draft.employeeCode}</p>
+          )}
+          {error('employeeCode')}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-ink-600 mb-1.5">First Name</label>
@@ -461,11 +498,13 @@ function AddEmployeeModal({
   onClose,
   onSave,
   employeeOptions,
+  canEditEmployeeCode,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (payload: NewEmployeePayload) => void;
   employeeOptions: Employee[];
+  canEditEmployeeCode: boolean;
 }) {
   const hire = useEmployeeDetailsForm();
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -531,6 +570,7 @@ function AddEmployeeModal({
           showErrors={submitAttempted}
           fieldPrefix="Employee"
           managerControl={managerControl}
+          canEditEmployeeCode={canEditEmployeeCode}
         />
       </div>
     </Modal>
@@ -545,7 +585,13 @@ type DirectoryTab = 'directory' | 'orgchart';
 
 export function EmployeesPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, isHR, isAdmin } = useAuth();
+  /**
+   * Who numbers this company's people. HR is the organisation's own
+   * administrator here, and the platform `admin` role sits above it — a
+   * Manager, who can otherwise open this form, is not either of them.
+   */
+  const canEditEmployeeCode = isHR || isAdmin;
   const [employeeList, setEmployeeList] = useState<Employee[]>(() => getEmployeeDirectory());
   useDepartmentDirectoryRevision();
   const [search, setSearch] = useState('');
@@ -649,7 +695,10 @@ export function EmployeesPage() {
     const reportingManagerId = payload.reportingManagerId;
     const nextIndex = getNextEmployeeSequence(directory);
     const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
-    const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
+    // The code is HR's to type — the form only suggests one. `id` stays a
+    // sequence this app assigns: it keys leave, attendance and the reporting
+    // tree, and is not the number the organisation calls anyone by.
+    const employeeCode = payload.employeeCode;
     const manager = directory.find((e) => e.id === reportingManagerId);
     const nextEmployee: Employee = {
       id: nextId,
@@ -962,6 +1011,7 @@ export function EmployeesPage() {
         onClose={() => setAddModalOpen(false)}
         onSave={handleAddEmployee}
         employeeOptions={employeeList}
+        canEditEmployeeCode={canEditEmployeeCode}
       />
     </div>
   );
@@ -2155,10 +2205,12 @@ type DetailTab = 'overview' | 'team' | 'compensation' | 'documents' | 'timeoff';
 
 function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { employeeId: string; embeddedSelfView?: boolean }) {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, isHR, isAdmin } = useAuth();
   const currentEmployee = getCurrentEmployee(profile);
   const loggedInRole = resolveAppRole(profile);
   const isEmployee = loggedInRole === 'Employee';
+  /** The same rule as Add Employee — HR administers the organisation here. */
+  const canEditEmployeeCode = isHR || isAdmin;
 
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const profilePictureInputRef = useRef<HTMLInputElement | null>(null);
@@ -2245,6 +2297,23 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     updateEmployeeInDirectory(next);
     // Designation and email are the two fields the HR grant keys off.
     if ('designation' in patch || 'email' in patch) syncAccess(next);
+  }
+
+  /**
+   * Renumber this person, HR only.
+   *
+   * Everything that matches a person by their code — uploaded payslips, the
+   * salary-split CSV, the leave-entitlement CSV — matches on the code as it is
+   * now, so handing one person's code to another would silently redirect all
+   * three. A code already in use is refused rather than taken.
+   */
+  function saveEmployeeCode(next: string) {
+    if (!emp) return;
+    if (isEmployeeCodeTaken(next, emp.id)) {
+      setAccessNotice(`${next} is already another employee's code, so ${emp.fullName} still has ${emp.employeeCode}.`);
+      return;
+    }
+    saveField({ employeeCode: next });
   }
 
   /**
@@ -2620,7 +2689,14 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   <span className="flex items-center gap-1"><MapPin size={13} />{emp.location}</span>
                 </InlineSelect>
                 <span className="text-ink-300">·</span>
-                <span className="font-mono text-xs bg-ink-100 px-2 py-0.5 rounded">{emp.employeeCode}</span>
+                <InlineText
+                  label="Employee code"
+                  value={emp.employeeCode}
+                  onSave={saveEmployeeCode}
+                  editable={canEditEmployeeCode}
+                >
+                  <span className="font-mono text-xs bg-ink-100 px-2 py-0.5 rounded">{emp.employeeCode}</span>
+                </InlineText>
               </div>
               <div className="flex flex-wrap items-center gap-4 mt-3">
                 <a href={`mailto:${emp.email}`} className="flex items-center gap-1.5 text-xs text-ink-600 hover:text-brand-700 transition-colors">

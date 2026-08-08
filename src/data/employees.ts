@@ -262,6 +262,39 @@ export function getNextEmployeeSequence(directory: Employee[] = getEmployeeDirec
   }, 0) + 1;
 }
 
+/**
+ * The code the next hire would get if nobody typed one.
+ *
+ * A suggestion, not the answer: an employee code is the organisation's own
+ * numbering — it names people on payslip filenames and on both CSV uploads —
+ * so HR types it. This only saves them typing the obvious one.
+ */
+export function suggestEmployeeCode(directory: Employee[] = getEmployeeDirectory()): string {
+  return `MC-${String(getNextEmployeeSequence(directory)).padStart(3, '0')}`;
+}
+
+/** Codes compare on their characters, not their punctuation: `MC-090` = `mc090`. */
+function squashCode(code: string): string {
+  return code.replace(/[^a-z0-9]/gi, '').toUpperCase();
+}
+
+/**
+ * Is this code already somebody else's?
+ *
+ * Payroll matches uploaded payslips, salary splits and leave entitlements to
+ * people by this code, and every one of those matchers ignores punctuation and
+ * case — so `mc-090` is not a free code while `MC-090` exists. It is the same
+ * person twice, and an upload naming them is refused as ambiguous rather than
+ * applied to one of the two.
+ */
+export function isEmployeeCodeTaken(code: string, exceptEmployeeId?: string): boolean {
+  const wanted = squashCode(code);
+  if (!wanted) return false;
+  return getEmployeeDirectory().some(
+    (employee) => employee.id !== exceptEmployeeId && squashCode(employee.employeeCode ?? '') === wanted,
+  );
+}
+
 export function addEmployeeToDirectory(employee: Employee) {
   const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
   const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
