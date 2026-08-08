@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
 import { FIRESTORE_BASE, adminToken } from './firestore';
+import { expectPublished } from './saveIndicator';
 
 /**
  * The salary split belongs to the organisation — including when it has not set
@@ -69,7 +70,7 @@ async function openSalaryStructure(page: Page) {
   await expect(page.getByRole('heading', { name: 'Salary Structure' })).toBeVisible();
 }
 
-/** Fill the four fields and save, waiting for the write to be acknowledged. */
+/** Fill the four fields and save, waiting for the write to reach the organisation. */
 async function setStructure(
   page: Page,
   values: { basic: number; hra: number; medical: number; conveyance: number },
@@ -79,7 +80,7 @@ async function setStructure(
   await page.getByLabel('Medical allowance').fill(String(values.medical));
   await page.getByLabel('Conveyance allowance').fill(String(values.conveyance));
   await page.getByRole('button', { name: 'Save Structure' }).click();
-  await expect(page.getByText('Saved')).toBeVisible({ timeout: 20_000 });
+  await expectPublished(page);
 }
 
 /** What the organisation's Firestore copy actually holds, not what the page shows. */
@@ -389,7 +390,7 @@ test.describe.serial('the salary structure belongs to the organisation', () => {
   test('clearing the structure hides the breakdown rather than falling back to a default', async () => {
     await openSalaryStructure(page);
     await page.getByRole('button', { name: 'Clear structure' }).click();
-    await expect(page.getByText('Saved')).toBeVisible({ timeout: 20_000 });
+    await expectPublished(page);
 
     // Cleared at the organisation, not just blanked on screen: the published
     // value is null, so another administrator's browser hydrates to unset too.

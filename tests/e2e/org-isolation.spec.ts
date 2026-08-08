@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { SUPER_ADMIN } from './config';
 import { EMULATOR_HOST, FIRESTORE_BASE, adminToken } from './firestore';
+import { expectPublished } from './saveIndicator';
 
 /**
  * Two organisations, two salary structures, no leakage between them.
@@ -61,7 +62,7 @@ async function setStructure(
   await page.getByLabel('Medical allowance').fill(String(values.medical));
   await page.getByLabel('Conveyance allowance').fill(String(values.conveyance));
   await page.getByRole('button', { name: 'Save Structure' }).click();
-  await expect(page.getByText('Saved')).toBeVisible({ timeout: 20_000 });
+  await expectPublished(page);
 }
 
 async function expectStructure(
