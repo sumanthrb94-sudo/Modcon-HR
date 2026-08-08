@@ -1327,6 +1327,19 @@ function LeavePolicies() {
             <p className="text-sm text-amber-800">{deleteBlocked}</p>
           </div>
         )}
+        {/* An organisation that has set nothing, said plainly. An empty table
+            reads as a page that failed to load; this is a state, and it is the
+            one every organisation starts in. */}
+        {policies.length === 0 && (
+          <div
+            className="mx-4 mb-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            data-testid="leave-policies-unset"
+          >
+            <AlertCircle size={15} className="mt-0.5 shrink-0" />
+            Your organisation has not set a leave policy. Until it does, nobody accrues leave and
+            no type can be applied for — add one above, or upload the whole policy below.
+          </div>
+        )}
         <Table columns={cols} data={policies} keyExtractor={(r) => r.id} />
       </Card>
 

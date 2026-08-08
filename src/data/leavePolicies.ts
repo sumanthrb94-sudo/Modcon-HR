@@ -1,6 +1,7 @@
 import type { LeaveType } from '@/types';
 import { orgScopedKey } from '@/lib/orgScope';
 import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
+import { isMockDataCleared } from '@/lib/mockDataFlag';
 
 export type LeaveAccrual = 'monthly' | 'annual';
 
@@ -54,7 +55,18 @@ const LEAVE_POLICIES_STORAGE_KEY = ORG_SETTINGS.leavePolicies.storageKey;
 export const LEAVE_POLICIES_CHANGED_EVENT = ORG_SETTINGS.leavePolicies.changedEvent;
 
 /**
- * The organisation's leave policy.
+ * ModCon Builders' own leave policy — part of the demo dataset, not a platform
+ * default.
+ *
+ * It is shown for the demo organisation and for nobody else. Another company's
+ * employees are not on Casual 1/month and Earned 15/year because this app was
+ * built with a builder's policy in it: leave is negotiated, statutory in part,
+ * and different at every organisation. Handed out unasked it reads as the
+ * company's own policy, is offered in Apply Leave, and is what LOP deductions
+ * come off — a quota nobody there granted, deducted from real pay.
+ *
+ * Same reasoning and the same `isMockDataCleared()` gate as
+ * `DEMO_SALARY_STRUCTURE` in data/salaryStructure.ts and `demoCompanyProfile`.
  *
  * Casual and Sick accrue one day per month and accumulate across the financial
  * year, so an unused January day is still there in February. They do not
@@ -66,7 +78,7 @@ export const LEAVE_POLICIES_CHANGED_EVENT = ORG_SETTINGS.leavePolicies.changedEv
  * granted annually rather than accrued, so a qualifying employee has the whole
  * entitlement from the start of the year.
  */
-const defaultPolicies: LeavePolicy[] = [
+const DEMO_LEAVE_POLICIES: LeavePolicy[] = [
   { id: 'lp1', type: 'Casual Leave', annual: 12, accrual: 'monthly', monthlyAccrual: 1, carryForward: true, carryForwardBeyondYear: false, encashment: false, halfDay: true, minTenureMonths: 0, applicable: 'All employees' },
   { id: 'lp2', type: 'Sick Leave', annual: 12, accrual: 'monthly', monthlyAccrual: 1, carryForward: true, carryForwardBeyondYear: false, encashment: false, halfDay: true, minTenureMonths: 0, applicable: 'All employees' },
   { id: 'lp3', type: 'Earned Leave', annual: 15, accrual: 'annual', monthlyAccrual: 0, carryForward: true, carryForwardBeyondYear: true, encashment: true, halfDay: true, minTenureMonths: 12, applicable: 'Employees with over 1 year of service' },
@@ -101,10 +113,12 @@ function notifyLeavePoliciesChanged() {
 /**
  * Policies saved before monthly accrual existed carry none of the new fields.
  * Reading them raw would render `undefined` days and silently treat every
- * policy as annual, so they are normalised against the matching default.
+ * policy as annual, so they are normalised against the matching demo policy —
+ * those records predate multi-org support, so the demo's figures are the ones
+ * they were written beside. A type it does not name falls back to zero.
  */
 function normalizePolicy(policy: LeavePolicy): LeavePolicy {
-  const fallback = defaultPolicies.find((p) => p.type === policy.type);
+  const fallback = DEMO_LEAVE_POLICIES.find((p) => p.type === policy.type);
   const accrual: LeaveAccrual = policy.accrual ?? fallback?.accrual ?? 'annual';
   const monthlyAccrual = policy.monthlyAccrual ?? fallback?.monthlyAccrual ?? 0;
   return {
@@ -121,9 +135,21 @@ function normalizePolicy(policy: LeavePolicy): LeavePolicy {
   };
 }
 
+/**
+ * The organisation's leave policy, or an empty list when it has not set one.
+ *
+ * Empty is a state the callers must handle rather than paper over — Apply Leave
+ * says the type is not part of your organisation's policy, and the balances show
+ * nothing — because the alternative is telling a company its people accrue days
+ * that nobody there granted. A stored empty array is an organisation that
+ * deliberately removed every type, and stays empty.
+ */
 export function getLeavePolicies(): LeavePolicy[] {
   const stored = readStoredLeavePolicies();
-  return (stored ?? defaultPolicies).map(normalizePolicy);
+  // Nothing stored at all: the demo organisation gets the demo policy, every
+  // other organisation gets nothing until its own administrator sets one.
+  const policies = stored ?? (isMockDataCleared() ? [] : DEMO_LEAVE_POLICIES);
+  return policies.map(normalizePolicy);
 }
 
 /**

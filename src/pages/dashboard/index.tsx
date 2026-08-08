@@ -20,6 +20,8 @@ import {
 import { getEmployeeDirectory } from '@/data/employees';
 import { getLeaveRequests } from '@/data/leave';
 import { getEntitlements } from '@/data/leaveEntitlements';
+import { getLeavePolicies } from '@/data/leavePolicies';
+import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import { financialYearLabel } from '@/lib/financialYear';
 import { getExpenseClaims } from '@/data/expenses';
 import { getTickets } from '@/data/helpdesk';
@@ -126,9 +128,17 @@ function EmployeeDashboard() {
   // policy accrual, the April reset and the tenure gates — rather than the
   // seeded `leaveBalances` rows, which are a fixed total someone typed and so
   // reported a different figure for the same employee on the same day.
+  const leavePoliciesRevision = useLeavePoliciesRevision();
   const leaveBalances = useMemo(
     () => (currentEmployee ? getEntitlements(currentEmployee, getLeaveRequests()) : []),
-    [currentEmployee, dataRevision],
+    [currentEmployee, dataRevision, leavePoliciesRevision],
+  );
+  // Why the card is empty, which is not the same question as whether it is. An
+  // organisation with no policy set has nothing to accrue for anybody; this
+  // account having no record is a different absence with a different remedy.
+  const orgHasLeavePolicy = useMemo(
+    () => getLeavePolicies().length > 0,
+    [leavePoliciesRevision],
   );
   const employeeExpenses = useMemo(
     () => (currentEmployee ? getExpenseClaims().filter((claim) => claim.employeeId === currentEmployee.id) : []),
@@ -234,7 +244,11 @@ function EmployeeDashboard() {
         <Card>
           <CardHeader title="My Leave Balance" subtitle={`Accrued so far in ${financialYearLabel()}`} />
           {leaveBalances.length === 0 ? (
-            <p className="text-sm text-ink-500">No leave balance data available for this account yet.</p>
+            <p className="text-sm text-ink-500" data-testid="leave-balance-empty">
+              {orgHasLeavePolicy
+                ? 'No leave balance data available for this account yet.'
+                : 'Your organisation has not set a leave policy, so no leave accrues yet. An administrator sets it in Settings → Leave Policies.'}
+            </p>
           ) : (
             <div className="space-y-3">
               {leaveBalances.map((balance) => (

@@ -75,6 +75,9 @@ export function LeavePage() {
   const [activeTab, setActiveTab] = useState('requests');
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => getLeaveRequests());
   const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
+  // The organisation's own list — empty for one that has not set a policy, which
+  // the balances tab reports rather than rendering nameplates with no days.
+  const leavePolicies = useMemo(() => getLeavePolicies(), [leavePoliciesRevision]);
 
   // Why the last decision was refused, if it was. Cleared by the next one.
   const [decisionNotice, setDecisionNotice] = useState<string | null>(null);
@@ -515,10 +518,13 @@ export function LeavePage() {
             {/* Balances are per financial year (April-March): monthly days
                 accumulate within it and reset when it turns over, so the year
                 being shown is not incidental. */}
+            {/* How the year works, not what this organisation grants. "Casual
+                and Sick accrue 1 day per month" was ModCon Builders' own policy
+                printed on every tenant's screen as though it were theirs. */}
             <p className="mb-4 text-xs text-ink-400">
               {financialYearLabel()} · Every employee's entitlement for the whole financial year,
-              beside what has accrued so far. Casual and Sick accrue 1 day per month and carry
-              forward within the year; unused days do not survive 1 April.
+              beside what has accrued so far. A type that accrues monthly carries forward within
+              the year; unused days do not survive 1 April.
             </p>
             {/* The tab covers the whole directory now, so it needs a way
                 through it. Its own search state: sharing the Requests one
@@ -537,7 +543,16 @@ export function LeavePage() {
                 />
               </div>
             )}
-            {filteredBalances.length === 0 ? (
+            {/* No policy is a different emptiness from no match, and only one of
+                them is about the search box. Without this, every employee gets a
+                card with a name on it and no balances underneath. */}
+            {leavePolicies.length === 0 ? (
+              <EmptyState
+                icon={<CalendarDays size={26} />}
+                title="No leave policy set"
+                description="Your organisation has not set one yet, so nobody accrues leave. An administrator can add the leave types in Settings → Leave Policies."
+              />
+            ) : filteredBalances.length === 0 ? (
               <EmptyState
                 icon={<Users size={26} />}
                 title="No employees match"

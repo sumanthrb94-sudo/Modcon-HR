@@ -75,7 +75,7 @@ import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
 import { getLeaveRequests } from '@/data/leave';
 import { getEntitlements } from '@/data/leaveEntitlements';
-import { hasEmployeeLeavePolicy } from '@/data/leavePolicies';
+import { getLeavePolicies, hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
@@ -2119,8 +2119,13 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
             : undefined}
         />
         {balances.length === 0 ? (
+          // Two different absences, and only one of them is about this person:
+          // an organisation with no policy set accrues nothing for anybody, and
+          // the remedy is in Settings rather than on this profile.
           <p className="py-6 text-center text-sm text-ink-400">
-            No leave balance has been set up for this employee yet.
+            {getLeavePolicies().length === 0
+              ? 'Your organisation has not set a leave policy, so nothing accrues yet. An administrator sets it in Settings → Leave Policies.'
+              : 'No leave balance has been set up for this employee yet.'}
           </p>
         ) : (
           <div className="space-y-5">
