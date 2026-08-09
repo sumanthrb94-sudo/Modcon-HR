@@ -84,6 +84,9 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
 // behaviour, identical across engines and personas. So it runs once,
 // with the app specs, not per role.
 const ROLE_SPECS = /(roles|documents|leave-policy)\.spec\.ts$/;
+// Not a test: it photographs the surfaces this branch changed. Its own project
+// so an ordinary run neither takes the screenshots nor waits for them.
+const SCREENSHOT_SPECS = /screenshots\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -117,6 +120,11 @@ export default defineConfig({
       name: 'role-admin',
       testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.admin },
+      use: useFor(ROLE_ENGINE),
+    },
+    {
+      name: 'screenshots',
+      testMatch: SCREENSHOT_SPECS,
       use: useFor(ROLE_ENGINE),
     },
   ],

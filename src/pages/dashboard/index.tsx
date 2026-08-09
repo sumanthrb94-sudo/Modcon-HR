@@ -735,7 +735,10 @@ function AdminDashboard() {
         <Card className="lg:col-span-2">
           <CardHeader
             title="Weekly Attendance"
-            subtitle="Mon – Fri, current week"
+            // "Mon – Fri" was wrong the moment getCurrentWeekDates started
+            // appending today when today is a weekend, so that a Saturday
+            // shift is not written to a day the page cannot show.
+            subtitle="Current week"
             action={
               <div className="flex gap-3">
                 {(Object.entries(ATTENDANCE_COLORS) as [string, string][]).map(([k, c]) => (

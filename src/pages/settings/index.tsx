@@ -50,6 +50,7 @@ import {
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
 import { SubscriptionPanel } from './SubscriptionPanel';
+import { PLAN, formatPaise } from '@/data/subscription';
 import { cn, formatDate, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
@@ -2749,9 +2750,11 @@ export function SettingsPage() {
                   <span className="text-white text-xs font-black">MC</span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-ink-800 truncate">ModCon HR</p>
+                  <p className="text-xs font-semibold text-ink-800 truncate">{PLAN.name}</p>
+                  {/* One plan, one price. This read "Pro Plan · 60 seats" from
+                      the seat preferences, which is not what anyone is sold. */}
                   <p className="text-[10px] text-ink-400">
-                    {billingPreferences.planTier} Plan · {billingPreferences.planTier === 'Enterprise' ? 'Unlimited seats' : `${billingPreferences.totalSeats} seats`}
+                    {formatPaise(PLAN.pricePaise)} per month
                   </p>
                 </div>
               </div>
