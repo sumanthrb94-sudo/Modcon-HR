@@ -86,8 +86,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Upgrade card */}
-        {isAdmin ? (
+        {/* Billing card — for the organisation this account belongs to.
+            Never for a super admin: they administer every organisation and
+            belong to none, so "Not subscribed" would be a statement about
+            nobody. They manage subscriptions from Organizations instead. */}
+        {isAdmin && !isSuperAdmin ? (
           <div className="p-3">
           <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 p-4 text-white">
             <p className="text-sm font-semibold">{PLAN.name}</p>

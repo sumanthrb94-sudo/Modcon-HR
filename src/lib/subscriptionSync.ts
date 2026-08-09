@@ -10,18 +10,27 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import type { UserProfile } from './auth';
 import { cacheSubscription, type Subscription } from '@/data/subscription';
+import { resolveOrgKeyForProfile } from './orgScope';
 
 export const SUBSCRIPTIONS_COLLECTION = 'subscriptions';
 
 /**
- * Subscribe to this organisation's subscription record.
+ * Subscribe to the subscription record of the organisation this session is
+ * working in.
  *
- * Returns a teardown. A super admin has no `orgId` of their own, so there is
- * nothing to subscribe to — they read subscriptions per organisation from the
- * Organizations page instead.
+ * Keyed on the *active* organisation rather than `profile.orgId`, so a super
+ * admin who has switched into a tenant sees that tenant's billing state. They
+ * have no `orgId` of their own — they are the platform operator, not a
+ * customer — and this used to bail on that, leaving whatever the last session
+ * happened to cache on screen.
+ *
+ * Reading another organisation's record is legitimate here: `firestore.rules`
+ * lets a super admin read any of them, and lets nobody else read one that is
+ * not their own.
  */
 export function startSubscriptionSync(profile: UserProfile | null): () => void {
-  const orgId = profile?.orgId;
+  if (!profile) return () => {};
+  const orgId = resolveOrgKeyForProfile(profile);
   if (!orgId) return () => {};
 
   return onSnapshot(

@@ -137,6 +137,40 @@ describe('billing — what an organisation is told about its subscription', () =
   });
 });
 
+describe('billing — a super admin is not a customer', () => {
+  // The platform operator administers every organisation and belongs to none,
+  // so they have nothing to bill. The billing panel used to show them a plan
+  // card, a price and a Pay button — a commercial relationship that does not
+  // exist — and the sidebar told them they were "Not subscribed", which is a
+  // statement about nobody.
+  const superAdmin = { uid: 'super-1', email: 'super@modcon.test', role: 'admin', superAdmin: true };
+  const hr = { uid: 'hr-1', email: 'hr@acme.test', role: 'hr', orgId: 'org-acme' };
+  const unassigned = { uid: 'nobody-1', email: 'nobody@example.test', role: 'employee' };
+
+  it('a super admin has no organisation to bill, even with one selected', () => {
+    assert.equal(app.billableOrgId(superAdmin), null);
+    assert.equal(app.isBillableAccount(superAdmin), false);
+    // Still true when they carry an orgId for some other reason: being a super
+    // admin is what decides it, not the absence of the field.
+    assert.equal(app.isBillableAccount({ ...superAdmin, orgId: 'org-acme' }), false);
+  });
+
+  it("an organisation's own administrator is the one who pays", () => {
+    assert.equal(app.billableOrgId(hr), 'org-acme');
+    assert.equal(app.isBillableAccount(hr), true);
+  });
+
+  it('an account attached to no organisation is not billed either', () => {
+    assert.equal(app.billableOrgId(unassigned), null);
+    assert.equal(app.isBillableAccount(unassigned), false);
+  });
+
+  it('and neither is a signed-out visitor', () => {
+    assert.equal(app.isBillableAccount(null), false);
+    assert.equal(app.isBillableAccount(undefined), false);
+  });
+});
+
 describe('billing — the client cannot make itself paid', () => {
   it('there is no writer on the subscription module, only a cache', () => {
     // The Firestore rule is the real control (tests/rules/subscription.rules.test.mjs);

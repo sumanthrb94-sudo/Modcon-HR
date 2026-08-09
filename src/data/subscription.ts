@@ -264,7 +264,27 @@ export function cacheSubscription(subscription: Subscription | null) {
   window.dispatchEvent(new Event(SUBSCRIPTION_CHANGED_EVENT));
 }
 
-/** The organisation whose subscription this viewer's session is about. */
+/**
+ * The organisation whose subscription this viewer's session is about.
+ *
+ * A super admin has none. They are the platform operator, not a tenant: no
+ * organisation of their own, no employees, and nothing to bill. What they see
+ * on a billing screen is whichever organisation they have switched into, and it
+ * is that organisation's bill, not theirs — see `isBillableAccount`.
+ */
 export function billableOrgId(profile: UserProfile | null | undefined): string | null {
-  return profile?.orgId ?? null;
+  if (!profile || profile.superAdmin) return null;
+  return profile.orgId ?? null;
+}
+
+/**
+ * True when this account is the one that pays.
+ *
+ * False for a super admin, and false for an account with no organisation.
+ * Neither is a customer, and showing either a plan card, a price and a Pay
+ * button invents a commercial relationship that does not exist — which is what
+ * the billing panel did before this existed.
+ */
+export function isBillableAccount(profile: UserProfile | null | undefined): boolean {
+  return billableOrgId(profile) !== null;
 }

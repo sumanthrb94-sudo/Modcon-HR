@@ -10,13 +10,16 @@
  * One price: ₹5,000 per organisation per month, whatever the headcount.
  */
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CreditCard, ShieldCheck, AlertCircle, Users } from 'lucide-react';
 
 import { Badge, Button, Card, CardHeader, type BadgeTone } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { auth } from '@/lib/firebase';
 import { useSubscription } from '@/lib/useSubscription';
-import { PLAN, formatPaise, priceFor, GST_RATE, type SubscriptionStatus } from '@/data/subscription';
+import {
+  PLAN, formatPaise, priceFor, GST_RATE, isBillableAccount, type SubscriptionStatus,
+} from '@/data/subscription';
 import { billingConfigured, startSubscriptionCheckout, BillingNotConfiguredError } from '@/lib/razorpay';
 import { getEmployeeDirectory } from '@/data/employees';
 import { getCompanyProfile } from '@/data/companyProfile';
@@ -39,7 +42,7 @@ const STATUS_LABEL: Record<SubscriptionStatus, string> = {
 };
 
 export function SubscriptionPanel() {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin } = useAuth();
   const { subscription, access } = useSubscription();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -48,6 +51,12 @@ export function SubscriptionPanel() {
   const headcount = getEmployeeDirectory().length;
   const company = getCompanyProfile();
   const status = subscription?.status ?? 'none';
+  // A super admin is the platform operator, not a tenant: no organisation of
+  // their own, no employees, nothing to bill. What they see below is whichever
+  // organisation they have switched into, read-only and labelled as such —
+  // rather than a plan card and a Pay button, which would invent a commercial
+  // relationship that does not exist.
+  const billable = isBillableAccount(profile);
 
   async function handlePay() {
     setError('');
@@ -88,6 +97,75 @@ export function SubscriptionPanel() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (isSuperAdmin) {
+    return (
+      <div className="space-y-4 mb-5">
+        <Card className="border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-brand-50">
+          <div className="flex items-start gap-3">
+            <div className="h-12 w-12 rounded-xl bg-violet-600 flex items-center justify-center shrink-0">
+              <ShieldCheck size={22} className="text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-ink-900 text-lg">Platform administrator</p>
+              <p className="text-sm text-ink-600 mt-0.5">
+                You administer every organisation and belong to none, so there is nothing to bill
+                here. Each organisation pays {formatPaise(PLAN.pricePaise)} per month for itself.
+              </p>
+              <Link
+                to="/organizations"
+                className="inline-block mt-3 text-sm font-semibold text-brand-700 hover:text-brand-800"
+              >
+                Manage organisations and their subscriptions →
+              </Link>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="The organisation you are working in"
+            subtitle="Switched from the organisation picker in the top bar"
+          />
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-ink-500">Organisation</span>
+              <span className="font-semibold">{company.name || 'ModCon Builders (default)'}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-ink-500">Subscription</span>
+              <Badge tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-ink-500">Current period</span>
+              <span className="font-semibold">
+                {subscription
+                  ? `${formatDate(subscription.currentPeriodStart)} – ${formatDate(subscription.currentPeriodEnd)}`
+                  : 'Not started'}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-ink-400 mt-3 pt-3 border-t border-ink-100">
+            Read-only. A subscription is written by the payment webhook, never from this app.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!billable) {
+    return (
+      <Card className="mb-5">
+        <div className="flex items-start gap-2 text-sm text-ink-600">
+          <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-500" />
+          <span>
+            Your account is not attached to an organisation, so there is nothing to bill. An
+            administrator has to assign you to one first.
+          </span>
+        </div>
+      </Card>
+    );
   }
 
   return (

@@ -45,6 +45,34 @@ last step.
 
 ---
 
+## Who pays, and who does not
+
+**Every sub-organisation pays for itself. The super admin pays nothing.**
+
+A super admin is the platform operator: they administer every organisation and
+belong to none, so they have no organisation of their own, no employee record,
+and no subscription. `isBillableAccount(profile)` is false for them — and false
+for any account not attached to an organisation, which is not a customer either.
+
+What that means in the product:
+
+| Surface | Super admin sees |
+|---|---|
+| Settings → Billing | "Platform administrator", plus the read-only status of whichever organisation they have switched into, and a link to Organizations |
+| Sidebar billing card | nothing — "Not subscribed" there would be a statement about nobody |
+| Organizations | a **Subscription** column: every organisation's status, price and period, which is the platform view of who has paid |
+
+`startSubscriptionSync` keys on the *active* organisation rather than
+`profile.orgId`, so a super admin who switches into a tenant sees that tenant's
+billing state. It used to bail on an account with no `orgId`, which left
+whatever the previous session had cached on screen.
+
+The rules already permit exactly this and nothing more: a super admin may `get`
+any subscription and `list` them all; everybody else may `get` only their own
+organisation's and `list` none.
+
+---
+
 ## Why the client cannot mark an organisation paid
 
 The subscription record is the one thing in this system a tenant must not

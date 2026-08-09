@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, ShieldCheck, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useOrganizations } from '@/lib/useFirestore';
+import { useSubscriptions } from '@/lib/useSubscriptions';
+import { PLAN, accessState, formatPaise, type SubscriptionStatus } from '@/data/subscription';
 import {
     createOrganization,
     friendlyOrgError,
@@ -26,6 +28,8 @@ import {
     Button,
     EmptyState,
     Avatar,
+    Badge,
+    type BadgeTone,
 } from '@/components/ui';
 import type { Organization } from '@/types';
 import { APP_TIME_ZONE } from '@/lib/today';
@@ -51,8 +55,24 @@ function formatCreatedAt(value: unknown): string {
  */
 const FLAG_LIST = Object.values(FEATURE_FLAGS);
 
+const SUBSCRIPTION_TONE: Record<SubscriptionStatus, BadgeTone> = {
+    active: 'green',
+    trialing: 'violet',
+    past_due: 'amber',
+    cancelled: 'red',
+    none: 'gray',
+};
+
+const SUBSCRIPTION_LABEL: Record<SubscriptionStatus, string> = {
+    active: 'Active',
+    trialing: 'Trial',
+    past_due: 'Payment failed',
+    cancelled: 'Cancelled',
+    none: 'Not subscribed',
+};
+
 export function OrganizationsPage() {
-    const { profile } = useAuth();
+    const { profile, isSuperAdmin } = useAuth();
     const { data: organizations, loading } = useOrganizations();
     const [search, setSearch] = useState('');
     const [createOpen, setCreateOpen] = useState(false);
@@ -226,6 +246,8 @@ export function OrganizationsPage() {
         setTimeout(() => setCopied(false), 2000);
     }
 
+    const { byOrgId: subscriptions } = useSubscriptions(isSuperAdmin);
+
     const columns: Column<Organization>[] = [
         {
             key: 'name',
@@ -251,6 +273,32 @@ export function OrganizationsPage() {
                     <span className="text-sm text-ink-700">{o.adminEmail}</span>
                 </div>
             ),
+        },
+        {
+            key: 'subscription',
+            header: 'Subscription',
+            // The platform view of who has paid. Each organisation pays for
+            // itself; the super admin belongs to none of them and is billed for
+            // nothing, so this is the only place the whole picture exists.
+            render: (o) => {
+                const record = o.id ? subscriptions.get(o.id) : undefined;
+                const state = accessState(record ?? null);
+                return (
+                    <div className="flex flex-col gap-0.5">
+                        <Badge tone={SUBSCRIPTION_TONE[record?.status ?? 'none']}>
+                            {SUBSCRIPTION_LABEL[record?.status ?? 'none']}
+                        </Badge>
+                        <span className="text-[11px] text-ink-400">
+                            {record
+                                ? `${formatPaise(record.pricePaise ?? PLAN.pricePaise)}/mo · to ${record.currentPeriodEnd}`
+                                : `${formatPaise(PLAN.pricePaise)}/mo when they subscribe`}
+                        </span>
+                        {state.kind === 'blocked' && record && (
+                            <span className="text-[11px] text-rose-600">{state.message}</span>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             key: 'createdAt',
