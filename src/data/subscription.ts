@@ -58,7 +58,24 @@ export interface PriceBreakdown {
   totalPaise: number;
 }
 
-/** The bill for one billing period. Rounded to the paise, half up. */
+/**
+ * What this organisation is charged for one period.
+ *
+ * Zero for a promotional organisation — including the GST, since there is no
+ * supply to tax. Callers that render a price should use this rather than
+ * `priceFor`, or a complimentary tenant is shown a bill it will never receive.
+ */
+export function priceForSubscription(
+  subscription: Subscription | null,
+  periods = 1,
+): PriceBreakdown {
+  if (subscription?.status === 'promotional') {
+    return { basePaise: 0, gstPaise: 0, totalPaise: 0 };
+  }
+  return priceFor(periods);
+}
+
+/** The list price for one billing period. Rounded to the paise, half up. */
 export function priceFor(periods = 1): PriceBreakdown {
   const basePaise = PLAN_PRICE_PAISE * Math.max(1, Math.floor(periods));
   const gstPaise = Math.round(basePaise * GST_RATE);
@@ -79,7 +96,17 @@ export function formatPaise(paise: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * `trialing` and `active` are the two states that grant access.
+ * `trialing`, `active` and `promotional` are the states that grant access.
+ *
+ * `promotional` is an organisation we have decided not to charge — a pilot, a
+ * partner, or our own. It is deliberately a subscription status rather than a
+ * flag somewhere else: "does this organisation owe us anything" is one
+ * question, and answering it in two places is how a promotional tenant ends up
+ * being chased for payment by whichever surface did not get the memo.
+ *
+ * It also carries no period arithmetic. A promotion does not lapse on a date;
+ * it lasts until a super admin ends it, so `accessState` short-circuits before
+ * it compares anything to a calendar.
  *
  * `past_due` deliberately does not lock the organisation out on its own — see
  * `accessState` below for what happens and when.
@@ -87,6 +114,7 @@ export function formatPaise(paise: number): string {
 export type SubscriptionStatus =
   | 'trialing'
   | 'active'
+  | 'promotional'
   | 'past_due'
   | 'cancelled'
   | 'none';
@@ -107,6 +135,10 @@ export interface Subscription {
   lastPaymentAt?: string;
   /** Set by the webhook when a charge fails, so the UI can say what happened. */
   lastFailureReason?: string;
+  /** Why this organisation is not being charged, for the audit trail. */
+  promotionNote?: string;
+  /** The super admin who granted it. */
+  grantedBy?: string;
   updatedAt?: string;
 }
 
@@ -166,6 +198,14 @@ export function accessState(
 ): AccessState {
   if (!subscription || subscription.status === 'none') {
     return { kind: 'blocked', subscription, message: 'This organisation has no active subscription.' };
+  }
+
+  // An organisation we have chosen not to charge. No price, no period, no
+  // renewal, and nothing to nag about — so this is answered before any of the
+  // date arithmetic below, which would otherwise expire a promotion the moment
+  // a period end it never had went past.
+  if (subscription.status === 'promotional') {
+    return { kind: 'ok', subscription };
   }
 
   const daysLeft = daysBetween(asOf, subscription.currentPeriodEnd);
@@ -287,4 +327,9 @@ export function billableOrgId(profile: UserProfile | null | undefined): string |
  */
 export function isBillableAccount(profile: UserProfile | null | undefined): boolean {
   return billableOrgId(profile) !== null;
+}
+
+/** True when this organisation is on a promotion and is never charged. */
+export function isPromotional(subscription: Subscription | null | undefined): boolean {
+  return subscription?.status === 'promotional';
 }

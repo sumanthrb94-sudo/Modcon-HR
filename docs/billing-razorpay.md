@@ -11,6 +11,7 @@ somebody, and a flat price is the one they can predict.
 | Tax | 18% GST → ₹5,900 total |
 | Billed to | the organisation, keyed by `orgId` |
 | Trial | 14 days |
+| Promotional | any organisation, set by a super admin — free, no expiry |
 | Grace period | 7 days past `currentPeriodEnd` before access is withheld |
 
 Everything above lives in one place: [`src/data/subscription.ts`](../src/data/subscription.ts).
@@ -27,12 +28,12 @@ do not survive arithmetic — twelve months of ₹5,900 has to come to exactly
 
 **Built and tested:**
 
-- the plan, the GST arithmetic, and the access states
-  (`tests/simulation/subscription.test.mjs`, 17 assertions);
-- the `subscriptions/{orgId}` collection and its rules, with **26 assertions**
+- the plan, the GST arithmetic, the promotional state and the access states
+  (`tests/simulation/subscription.test.mjs`, 27 assertions);
+- the `subscriptions/{orgId}` collection and its rules, with **33 assertions**
   in `tests/rules/subscription.rules.test.mjs` that no role in the product —
-  employee, manager, HR, or platform admin — can create, extend, activate or
-  delete its own subscription;
+  employee, manager, HR, or platform admin — can create, extend, activate,
+  delete or grant a promotion on its own subscription;
 - the Firestore→localStorage sync, the `useSubscription` hook, the billing
   panel, and the sidebar state.
 
@@ -42,6 +43,71 @@ backend. Until the two endpoints and the webhook below exist,
 `billingConfigured()` returns false and the billing panel says plainly that
 payments are not connected rather than showing a Pay button that fails at the
 last step.
+
+---
+
+## Promotional organisations — the ones we do not charge
+
+A super admin can put any organisation on a **promotion**: it keeps every
+feature and is never billed. Use it for a pilot, a partner, or an organisation
+of our own.
+
+Organizations → **Billing** on the row. Granting one asks for a reason, which is
+kept on the record (`promotionNote`) so a year later somebody can tell a pilot
+from a favour.
+
+It is a **subscription status**, not a flag somewhere else, and that is
+deliberate: "does this organisation owe us anything" is one question, and
+answering it in two places is how a promotional tenant ends up being chased for
+payment by whichever surface did not get the memo. Being one status means the
+billing panel, the sidebar, the Organizations column and `accessState` all agree
+without any of them knowing about promotions specifically.
+
+Two properties worth keeping:
+
+- **A promotion does not expire.** `accessState` short-circuits on the status
+  *before* it compares anything to a date. A promotional record carries no real
+  period, so without that short-circuit a free tenant would be locked out by
+  arithmetic about a date it never had. There is a test pinning exactly this.
+- **`priceForSubscription` returns zero, GST included** — no supply, no tax. Any
+  surface quoting a price should use it rather than `priceFor`, or a
+  complimentary tenant is shown a bill it will never receive.
+
+**Ending a promotion leaves the organisation `none`, not `active`.** Ending it
+collects no money, so claiming they are paid up would be a bill nobody sent.
+
+Granting one is the only subscription write a human makes; everything else on
+that record comes from the webhook. It is super-admin only, enforced by the same
+rule that stops an organisation marking itself paid — they are the same write.
+Seven rules assertions cover it, including that an HR admin, a manager, an
+employee and a platform admin all fail to hand themselves a free plan.
+
+**The webhook must not overwrite a promotion.** A promotional organisation has
+no Razorpay subscription so no event should arrive for it, but the handler
+should skip any record already in this state rather than "correcting" it on the
+first stray event.
+
+---
+
+## ModCon's own organisation
+
+It is created **exactly like any other**: Organizations → Create Organization,
+name it, give it an administrator email. It gets its own `orgId`, its own HR
+administrator, its own employees, its own isolated data — nothing about it is
+special-cased in code, and it is billed by the same machinery as a customer.
+
+Then set it **Promotional**, with a note saying so. That is the whole of it.
+
+Two things follow from there being no special case:
+
+- The super admin account is still not a member of it. Being the platform
+  administrator and being an employee of an organisation are different things;
+  to work inside ModCon's own organisation, switch into it from the top-bar
+  picker like any other.
+- The legacy `default` organisation is **not** ModCon's organisation. It is
+  where data written before multi-tenancy lives (see
+  [tenant-isolation-spec.md](tenant-isolation-spec.md)). Creating a real ModCon
+  organisation does not migrate it, and it should not be confused for one.
 
 ---
 

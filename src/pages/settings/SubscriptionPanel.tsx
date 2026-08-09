@@ -18,7 +18,8 @@ import { useAuth } from '@/lib/auth';
 import { auth } from '@/lib/firebase';
 import { useSubscription } from '@/lib/useSubscription';
 import {
-  PLAN, formatPaise, priceFor, GST_RATE, isBillableAccount, type SubscriptionStatus,
+  PLAN, formatPaise, priceFor, GST_RATE, isBillableAccount, isPromotional,
+  type SubscriptionStatus,
 } from '@/data/subscription';
 import { billingConfigured, startSubscriptionCheckout, BillingNotConfiguredError } from '@/lib/razorpay';
 import { getEmployeeDirectory } from '@/data/employees';
@@ -27,6 +28,7 @@ import { formatDate } from '@/lib/utils';
 
 const STATUS_TONE: Record<SubscriptionStatus, BadgeTone> = {
   active: 'green',
+  promotional: 'cyan',
   trialing: 'violet',
   past_due: 'amber',
   cancelled: 'red',
@@ -35,6 +37,7 @@ const STATUS_TONE: Record<SubscriptionStatus, BadgeTone> = {
 
 const STATUS_LABEL: Record<SubscriptionStatus, string> = {
   active: 'Active',
+  promotional: 'Promotional',
   trialing: 'Trial',
   past_due: 'Payment failed',
   cancelled: 'Cancelled',
@@ -165,6 +168,59 @@ export function SubscriptionPanel() {
           </span>
         </div>
       </Card>
+    );
+  }
+
+  if (isPromotional(subscription)) {
+    // No price, no GST line, no Pay button and no renewal date. An organisation
+    // we have chosen not to charge should not be shown a bill it will never
+    // receive, and the panel that quotes ₹5,000 beside "Promotional" is the
+    // kind of thing that gets queried by their finance team.
+    return (
+      <div className="space-y-4 mb-5">
+        <Card className="border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 to-brand-50">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-cyan-600 flex items-center justify-center">
+                <ShieldCheck size={22} className="text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-ink-900 text-lg">{PLAN.name}</span>
+                  <Badge tone="cyan">Promotional</Badge>
+                </div>
+                <p className="text-sm text-ink-600">
+                  {company.name || 'This organisation'} is not charged for ModCon HR.
+                  Every feature is included.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-ink-900">{formatPaise(0)}</p>
+              <p className="text-xs text-ink-500">per month</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Your organisation" subtitle="Nothing to pay, nothing to renew" />
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-ink-500 flex items-center gap-1.5"><Users size={14} /> Employees</span>
+              <span className="font-semibold">{headcount}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-ink-500">Arrangement since</span>
+              <span className="font-semibold">
+                {subscription ? formatDate(subscription.currentPeriodStart) : '—'}
+              </span>
+            </div>
+            {subscription?.promotionNote && (
+              <p className="text-xs text-ink-400 pt-1">{subscription.promotionNote}</p>
+            )}
+          </div>
+        </Card>
+      </div>
     );
   }
 

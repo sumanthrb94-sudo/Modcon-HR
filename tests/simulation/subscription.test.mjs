@@ -137,6 +137,54 @@ describe('billing — what an organisation is told about its subscription', () =
   });
 });
 
+describe('billing — an organisation we do not charge', () => {
+  const promo = {
+    orgId: 'org-modcon',
+    status: 'promotional',
+    currentPeriodStart: '2026-01-01',
+    currentPeriodEnd: '2099-12-31',
+    pricePaise: 0,
+    promotionNote: "ModCon's own organisation",
+  };
+
+  it('is charged nothing, GST included', () => {
+    const price = app.priceForSubscription(promo);
+    assert.equal(price.basePaise, 0);
+    assert.equal(price.gstPaise, 0, 'no supply, no tax');
+    assert.equal(price.totalPaise, 0);
+    assert.equal(app.formatPaise(price.totalPaise), '₹0.00');
+  });
+
+  it('is recognised as promotional', () => {
+    assert.equal(app.isPromotional(promo), true);
+    assert.equal(app.isPromotional({ ...promo, status: 'active' }), false);
+    assert.equal(app.isPromotional(null), false);
+  });
+
+  it('has full access and is never nagged', () => {
+    assert.equal(app.accessState(promo, '2026-06-15').kind, 'ok');
+  });
+
+  it('does not expire, however far past its period end you look', () => {
+    // The trap this is guarding: accessState compares dates, and a promotion
+    // has no real period. Short-circuiting on the status is what stops a free
+    // tenant being locked out by arithmetic about a date it never had.
+    const expired = { ...promo, currentPeriodEnd: '2020-01-01' };
+    assert.equal(app.accessState(expired, '2026-06-15').kind, 'ok');
+  });
+
+  it('a paying organisation is unaffected by any of that', () => {
+    const paying = { ...promo, status: 'active', currentPeriodEnd: '2026-07-01', pricePaise: 500_000 };
+    assert.equal(app.priceForSubscription(paying).totalPaise, 590_000);
+    assert.equal(app.accessState(paying, '2026-06-15').kind, 'ok');
+    assert.equal(app.accessState(paying, '2026-07-20').kind, 'blocked');
+  });
+
+  it('an ordinary organisation still quotes the list price', () => {
+    assert.equal(app.priceForSubscription(null).totalPaise, 590_000);
+  });
+});
+
 describe('billing — a super admin is not a customer', () => {
   // The platform operator administers every organisation and belongs to none,
   // so they have nothing to bill. The billing panel used to show them a plan

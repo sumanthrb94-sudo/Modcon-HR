@@ -95,14 +95,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 p-4 text-white">
             <p className="text-sm font-semibold">{PLAN.name}</p>
             <p className="text-xs text-brand-100 mt-0.5">
-              {formatPaise(PLAN.pricePaise)} per month · unlimited employees
+              {subscription?.status === 'promotional'
+                ? 'Complimentary · unlimited employees'
+                : `${formatPaise(PLAN.pricePaise)} per month · unlimited employees`}
             </p>
             <button
               type="button"
               onClick={() => { navigate('/settings?tab=billing'); onClose(); }}
               className="mt-3 w-full rounded-lg bg-white/15 hover:bg-white/25 py-1.5 text-xs font-semibold transition-colors"
             >
-              {subscription?.status === 'active' ? 'Manage billing' : 'Set up billing'}
+              {subscription?.status === 'promotional' ? 'View plan'
+                : subscription?.status === 'active' ? 'Manage billing'
+                : 'Set up billing'}
             </button>
           </div>
           <div className="mt-2 space-y-0.5 px-1 text-[11px] text-ink-400">

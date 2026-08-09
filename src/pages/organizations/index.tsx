@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useOrganizations } from '@/lib/useFirestore';
 import { useSubscriptions } from '@/lib/useSubscriptions';
 import { PLAN, accessState, formatPaise, type SubscriptionStatus } from '@/data/subscription';
+import { grantPromotion, endPromotion } from '@/lib/subscriptionAdmin';
 import {
     createOrganization,
     friendlyOrgError,
@@ -57,6 +58,7 @@ const FLAG_LIST = Object.values(FEATURE_FLAGS);
 
 const SUBSCRIPTION_TONE: Record<SubscriptionStatus, BadgeTone> = {
     active: 'green',
+    promotional: 'cyan',
     trialing: 'violet',
     past_due: 'amber',
     cancelled: 'red',
@@ -65,6 +67,7 @@ const SUBSCRIPTION_TONE: Record<SubscriptionStatus, BadgeTone> = {
 
 const SUBSCRIPTION_LABEL: Record<SubscriptionStatus, string> = {
     active: 'Active',
+    promotional: 'Promotional',
     trialing: 'Trial',
     past_due: 'Payment failed',
     cancelled: 'Cancelled',
@@ -74,6 +77,8 @@ const SUBSCRIPTION_LABEL: Record<SubscriptionStatus, string> = {
 export function OrganizationsPage() {
     const { profile, isSuperAdmin } = useAuth();
     const { data: organizations, loading } = useOrganizations();
+    // Every organisation's billing state. Super-admin only, which this page is.
+    const { byOrgId: subscriptions } = useSubscriptions(isSuperAdmin);
     const [search, setSearch] = useState('');
     const [createOpen, setCreateOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -108,6 +113,42 @@ export function OrganizationsPage() {
             );
         } finally {
             setFeatureSaving('');
+        }
+    }
+
+    // Not charging an organisation — a pilot, a partner, or our own. A
+    // commercial decision no payment provider can make for us, and the only
+    // subscription write a human performs; everything else on that record comes
+    // from the Razorpay webhook. See lib/subscriptionAdmin.ts.
+    const [promoOrg, setPromoOrg] = useState<Organization | null>(null);
+    const [promoNote, setPromoNote] = useState('');
+    const [promoSaving, setPromoSaving] = useState(false);
+    const [promoError, setPromoError] = useState('');
+
+    const promoSubscription = promoOrg?.id ? subscriptions.get(promoOrg.id) : undefined;
+    const promoIsActive = promoSubscription?.status === 'promotional';
+
+    function openPromotion(org: Organization) {
+        setPromoOrg(org);
+        setPromoNote(org.id ? subscriptions.get(org.id)?.promotionNote ?? '' : '');
+        setPromoError('');
+    }
+
+    async function savePromotion() {
+        if (!promoOrg?.id || !profile?.uid) return;
+        setPromoSaving(true);
+        setPromoError('');
+        try {
+            if (promoIsActive) {
+                await endPromotion({ orgId: promoOrg.id, actedByUid: profile.uid });
+            } else {
+                await grantPromotion({ orgId: promoOrg.id, note: promoNote, grantedByUid: profile.uid });
+            }
+            setPromoOrg(null);
+        } catch (err) {
+            setPromoError((err as Error)?.message ?? 'That change could not be saved.');
+        } finally {
+            setPromoSaving(false);
         }
     }
 
@@ -246,8 +287,6 @@ export function OrganizationsPage() {
         setTimeout(() => setCopied(false), 2000);
     }
 
-    const { byOrgId: subscriptions } = useSubscriptions(isSuperAdmin);
-
     const columns: Column<Organization>[] = [
         {
             key: 'name',
@@ -319,6 +358,9 @@ export function OrganizationsPage() {
                     )}
                     <Button variant="secondary" size="sm" onClick={() => openAssign(o)}>
                         Set HR admin
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => openPromotion(o)}>
+                        Billing
                     </Button>
                     <Button
                         variant={isActive ? 'secondary' : 'primary'}
@@ -549,6 +591,66 @@ export function OrganizationsPage() {
                         </div>
                     </div>
                 )}
+            </Modal>
+
+            <Modal
+                open={promoOrg !== null}
+                onClose={() => setPromoOrg(null)}
+                title={promoIsActive ? 'End the promotion' : 'Do not charge this organisation'}
+                subtitle={promoOrg?.name}
+                size="sm"
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setPromoOrg(null)}>Cancel</Button>
+                        <Button
+                            variant="primary"
+                            onClick={savePromotion}
+                            disabled={promoSaving || (!promoIsActive && !promoNote.trim())}
+                        >
+                            {promoSaving
+                                ? 'Saving…'
+                                : promoIsActive ? 'Put back on the paid plan' : 'Make it free'}
+                        </Button>
+                    </>
+                )}
+            >
+                <div className="space-y-3 text-sm text-ink-600">
+                    {promoIsActive ? (
+                        <>
+                            <p>
+                                <span className="font-medium text-ink-900">{promoOrg?.name}</span> is
+                                currently not charged. Ending the promotion puts it back on
+                                {' '}{formatPaise(PLAN.pricePaise)} per month.
+                            </p>
+                            {promoSubscription?.promotionNote && (
+                                <p className="rounded-lg bg-ink-50 px-3 py-2 text-xs">
+                                    Reason on record: {promoSubscription.promotionNote}
+                                </p>
+                            )}
+                            <p className="text-xs text-ink-500">
+                                They are marked unsubscribed, not paid — ending a promotion does not
+                                collect any money, and saying otherwise would be a bill nobody sent.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <p>
+                                This organisation keeps every feature and is never charged. Use it for
+                                a pilot, a partner, or an organisation of our own.
+                            </p>
+                            <label className="block">
+                                <span className="text-xs font-medium text-ink-700">Why (kept on the record)</span>
+                                <input
+                                    className="input mt-1 w-full"
+                                    value={promoNote}
+                                    onChange={(e) => setPromoNote(e.target.value)}
+                                    placeholder="e.g. ModCon's own organisation"
+                                />
+                            </label>
+                        </>
+                    )}
+                    {promoError && <p className="text-sm text-rose-600">{promoError}</p>}
+                </div>
             </Modal>
 
             <Modal

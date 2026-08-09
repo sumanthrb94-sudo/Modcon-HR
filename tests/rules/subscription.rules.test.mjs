@@ -154,6 +154,42 @@ describe('subscriptions — nobody in the client can make themselves paid', () =
     await assertFails(updateDoc(doc(as(USERS.hrB), 'subscriptions', ORG_A), { status: 'cancelled' }));
   });
 
+  // A promotion is the same write as marking yourself paid, and is refused for
+  // the same reason: an organisation that could hand itself a free plan would.
+  for (const role of ['hrA', 'managerA', 'employeeA', 'platformAdmin']) {
+    it(`${role} cannot grant their own organisation a promotion`, async () => {
+      await assertFails(setDoc(doc(as(USERS[role]), 'subscriptions', ORG_A), {
+        orgId: ORG_A, status: 'promotional', promotionNote: 'we deserve it',
+        currentPeriodStart: '2026-06-01', currentPeriodEnd: '2099-12-31', pricePaise: 0,
+      }, { merge: true }));
+    });
+  }
+
+  it('HR cannot grant another organisation a promotion either', async () => {
+    await assertFails(setDoc(doc(as(USERS.hrB), 'subscriptions', ORG_A), {
+      orgId: ORG_A, status: 'promotional', pricePaise: 0,
+    }, { merge: true }));
+  });
+
+  it('a super admin grants a promotion, which is the whole point of the control', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.superAdmin), 'subscriptions', ORG_B), {
+      orgId: ORG_B, status: 'promotional', promotionNote: "ModCon's own organisation",
+      grantedBy: USERS.superAdmin.uid,
+      currentPeriodStart: '2026-06-01', currentPeriodEnd: '2099-12-31', pricePaise: 0,
+    }, { merge: true }));
+  });
+
+  it('the promoted organisation can read its own status, and no other', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'subscriptions', ORG_B), {
+        orgId: ORG_B, status: 'promotional', pricePaise: 0,
+        currentPeriodStart: '2026-06-01', currentPeriodEnd: '2099-12-31',
+      });
+    });
+    await assertSucceeds(getDoc(doc(as(USERS.hrB), 'subscriptions', ORG_B)));
+    await assertFails(getDoc(doc(as(USERS.hrB), 'subscriptions', ORG_A)));
+  });
+
   it('a super admin can correct a record, which is the manual path', async () => {
     await assertSucceeds(updateDoc(doc(as(USERS.superAdmin), 'subscriptions', ORG_A), {
       status: 'cancelled',
