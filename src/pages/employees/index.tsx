@@ -40,7 +40,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, suggestEmployeeCode, isEmployeeCodeTaken, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
+import { employees, getEmployee, getEmployeeDirectory, getNextEmployeeSequence, suggestEmployeeCode, isEmployeeCodeTaken, sameEmployeeCode, addEmployeeToDirectory, deleteEmployeeFromDirectory, locations } from '@/data/employees';
 import {
   EmployeeDocumentError,
   canFileDocuments,
@@ -66,7 +66,7 @@ import { linkAccountForEmployee } from '@/data/employeeLinks';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type UserProfile } from '@/lib/auth';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { canViewEmployee, getVisibleEmployees } from '@/lib/dataScope';
 import { syncHrRoleForEmployee } from '@/data/roleAssignments';
@@ -176,7 +176,15 @@ interface EmployeeDetails {
   reportingManagerId: string | null;
 }
 
-type NewEmployeePayload = EmployeeDetails;
+interface NewEmployeePayload extends EmployeeDetails {
+  /**
+   * A manager to bring into being alongside this hire, asked for in the same
+   * detail as anyone else. Held as data rather than created when it is typed,
+   * so abandoning the dialog leaves nobody behind — the same rule the
+   * new-department field follows.
+   */
+  newManager: EmployeeDetails | null;
+}
 
 function emptyDetailsDraft(): EmployeeDetailsDraft {
   return {
@@ -290,9 +298,11 @@ function useEmployeeDetailsForm() {
 type DetailsForm = ReturnType<typeof useEmployeeDetailsForm>;
 
 /**
- * The employee fields themselves. The reporting-manager control is passed in
- * rather than built here, so this stays presentational and knows nothing
- * about the directory it would have to read to list candidates.
+ * The employee fields themselves. `managerControl` is a slot because the two
+ * uses differ there and only there: a hire can name a manager who does not
+ * exist yet, a manager can only be given one who already does. It also keeps
+ * this presentational — it knows nothing about the directory it would have to
+ * read to list candidates.
  */
 function EmployeeDetailsFields({
   form,
@@ -493,34 +503,121 @@ function EmployeeDetailsFields({
   );
 }
 
+/**
+ * One person's details, collected in full.
+ *
+ * Used twice over: as Add Employee on the directory, and as Add Reporting
+ * Manager on a profile — a manager is an employee, so the same fields and the
+ * same rules apply to both, and one definition is what stops them drifting
+ * apart. `allowNewManager` is the only real difference: a hire may name a
+ * manager who does not exist yet, and that manager may not, or the form would
+ * recurse with nothing to stop it.
+ */
 function AddEmployeeModal({
   open,
   onClose,
   onSave,
   employeeOptions,
   canEditEmployeeCode,
+  allowNewManager = true,
+  title = 'Add New Employee',
+  subtitle = 'Fill in the details to create a new employee profile',
+  saveLabel = 'Save Employee',
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (payload: NewEmployeePayload) => void;
   employeeOptions: Employee[];
   canEditEmployeeCode: boolean;
+  allowNewManager?: boolean;
+  title?: string;
+  subtitle?: string;
+  saveLabel?: string;
 }) {
   const hire = useEmployeeDetailsForm();
+  const manager = useEmployeeDetailsForm();
+  /** 'manager' swaps the dialog over to filling in the new manager. */
+  const [mode, setMode] = useState<'hire' | 'manager'>('hire');
+  const [pendingManager, setPendingManager] = useState<EmployeeDetails | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [managerSubmitAttempted, setManagerSubmitAttempted] = useState(false);
+  const [managerError, setManagerError] = useState('');
 
   function resetForm() {
     hire.reset();
+    manager.reset();
+    setPendingManager(null);
+    setMode('hire');
     setSubmitAttempted(false);
+    setManagerSubmitAttempted(false);
+    setManagerError('');
   }
 
   function handleSave() {
     setSubmitAttempted(true);
     if (hire.hasErrors) return;
 
-    onSave(toEmployeeDetails(hire.draft));
+    const namedNewManager = hire.draft.reportingManagerId === PENDING_MANAGER;
+    onSave({
+      ...toEmployeeDetails(hire.draft),
+      // PENDING_MANAGER stands in for somebody who does not exist yet; the
+      // parent creates them first and links the two together.
+      reportingManagerId: namedNewManager ? null : hire.draft.reportingManagerId || null,
+      newManager: namedNewManager ? pendingManager : null,
+    });
     resetForm();
     onClose();
+  }
+
+  /** Accept the manager as this hire's manager, without creating them yet. */
+  function confirmManager() {
+    setManagerSubmitAttempted(true);
+    setManagerError('');
+    if (manager.hasErrors) return;
+
+    const details = toEmployeeDetails(manager.draft);
+    // Two people cannot share a work email: it is how a sign-in is matched to
+    // a record, so a duplicate would attach one account to the wrong person.
+    if (employeeOptions.some((candidate) => candidate.email.toLowerCase() === details.email)) {
+      setManagerError('Someone already has that email address.');
+      return;
+    }
+    if (details.email === hire.draft.email.trim().toLowerCase()) {
+      setManagerError('The manager cannot share an email with the new hire.');
+      return;
+    }
+    // Both codes are unsaved, so neither is "taken" yet — and both are
+    // pre-filled with the same suggestion, which is the collision this dialog
+    // is uniquely able to create. Everything that matches a person by their
+    // code would then name two people and refuse.
+    if (sameEmployeeCode(details.employeeCode, hire.draft.employeeCode)) {
+      setManagerError('The manager cannot share an employee code with the new hire.');
+      return;
+    }
+
+    setPendingManager(details);
+    hire.set('reportingManagerId', PENDING_MANAGER);
+    setMode('hire');
+  }
+
+  function startManager() {
+    manager.reset();
+    // The manager almost always sits with the person they will manage, so
+    // start them there — every field stays editable.
+    manager.set('department', hire.draft.department);
+    manager.set('location', hire.draft.location);
+    // Both drafts open on the same suggested code. Offer the manager the one
+    // after it, so the ordinary case needs no correcting.
+    manager.set('employeeCode', suggestEmployeeCode(getEmployeeDirectory(), 1));
+    setManagerSubmitAttempted(false);
+    setManagerError('');
+    setMode('manager');
+  }
+
+  function cancelManager() {
+    setMode('hire');
+    setManagerError('');
+    setManagerSubmitAttempted(false);
   }
 
   function handleClose() {
@@ -528,53 +625,243 @@ function AddEmployeeModal({
     onClose();
   }
 
-  /**
-   * Only people already in the directory. A manager is an employee, and
-   * inventing one here would mean creating a second person from a form meant
-   * for one — add them in their own right first, then pick them.
-   */
-  const managerControl = (
+  const hireManagerControl = (
     <select
       className="input w-full"
       aria-label="Reporting Manager"
       value={hire.draft.reportingManagerId}
-      onChange={(event) => hire.set('reportingManagerId', event.target.value)}
+      onChange={(event) => {
+        if (event.target.value === CREATE_OPTION) {
+          startManager();
+          return;
+        }
+        hire.set('reportingManagerId', event.target.value);
+      }}
     >
       <option value="">Select reporting manager</option>
       {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
+      {pendingManager && (
+        <option value={PENDING_MANAGER}>
+          {pendingManager.firstName} {pendingManager.lastName} — {pendingManager.designation} (new)
+        </option>
+      )}
+      {allowNewManager && <option value={CREATE_OPTION}>+ Add new reporting manager…</option>}
     </select>
   );
+
+  // No "add new" here: a manager invented for a manager would recurse with
+  // nothing to stop it, and one unrecorded person at a time is enough.
+  const managerManagerControl = (
+    <select
+      className="input w-full"
+      aria-label="Manager's Reporting Manager"
+      value={manager.draft.reportingManagerId}
+      onChange={(event) => manager.set('reportingManagerId', event.target.value)}
+    >
+      <option value="">No manager</option>
+      {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.fullName} — {e.designation}</option>)}
+    </select>
+  );
+
+  const isManagerMode = mode === 'manager';
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title="Add New Employee"
-      subtitle="Fill in the details to create a new employee profile"
+      title={isManagerMode ? 'New Reporting Manager' : title}
+      subtitle={isManagerMode
+        ? 'The manager is an employee too, so the same details are needed. Nobody is created until you save the hire.'
+        : subtitle}
       size="lg"
-      footer={
+      footer={isManagerMode ? (
+        <>
+          <Button variant="secondary" onClick={cancelManager}>Back</Button>
+          <Button variant="primary" onClick={confirmManager}>Add manager</Button>
+        </>
+      ) : (
         <>
           <Button variant="secondary" onClick={handleClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave}>Save Employee</Button>
+          <Button variant="primary" onClick={handleSave}>{saveLabel}</Button>
         </>
-      }
+      )}
     >
-      <div className="space-y-5">
-        {submitAttempted && hire.hasErrors && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            Please fix the highlighted fields before saving.
-          </div>
-        )}
-        <EmployeeDetailsFields
-          form={hire}
-          showErrors={submitAttempted}
-          fieldPrefix="Employee"
-          managerControl={managerControl}
-          canEditEmployeeCode={canEditEmployeeCode}
-        />
-      </div>
+      {isManagerMode ? (
+        <div className="space-y-5">
+          {managerSubmitAttempted && manager.hasErrors && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Please fix the highlighted fields before adding this manager.
+            </div>
+          )}
+          {managerError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {managerError}
+            </div>
+          )}
+          <EmployeeDetailsFields
+            form={manager}
+            showErrors={managerSubmitAttempted}
+            fieldPrefix="Manager"
+            managerControl={managerManagerControl}
+            canEditEmployeeCode={canEditEmployeeCode}
+          />
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {submitAttempted && hire.hasErrors && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Please fix the highlighted fields before saving.
+            </div>
+          )}
+          <EmployeeDetailsFields
+            form={hire}
+            showErrors={submitAttempted}
+            fieldPrefix="Employee"
+            managerControl={hireManagerControl}
+            canEditEmployeeCode={canEditEmployeeCode}
+          />
+        </div>
+      )}
     </Modal>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Creating a person
+// ---------------------------------------------------------------------------
+/** How a surface tells its reader something that happened after the write. */
+type Notify = (message: string) => void;
+
+/**
+ * Make sure a department exists, and return the name to file someone under.
+ *
+ * Both the hire and a manager created alongside them can name a department
+ * that does not exist yet, so this sits outside the dialog — one place,
+ * covering both. An existing name matched case-insensitively wins, so typing
+ * "design" joins Design instead of standing up a rival.
+ */
+function ensureDepartment(name: string): string {
+  const known = departments.find((item) => item.toLowerCase() === name.toLowerCase());
+  if (known) return known;
+  addDepartmentToDirectory({ name, head: '—', headcount: 0 });
+  return name;
+}
+
+/**
+ * Declare a location the organisation has not used before.
+ *
+ * The dropdown's derived half would pick it up anyway once this employee is
+ * saved — but only in this browser, and only for as long as somebody is
+ * posted there. Declaring it makes it the organisation's, like the
+ * department beside it. See data/locations.ts.
+ */
+function ensureLocation(name: string, notify: Notify): string {
+  const location = normalizeLocation(name);
+  if (!location) return name;
+  const known = locations.find((item) => item.toLowerCase() === location.toLowerCase());
+  if (known) return known;
+  // The local half of this write is synchronous and has already happened by
+  // the time the promise settles, so the list shows the new location either
+  // way — which is exactly the problem when the organisation's copy was
+  // refused. The next sign-in re-hydrates from Firestore and the location
+  // silently disappears, looking like the app never accepted it. Say so.
+  void addLocationToDirectory(location).then((published) => {
+    if (!published) {
+      notify(`"${location}" was saved on this employee, but could not be added to the company's location list. It may disappear from the list later — ask an administrator to add it in Settings → Locations.`);
+    }
+  });
+  return location;
+}
+
+/**
+ * Bring one person into being from the details a form collected, and put
+ * everything that follows from a hire in step with them: the reporting
+ * chains, the HR grant, the account link.
+ *
+ * Shared rather than held in the directory page, because people are now
+ * created from two places — Add Employee there, and Add Reporting Manager on
+ * a profile. A second copy of this would have been a second chance to omit
+ * the account link, which fails closed and silently: without it
+ * `firestore.rules` resolves that person's account to no employee, and they
+ * read none of their own salary or leave.
+ *
+ * Nothing here is invented; every value came from the form.
+ */
+function createEmployeeFromDetails(
+  details: EmployeeDetails,
+  { profile, notify }: { profile: UserProfile | null; notify: Notify },
+): Employee {
+  const directory = getEmployeeDirectory();
+  const nextIndex = getNextEmployeeSequence(directory);
+  const fullName = `${details.firstName} ${details.lastName}`;
+  const manager = directory.find((candidate) => candidate.id === details.reportingManagerId);
+
+  const employee: Employee = {
+    // The code is HR's to type — the form only suggests one. `id` stays a
+    // sequence this app assigns: it keys leave, attendance and the reporting
+    // tree, and is not the number the organisation calls anyone by.
+    id: `emp-${String(nextIndex).padStart(3, '0')}`,
+    employeeCode: details.employeeCode,
+    firstName: details.firstName,
+    lastName: details.lastName,
+    fullName,
+    email: details.email,
+    phone: details.phone,
+    avatar: fullName,
+    gender: details.gender,
+    dateOfBirth: details.dateOfBirth,
+    designation: details.designation,
+    department: ensureDepartment(details.department),
+    location: ensureLocation(details.location, notify),
+    employmentType: details.employmentType,
+    status: 'Active',
+    dateOfJoining: details.dateOfJoining,
+    reportingManagerId: details.reportingManagerId,
+    reportingManagerName: manager?.fullName,
+    ctc: details.ctc,
+    // Address, blood group and marital status are personal details this form
+    // does not ask for, so they stay unset and are filled in from Edit
+    // Profile. Address was previously the work location restated as though it
+    // were a home address.
+    skills: [],
+  };
+
+  addEmployeeToDirectory(employee);
+  // A new joiner under a manager adds a branch to the reporting tree, so the
+  // chains stamped on leave documents no longer describe it.
+  if (details.reportingManagerId) void syncManagerChains();
+
+  // Someone added to the HR department administers this company, so grant the
+  // role now rather than waiting for an admin to remember. The directory write
+  // above has already landed and is local; this one is remote and may fail, so
+  // it is reported rather than allowed to fail the add.
+  void syncHrRoleForEmployee(employee, profile).then((outcome) => {
+    if (outcome === 'granted') {
+      notify(`${employee.fullName} was added as ${employee.designation} and now has administrator access for this company.`);
+    } else if (outcome === 'failed') {
+      notify(`${employee.fullName} was added, but granting HR administrator access failed. Set their role from the Admin dashboard.`);
+    }
+  });
+
+  // If this person already has an account, point it at the record just
+  // created. See linkAccountForEmployee, which refuses to guess and reports
+  // instead.
+  void linkAccountForEmployee({
+    employeeId: employee.id,
+    email: employee.email,
+    orgId: profile?.orgId || undefined,
+    linkedBy: profile?.email ?? profile?.uid ?? 'unknown',
+  }).then((outcome) => {
+    if (outcome.status === 'ambiguous') {
+      notify(`${employee.fullName} was added, but ${outcome.count} accounts share ${employee.email}, so none was linked to this record. Link it from the Admin dashboard.`);
+    } else if (outcome.status === 'conflict') {
+      notify(`${employee.fullName} was added, but the account for ${employee.email} is already linked to another employee record. Repoint it from the Admin dashboard if that is wrong.`);
+    } else if (outcome.status === 'failed') {
+      notify(`${employee.fullName} was added, but linking their existing account to this record failed. Run the identity backfill from Settings → Database.`);
+    }
+  });
+
+  return employee;
 }
 
 // ---------------------------------------------------------------------------
@@ -649,126 +936,24 @@ export function EmployeesPage() {
   const probationNotice = visibleEmployeeList.filter((e) => e.status === 'Probation' || e.status === 'Notice Period').length;
   const deptCount = new Set(visibleEmployeeList.map((e) => e.department)).size;
 
-  /**
-   * Make sure a department exists, and return the name to file someone under.
-   *
-   * Both the hire and a manager created alongside them can name a department
-   * that does not exist yet, so this sits here rather than in the dialog —
-   * one place, covering both. An existing name matched case-insensitively
-   * wins, so typing "design" joins Design instead of standing up a rival.
-   */
-  function ensureDepartment(name: string): string {
-    const known = departments.find((item) => item.toLowerCase() === name.toLowerCase());
-    if (known) return known;
-    addDepartmentToDirectory({ name, head: '—', headcount: 0 });
-    return name;
-  }
-
-  /**
-   * Declare a location the organisation has not used before.
-   *
-   * The dropdown's derived half would pick it up anyway once this employee is
-   * saved — but only in this browser, and only for as long as somebody is
-   * posted there. Declaring it makes it the organisation's, like the
-   * department beside it. See data/locations.ts.
-   */
-  function ensureLocation(name: string): string {
-    const location = normalizeLocation(name);
-    if (!location) return name;
-    const known = locations.find((item) => item.toLowerCase() === location.toLowerCase());
-    if (known) return known;
-    // The local half of this write is synchronous and has already happened by
-    // the time the promise settles, so the list shows the new location either
-    // way — which is exactly the problem when the organisation's copy was
-    // refused. The next sign-in re-hydrates from Firestore and the location
-    // silently disappears, looking like the app never accepted it. Say so.
-    void addLocationToDirectory(location).then((published) => {
-      if (!published) {
-        setRoleNotice(`"${location}" was saved on this employee, but could not be added to the company's location list. It may disappear from the list later — ask an administrator to add it in Settings → Locations.`);
-      }
-    });
-    return location;
-  }
-
   function handleAddEmployee(payload: NewEmployeePayload) {
-    const directory = getEmployeeDirectory();
-    const reportingManagerId = payload.reportingManagerId;
-    const nextIndex = getNextEmployeeSequence(directory);
-    const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
-    // The code is HR's to type — the form only suggests one. `id` stays a
-    // sequence this app assigns: it keys leave, attendance and the reporting
-    // tree, and is not the number the organisation calls anyone by.
-    const employeeCode = payload.employeeCode;
-    const manager = directory.find((e) => e.id === reportingManagerId);
-    const nextEmployee: Employee = {
-      id: nextId,
-      employeeCode,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      fullName: `${payload.firstName} ${payload.lastName}`,
-      email: payload.email,
-      phone: payload.phone,
-      avatar: `${payload.firstName} ${payload.lastName}`,
-      gender: payload.gender,
-      dateOfBirth: payload.dateOfBirth,
-      designation: payload.designation,
-      department: ensureDepartment(payload.department),
-      location: ensureLocation(payload.location),
-      employmentType: payload.employmentType,
-      status: 'Active',
-      dateOfJoining: payload.dateOfJoining,
-      reportingManagerId,
-      reportingManagerName: manager?.fullName,
-      ctc: payload.ctc,
-      // Address, blood group and marital status are personal details this
-      // form does not ask for, so they stay unset and are filled in from Edit
-      // Profile. Address was previously the work location restated as though
-      // it were a home address.
-      skills: [],
-    };
+    const { newManager, ...hire } = payload;
+    // A manager typed into the dialog has to exist before anyone can report to
+    // them, so they are created first and their id handed to the hire. Each
+    // call re-reads the directory, so the hire cannot take the id the manager
+    // was just given.
+    const manager = newManager ? createEmployeeFromDetails(newManager, { profile, notify: setRoleNotice }) : null;
+    createEmployeeFromDetails(
+      { ...hire, reportingManagerId: manager ? manager.id : hire.reportingManagerId },
+      { profile, notify: setRoleNotice },
+    );
 
-    addEmployeeToDirectory(nextEmployee);
     setEmployeeList(getEmployeeDirectory());
-    // A new joiner under a manager adds a branch to the reporting tree, so the
-    // chains stamped on leave documents no longer describe it.
-    if (reportingManagerId) void syncManagerChains();
     setSearch('');
     setDeptFilter('');
     setLocationFilter('');
     setStatusFilter('');
     setTypeFilter('');
-
-    // Someone added to the HR department administers this company, so grant
-    // the role now rather than waiting for an admin to remember. The directory
-    // write above has already landed and is local; this one is remote and may
-    // fail, so it is reported rather than allowed to fail the add.
-    void syncHrRoleForEmployee(nextEmployee, profile).then((outcome) => {
-      if (outcome === 'granted') {
-        setRoleNotice(`${nextEmployee.fullName} was added as ${nextEmployee.designation} and now has administrator access for this company.`);
-      } else if (outcome === 'failed') {
-        setRoleNotice(`${nextEmployee.fullName} was added, but granting HR administrator access failed. Set their role from the Admin dashboard.`);
-      }
-    });
-
-    // If this person already has an account, point it at the record just
-    // created. Without the link firestore.rules resolves that account to no
-    // employee, so they read none of their own salary or leave and cannot file
-    // their own documents — silently, on the ordinary hiring path. See
-    // linkAccountForEmployee, which refuses to guess and reports instead.
-    void linkAccountForEmployee({
-      employeeId: nextEmployee.id,
-      email: nextEmployee.email,
-      orgId: profile?.orgId || undefined,
-      linkedBy: profile?.email ?? profile?.uid ?? 'unknown',
-    }).then((outcome) => {
-      if (outcome.status === 'ambiguous') {
-        setRoleNotice(`${nextEmployee.fullName} was added, but ${outcome.count} accounts share ${nextEmployee.email}, so none was linked to this record. Link it from the Admin dashboard.`);
-      } else if (outcome.status === 'conflict') {
-        setRoleNotice(`${nextEmployee.fullName} was added, but the account for ${nextEmployee.email} is already linked to another employee record. Repoint it from the Admin dashboard if that is wrong.`);
-      } else if (outcome.status === 'failed') {
-        setRoleNotice(`${nextEmployee.fullName} was added, but linking their existing account to this record failed. Run the identity backfill from Settings → Database.`);
-      }
-    });
   }
 
   const listColumns: Column<Employee>[] = [
@@ -1196,6 +1381,9 @@ function SelectOrCreate({
   );
 }
 
+/** Sentinel manager id standing in for one that has not been created yet. */
+const PENDING_MANAGER = '__new_manager__';
+
 /** Sentinel option value, distinct from any plausible department or location. */
 const CREATE_OPTION = '__create__';
 
@@ -1417,6 +1605,7 @@ function ReportingManagerRow({
   managerName,
   options,
   onSave,
+  onCreateNew,
   editable,
 }: {
   managerId: string | null | undefined;
@@ -1424,16 +1613,14 @@ function ReportingManagerRow({
   options: { label: string; value: string }[];
   /** '' clears it, leaving the employee reporting to nobody. */
   onSave: (managerId: string) => void;
+  /** Opens the form that adds a manager who does not work here yet. */
+  onCreateNew: () => void;
   editable: boolean;
 }) {
   const [choosing, setChoosing] = useState(false);
   const value = managerName ?? 'None';
 
   if (!editable) return <InfoRow label="Reporting Manager" value={value} />;
-
-  // A one-person directory has nobody to point at. Say so on the button rather
-  // than opening a picker whose only entry is "No manager".
-  const noCandidates = options.length === 0 && !managerId;
 
   return (
     <div>
@@ -1446,9 +1633,19 @@ function ReportingManagerRow({
             value={managerId ?? ''}
             onChange={(next) => {
               setChoosing(false);
+              // Nobody is created here — this hands over to the form that
+              // asks for the manager in full, and assigns them on save.
+              if (next === CREATE_OPTION) {
+                onCreateNew();
+                return;
+              }
               if (next !== (managerId ?? '')) onSave(next);
             }}
-            options={[{ label: 'No manager', value: '' }, ...options]}
+            options={[
+              { label: 'No manager', value: '' },
+              ...options,
+              { label: '+ Add new manager…', value: CREATE_OPTION },
+            ]}
           />
           <Button variant="secondary" size="sm" onClick={() => setChoosing(false)}>Cancel</Button>
         </div>
@@ -1458,15 +1655,8 @@ function ReportingManagerRow({
           <Button
             variant="secondary"
             size="sm"
-            disabled={noCandidates}
             onClick={() => setChoosing(true)}
-            title={
-              noCandidates
-                ? 'There is nobody else in the directory to report to yet'
-                : managerId
-                  ? 'Change who this employee reports to'
-                  : 'Record who this employee reports to'
-            }
+            title={managerId ? 'Change who this employee reports to' : 'Record who this employee reports to'}
           >
             {managerId ? 'Change manager' : '+ Add reporting manager'}
           </Button>
@@ -1525,6 +1715,7 @@ function OverviewTab({
   onCreateLocation,
   managerOptions,
   onSaveReportingManager,
+  onCreateReportingManager,
 }: {
   emp: Employee;
   profilePicture: string | null;
@@ -1537,6 +1728,7 @@ function OverviewTab({
   /** Everyone this person could report to, cycles already excluded. */
   managerOptions: { label: string; value: string }[];
   onSaveReportingManager: (managerId: string) => void;
+  onCreateReportingManager: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -1607,6 +1799,7 @@ function OverviewTab({
             managerName={emp.reportingManagerName}
             options={managerOptions}
             onSave={onSaveReportingManager}
+            onCreateNew={onCreateReportingManager}
             editable={canEditJobFields}
           />
         </div>
@@ -2323,6 +2516,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  /** The form that adds a manager who is not in the directory yet. */
+  const [addManagerOpen, setAddManagerOpen] = useState(false);
+
   const [editOpen, setEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -2480,8 +2676,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
    * themselves and anyone already below them. Offering a subordinate would
    * create a reporting cycle, which the org chart walks and would hang on.
    */
-  const managerOptions = useMemo(() => {
-    if (!emp) return [] as { label: string; value: string }[];
+  const managerCandidates = useMemo(() => {
+    if (!emp) return [] as Employee[];
     const directory = getEmployeeDirectory();
 
     const blocked = new Set<string>([emp.id]);
@@ -2499,9 +2695,34 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
 
     return directory
       .filter((candidate) => !blocked.has(candidate.id))
-      .sort((a, b) => a.fullName.localeCompare(b.fullName))
-      .map((candidate) => ({ label: `${candidate.fullName} · ${candidate.designation}`, value: candidate.id }));
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [emp]);
+
+  const managerOptions = useMemo(
+    () => managerCandidates.map((candidate) => ({
+      label: `${candidate.fullName} · ${candidate.designation}`,
+      value: candidate.id,
+    })),
+    [managerCandidates],
+  );
+
+  /**
+   * Add somebody who does not work here yet, and make them this person's
+   * manager.
+   *
+   * They are created through the same path as any other hire, so they arrive
+   * complete — a manager who exists only as a name would show "—" across
+   * their own profile and ₹0 in payroll. The assignment is the second step
+   * rather than part of the record: the new manager is written first, and
+   * only then does this employee point at them.
+   */
+  function handleCreateReportingManager(payload: NewEmployeePayload) {
+    if (!emp) return;
+    const { newManager: _unused, ...details } = payload;
+    const created = createEmployeeFromDetails(details, { profile, notify: setAccessNotice });
+    saveReportingManager(created.id);
+    setAccessNotice(`${created.fullName} was added, and ${emp.fullName} now reports to them.`);
+  }
 
   useEffect(() => {
     if (!emp) return;
@@ -2931,12 +3152,28 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           onCreateLocation={createLocation}
           managerOptions={managerOptions}
           onSaveReportingManager={saveReportingManager}
+          onCreateReportingManager={() => setAddManagerOpen(true)}
         />
       )}
       {activeTab === 'team' && <TeamTab emp={emp} embeddedSelfView={embeddedSelfView} />}
       {activeTab === 'compensation' && <CompensationTab emp={emp} />}
       {activeTab === 'documents' && <DocumentsTab employeeId={emp.id} />}
       {activeTab === 'timeoff' && <TimeOffTab employeeId={emp.id} />}
+
+      {/* The manager is offered the people this employee could report to —
+          the same cycle-free set as the picker — so the person being created
+          cannot end up reporting to somebody who reports to them. */}
+      <AddEmployeeModal
+        open={addManagerOpen}
+        onClose={() => setAddManagerOpen(false)}
+        onSave={handleCreateReportingManager}
+        employeeOptions={managerCandidates}
+        canEditEmployeeCode={canEditEmployeeCode}
+        allowNewManager={false}
+        title={`Add ${emp.firstName}'s Reporting Manager`}
+        subtitle="A manager is an employee too, so the same details are needed. They are added to the directory and become this employee's manager."
+        saveLabel="Add manager"
+      />
 
       <Modal
         open={messageOpen}

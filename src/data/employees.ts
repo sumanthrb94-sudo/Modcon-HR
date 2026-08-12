@@ -268,9 +268,13 @@ export function getNextEmployeeSequence(directory: Employee[] = getEmployeeDirec
  * A suggestion, not the answer: an employee code is the organisation's own
  * numbering — it names people on payslip filenames and on both CSV uploads —
  * so HR types it. This only saves them typing the obvious one.
+ *
+ * `ahead` looks further down that numbering, for a dialog holding two people
+ * who do not exist yet: a hire and a manager being created alongside them
+ * would otherwise both open on the same suggested code.
  */
-export function suggestEmployeeCode(directory: Employee[] = getEmployeeDirectory()): string {
-  return `MC-${String(getNextEmployeeSequence(directory)).padStart(3, '0')}`;
+export function suggestEmployeeCode(directory: Employee[] = getEmployeeDirectory(), ahead = 0): string {
+  return `MC-${String(getNextEmployeeSequence(directory) + ahead).padStart(3, '0')}`;
 }
 
 /** Codes compare on their characters, not their punctuation: `MC-090` = `mc090`. */
@@ -287,6 +291,20 @@ function squashCode(code: string): string {
  * person twice, and an upload naming them is refused as ambiguous rather than
  * applied to one of the two.
  */
+/**
+ * Are these two the same code?
+ *
+ * `isEmployeeCodeTaken` answers the same question against people who exist.
+ * Two codes typed into one dialog — a hire, and a manager being created
+ * alongside them — are both unsaved, so neither is in the directory yet and
+ * that check passes for both. They still must not collide, and they compare
+ * the way every code does: on characters, not punctuation or case.
+ */
+export function sameEmployeeCode(a: string, b: string): boolean {
+  const left = squashCode(a);
+  return left.length > 0 && left === squashCode(b);
+}
+
 export function isEmployeeCodeTaken(code: string, exceptEmployeeId?: string): boolean {
   const wanted = squashCode(code);
   if (!wanted) return false;
