@@ -20,6 +20,34 @@ test('unauthenticated visit redirects to /login', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /sign in/i })).toBeVisible();
 });
 
+/**
+ * The careers link is one organisation's, and the login page cannot ask which.
+ *
+ * Nobody is signed in there, and `firestore.rules` lets a tenant's record be
+ * read only by that tenant — so the link follows the organisation this browser
+ * last signed into, which sign-out deliberately leaves behind. It used to be
+ * `/careers` for everyone, which is the default organisation: every tenant's
+ * sign-in page advertised ModCon Builders' vacancies.
+ */
+test.describe('the careers link on the login page', () => {
+  const CAREERS_LINK = { name: 'See our open roles' };
+
+  test('points at the organisation this browser last signed into', async ({ page }) => {
+    await page.goto('/login');
+    // What a sign-in leaves behind, written directly: provisioning a second
+    // organisation needs a super admin and would prove nothing extra here.
+    await page.evaluate(() => window.localStorage.setItem('modcon.hr.activeOrgKey', 'e2e-other-org'));
+    await page.reload();
+
+    await expect(page.getByRole('link', CAREERS_LINK)).toHaveAttribute('href', '/careers/e2e-other-org');
+  });
+
+  test('falls back to the default organisation on a browser that has never signed in', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.getByRole('link', CAREERS_LINK)).toHaveAttribute('href', '/careers/default');
+  });
+});
+
 test.describe.serial('authenticated interactions', () => {
   let page: Page;
 

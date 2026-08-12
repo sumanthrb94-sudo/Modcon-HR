@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { getActiveOrgKey } from '@/lib/orgScope';
+import { careersPath } from '@/lib/publishedJobs';
 
 export function LoginPage() {
     const navigate = useNavigate();
@@ -16,6 +18,25 @@ export function LoginPage() {
     // the sign-in path changes when it is not in use.
     const [mode, setMode] = useState<'signin' | 'reset'>('signin');
     const [resetSent, setResetSent] = useState('');
+
+    /**
+     * Whose open roles the careers link shows.
+     *
+     * It was `/careers`, which is the default organisation — so every tenant's
+     * sign-in page advertised ModCon Builders' vacancies, and an administrator
+     * checking their own careers page from here was shown somebody else's.
+     *
+     * Which organisation this is cannot be read from the address in the form:
+     * nobody is signed in yet, and `firestore.rules` allows a tenant's record
+     * to be read only by that tenant, with nothing public mapping an email or
+     * a domain to one. So it is the organisation this browser last signed into
+     * — `getActiveOrgKey()`, which sign-out deliberately leaves in place —
+     * falling back to the default for a browser that has never signed in here.
+     *
+     * Read once on mount rather than per render: the value changes on a
+     * sign-in, which navigates away from this page.
+     */
+    const [careersHref] = useState(() => careersPath(getActiveOrgKey()));
 
     useEffect(() => {
         if (!loading && user) {
@@ -209,7 +230,7 @@ export function LoginPage() {
                             page they would think to look at. */}
                         <p className="text-center text-sm text-ink-500">
                             Looking for a job?{' '}
-                            <Link to="/careers" className="font-medium text-brand-600 hover:underline">
+                            <Link to={careersHref} className="font-medium text-brand-600 hover:underline">
                                 See our open roles
                             </Link>
                         </p>
