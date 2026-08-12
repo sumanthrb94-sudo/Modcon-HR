@@ -1398,6 +1398,88 @@ function InlineText({
 }
 
 /**
+ * The reporting manager, with a button beside it for recording one.
+ *
+ * Deliberately not an `InlineEditTrigger` like the department and location
+ * rows around it: those hide their pencil until hover, which is fine for
+ * correcting a value that is already there. This row is most often read when
+ * the value is *missing*, and somebody with no manager recorded has nobody who
+ * can decide their leave at all — `getApprovableEmployeeIds` answers "nobody"
+ * for them, by design (see lib/dataScope.ts). The way to fix that has to be
+ * visible on the profile rather than hidden behind a hover on a dash or buried
+ * in the whole Edit Profile form.
+ *
+ * The candidate list is passed in already pruned of this person and everyone
+ * below them — offering a subordinate would close a cycle the org chart walks.
+ */
+function ReportingManagerRow({
+  managerId,
+  managerName,
+  options,
+  onSave,
+  editable,
+}: {
+  managerId: string | null | undefined;
+  managerName: string | undefined;
+  options: { label: string; value: string }[];
+  /** '' clears it, leaving the employee reporting to nobody. */
+  onSave: (managerId: string) => void;
+  editable: boolean;
+}) {
+  const [choosing, setChoosing] = useState(false);
+  const value = managerName ?? 'None';
+
+  if (!editable) return <InfoRow label="Reporting Manager" value={value} />;
+
+  // A one-person directory has nobody to point at. Say so on the button rather
+  // than opening a picker whose only entry is "No manager".
+  const noCandidates = options.length === 0 && !managerId;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-0.5">Reporting Manager</p>
+      {choosing ? (
+        <div className="flex items-center gap-2">
+          <Select
+            ariaLabel="Reporting Manager"
+            className="w-full flex-1 min-w-0 py-0.5 px-2 text-sm"
+            value={managerId ?? ''}
+            onChange={(next) => {
+              setChoosing(false);
+              if (next !== (managerId ?? '')) onSave(next);
+            }}
+            options={[{ label: 'No manager', value: '' }, ...options]}
+          />
+          <Button variant="secondary" size="sm" onClick={() => setChoosing(false)}>Cancel</Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <p className={cn('text-sm', managerId ? 'text-ink-800' : 'text-ink-400')}>{value}</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={noCandidates}
+            onClick={() => setChoosing(true)}
+            title={
+              noCandidates
+                ? 'There is nobody else in the directory to report to yet'
+                : managerId
+                  ? 'Change who this employee reports to'
+                  : 'Record who this employee reports to'
+            }
+          >
+            {managerId ? 'Change manager' : '+ Add reporting manager'}
+          </Button>
+        </div>
+      )}
+      {!managerId && !choosing ? (
+        <p className="mt-1 text-xs text-ink-400">Until one is recorded, nobody can approve their leave.</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * InfoRow whose value is editable in place. Pass `options` for a fixed set of
  * choices; omit it for free text.
  */
@@ -1441,6 +1523,8 @@ function OverviewTab({
   onSaveField,
   onCreateDepartment,
   onCreateLocation,
+  managerOptions,
+  onSaveReportingManager,
 }: {
   emp: Employee;
   profilePicture: string | null;
@@ -1450,6 +1534,9 @@ function OverviewTab({
   onSaveField: (patch: Partial<Employee>) => void;
   onCreateDepartment: (name: string) => void;
   onCreateLocation: (name: string) => void;
+  /** Everyone this person could report to, cycles already excluded. */
+  managerOptions: { label: string; value: string }[];
+  onSaveReportingManager: (managerId: string) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -1515,7 +1602,13 @@ function OverviewTab({
           <InfoRow label="Employment Type" value={emp.employmentType} />
           <InfoRow label="Status" value={emp.status} />
           <InfoRow label="Date of Joining" value={formatDate(emp.dateOfJoining)} />
-          <InfoRow label="Reporting Manager" value={emp.reportingManagerName ?? 'None'} />
+          <ReportingManagerRow
+            managerId={emp.reportingManagerId}
+            managerName={emp.reportingManagerName}
+            options={managerOptions}
+            onSave={onSaveReportingManager}
+            editable={canEditJobFields}
+          />
         </div>
       </Card>
 
@@ -2305,6 +2398,30 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   }
 
   /**
+   * Record, change or clear who this person reports to.
+   *
+   * Kept out of `saveField` rather than folded into it: a reporting line is
+   * stamped onto the organisation's leave documents, so a change here has to
+   * resync those chains — which a designation or a location change does not.
+   */
+  function saveReportingManager(managerId: string) {
+    if (!emp) return;
+    const manager = managerId
+      ? getEmployeeDirectory().find((candidate) => candidate.id === managerId)
+      : undefined;
+    const next: Employee = {
+      ...emp,
+      reportingManagerId: managerId || null,
+      // getEmployeeDirectory() recomputes the name on read; setting it here
+      // keeps the record self-consistent in the meantime.
+      reportingManagerName: manager?.fullName,
+    };
+
+    updateEmployeeInDirectory(next);
+    if (reportingLineChanged(emp, next)) void syncManagerChains();
+  }
+
+  /**
    * Renumber this person, HR only.
    *
    * Everything that matches a person by their code — uploaded payslips, the
@@ -2812,6 +2929,8 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           onSaveField={saveField}
           onCreateDepartment={createDepartment}
           onCreateLocation={createLocation}
+          managerOptions={managerOptions}
+          onSaveReportingManager={saveReportingManager}
         />
       )}
       {activeTab === 'team' && <TeamTab emp={emp} embeddedSelfView={embeddedSelfView} />}
