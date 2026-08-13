@@ -274,6 +274,7 @@ done
 psql -d modcon_test -f test/10_behaviour.sql                  # 12 pass
 psql -d modcon_test -f test/20_dispatch.sql                   # 12 pass
 psql -d modcon_test -f test/30_tenant_isolation.sql           #  6 pass
+psql -d modcon_test -f test/40_org_directory.sql              #  2 pass
 ```
 
 Apply them in filename order — `000050` creates the two tables the rest attach
