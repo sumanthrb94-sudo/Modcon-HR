@@ -24,6 +24,7 @@ app  ──┘   (verify + route)    (LLM)          (deterministic)   └─► 
 supabase/
   migrations/
     20260813000050_base_schema.sql       goals + employees, additive on an existing project
+    20260813000060_org_directory.sql     tenant identity: orgKey and Slack workspace → org_id
     20260813000100_progress_core.sql     tables, views, RLS, audit trail
     20260813000200_channel_consent.sql   per-channel opt-in, fail-closed for voice
     20260813000300_checkin_dispatch.sql  cadence policy, ask log, escalation
@@ -168,6 +169,19 @@ deliberate. Recording URLs are never stored, only the transcript.
 so ordinary channel chatter is never ingested. Slash commands with a real goal id
 skip the model entirely.
 
+**The workspace must be claimed first**, or nothing from it is ingested:
+
+```sql
+update org_directory set slack_team_id = 'T01ABCDEF' where org_key = 'acme';
+```
+
+A Slack user id is unique within a workspace, not across Slack, and this
+application serves many organisations — so the id alone does not identify a
+person. The ingest resolves the workspace to an organisation and then looks for
+the user inside it. An event from a workspace no organisation has claimed is
+logged and dropped rather than attributed to whichever tenant happened to
+match.
+
 **Email.** Send the check-in with reply-to `goal+<goal_id>@updates.yourdomain.com`
 and point the Resend inbound webhook at `/ingest-email`. Quoted history is
 stripped before extraction.
@@ -259,6 +273,7 @@ for m in supabase/migrations/*.sql; do
 done
 psql -d modcon_test -f test/10_behaviour.sql                  # 12 pass
 psql -d modcon_test -f test/20_dispatch.sql                   # 12 pass
+psql -d modcon_test -f test/30_tenant_isolation.sql           #  6 pass
 ```
 
 Apply them in filename order — `000050` creates the two tables the rest attach

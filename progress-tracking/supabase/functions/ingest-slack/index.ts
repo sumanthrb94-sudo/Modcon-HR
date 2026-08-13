@@ -22,12 +22,39 @@ async function verifySlack(req: Request, rawBody: string): Promise<boolean> {
   return safeEqual(sig, expected);
 }
 
-/** Map a Slack user to a ModCon employee. Requires slack_user_id on employees. */
-async function resolveEmployee(slackUserId: string) {
+/**
+ * Which organisation owns this Slack workspace.
+ *
+ * A Slack user id is unique inside a workspace, not across Slack, and this
+ * application serves many organisations — so the id alone does not identify a
+ * person. An unmapped workspace resolves to nobody rather than to whichever
+ * tenant happened to match: a workspace no organisation has claimed is not one
+ * whose messages may be filed against anybody.
+ */
+async function resolveOrgBySlackTeam(teamId: string): Promise<string | null> {
+  if (!teamId) return null;
+  const db = serviceClient();
+  const { data } = await db
+    .from("org_directory")
+    .select("org_id")
+    .eq("slack_team_id", teamId)
+    .maybeSingle();
+  return (data as { org_id: string } | null)?.org_id ?? null;
+}
+
+/** Map a Slack user to a ModCon employee, within that workspace's organisation. */
+async function resolveEmployee(slackUserId: string, teamId: string) {
+  const orgId = await resolveOrgBySlackTeam(teamId);
+  if (!orgId) {
+    console.warn(`slack workspace ${teamId || "(none supplied)"} is not mapped to an organisation`);
+    return null;
+  }
+
   const db = serviceClient();
   const { data } = await db
     .from(Deno.env.get("EMPLOYEES_TABLE") ?? "employees")
     .select("id, org_id")
+    .eq("org_id", orgId)
     .eq("slack_user_id", slackUserId)
     .maybeSingle();
   return data as { id: string; org_id: string } | null;
@@ -39,9 +66,9 @@ async function handleEvent(payload: Record<string, any>) {
   // Only replies inside a check-in thread count as updates.
   if (!event.thread_ts || event.thread_ts === event.ts) return;
 
-  const employee = await resolveEmployee(event.user);
+  const employee = await resolveEmployee(event.user, payload.team_id ?? "");
   if (!employee) {
-    console.warn(`no ModCon employee mapped to slack user ${event.user}`);
+    console.warn(`no ModCon employee mapped to slack user ${event.user} in team ${payload.team_id}`);
     return;
   }
 
@@ -67,7 +94,8 @@ Deno.serve(async (req) => {
   // ---- Slash command (form-encoded) --------------------------------------
   if (contentType.includes("application/x-www-form-urlencoded")) {
     const form = new URLSearchParams(rawBody);
-    const employee = await resolveEmployee(form.get("user_id") ?? "");
+    // Slack sends team_id on the slash-command form as well as on events.
+    const employee = await resolveEmployee(form.get("user_id") ?? "", form.get("team_id") ?? "");
     if (!employee) {
       return json({ response_type: "ephemeral", text: "I couldn't match your Slack account to a ModCon profile." });
     }

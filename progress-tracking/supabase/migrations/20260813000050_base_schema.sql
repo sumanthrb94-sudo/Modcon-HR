@@ -91,17 +91,26 @@ alter table public.employees add column if not exists full_name     text;
 comment on column public.employees.phone is
   'E.164. Read by dispatch-checkins for the voice rung of the ladder; a null phone simply means that rung is unreachable.';
 
--- ingest-email resolves the sender with .ilike(email).maybeSingle(), and
--- ingest-slack with .eq(slack_user_id).maybeSingle(). maybeSingle() errors on
--- more than one row, and that error resolves the employee to null — the reply
--- is then dropped with no record of why. Case-insensitive uniqueness is what
--- makes that unreachable rather than unlikely.
+-- Unique WITHIN an organisation, not across the platform.
+--
+-- ingest-email resolves the sender with .ilike(email).maybeSingle() and
+-- ingest-slack with .eq(slack_user_id).maybeSingle(); maybeSingle() errors on a
+-- second row, that error resolves the employee to null, and the reply is
+-- dropped with no record of why. Scoping uniqueness to the organisation is
+-- enough to make that unreachable, because both lookups now filter by org_id
+-- first — see ingest-email/index.ts and ingest-slack/index.ts.
+--
+-- These were once globally unique, which forbade the ambiguity instead of
+-- handling it, and cost more than it bought: this is one application serving
+-- many organisations, so a consultant working for two of them, a shared
+-- director, or a reused test account could be recorded by the first tenant and
+-- then by nobody else. See docs/checkin-policy-spec.md.
 create unique index if not exists employees_email_lower_uniq
-  on public.employees (lower(email))
+  on public.employees (org_id, lower(email))
   where email is not null;
 
 create unique index if not exists employees_slack_user_id_uniq
-  on public.employees (slack_user_id)
+  on public.employees (org_id, slack_user_id)
   where slack_user_id is not null;
 
 create index if not exists employees_org_idx on public.employees (org_id);

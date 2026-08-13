@@ -35,11 +35,32 @@ async function verifySvix(req: Request, rawBody: string): Promise<boolean> {
     .some((candidate) => safeEqual(candidate, expected));
 }
 
-async function resolveEmployeeByEmail(email: string) {
+/**
+ * The organisation is the goal's, never the sender's.
+ *
+ * The reply-to carries goal+<goal_id>@…, so the goal is known before anyone is
+ * identified — and it is the only part of an inbound email that this system
+ * issued itself. An address, by contrast, can belong to somebody at more than
+ * one organisation, and taking the org from whichever employee row matched
+ * would file their update against a tenant they may not even work for.
+ */
+async function resolveGoalOrg(goalId: string): Promise<string | null> {
+  const db = serviceClient();
+  const { data } = await db
+    .from(Deno.env.get("GOALS_TABLE") ?? "goals")
+    .select("org_id")
+    .eq("id", goalId)
+    .maybeSingle();
+  return (data as { org_id: string } | null)?.org_id ?? null;
+}
+
+/** The sender, looked for only inside that organisation. */
+async function resolveEmployeeByEmail(email: string, orgId: string) {
   const db = serviceClient();
   const { data } = await db
     .from(Deno.env.get("EMPLOYEES_TABLE") ?? "employees")
     .select("id, org_id")
+    .eq("org_id", orgId)
     .ilike("email", email)
     .maybeSingle();
   return data as { id: string; org_id: string } | null;
@@ -69,9 +90,17 @@ Deno.serve(async (req) => {
   const goal_id = extractGoalId(...toList, mail.headers?.["reply-to"]);
   if (!goal_id) return json({ status: "ignored", reason: "no goal address in recipients" }, 202);
 
-  const employee = await resolveEmployeeByEmail(senderEmail);
+  const orgId = await resolveGoalOrg(goal_id);
+  if (!orgId) {
+    console.warn(`inbound mail for unknown goal ${goal_id}`);
+    return json({ status: "ignored", reason: "goal address matches no goal" }, 202);
+  }
+
+  // Not recognised *here* — the sender may well exist under another tenant, and
+  // that is exactly the case this must not treat as a match.
+  const employee = await resolveEmployeeByEmail(senderEmail, orgId);
   if (!employee) {
-    console.warn(`inbound mail from unknown sender ${senderEmail}`);
+    console.warn(`inbound mail from ${senderEmail}, who is not in the goal's organisation`);
     return json({ status: "ignored", reason: "sender not recognised" }, 202);
   }
 
@@ -81,7 +110,7 @@ Deno.serve(async (req) => {
 
   try {
     const result = await ingestProgress({
-      org_id: employee.org_id,
+      org_id: orgId,
       employee_id: employee.id,
       goal_id,
       source: "email",
