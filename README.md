@@ -19,6 +19,12 @@ from hire to retire — in a single, polished web application.
 
 ![Stack](https://img.shields.io/badge/React-18-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Vite](https://img.shields.io/badge/Vite-5-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 
+| | |
+|---|---|
+| **Live** | **https://modcon-hr.web.app** |
+| **Source** | **https://github.com/sumanthrb94-sudo/Modcon-HR** |
+| **Portfolio write-up** | **[PORTFOLIO.md](PORTFOLIO.md)** — screenshots, the multi-tenancy model, and what is deliberately not built |
+
 ## ✨ Modules
 
 | Module | Highlights |

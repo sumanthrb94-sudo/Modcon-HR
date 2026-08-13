@@ -86,7 +86,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
 const ROLE_SPECS = /(roles|documents|leave-policy)\.spec\.ts$/;
 // Not a test: it photographs the surfaces this branch changed. Its own project
 // so an ordinary run neither takes the screenshots nor waits for them.
-const SCREENSHOT_SPECS = /screenshots\.spec\.ts$/;
+const SCREENSHOT_SPECS = /(screenshots|portfolio)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
