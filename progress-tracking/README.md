@@ -23,10 +23,12 @@ app  ──┘   (verify + route)    (LLM)          (deterministic)   └─► 
 ```
 supabase/
   migrations/
+    20260813000050_base_schema.sql       goals + employees, additive on an existing project
     20260813000100_progress_core.sql     tables, views, RLS, audit trail
     20260813000200_channel_consent.sql   per-channel opt-in, fail-closed for voice
     20260813000300_checkin_dispatch.sql  cadence policy, ask log, escalation
     20260813000400_dispatch_cron.sql     hourly pg_cron schedule
+    20260813000500_base_schema_rls.sql   RLS on the two base tables (only if it created them)
   functions/
     _shared/types.ts     shared contracts
     _shared/http.ts      CORS, HMAC, constant-time secret compare
@@ -40,8 +42,12 @@ supabase/
     ingest-slack/        events + /progress slash command
     ingest-email/        inbound reply webhook
     dispatch-checkins/   the scheduler
+types/
+  deno.d.ts                 the Deno globals the functions use (env, serve)
+  remote-modules.d.ts       shim for the one https:// import
+tsconfig.json               `npm run typecheck:progress`
 test/
-  00_supabase_fixture.sql   stand-ins so migrations run on plain Postgres
+  00_supabase_fixture.sql   roles + auth.uid() so migrations run on plain Postgres
   10_behaviour.sql          12 schema/RLS invariant checks
   20_dispatch.sql           12 dispatcher invariant checks
   pure.test.ts              18 unit tests for gate + parsers
@@ -60,10 +66,35 @@ psql "$DATABASE_URL" -c "alter database postgres set app.dispatch_url = 'https:/
 psql "$DATABASE_URL" -c "alter database postgres set app.dispatch_secret = '<DISPATCH_SHARED_SECRET>'"
 ```
 
-The migration attaches foreign keys to `public.goals` and `public.employees`
-**only if those tables exist** — rename in the `do $$ ... $$` blocks at the
-bottom of the core migration if yours differ. It expects `goals.owner_id`,
-`goals.org_id`, `employees.email` and `employees.slack_user_id`.
+### The two tables it sits on
+
+`goals` and `employees` are supplied by `20260813000050_base_schema.sql`, so a
+fresh project comes up working. On a project that already has either table the
+migration is additive rather than assertive: `create table if not exists` leaves
+yours alone, and `add column if not exists` adds only the columns the edge
+functions select by name — all nullable, so nothing needs backfilling.
+
+The columns that matter: `goals.owner_id`, `goals.org_id`, `goals.title`,
+`goals.status` (only `'active'` is chased), and `employees.email`,
+`employees.slack_user_id`, `employees.phone`, `employees.full_name`.
+
+Two uniqueness constraints are load-bearing rather than tidy. `ingest-email`
+resolves the sender with `.ilike(email).maybeSingle()` and `ingest-slack` with
+`.eq(slack_user_id).maybeSingle()`; `maybeSingle()` **errors on a second row**,
+that error resolves the employee to null, and the reply is then dropped with no
+record of why. Hence a unique index on `lower(email)` and on `slack_user_id`.
+
+`20260813000500_base_schema_rls.sql` puts row-level security on those two tables
+— your own record and your own goals, plus the whole organisation for a
+`manager`/`hr_admin`/`owner`. It applies **only to tables the base migration
+itself created**, tracked in `progress_base_schema_owned`. Enabling RLS on a
+table a project already had would deny every read its application makes the
+moment the migration lands, and a table left open because only the service role
+touches it looks, afterwards, exactly like one that was waiting for policies.
+
+If your tables are named differently, set `GOALS_TABLE` / `EMPLOYEES_TABLE` in
+the function environment and skip `000050` — the later migrations attach their
+foreign keys conditionally and apply cleanly without it.
 
 ### JWT claims
 
@@ -193,19 +224,43 @@ feed is a subscription rather than a poll.
 
 ## Tests
 
-```bash
-node --experimental-strip-types --test test/pure.test.ts      # 18 pass
-node --experimental-strip-types --test test/schedule.test.ts  # 16 pass
+From the repository root:
 
+```bash
+npm run typecheck:progress   # tsc over the edge functions and their tests
+npm run test:progress        # 34 pass (18 gate/parsers + 16 quiet hours/escalation)
+```
+
+From this directory, the schema suites:
+
+```bash
 createdb modcon_test
 psql -d modcon_test -f test/00_supabase_fixture.sql
-for m in supabase/migrations/2026081300010*.sql supabase/migrations/2026081300020*.sql \
-         supabase/migrations/2026081300030*.sql; do psql -d modcon_test -f "$m"; done
+for m in supabase/migrations/*.sql; do
+  case "$m" in *dispatch_cron*) continue;; esac      # needs pg_cron + pg_net
+  psql -v ON_ERROR_STOP=1 -d modcon_test -f "$m"
+done
 psql -d modcon_test -f test/10_behaviour.sql                  # 12 pass
 psql -d modcon_test -f test/20_dispatch.sql                   # 12 pass
 ```
 
-(The cron migration is skipped locally — it needs `pg_cron` and `pg_net`.)
+Apply them in filename order — `000050` creates the two tables the rest attach
+to, and `000500` needs the `jwt_*` helpers `000100` defines. The fixture no
+longer declares `goals`/`employees` itself: a second definition is how it came
+to be missing `employees.phone`, which `dispatch-checkins` selects by name, so
+the suites passed against a shape the deployed schema did not have.
+
+### What the type-check does and does not prove
+
+`tsc -p progress-tracking` is deliberately **not** part of the app's `tsc -b`.
+The root build emits the React bundle; these are Deno modules with URL imports,
+and folding them in would make a broken edge function fail the app's deploy.
+
+Green means our own code is internally consistent. It does **not** verify the
+remote supabase-js API — `types/remote-modules.d.ts` is a hand-written shim and
+row data is `any` on purpose — nor that any column exists in Postgres. The SQL
+suites are what cover the schema. Bumping the supabase-js version in the import
+without bumping it in the shim reports the module as missing, which is intended.
 
 **Schema suite:** derived progress, staleness, rollup arithmetic, the append-only
 guard, the audit trail, duplicate webhook rejection, signal-free chatter, consent

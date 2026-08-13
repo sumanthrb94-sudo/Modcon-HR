@@ -20,19 +20,12 @@ as $$
   )::uuid;
 $$;
 
--- Stand-ins for ModCon's existing tables, so the conditional FK blocks fire.
-create table if not exists public.employees (
-  id            uuid primary key default gen_random_uuid(),
-  org_id        uuid not null,
-  email         text unique,
-  slack_user_id text,
-  full_name     text
-);
-
-create table if not exists public.goals (
-  id       uuid primary key default gen_random_uuid(),
-  org_id   uuid not null,
-  owner_id uuid not null references public.employees(id) on delete cascade,
-  title    text not null,
-  status   text not null default 'active'
-);
+-- `employees` and `goals` are NOT defined here any more. They are a real
+-- migration now — 20260813000050_base_schema.sql — so applying that file is
+-- what the suites exercise. Two definitions of the same two tables is how the
+-- fixture came to be missing `employees.phone`, which dispatch-checkins
+-- selects by name: the tests passed against a shape the deployed schema did
+-- not have.
+--
+-- Apply the migrations in filename order after this file; 000050 comes first
+-- and creates them.

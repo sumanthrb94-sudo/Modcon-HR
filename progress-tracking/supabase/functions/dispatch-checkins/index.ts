@@ -14,7 +14,7 @@
 import { serviceClient } from "../_shared/ingest.ts";
 import { json, preflight, verifySharedSecret } from "../_shared/http.ts";
 import { buildPrompt, canSendNow, requiresConsent } from "../_shared/schedule.ts";
-import { send, type Recipient } from "../_shared/senders.ts";
+import { send } from "../_shared/senders.ts";
 import type { ProgressSource } from "../_shared/types.ts";
 
 const BATCH_LIMIT = Number(Deno.env.get("DISPATCH_BATCH_LIMIT") ?? "50");
@@ -26,6 +26,61 @@ interface Outcome {
   channel: ProgressSource;
   result: "sent" | "deferred" | "failed" | "skipped" | "would_send";
   detail?: string;
+}
+
+/**
+ * A row of the `checkin_due` view (20260813000300_checkin_dispatch.sql). Written
+ * out because the quiet-hours decision below reads four of these fields and
+ * nothing was checking they exist — the view is the contract between the
+ * migration and this file, and renaming a column there should fail here.
+ */
+interface DueRow {
+  goal_id: string;
+  org_id: string;
+  employee_id: string;
+  goal_title: string;
+  current_percent: number | null;
+  last_update_at: string | null;
+  days_since_update: number;
+  cadence_days: number;
+  channel_ladder: ProgressSource[];
+  escalate_after_days: number;
+  quiet_start: number;
+  quiet_end: number;
+  timezone: string;
+  first_channel: ProgressSource;
+}
+
+/**
+ * What the two RPCs hand back. `claim_due_checkins` returns freshly claimed
+ * rows carrying `first_channel`; `escalate_stale_checkins` returns rows already
+ * queued on their new rung, carrying `channel`. Neither is a full DueRow, which
+ * is why the send loop falls back through both.
+ */
+/**
+ * The employee columns this function selects. Distinct from `Recipient`, which
+ * is keyed by `employee_id`: the row arrives keyed `id`, and the check-in is
+ * what supplies the employee id the senders quote back. Conflating the two is
+ * what the type-check caught.
+ */
+interface EmployeeRow {
+  id: string;
+  email: string | null;
+  slack_user_id: string | null;
+  phone: string | null;
+  full_name: string | null;
+}
+
+interface PendingCheckin {
+  id: string;
+  goal_id: string;
+  org_id: string;
+  employee_id: string;
+  channel?: ProgressSource;
+  first_channel?: ProgressSource;
+  quiet_start?: number;
+  quiet_end?: number;
+  timezone?: string;
 }
 
 Deno.serve(async (req) => {
@@ -60,14 +115,14 @@ Deno.serve(async (req) => {
   }
 
   // Escalated rows are already queued on their new channel; send them too.
-  const pending = [...(escalated ?? []), ...(claimed ?? [])];
+  const pending: PendingCheckin[] = [...(escalated ?? []), ...(claimed ?? [])];
   if (pending.length === 0) {
     return json({ now: now.toISOString(), dry_run: dryRun, claimed: 0, outcomes: [] });
   }
 
   // -- 3. Gather everything the senders need, in two queries not 2N ---------
-  const goalIds = [...new Set(pending.map((c: any) => c.goal_id))];
-  const employeeIds = [...new Set(pending.map((c: any) => c.employee_id))];
+  const goalIds = [...new Set(pending.map((c) => c.goal_id))];
+  const employeeIds = [...new Set(pending.map((c) => c.employee_id))];
 
   const [{ data: dueRows }, { data: people }] = await Promise.all([
     db.from("checkin_due").select("*").in("goal_id", goalIds),
@@ -83,16 +138,42 @@ Deno.serve(async (req) => {
     .select("id, title")
     .in("id", goalIds);
 
-  const dueByGoal = new Map((dueRows ?? []).map((d: any) => [d.goal_id, d]));
-  const titleByGoal = new Map((goalRows ?? []).map((g: any) => [g.id, g.title]));
-  const personById = new Map((people ?? []).map((p: any) => [p.id, p as Recipient]));
+  const dueByGoal = new Map<string, DueRow>(
+    ((dueRows ?? []) as DueRow[]).map((d) => [d.goal_id, d]),
+  );
+  const titleByGoal = new Map<string, string>(
+    ((goalRows ?? []) as { id: string; title: string }[]).map((g) => [g.id, g.title]),
+  );
+  const personById = new Map<string, EmployeeRow>(
+    ((people ?? []) as EmployeeRow[]).map((p) => [p.id, p]),
+  );
 
   // -- 4. Send ---------------------------------------------------------------
   const outcomes: Outcome[] = [];
 
   for (const checkin of pending) {
     const goalId = checkin.goal_id;
-    const channel: ProgressSource = checkin.channel ?? checkin.first_channel;
+    // Escalated rows carry `channel`, freshly claimed ones `first_channel`.
+    // Neither is guaranteed: a policy saved with an empty channel_ladder yields
+    // a row with no rung at all, and sending on `undefined` would have thrown
+    // inside the sender with the goal already claimed — asked, unanswerable,
+    // and invisible until someone read the logs.
+    const channel = checkin.channel ?? checkin.first_channel;
+    if (!channel) {
+      outcomes.push({
+        goal_id: goalId,
+        channel: "system",
+        result: "failed",
+        detail: "check-in has no channel; policy channel_ladder is empty",
+      });
+      if (!dryRun) {
+        await db.from("progress_checkin")
+          .update({ state: "failed", last_error: "no channel on the policy ladder" })
+          .eq("id", checkin.id);
+      }
+      continue;
+    }
+
     const due = dueByGoal.get(goalId);
     const person = personById.get(checkin.employee_id);
 
