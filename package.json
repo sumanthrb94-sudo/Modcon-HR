@@ -18,7 +18,7 @@
     "test:e2e:emulator": "firebase emulators:exec --only firestore,auth --project modcon-hr \"E2E_FIRESTORE_EMULATOR=127.0.0.1:8080 E2E_AUTH_EMULATOR=127.0.0.1:9099 E2E_ORG_SETTINGS_DEPLOYED=true playwright test --project=org-settings\"",
     "rules:verify": "node scripts/verify-deployed-rules.mjs",
     "typecheck:progress": "tsc -p progress-tracking",
-    "test:progress": "node --experimental-strip-types --test progress-tracking/test/pure.test.ts progress-tracking/test/schedule.test.ts"
+    "test:progress": "node --experimental-strip-types --test progress-tracking/test/pure.test.ts progress-tracking/test/schedule.test.ts progress-tracking/test/firebase-auth.test.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
