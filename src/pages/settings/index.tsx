@@ -16,6 +16,7 @@ import { Select } from '@/components/ui';
 import { employees } from '@/data/employees';
 import { HR_DEPARTMENT, getCompanyProfile, isHrDepartment, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
+import CheckinPolicySection from './CheckinPolicySection';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import {
@@ -4495,6 +4496,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'locations', label: 'Locations', icon: <MapPin size={17} />, description: 'Where the company works' },
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
   { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
+  { id: 'checkins', label: 'Progress Check-ins', icon: <RefreshCw size={17} />, description: 'Cadence & channels' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
   { id: 'holidays', label: 'Holidays', icon: <CalendarDays size={17} />, description: 'Holiday calendar' },
   { id: 'notifications', label: 'Notifications', icon: <Bell size={17} />, description: 'Alert preferences' },
@@ -4553,6 +4555,7 @@ export function SettingsPage() {
           <EmployeeLeavePoliciesSection />
         </>
       );
+      case 'checkins': return <CheckinPolicySection />;
       case 'salary': return (
         <>
           <SalaryStructureSection />
