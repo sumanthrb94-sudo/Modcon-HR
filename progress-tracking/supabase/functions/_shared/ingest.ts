@@ -1,5 +1,6 @@
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { requireEnv } from "./http.ts";
+import { serviceClient } from "./db.ts";
 import { DEFAULT_AUTO_APPLY_CONFIDENCE, gate } from "./gate.ts";
 import { isUuid } from "./parse.ts";
 import type { Extraction, GoalCandidate, IngestPayload } from "./types.ts";
@@ -10,11 +11,8 @@ const AUTO_APPLY_CONFIDENCE = Number(
 const EXTRACTION_MODEL = Deno.env.get("EXTRACTION_MODEL") ?? "claude-sonnet-4-5";
 const GOALS_TABLE = Deno.env.get("GOALS_TABLE") ?? "goals";
 
-export function serviceClient(): SupabaseClient {
-  return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
-    auth: { persistSession: false },
-  });
-}
+// Re-exported so the four ingest functions keep importing it from here.
+export { serviceClient };
 
 const EXTRACTION_TOOL = {
   name: "record_progress",

@@ -9,7 +9,7 @@
 // the request body. An org_id taken from user-supplied JSON would let anyone
 // rewrite any tenant's policy.
 
-import { serviceClient } from "../_shared/ingest.ts";
+import { serviceClient } from "../_shared/db.ts";
 import { json, preflight } from "../_shared/http.ts";
 import { googleKeySource, verifyFirebaseToken } from "../_shared/firebaseAuth.ts";
 import { resolveCaller } from "../_shared/firestoreUser.ts";
