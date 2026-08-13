@@ -382,8 +382,14 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+# Local-stack secrets, read from the shell so nothing lands in the repository.
+# `supabase secrets set` is what supplies these in a deployed project; this
+# block is only so `supabase start` can exercise the same code paths. An unset
+# variable resolves to empty, and the functions' own checks then refuse the
+# request — which is the correct behaviour, not a broken stack.
+[edge_runtime.secrets]
+DISPATCH_SHARED_SECRET = "env(DISPATCH_SHARED_SECRET)"
+INGEST_SHARED_SECRET = "env(INGEST_SHARED_SECRET)"
 
 [analytics]
 enabled = true

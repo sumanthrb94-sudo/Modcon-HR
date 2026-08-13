@@ -76,6 +76,14 @@ psql "$DATABASE_URL" -c "alter database postgres set app.dispatch_url = 'https:/
 psql "$DATABASE_URL" -c "alter database postgres set app.dispatch_secret = '<DISPATCH_SHARED_SECRET>'"
 ```
 
+> **`alter database … set app.*` needs more than the `postgres` role.** On the
+> local stack it fails with `permission denied to set parameter`; `postgres`
+> there is not a superuser (`rolsuper = f`) and `supabase_admin` is. Run it from
+> the SQL editor in the dashboard, which connects with higher privilege, or
+> expect this exact refusal. Until both settings exist,
+> `run_checkin_dispatch()` warns and returns without posting — the hourly job
+> runs and does nothing, which looks identical to no cron job at all.
+
 ### The two tables it sits on
 
 `goals` and `employees` are supplied by `20260813000050_base_schema.sql`, so a
@@ -278,6 +286,48 @@ public.run_checkin_dispatch()$$)` schedules it once the extension exists.
 sends. The scheduling block was always guarded on `pg_cron` being present; the
 bare `create extension` above it simply aborted the file before that guard
 could be reached.
+
+### The scheduler, without a Supabase account
+
+`pg_cron` and `pg_net` are the two things a plain Postgres cannot exercise, and
+they need no cloud project — Supabase's own image ships both:
+
+```bash
+supabase start                    # applies all six migrations on the way up
+DISPATCH_SHARED_SECRET=local-test-secret supabase start   # …with the secret in scope
+```
+
+Then, as the container superuser (see the note above about `postgres` not being
+one):
+
+```bash
+docker exec supabase_db_progress-tracking psql -U supabase_admin -d postgres \
+  -c "alter database postgres set app.dispatch_url = 'http://host.docker.internal:54321/functions/v1/dispatch-checkins'" \
+  -c "alter database postgres set app.dispatch_secret = 'local-test-secret'" \
+  -c "select public.run_checkin_dispatch()"
+
+# pg_net is asynchronous — the POST lands a moment later
+docker exec supabase_db_progress-tracking psql -U supabase_admin -d postgres \
+  -c "select id, status_code, content from net._http_response order by id desc limit 1"
+```
+
+A `200` with `{"claimed":0,"outcomes":[]}` is the whole chain working on an
+empty database: pg_cron → `run_checkin_dispatch()` → pg_net → the gateway →
+the function's own shared-secret check. Without the secret the same call
+returns `401 {"error":"unauthorised"}` — which is the function refusing, not
+the gateway, and is therefore also how you confirm `verify_jwt = false` took
+effect.
+
+To watch the schedule actually fire without waiting for `:07`, add a
+throwaway per-minute job and read `cron.job_run_details`:
+
+```sql
+select cron.schedule('proof', '* * * * *', $$select public.run_checkin_dispatch()$$);
+-- a minute later
+select j.jobname, d.status, d.return_message from cron.job_run_details d
+  join cron.job j on j.jobid = d.jobid where j.jobname = 'proof';
+select cron.unschedule('proof');
+```
 
 ### What the type-check does and does not prove
 
