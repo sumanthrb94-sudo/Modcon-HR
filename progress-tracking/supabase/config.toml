@@ -390,6 +390,9 @@ deno_version = 2
 [edge_runtime.secrets]
 DISPATCH_SHARED_SECRET = "env(DISPATCH_SHARED_SECRET)"
 INGEST_SHARED_SECRET = "env(INGEST_SHARED_SECRET)"
+# The Firebase service account checkin-policy authorises with. Never a file in
+# this repository; set with `supabase secrets set` in a deployed project.
+FIREBASE_SERVICE_ACCOUNT = "env(FIREBASE_SERVICE_ACCOUNT)"
 
 [analytics]
 enabled = true
@@ -448,4 +451,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.dispatch-checkins]
+verify_jwt = false
+
+# Authenticates a Firebase ID token itself, so the gateway must not reject the
+# request first for not carrying a Supabase JWT — its own verification is the
+# check that protects it.
+[functions.checkin-policy]
 verify_jwt = false
