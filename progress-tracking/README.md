@@ -250,6 +250,16 @@ longer declares `goals`/`employees` itself: a second definition is how it came
 to be missing `employees.phone`, which `dispatch-checkins` selects by name, so
 the suites passed against a shape the deployed schema did not have.
 
+**Both SQL suites seed fixed uuids, so they run once per database.** A second
+run against the same database fails on `employees_pkey` rather than reporting a
+regression. `dropdb modcon_test && createdb modcon_test` between runs.
+
+**pgcrypto is requested but not required.** `gen_random_uuid()` is the only
+thing these migrations wanted it for and it has been in core since PostgreSQL
+13, so the `create extension` is wrapped in an exception block: a server that
+does not package pgcrypto logs a notice instead of failing the migration.
+Supabase has it; stripped and embedded builds often do not.
+
 ### What the type-check does and does not prove
 
 `tsc -p progress-tracking` is deliberately **not** part of the app's `tsc -b`.

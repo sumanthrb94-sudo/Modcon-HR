@@ -1,7 +1,12 @@
 -- Minimal stand-ins for the Supabase-managed pieces, so the migrations can be
 -- applied and exercised on a plain Postgres 16 instance.
 
-create extension if not exists pgcrypto;
+do $$
+begin
+  create extension if not exists pgcrypto;
+exception when others then
+  raise notice 'pgcrypto unavailable (%); gen_random_uuid() comes from core on PG13+', sqlerrm;
+end $$;
 
 do $$ begin create role anon nologin;          exception when duplicate_object then null; end $$;
 do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;

@@ -23,7 +23,17 @@
 -- EMPLOYEES_TABLE in the function environment and skip this file.
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+-- gen_random_uuid() is the only thing any of these migrations wanted pgcrypto
+-- for, and it has been in core since PostgreSQL 13. Requesting the extension
+-- unconditionally made the whole migration fail on a server that simply does
+-- not package it — a stripped or embedded build — over a function that was
+-- already there. Install it where it is available, carry on where it is not.
+do $$
+begin
+  create extension if not exists pgcrypto;
+exception when others then
+  raise notice 'pgcrypto unavailable (%); gen_random_uuid() comes from core on PG13+', sqlerrm;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Record which of the two tables this migration is about to create, before it

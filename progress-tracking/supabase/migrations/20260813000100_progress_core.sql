@@ -9,7 +9,14 @@
 -- so this migration applies cleanly whatever those tables are named today.
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+-- See 20260813000050: gen_random_uuid() is core from PG13, so a server without
+-- pgcrypto packaged should not fail the migration over it.
+do $$
+begin
+  create extension if not exists pgcrypto;
+exception when others then
+  raise notice 'pgcrypto unavailable (%); gen_random_uuid() comes from core on PG13+', sqlerrm;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Enums
