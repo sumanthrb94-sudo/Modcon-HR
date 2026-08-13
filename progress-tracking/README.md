@@ -237,7 +237,6 @@ From this directory, the schema suites:
 createdb modcon_test
 psql -d modcon_test -f test/00_supabase_fixture.sql
 for m in supabase/migrations/*.sql; do
-  case "$m" in *dispatch_cron*) continue;; esac      # needs pg_cron + pg_net
   psql -v ON_ERROR_STOP=1 -d modcon_test -f "$m"
 done
 psql -d modcon_test -f test/10_behaviour.sql                  # 12 pass
@@ -254,11 +253,21 @@ the suites passed against a shape the deployed schema did not have.
 run against the same database fails on `employees_pkey` rather than reporting a
 regression. `dropdb modcon_test && createdb modcon_test` between runs.
 
-**pgcrypto is requested but not required.** `gen_random_uuid()` is the only
-thing these migrations wanted it for and it has been in core since PostgreSQL
-13, so the `create extension` is wrapped in an exception block: a server that
-does not package pgcrypto logs a notice instead of failing the migration.
-Supabase has it; stripped and embedded builds often do not.
+**No migration is skipped any more, and none of the three extensions is
+required.** `pgcrypto`, `pg_cron` and `pg_net` are each requested inside an
+exception block, so a server that does not package them logs a notice rather
+than aborting. Supabase provides all three; stripped and embedded builds often
+provide none.
+
+What each absence costs: `pgcrypto` nothing at all, since `gen_random_uuid()`
+has been in core since PostgreSQL 13 and no other pgcrypto function is called.
+`pg_cron` costs the hourly tick — `run_checkin_dispatch()` is still created, and
+`select cron.schedule('modcon-checkin-dispatch', '7 * * * *', $$select
+public.run_checkin_dispatch()$$)` schedules it once the extension exists.
+`pg_net` costs the outbound POST that function makes, so it warns rather than
+sends. The scheduling block was always guarded on `pg_cron` being present; the
+bare `create extension` above it simply aborted the file before that guard
+could be reached.
 
 ### What the type-check does and does not prove
 

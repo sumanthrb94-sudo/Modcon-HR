@@ -8,8 +8,28 @@
 -- Run this AFTER setting the two settings below, or the job will 401.
 -- ============================================================================
 
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
+-- Requested, not required. The scheduling block at the bottom already asks
+-- whether pg_cron is installed before using it — but a bare `create extension`
+-- up here aborts the migration first, so that guard could never be reached on
+-- a server lacking the extension, and the whole file failed rather than the
+-- one part of it that genuinely needs a scheduler.
+--
+-- Applying without them yields the dispatch function and no job: the hourly
+-- tick is the only thing missing, and `select cron.schedule(...)` can be run
+-- by hand once the extensions are available. Supabase provides both.
+do $$
+begin
+  create extension if not exists pg_cron;
+exception when others then
+  raise notice 'pg_cron unavailable (%); the hourly check-in job will not be scheduled', sqlerrm;
+end $$;
+
+do $$
+begin
+  create extension if not exists pg_net;
+exception when others then
+  raise notice 'pg_net unavailable (%); run_checkin_dispatch() cannot post until it is installed', sqlerrm;
+end $$;
 
 -- Store the endpoint and secret once, outside the job body:
 --   alter database postgres set app.dispatch_url = 'https://<ref>.supabase.co/functions/v1/dispatch-checkins';
