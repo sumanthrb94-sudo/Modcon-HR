@@ -51,6 +51,53 @@ The cost is accepted deliberately: an organisation that never opens the setting
 gets nothing from the feature. The Settings page states this in those words
 rather than rendering an empty form that looks configured.
 
+### An employee is unique within an organisation, not across the platform
+
+`20260813000050_base_schema.sql` as it stands on `main` makes two indexes
+globally unique:
+
+```sql
+create unique index employees_email_lower_uniq  on public.employees (lower(email)) …
+create unique index employees_slack_user_id_uniq on public.employees (slack_user_id) …
+```
+
+**This is wrong for a platform serving many organisations, and this spec
+corrects it.** One address may belong to exactly one tenant platform-wide, so a
+consultant working for two client organisations, a shared director, or a reused
+test account cannot be recorded by the second one at all.
+
+The reasoning that produced it was sound about the symptom and wrong about the
+cause. `ingest-email` resolves the sender with `.ilike(email).maybeSingle()` and
+`ingest-slack` with `.eq(slack_user_id).maybeSingle()`; `maybeSingle()` errors
+on a second row, that error resolves the employee to null, and the reply is
+dropped with nothing logged. A global unique index does prevent that — by
+forbidding the situation rather than handling it.
+
+The deeper fault is that **neither lookup filters by organisation**. Both return
+`{ id, org_id }` and the caller trusts whichever row came back. Relaxing the
+index without fixing the lookup would let an inbound email file a progress
+update against another organisation's employee. That is precisely the failure
+[tenant-isolation-spec.md](tenant-isolation-spec.md) exists to prevent, and
+CLAUDE.md states the rule generally: *every query must filter on `org_id`*.
+
+So both halves change together, and neither is safe alone:
+
+- **Uniqueness becomes per organisation** — `(org_id, lower(email))` and
+  `(org_id, slack_user_id)`. Within one tenant the ambiguity that breaks
+  `maybeSingle()` is still impossible, which is all it ever needed to be.
+- **Both lookups resolve the organisation first, then the employee within it.**
+  - *Email* already carries it. The reply-to is `goal+<goal_id>@…`, so resolve
+    the goal, take its `org_id`, and filter the employee by that. An address
+    matching somebody in a different organisation is then not a match at all.
+  - *Slack* takes it from the `team_id` on the inbound event, mapped through
+    `org_directory.slack_team_id`. Without that column an inbound Slack message
+    genuinely cannot be attributed to a tenant, and the only reason it appeared
+    to work is that one workspace was assumed.
+
+An event from an unmapped Slack workspace is **refused and logged**, never
+attributed by guessing. A workspace nobody has claimed is not a workspace whose
+messages this app may file against anybody.
+
 ### HR reaches the policy through an edge function, not a second SDK
 
 The ModCon client keeps talking only to Firebase. A new `checkin-policy` edge
@@ -101,6 +148,7 @@ A new table, and the first thing an organisation acquires.
 | --- | --- | --- |
 | `org_id` | `uuid` primary key | What every existing table's `org_id` means |
 | `org_key` | `text` unique not null | ModCon's tenant key, e.g. `modcon` |
+| `slack_team_id` | `text` unique | The organisation's Slack workspace, or null if it does not use Slack |
 | `created_at` | `timestamptz` | |
 
 Rows are created by the edge function the first time an organisation saves a
@@ -184,6 +232,13 @@ outage into a privilege escalation.
 - **SQL** — `org_directory` uniqueness and case-folding; an organisation with no
   policy row produces no `checkin_due` rows. Alongside the existing suites in
   `progress-tracking/test/`.
+- **SQL, tenant isolation** — the test the global index would have failed: two
+  organisations each record an employee with the same address and the same
+  `slack_user_id`, and both inserts succeed. Then an inbound email for one
+  organisation's goal resolves to *that* organisation's employee, and a Slack
+  event from an unmapped `team_id` resolves to nobody rather than to whichever
+  row happened to match. These are the assertions that make "one app, many
+  organisations" true rather than assumed.
 - **Unit** — token verification: expired, wrong `aud`, wrong `iss`, unknown
   `kid`, tampered signature. No network; certificates injected.
 - **E2E** — HR saves a policy and it appears in Postgres; a non-HR account in
@@ -199,6 +254,17 @@ outage into a privilege escalation.
   step. Unrelated to configuration.
 - **Backfilling `org_directory` for existing tenants.** No tenant has a policy
   today, so there is nothing to backfill; the first save creates the row.
+
+## Migration note
+
+Correcting the two indexes is a schema change to a migration already on `main`
+(`20260813000050_base_schema.sql`). It is edited in place rather than superseded
+by a later migration: no environment has run it against real data — the only
+applications so far were a throwaway Postgres cluster and a local
+`supabase start` — so there is nothing deployed to migrate away from. If that
+stops being true before this work lands, it becomes a `drop index` /
+`create unique index` pair in a new migration instead, and this note is the
+reminder to check which situation applies.
 
 ## Open question
 
