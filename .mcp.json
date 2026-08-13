@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "brightdata": {
+      "url": "https://mcp.brightdata.com/mcp?token=${BRIGHTDATA_API_KEY}&pro=1"
+    },
+    "code-review-graph": {
+      "command": "uvx",
+      "args": [
+        "code-review-graph",
+        "serve"
+      ],
+      "cwd": "/Users/Dell/Modcon-HR",
+      "type": "stdio"
+    }
+  }
+}

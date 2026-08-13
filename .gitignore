@@ -41,3 +41,13 @@ coverage
 /.claude-flow/
 /.swarm/
 /ruvector.db
+.vercel
+# Added by code-review-graph
+.code-review-graph/
+
+# A vendored toolchain, not source: 1.6 GB across ~32,000 files, including
+# Postgres binaries. Git is the wrong place for it and GitHub would refuse it.
+/my-agent/
+
+# Editor and tooling backups
+*.bak
