@@ -56,6 +56,16 @@ test/
 
 ## Apply
 
+`supabase/config.toml` is committed, and its `[functions.*]` blocks set
+`verify_jwt = false` on all five. That is not a relaxation: none of the callers
+holds a Supabase JWT — Slack signs with its signing secret, Resend with a Svix
+secret, ElevenLabs with its own, `extract-progress` takes
+`INGEST_SHARED_SECRET`, and pg_net posts `DISPATCH_SHARED_SECRET` for pg_cron.
+The gateway default would 401 every one of them *before* the function ran, so
+the HMAC and constant-time comparisons in `_shared/http.ts` would never
+execute. The check that protects these endpoints is inside them, not in front
+of them.
+
 ```bash
 supabase link --project-ref <ref>
 supabase db push
