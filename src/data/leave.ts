@@ -374,6 +374,31 @@ export function getPendingCount(): number {
   return getLeaveRequests().filter((r) => r.status === 'Pending').length;
 }
 
+/**
+ * The earliest leave this employee has on file starting before `date`, if any.
+ *
+ * Asked when a joining date is being moved forward: an employee cannot have
+ * taken leave before they joined, and `checkLeaveApplication` refuses a request
+ * that starts before the joining date (data/leaveApplication.ts). A date that
+ * strands existing leave on the wrong side of that line would leave the record
+ * holding something no new request could reproduce.
+ *
+ * Approved and Pending only, the same two statuses the overlap check treats as
+ * real. A rejected request is a record of leave that never happened, and
+ * refusing a joining-date correction on the strength of one would be refusing
+ * it on the strength of nothing.
+ */
+export function earliestLeaveBefore(employeeId: string, date: string): LeaveRequest | null {
+  const candidates = getLeaveRequests().filter(
+    (r) =>
+      r.employeeId === employeeId &&
+      (r.status === 'Approved' || r.status === 'Pending') &&
+      r.startDate < date,
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((earliest, r) => (r.startDate < earliest.startDate ? r : earliest));
+}
+
 // Helper: approved this month
 export function getApprovedThisMonth(month = currentMonthIso()): number {
   return getLeaveRequests().filter(

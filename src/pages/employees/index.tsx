@@ -73,7 +73,7 @@ import { syncHrRoleForEmployee } from '@/data/roleAssignments';
 import { resolveAppRole } from '@/lib/accessControl';
 import { orgScopedKey } from '@/lib/orgScope';
 import { todayIso } from '@/lib/today';
-import { getLeaveRequests } from '@/data/leave';
+import { earliestLeaveBefore, getLeaveRequests } from '@/data/leave';
 import { getEntitlements } from '@/data/leaveEntitlements';
 import { getLeavePolicies, hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
@@ -1515,6 +1515,11 @@ function InlineSelect({
 /**
  * A free-text value that can be changed where it is read. Enter or clicking
  * away commits; Escape abandons the edit.
+ *
+ * `inputType="date"` swaps the text box for a date picker and leaves
+ * everything else alone. The `value` stays the stored ISO string either way —
+ * how a date is *shown* (`formatDate`) is the caller's business, passed in as
+ * `children`, so the editor never has to parse a rendered date back.
  */
 function InlineText({
   label,
@@ -1522,6 +1527,7 @@ function InlineText({
   onSave,
   editable,
   triggerClassName,
+  inputType = 'text',
   children,
 }: {
   label: string;
@@ -1529,6 +1535,7 @@ function InlineText({
   onSave: (next: string) => void;
   editable: boolean;
   triggerClassName?: string;
+  inputType?: 'text' | 'date';
   children?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -1553,7 +1560,7 @@ function InlineText({
     return (
       <input
         autoFocus
-        type="text"
+        type={inputType}
         aria-label={label}
         className="input w-auto max-w-[16rem] py-0.5 px-2 text-sm"
         value={draft}
@@ -1676,26 +1683,41 @@ function ReportingManagerRow({
 function EditableInfoRow({
   label,
   value,
+  display,
   options,
   onSave,
   onCreate,
   editable,
+  inputType,
 }: {
   label: string;
+  /** The stored value — what the editor opens on and what `onSave` receives. */
   value: string;
+  /**
+   * What to read when not editing, where that differs from the stored value.
+   * A joining date is stored `2026-01-15` and read "15 Jan 2026"; without this
+   * the row would either show the ISO string or hand the editor a formatted
+   * date it cannot save back.
+   */
+  display?: string;
   options?: string[];
   onSave: (next: string) => void;
   onCreate?: (name: string) => void;
   editable: boolean;
+  inputType?: 'text' | 'date';
 }) {
-  if (!editable) return <InfoRow label={label} value={value} />;
+  if (!editable) return <InfoRow label={label} value={display ?? value} />;
   return (
     <div>
       <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-0.5">{label}</p>
       <div className="text-sm text-ink-800">
         {options
           ? <InlineSelect label={label} value={value} options={options} onSave={onSave} onCreate={onCreate} editable />
-          : <InlineText label={label} value={value} onSave={onSave} editable />}
+          : (
+            <InlineText label={label} value={value} onSave={onSave} editable inputType={inputType}>
+              {display ?? value}
+            </InlineText>
+          )}
       </div>
     </div>
   );
@@ -1710,7 +1732,9 @@ function OverviewTab({
   onUploadProfilePicture,
   profilePictureError,
   canEditJobFields,
+  canEditJoiningDate,
   onSaveField,
+  onSaveJoiningDate,
   onCreateDepartment,
   onCreateLocation,
   managerOptions,
@@ -1722,7 +1746,10 @@ function OverviewTab({
   onUploadProfilePicture: () => void;
   profilePictureError: string;
   canEditJobFields: boolean;
+  /** HR and Admin only — the same gate as the employee code, and for the same reason. */
+  canEditJoiningDate: boolean;
   onSaveField: (patch: Partial<Employee>) => void;
+  onSaveJoiningDate: (next: string) => void;
   onCreateDepartment: (name: string) => void;
   onCreateLocation: (name: string) => void;
   /** Everyone this person could report to, cycles already excluded. */
@@ -1793,7 +1820,19 @@ function OverviewTab({
           />
           <InfoRow label="Employment Type" value={emp.employmentType} />
           <InfoRow label="Status" value={emp.status} />
-          <InfoRow label="Date of Joining" value={formatDate(emp.dateOfJoining)} />
+          {/* Corrected by HR, not by the department head: nothing on this
+              profile is stored as a tenure — leave accrual, the Earned Leave
+              tenure gate, payroll's on-roll cut-off and every anniversary are
+              all derived from this one date, so it is gated like the employee
+              code beside it rather than like a designation. */}
+          <EditableInfoRow
+            label="Date of Joining"
+            value={emp.dateOfJoining}
+            display={formatDate(emp.dateOfJoining)}
+            inputType="date"
+            onSave={onSaveJoiningDate}
+            editable={canEditJoiningDate}
+          />
           <ReportingManagerRow
             managerId={emp.reportingManagerId}
             managerName={emp.reportingManagerName}
@@ -2502,6 +2541,13 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const isEmployee = loggedInRole === 'Employee';
   /** The same rule as Add Employee — HR administers the organisation here. */
   const canEditEmployeeCode = isHR || isAdmin;
+  /**
+   * And the joining date with it. Not `canEditJobFields`, which is everyone but
+   * the employee role: a department head may correct a designation, but the
+   * date the whole of somebody's tenure, accrual and pay history is reckoned
+   * from is the organisation's record of their employment, not their manager's.
+   */
+  const canEditJoiningDate = isHR || isAdmin;
 
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const profilePictureInputRef = useRef<HTMLInputElement | null>(null);
@@ -2632,6 +2678,44 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       return;
     }
     saveField({ employeeCode: next });
+  }
+
+  /**
+   * Correct this person's joining date, HR and Admin only.
+   *
+   * Nothing stores a tenure: leave accrual, the Earned Leave tenure gate,
+   * payroll's on-roll cut-off, headcount history and every work anniversary are
+   * all derived from this date when they are read, so moving it re-answers all
+   * of them — which is the point, and also why it is worth being careful about.
+   *
+   * Moving it *forward* past leave already on file is refused rather than
+   * saved. `checkLeaveApplication` will not accept a request starting before
+   * the joining date, so a date that steps over existing leave would leave the
+   * record holding an absence no new application could reproduce — and the
+   * balance it was charged against would be accruing from a month the employee
+   * had not started. The refusal names the request, because "that date is not
+   * allowed" without saying which record blocks it is not actionable.
+   */
+  function saveJoiningDate(next: string) {
+    if (!emp || next === emp.dateOfJoining) return;
+    // A date input can only produce a real date or an empty string, and
+    // InlineText already refuses the empty one. This catches a value arriving
+    // from anywhere else rather than trusting the widget.
+    if (Number.isNaN(Date.parse(next))) {
+      setAccessNotice(`${next} is not a date, so ${emp.fullName}'s joining date is unchanged.`);
+      return;
+    }
+    const stranded = earliestLeaveBefore(emp.id, next);
+    if (stranded) {
+      setAccessNotice(
+        `${emp.fullName} has ${stranded.type} Leave from ${formatDate(stranded.startDate)}, which would fall before a joining date of ${formatDate(next)}. Their joining date is unchanged.`,
+      );
+      return;
+    }
+    setAccessNotice(
+      `${emp.fullName}'s joining date is now ${formatDate(next)}. Leave accrual, tenure and payroll are derived from it and have been recalculated.`,
+    );
+    saveField({ dateOfJoining: next });
   }
 
   /**
@@ -3147,7 +3231,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           onUploadProfilePicture={openProfilePicturePicker}
           profilePictureError={profilePictureError}
           canEditJobFields={canEditJobFields}
+          canEditJoiningDate={canEditJoiningDate}
           onSaveField={saveField}
+          onSaveJoiningDate={saveJoiningDate}
           onCreateDepartment={createDepartment}
           onCreateLocation={createLocation}
           managerOptions={managerOptions}

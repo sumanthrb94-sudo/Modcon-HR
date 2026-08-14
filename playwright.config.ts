@@ -177,7 +177,10 @@ const ORG_SETTINGS_ENABLED =
 // leave-approval-scope.spec.ts is here for the same reason: who may decide a
 // leave request is a per-persona question, and asking it once per engine would
 // re-test app logic through three browsers to reach the same answer.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope)\.spec\.ts$/;
+// joining-date.spec.ts likewise: who may correct a joining date is a
+// per-persona question — HR and Admin, and pointedly not the manager who may
+// edit every other field in that card.
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|joining-date)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
