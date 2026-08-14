@@ -192,6 +192,83 @@ test.describe.serial('leave policy', () => {
     await expect(dialog().getByText(/Charged: [12] day\(s\) of 3 calendar day\(s\)/)).toBeVisible();
   });
 
+  /**
+   * First day of the financial year today falls in — 1 April, derived rather
+   * than written down, for the same reason as every other date here.
+   */
+  function financialYearStartIso(): string {
+    const today = isoInDays(0);
+    const year = Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) >= 4 ? 0 : 1);
+    return `${year}-04-01`;
+  }
+
+  /** The most recent Friday strictly before today — a past day no seeded week-off falls on. */
+  function lastFriday(): string {
+    for (let i = 1; i <= 7; i += 1) {
+      const iso = isoInDays(-i);
+      if (new Date(iso).getUTCDay() === 5) return iso;
+    }
+    throw new Error('no Friday in the last seven days');
+  }
+
+  // Leave is often applied for after the absence, so the dates may be in the
+  // past — the dialog used to put `min={today}` on the input and refuse it. The
+  // three halves are asserted together because each alone reads as working: an
+  // accepted past date with no floor behind it is leave deducted from nothing, a
+  // floor with the input still closed is a rule nobody can reach, and a request
+  // that reaches the approver unmarked is a plan and an absence already taken
+  // wearing the same dates.
+  //
+  // Unpaid Leave, not Casual: it carries no accrued balance, so this funds
+  // itself in April as well as in March and leaves the Casual balance the
+  // half-day test spends exactly where it found it.
+  test('a date in the past is accepted, and the request is marked backdated', async () => {
+    test.skip(persona().role !== 'admin', 'needs the whole directory in scope');
+    const friday = lastFriday();
+    test.skip(
+      friday < financialYearStartIso(),
+      'no past working day inside the current financial year yet',
+    );
+
+    await openApply();
+    await employeeSelect().selectOption({ label: 'Rohan Iyer (MC-003)' });
+    await typeSelect().selectOption('Unpaid');
+
+    // No floor on the widget: how far back is the policy's answer, below.
+    await expect(startDate()).not.toHaveAttribute('min', /./);
+
+    await startDate().fill(friday);
+    await endDate().fill(friday);
+    await expect(dialog().getByText(/backdated application for leave already taken/)).toBeVisible();
+
+    await dialog().getByPlaceholder(/reason for leave/).fill('Backdated — absence already taken.');
+    await dialog().getByRole('button', { name: 'Submit Request' }).click();
+    await expect(dialog()).toBeHidden();
+
+    // The approver decides from these dates, and 'Backdated' is the difference
+    // between them and the same three days in a fortnight's time.
+    await expect(page.getByText(/Backdated \d+ days?/).first()).toBeVisible();
+  });
+
+  test('a date before the financial year the balance is kept in is refused', async () => {
+    test.skip(persona().role !== 'admin', 'needs the whole directory in scope');
+    await openApply();
+    await employeeSelect().selectOption({ label: 'Rohan Iyer (MC-003)' });
+    await typeSelect().selectOption('Casual');
+
+    // The day before the year began is the last day of the year that has just
+    // closed, whichever year this runs in — usage is counted per financial year,
+    // so leave dated there would be deducted from no balance at all.
+    const closed = new Date(financialYearStartIso());
+    closed.setUTCDate(closed.getUTCDate() - 1);
+    const lastClosedDay = closed.toISOString().slice(0, 10);
+    await startDate().fill(lastClosedDay);
+    await endDate().fill(lastClosedDay);
+
+    await expect(dialog().getByText(/Leave cannot be dated before FY /)).toBeVisible();
+    await expect(dialog().getByRole('button', { name: 'Submit Request' })).toBeDisabled();
+  });
+
   test('more days than the balance holds is refused before submit', async () => {
     test.skip(persona().role !== 'admin', 'needs the whole directory in scope');
     await openApply();

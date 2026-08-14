@@ -34,7 +34,7 @@ import { getHolidayDirectory } from '@/data/holidays';
 import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { getApplicableEntitlements, getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
-import { checkLeaveApplication, policySummary } from '@/data/leaveApplication';
+import { backdatedByDays, checkLeaveApplication, policySummary } from '@/data/leaveApplication';
 import { financialYearLabel } from '@/lib/financialYear';
 import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -299,15 +299,25 @@ export function LeavePage() {
     {
       key: 'dates',
       header: 'Dates',
-      render: (row) => (
-        <div>
-          <p className="text-ink-700 text-sm">
-            {formatDateShort(row.startDate)}
-            {row.startDate !== row.endDate ? ` – ${formatDateShort(row.endDate)}` : ''}
-          </p>
-          <p className="text-xs text-ink-400">{row.days} day{row.days !== 1 ? 's' : ''}</p>
-        </div>
-      ),
+      // Approve and Decline are offered from this table as well as from the
+      // approvals queue, so the backdated marker belongs on both — one of the
+      // two decision surfaces showing it is the same as neither, since whichever
+      // one a manager happens to use is the one that has to be right.
+      render: (row) => {
+        const backdated = backdatedByDays(row.startDate, row.appliedOn);
+        return (
+          <div>
+            <p className="text-ink-700 text-sm">
+              {formatDateShort(row.startDate)}
+              {row.startDate !== row.endDate ? ` – ${formatDateShort(row.endDate)}` : ''}
+            </p>
+            <p className="text-xs text-ink-400">{row.days} day{row.days !== 1 ? 's' : ''}</p>
+            {backdated > 0 && (
+              <Badge tone="amber">Backdated {backdated} day{backdated === 1 ? '' : 's'}</Badge>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'reason',
@@ -864,12 +874,17 @@ export function LeavePage() {
               <label className="block text-sm font-medium text-ink-700 mb-1">
                 Start Date <span className="text-rose-500">*</span>
               </label>
+              {/* Past dates are selectable: leave is often applied for after the
+                  absence. How far back is a policy question, not a widget one —
+                  checkLeaveApplication holds both floors (the joining date, and
+                  the start of the financial year the balance is kept in) and
+                  says which one a date fell short of. A `min` here would only
+                  grey the date out, leaving the applicant to guess why. */}
               <input
                 type="date"
                 className="input w-full"
                 value={formStart}
                 onChange={(e) => setFormStart(e.target.value)}
-                min={todayIso()}
               />
             </div>
             <div>
@@ -881,7 +896,7 @@ export function LeavePage() {
                 className="input w-full"
                 value={formEnd}
                 onChange={(e) => setFormEnd(e.target.value)}
-                min={formStart || todayIso()}
+                min={formStart || undefined}
               />
             </div>
           </div>

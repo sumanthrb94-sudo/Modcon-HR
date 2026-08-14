@@ -14,6 +14,12 @@
  * applicant reads and decides whether Submit is allowed. Every rule here comes
  * from the organisation's own `leavePolicies` (Settings → Leave Policies), its
  * holiday calendar, and the employee's week-off — never a constant in this file.
+ *
+ * Dates in the past are allowed here, and the two floors on them are this
+ * module's own: the joining date, and the start of the financial year the
+ * balance is kept in. The dialog used to refuse the past with `min` on the date
+ * input alone, which is a suggestion — it is absent from the value the form
+ * submits — so an absence could only ever be applied for before it happened.
  */
 import type { Employee, LeaveRequest, LeaveType } from '@/types';
 import { getEntitlement, type Entitlement } from './leaveEntitlements';
@@ -21,6 +27,7 @@ import { getPolicyForType } from './leavePolicies';
 import { getHolidayDirectory } from './holidays';
 import { isWeekOffFor } from './employees';
 import { todayIso } from '@/lib/today';
+import { financialYearLabel, financialYearStart } from '@/lib/financialYear';
 
 export interface LeaveApplicationInput {
   employee: Pick<Employee, 'id' | 'dateOfJoining' | 'gender' | 'weekOff'> | null | undefined;
@@ -59,6 +66,26 @@ export interface LeaveApplicationCheck {
 
 /** Longest range the day-by-day walk will evaluate — a year of leave, and then some. */
 const MAX_RANGE_DAYS = 366;
+
+/**
+ * How many days before it was applied for the leave began — 0 when it did not.
+ *
+ * Measured against `appliedOn`, never against today, and that is the whole
+ * point of the second argument: every past request has a start date before
+ * today the week after it is decided, so a "backdated" test against the wall
+ * clock would eventually flag the entire history. Whether the absence had
+ * already begun when the form was submitted is a fact about the request that
+ * never changes.
+ *
+ * One definition, called by the dialog's own note and by every surface that
+ * decides a request — an approver reading a marker the applicant never saw, or
+ * missing one the applicant was shown, is worse than no marker at all.
+ */
+export function backdatedByDays(startDate: string, appliedOn: string): number {
+  if (!startDate || !appliedOn || startDate >= appliedOn) return 0;
+  // Both are `YYYY-MM-DD`, which parses as UTC midnight, so this is exact.
+  return Math.round((Date.parse(appliedOn) - Date.parse(startDate)) / 86_400_000);
+}
 
 /** Every ISO date from `start` to `end` inclusive, walked in UTC like the rest of the app. */
 function datesBetween(start: string, end: string): string[] {
@@ -129,6 +156,27 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
   if (!startDate || !endDate) return { ...empty, errors };
   if (endDate < startDate) {
     errors.push('End date must be on or after start date.');
+    return { ...empty, errors };
+  }
+
+  // Leave may be dated in the past — an absence is often applied for after it
+  // has been taken — but only back to two floors, and both of them fail closed.
+  //
+  // Nobody was employed here before they joined, so leave dated before that is
+  // not a late application but a wrong date.
+  if (employee.dateOfJoining && startDate < employee.dateOfJoining) {
+    errors.push(`Leave cannot start before the joining date (${employee.dateOfJoining}).`);
+    return { ...empty, errors };
+  }
+  // And no earlier than the financial year the balance is kept in. Usage is
+  // counted per financial year (`financialYearOf(r.startDate)` in
+  // data/leaveEntitlements.ts), so a request dated into a closed year is
+  // deducted from no balance at all — it would read as leave that cost nothing.
+  const yearStart = financialYearStart(asOf);
+  if (startDate < yearStart) {
+    errors.push(
+      `Leave cannot be dated before ${financialYearLabel(asOf)}, which begins ${yearStart} — earlier years are closed and carry no balance to deduct from.`,
+    );
     return { ...empty, errors };
   }
 
@@ -209,6 +257,15 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
   }
   if (pendingDays > 0 && !noBalance) {
     notes.push(`${pendingDays} day(s) of ${type} Leave are already awaiting approval.`);
+  }
+  // Said out loud, because a date typed a month short is indistinguishable from
+  // one meant that way, and the approver sees only the dates.
+  if (backdatedByDays(startDate, asOf) > 0 && workingDays > 0) {
+    notes.push(
+      endDate < asOf
+        ? 'These dates are in the past — this is a backdated application for leave already taken.'
+        : 'This request starts in the past and is therefore backdated.',
+    );
   }
 
   return {

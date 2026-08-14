@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
+import { backdatedByDays } from '@/data/leaveApplication';
 import { employees } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
@@ -98,6 +99,13 @@ export function LeaveRequestsApprovalsPage() {
                     <div className="space-y-3">
                         {pendingRequests.map((request) => {
                             const employee = employees.find((e) => e.id === request.employeeId);
+                            // Leave may be dated before it is applied for. Two
+                            // requests reading "5 – 7 August, 3 days" are a plan
+                            // and an absence already taken, and the dates alone
+                            // cannot tell them apart — the decision is different,
+                            // so the difference is stated rather than left to be
+                            // worked out from the Applied line underneath.
+                            const backdated = backdatedByDays(request.startDate, request.appliedOn);
                             return (
                                 <div key={request.id} className="rounded-xl border border-ink-100 bg-white p-4">
                                     <div className="flex items-start gap-3">
@@ -108,6 +116,11 @@ export function LeaveRequestsApprovalsPage() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <p className="text-sm font-semibold text-ink-900">{employee?.fullName ?? request.employeeId}</p>
                                                 <Badge tone="violet">{request.type}</Badge>
+                                                {backdated > 0 && (
+                                                    <Badge tone="amber">
+                                                        Backdated {backdated} day{backdated === 1 ? '' : 's'}
+                                                    </Badge>
+                                                )}
                                             </div>
                                             <p className="text-xs text-ink-500 mt-1">
                                                 {formatDate(request.startDate)} to {formatDate(request.endDate)} · {request.days} day(s)
