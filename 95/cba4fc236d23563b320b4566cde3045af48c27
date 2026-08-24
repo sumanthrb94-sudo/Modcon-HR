@@ -1,0 +1,49 @@
+docs/superpowers/specs/2026-08-24-shift-timings-design.md
+  s_7a4c4ef7a43d5b::t_f7b885ea611e52 206-238
+src/lib/orgSettings.ts
+  s_7a4c4ef7a43d5b::t_4325d05cf27b12 101-105
+tests/unit/shiftRules.test.ts
+  s_7a4c4ef7a43d5b::t_172ec3f568ff02 18
+  s_7a4c4ef7a43d5b::t_15ac553047e56c 147-201
+src/data/shiftRules.ts
+  s_7a4c4ef7a43d5b::t_0b03356881b2bb 42-61,198
+  s_7a4c4ef7a43d5b::t_7b8817dec3b8c9 160,165-170,174-197
+src/pages/settings/ShiftsSection.tsx
+  s_7a4c4ef7a43d5b::t_19c869e7f771f1 282-303
+  s_7a4c4ef7a43d5b::t_6fed949660edd1 38
+  s_7a4c4ef7a43d5b::t_7df179aa9d2f4a 9,12-13
+src/data/shifts.ts
+  s_7a4c4ef7a43d5b::t_d21034680d2713 183-217
+  s_7a4c4ef7a43d5b::t_8a6b1c3a67e8a0 225-228,230
+  s_7a4c4ef7a43d5b::t_20f51438244fc2 300-345
+  s_7a4c4ef7a43d5b::t_edfec405aaaa8b 26,29-30,36-37,41
+  s_7a4c4ef7a43d5b::t_27cc6e766fbd26 366-367
+tests/e2e/shift-timings.spec.ts
+  s_7a4c4ef7a43d5b::t_7c1adaefa0a3a9 77-78
+  s_7a4c4ef7a43d5b::t_2c69d910da84b0 201-233
+  s_7a4c4ef7a43d5b::t_205ca8ebbac206 108,115
+  s_7a4c4ef7a43d5b::t_92b97f97a2927a 37
+  s_7a4c4ef7a43d5b::t_fb75e81d178eea 124
+src/pages/employees/index.tsx
+  s_7a4c4ef7a43d5b::t_dd6eaef5a82615 2616-2618
+  s_7a4c4ef7a43d5b::t_584de8874c3bc9 3030-3036
+  s_7a4c4ef7a43d5b::t_ac4e9837d17cec 3506,3510-3560
+  s_7a4c4ef7a43d5b::t_435eae1a3ed3e3 2942-2946
+  s_7a4c4ef7a43d5b::t_19adfdba707b70 66,70,74-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "95cba4fc236d23563b320b4566cde3045af48c27",
+  "prompts": {},
+  "sessions": {
+    "s_7a4c4ef7a43d5b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c0209b7-0763-4288-aae7-261d965fe91f",
+        "model": "unknown"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
