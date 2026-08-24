@@ -63,12 +63,17 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
 import {
+  getEmployeeShiftOverrides,
   getShiftAssignments,
   getShifts,
   hasOwnShift,
+  saveEmployeeCustomShift,
   setEmployeeShift,
   shiftCaptionFor,
 } from '@/data/shifts';
+
+/** The picker value standing for hours belonging to this person alone. */
+const CUSTOM_SHIFT = '__custom__';
 import { linkAccountForEmployee } from '@/data/employeeLinks';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -2608,6 +2613,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   // rather than a shift id, so removing an exception puts them back on the
   // organisation's hours rather than on nothing.
   const [editShiftId, setEditShiftId] = useState<string>('');
+  // Held whole — start, end and grace together — because a grace period
+  // without the start it is measured from is a shift nobody specified.
+  const [editCustomShift, setEditCustomShift] = useState({ start: '09:00', end: '18:00', graceMinutes: 15 });
   const [editAddress, setEditAddress] = useState('');
   const [editReportingManagerId, setEditReportingManagerId] = useState('');
   const [editError, setEditError] = useState('');
@@ -2931,7 +2939,11 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditBloodGroup(emp.bloodGroup ?? '');
     setEditMaritalStatus(emp.maritalStatus ?? '');
     setEditWeekOff(weekOffOf(emp));
-    setEditShiftId(getShiftAssignments()[emp.id] ?? '');
+    const ownHours = getEmployeeShiftOverrides()[emp.id];
+    setEditShiftId(ownHours ? CUSTOM_SHIFT : (getShiftAssignments()[emp.id] ?? ''));
+    // Seeded from the organisation's default when they have none, so the
+    // fields open on something plausible rather than on empty times.
+    setEditCustomShift(ownHours ?? { start: '09:00', end: '18:00', graceMinutes: 15 });
     setEditAddress(emp.address ?? '');
     setEditReportingManagerId(emp.reportingManagerId ?? '');
     setEditError('');
@@ -3015,7 +3027,13 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     // Written separately, and deliberately not onto the employee record: the
     // directory is localStorage-backed and client-controlled, so an assignment
     // held there would never reach the organisation's other administrators.
-    void setEmployeeShift(updatedEmployee.id, editShiftId || null);
+    // Each writer clears the other store, so the two can never disagree about
+    // one person.
+    if (editShiftId === CUSTOM_SHIFT) {
+      void saveEmployeeCustomShift(updatedEmployee.id, editCustomShift);
+    } else {
+      void setEmployeeShift(updatedEmployee.id, editShiftId || null);
+    }
     // The form can move someone between departments, so access is re-evaluated
     // on every save rather than only when the department field looks changed.
     syncAccess(updatedEmployee);
@@ -3485,9 +3503,61 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   label: `${shift.name} (${shift.start} – ${shift.end})`,
                   value: shift.id,
                 })),
+                { label: 'Custom hours for this person', value: CUSTOM_SHIFT },
               ]}
             />
           </div>
+          {editShiftId === CUSTOM_SHIFT && (
+            <div className="md:col-span-2 grid grid-cols-3 gap-3 rounded-md border border-brand-200 bg-brand-50/40 p-3">
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                  Starts
+                </label>
+                <input
+                  type="time"
+                  aria-label="Start of this employee's own hours"
+                  value={editCustomShift.start}
+                  onChange={(event) => setEditCustomShift({ ...editCustomShift, start: event.target.value })}
+                  className="input w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                  Ends
+                </label>
+                <input
+                  type="time"
+                  aria-label="End of this employee's own hours"
+                  value={editCustomShift.end}
+                  onChange={(event) => setEditCustomShift({ ...editCustomShift, end: event.target.value })}
+                  className="input w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                  Grace (min)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  aria-label="Grace period of this employee's own hours, in minutes"
+                  value={editCustomShift.graceMinutes}
+                  onChange={(event) =>
+                    setEditCustomShift({
+                      ...editCustomShift,
+                      graceMinutes: Math.max(0, Number(event.target.value) || 0),
+                    })
+                  }
+                  className="input w-full"
+                />
+              </div>
+              <p className="col-span-3 text-xs text-ink-500">
+                These hours belong to this person alone. They are not added to the organisation&apos;s
+                shifts, and they will not follow a later change to them. An end before the start runs
+                past midnight.
+              </p>
+            </div>
+          )}
           <div className="md:col-span-2">
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Address</label>
             <input

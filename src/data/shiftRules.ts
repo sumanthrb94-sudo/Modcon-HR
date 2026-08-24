@@ -39,6 +39,26 @@ export interface ShiftConfig {
 /** employee id → shift id. Sparse: absent means "the organisation's default". */
 export type ShiftAssignments = Record<string, string>;
 
+/**
+ * Hours belonging to one person rather than to the organisation.
+ *
+ * Somebody who negotiated a 10:00 start is not a shift the company runs, and
+ * declaring one for them would offer their hours to everybody in Settings.
+ *
+ * All three figures, every time — never a partial. The grace period is
+ * measured from the start, so overriding one without the other describes a
+ * shift nobody specified. The same rule, for the same reason, as the
+ * per-employee salary split.
+ */
+export interface EmployeeShift {
+  readonly start: string;
+  readonly end: string;
+  readonly graceMinutes: number;
+}
+
+/** employee id → their own hours. Sparse. */
+export type EmployeeShiftOverrides = Record<string, EmployeeShift>;
+
 const MINUTES_PER_DAY = 1440;
 
 /**
@@ -137,10 +157,42 @@ export function resolveShift(
   config: ShiftConfig,
   assignments: ShiftAssignments,
   employeeId?: string | null,
+  overrides: EmployeeShiftOverrides = {},
 ): Shift | null {
   const byId = (id: string | null): Shift | null =>
     (id ? config.shifts.find((shift) => shift.id === id) ?? null : null);
 
+  // Their own hours first. An unusable entry falls through rather than
+  // resolving to hours nobody typed — a half-written override must not decide
+  // whether somebody was late.
+  const own = employeeId ? ownHoursAsShift(employeeId, overrides[employeeId]) : null;
+  if (own) return own;
+
   const assigned = employeeId ? byId(assignments[employeeId] ?? null) : null;
   return assigned ?? byId(config.defaultShiftId);
+}
+
+/**
+ * One person's own hours as a `Shift`, or null if they are not usable.
+ *
+ * A synthetic id and the name "Custom", so everything downstream — lateness,
+ * the record caption, the attendance tables — goes on working with one type
+ * and no branching. The id is per employee so two people's custom hours are
+ * never mistaken for the same shift.
+ */
+export function ownHoursAsShift(
+  employeeId: string,
+  hours: EmployeeShift | null | undefined,
+): Shift | null {
+  if (!hours) return null;
+  if (clockMinutes(hours.start) === null || clockMinutes(hours.end) === null) return null;
+
+  const grace = Number(hours.graceMinutes);
+  return {
+    id: `custom:${employeeId}`,
+    name: 'Custom',
+    start: hours.start.trim(),
+    end: hours.end.trim(),
+    graceMinutes: Number.isFinite(grace) ? Math.max(0, Math.round(grace)) : 0,
+  };
 }

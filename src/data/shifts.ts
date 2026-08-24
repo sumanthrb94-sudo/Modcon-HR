@@ -23,18 +23,22 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import {
   clockMinutes,
   isLateForShift,
+  ownHoursAsShift,
   resolveShift,
   shiftCaption,
+  type EmployeeShift,
+  type EmployeeShiftOverrides,
   type Shift,
   type ShiftAssignments,
   type ShiftConfig,
 } from '@/data/shiftRules';
 
-export type { Shift, ShiftAssignments, ShiftConfig };
-export { clockMinutes, crossesMidnight, shiftCaption } from '@/data/shiftRules';
+export type { EmployeeShift, EmployeeShiftOverrides, Shift, ShiftAssignments, ShiftConfig };
+export { clockMinutes, crossesMidnight, ownHoursAsShift, shiftCaption } from '@/data/shiftRules';
 
 const STORAGE_KEY = ORG_SETTINGS.shifts.storageKey;
 const ASSIGNMENTS_STORAGE_KEY = ORG_SETTINGS.employeeShifts.storageKey;
+const OVERRIDES_STORAGE_KEY = ORG_SETTINGS.employeeShiftOverrides.storageKey;
 
 /**
  * Both settings publish on this. The organisation's hours and one person's
@@ -176,7 +180,41 @@ export function getShiftAssignments(): ShiftAssignments {
  * means "the organisation's own", which is what Settings edits.
  */
 export function getShiftFor(employeeId?: string | null): Shift | null {
-  return resolveShift(getShiftConfig(), getShiftAssignments(), employeeId);
+  return resolveShift(getShiftConfig(), getShiftAssignments(), employeeId, getEmployeeShiftOverrides());
+}
+
+/**
+ * Everyone given hours of their own rather than the organisation's.
+ *
+ * Sparse and whole: an entry carries start, end and grace together, because a
+ * grace period without the start it is measured from describes a shift nobody
+ * specified — the per-employee salary split rule.
+ */
+export function getEmployeeShiftOverrides(): EmployeeShiftOverrides {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(orgScopedKey(OVERRIDES_STORAGE_KEY));
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: EmployeeShiftOverrides = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([employeeId, value]) => {
+      // Stored through the same reader that resolution uses, so an entry that
+      // could never be honoured is not listed in Settings as though it were.
+      const shift = ownHoursAsShift(employeeId, value as EmployeeShift);
+      if (employeeId && shift) {
+        out[employeeId] = { start: shift.start, end: shift.end, graceMinutes: shift.graceMinutes };
+      }
+    });
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** True when this person is on hours of their own rather than a company shift. */
+export function hasCustomShift(employeeId: string): boolean {
+  return employeeId in getEmployeeShiftOverrides();
 }
 
 /** The organisation's default shift, or null if it has declared none. */
@@ -184,8 +222,12 @@ export function getDefaultShift(): Shift | null {
   return getShiftFor();
 }
 
-/** True when this person is assigned hours of their own. */
+/**
+ * True when this person is on hours that are not the organisation's default —
+ * either a company shift they were assigned, or hours of their own.
+ */
 export function hasOwnShift(employeeId: string): boolean {
+  if (hasCustomShift(employeeId)) return true;
   const assigned = getShiftAssignments()[employeeId];
   return Boolean(assigned) && getShifts().some((shift) => shift.id === assigned);
 }
@@ -255,7 +297,52 @@ export function setEmployeeShift(employeeId: string, shiftId: string | null): Pr
   const next = { ...getShiftAssignments() };
   if (shiftId) next[employeeId] = shiftId;
   else delete next[employeeId];
-  return saveShiftAssignments(next);
+  // Assigning a company shift withdraws any hours of their own. The two stores
+  // must never hold a contradiction about one person: resolution prefers the
+  // custom hours, so leaving them behind would make the assignment silently do
+  // nothing.
+  const writes = [saveShiftAssignments(next)];
+  if (hasCustomShift(employeeId)) writes.push(saveEmployeeCustomShift(employeeId, null));
+  return Promise.all(writes).then((results) => results.every(Boolean));
+}
+
+/**
+ * Give one person hours of their own, or take them back onto the company's.
+ *
+ * Merges rather than replaces — hours for one person say nothing about anybody
+ * else's. Passing null removes the exception, which puts them back on the
+ * organisation's shift rather than on nothing.
+ *
+ * Setting custom hours clears any company-shift assignment, the mirror of
+ * `setEmployeeShift` above and for the same reason.
+ */
+export function saveEmployeeCustomShift(
+  employeeId: string,
+  hours: EmployeeShift | null,
+): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+
+  const next = { ...getEmployeeShiftOverrides() };
+  if (hours) {
+    const shift = ownHoursAsShift(employeeId, hours);
+    // Refused rather than half-stored: an entry missing its start would resolve
+    // to the organisation's hours while Settings listed it as an exception.
+    if (!shift) return Promise.resolve(false);
+    next[employeeId] = { start: shift.start, end: shift.end, graceMinutes: shift.graceMinutes };
+  } else {
+    delete next[employeeId];
+  }
+
+  window.localStorage.setItem(orgScopedKey(OVERRIDES_STORAGE_KEY), JSON.stringify(next));
+  notifyChanged();
+
+  const writes = [publishOrgSetting(ORG_SETTINGS.employeeShiftOverrides, next)];
+  if (hours && getShiftAssignments()[employeeId]) {
+    const assignments = { ...getShiftAssignments() };
+    delete assignments[employeeId];
+    writes.push(saveShiftAssignments(assignments));
+  }
+  return Promise.all(writes).then((results) => results.every(Boolean));
 }
 
 /**
@@ -276,7 +363,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     if (
       event.key === orgScopedKey(STORAGE_KEY) ||
-      event.key === orgScopedKey(ASSIGNMENTS_STORAGE_KEY)
+      event.key === orgScopedKey(ASSIGNMENTS_STORAGE_KEY) ||
+      event.key === orgScopedKey(OVERRIDES_STORAGE_KEY)
     ) {
       notifyChanged();
     }

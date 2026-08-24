@@ -6,8 +6,11 @@ import { getEmployeeName } from '@/data/employees';
 import {
   SHIFTS_CHANGED_EVENT,
   employeeIdsOnShift,
+  getEmployeeShiftOverrides,
   getShiftAssignments,
   getShiftConfig,
+  ownHoursAsShift,
+  saveEmployeeCustomShift,
   saveShiftConfig,
   setEmployeeShift,
   shiftCaption,
@@ -32,6 +35,7 @@ export default function ShiftsSection() {
   const revision = useCollectionRevision(SHIFTS_CHANGED_EVENT);
   const config = useMemo(() => getShiftConfig(), [revision]);
   const assignments = useMemo(() => getShiftAssignments(), [revision]);
+  const customHours = useMemo(() => getEmployeeShiftOverrides(), [revision]);
 
   const [draft, setDraft] = useState(BLANK_DRAFT);
   const [adding, setAdding] = useState(false);
@@ -275,7 +279,28 @@ export default function ShiftsSection() {
           organisation&apos;s default shift.
         </p>
 
-        {Object.keys(assignments).length === 0 ? (
+        {Object.keys(customHours).length > 0 && (
+          <ul className="mt-4 divide-y divide-ink-100">
+            {Object.entries(customHours).map(([employeeId, hours]) => (
+              <li key={employeeId} className="flex items-center justify-between gap-4 py-2.5">
+                <span className="text-sm text-ink-800">{getEmployeeName(employeeId)}</span>
+                <span className="text-xs text-ink-500">
+                  {shiftCaption(ownHoursAsShift(employeeId, hours))}
+                  {' · hours of their own, not the organisation’s'}
+                </span>
+                <Button
+                  variant="ghost"
+                  aria-label={`Put ${getEmployeeName(employeeId)} back on the organisation's shifts`}
+                  onClick={() => void saveEmployeeCustomShift(employeeId, null)}
+                >
+                  Use default
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {Object.keys(assignments).length === 0 && Object.keys(customHours).length === 0 ? (
           <p className="mt-4 rounded-md bg-ink-50 p-4 text-sm text-ink-600">
             Nobody has been given hours of their own.
           </p>

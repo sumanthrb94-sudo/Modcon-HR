@@ -15,6 +15,7 @@ import {
   isLateForShift,
   resolveShift,
   shiftCaption,
+  type EmployeeShift,
   type Shift,
   type ShiftConfig,
 } from '../../src/data/shiftRules.ts';
@@ -142,4 +143,59 @@ test('an assignment naming a shift that no longer exists falls back to the defau
   // but a stale id must not resolve to nothing and silently stop judging
   // somebody's arrivals.
   assert.deepEqual(resolveShift(CONFIG, { 'emp-071': 'retired-shift' }, 'emp-071'), GENERAL);
+});
+
+// ---- Hours belonging to one person ----------------------------------------
+// The organisation's list says what the company runs. Somebody negotiated to
+// start at 10:00 is not a shift the company runs, and declaring one for them
+// would offer their hours to everybody in Settings.
+
+const OWN_HOURS: EmployeeShift = { start: '10:00', end: '19:00', graceMinutes: 5 };
+
+test('hours of their own outrank the organisation default', () => {
+  const shift = resolveShift(CONFIG, {}, 'emp-071', { 'emp-071': OWN_HOURS });
+  assert.equal(shift?.start, '10:00');
+  assert.equal(shift?.end, '19:00');
+  assert.equal(shift?.graceMinutes, 5);
+});
+
+test('hours of their own outrank a shift they are assigned', () => {
+  // The two stores must never disagree about one person. The UI makes them one
+  // control, but resolution states the order regardless.
+  const shift = resolveShift(CONFIG, { 'emp-071': 'night' }, 'emp-071', { 'emp-071': OWN_HOURS });
+  assert.equal(shift?.start, '10:00');
+});
+
+test('somebody else is untouched by one person\'s own hours', () => {
+  assert.deepEqual(resolveShift(CONFIG, {}, 'emp-003', { 'emp-071': OWN_HOURS }), GENERAL);
+});
+
+test('their own hours carry their own grace period', () => {
+  const shift = resolveShift(CONFIG, {}, 'emp-071', { 'emp-071': OWN_HOURS });
+  // 10:05 is exactly the grace; 10:06 is past it. The organisation's 15
+  // minutes has nothing to do with it.
+  assert.equal(isLateForShift(shift, '10:05'), false);
+  assert.equal(isLateForShift(shift, '10:06'), true);
+});
+
+test('their own hours can cross midnight like any other', () => {
+  const shift = resolveShift(CONFIG, {}, 'emp-071', {
+    'emp-071': { start: '23:00', end: '07:00', graceMinutes: 10 },
+  });
+  assert.equal(isLateForShift(shift, '23:05'), false);
+  assert.equal(isLateForShift(shift, '01:15'), true);
+});
+
+test('their own hours are captioned as their own', () => {
+  const shift = resolveShift(CONFIG, {}, 'emp-071', { 'emp-071': OWN_HOURS });
+  assert.equal(shiftCaption(shift), 'Custom (10:00 – 19:00)');
+});
+
+test('an unusable entry of their own is ignored rather than obeyed', () => {
+  // A half-written override must not resolve to hours nobody typed. Falling
+  // back to the organisation's is the only honest reading.
+  const shift = resolveShift(CONFIG, {}, 'emp-071', {
+    'emp-071': { start: '', end: '19:00', graceMinutes: 5 } as EmployeeShift,
+  });
+  assert.deepEqual(shift, GENERAL);
 });

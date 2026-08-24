@@ -34,6 +34,7 @@ const RENAMED_NIGHT = 'E2E Night Watch';
 const SPARE_NAME = 'E2E Spare';
 const SHIFTS_DOC = 'org_settings/default__shifts';
 const ASSIGNMENTS_DOC = 'org_settings/default__employeeShifts';
+const OVERRIDES_DOC = 'org_settings/default__employeeShiftOverrides';
 
 interface Shift {
   id: string;
@@ -73,6 +74,8 @@ async function writeSetting(docPath: string, value: unknown): Promise<void> {
 /** What the organisation's Firestore copy holds, not what this browser cached. */
 const publishedShifts = () => readSetting<ShiftConfig>(SHIFTS_DOC);
 const publishedAssignments = () => readSetting<Record<string, string>>(ASSIGNMENTS_DOC);
+const publishedCustomHours = () =>
+  readSetting<Record<string, { start: string; end: string; graceMinutes: number }>>(OVERRIDES_DOC);
 
 async function login(page: Page) {
   await page.goto('/login');
@@ -102,12 +105,14 @@ test.describe.serial('shift timings are the organisation\'s', () => {
   let page: Page;
   let restoreShifts: ShiftConfig | null = null;
   let restoreAssignments: Record<string, string> | null = null;
+  let restoreCustomHours: Record<string, unknown> | null = null;
 
   test.beforeAll(async ({ browser }) => {
     // Snapshot before anything is written, so an interrupted run can be put
     // back exactly rather than approximately.
     restoreShifts = await publishedShifts();
     restoreAssignments = await publishedAssignments();
+    restoreCustomHours = await publishedCustomHours();
 
     page = await browser.newPage();
     await login(page);
@@ -116,6 +121,7 @@ test.describe.serial('shift timings are the organisation\'s', () => {
   test.afterAll(async () => {
     await writeSetting(SHIFTS_DOC, restoreShifts ?? { shifts: [], defaultShiftId: null });
     await writeSetting(ASSIGNMENTS_DOC, restoreAssignments ?? {});
+    await writeSetting(OVERRIDES_DOC, restoreCustomHours ?? {});
     await page?.close();
   });
 
@@ -190,6 +196,39 @@ test.describe.serial('shift timings are the organisation\'s', () => {
     // rename that strands its occupants on a shift that no longer exists.
     expect(after?.id).toBe(before?.id);
     expect((await publishedAssignments())?.['emp-002']).toBe(before?.id);
+  });
+
+  test('hours belonging to one person reach the organisation, and clear their assignment', async () => {
+    // Assigned to a company shift first, so the mutual exclusion is what the
+    // test observes rather than something it assumes.
+    const night = (await publishedShifts())?.shifts.find((shift) => shift.name === RENAMED_NIGHT);
+    expect(night, 'the shift renamed by the previous test').toBeTruthy();
+    expect((await publishedAssignments())?.['emp-002']).toBe(night!.id);
+
+    await page.goto('/employees');
+    await page.getByText('Priya', { exact: false }).first().click();
+    await page.getByRole('button', { name: /Edit/ }).first().click();
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Shift').selectOption({ label: 'Custom hours for this person' });
+    await dialog.getByLabel("Start of this employee's own hours").fill('10:00');
+    await dialog.getByLabel("End of this employee's own hours").fill('19:00');
+    await dialog.getByLabel("Grace period of this employee's own hours, in minutes").fill('5');
+    await dialog.getByRole('button', { name: /Save/ }).click();
+
+    await expect
+      .poll(async () => Object.keys((await publishedCustomHours()) ?? {}).length, { timeout: 15_000 })
+      .toBeGreaterThan(0);
+
+    const [employeeId, hours] = Object.entries((await publishedCustomHours())!)[0];
+    expect(hours.start).toBe('10:00');
+    expect(hours.end).toBe('19:00');
+    expect(hours.graceMinutes).toBe(5);
+
+    // The two stores must never hold a contradiction about one person:
+    // resolution prefers the custom hours, so an assignment left behind would
+    // silently do nothing.
+    expect((await publishedAssignments())?.[employeeId]).toBeUndefined();
   });
 
   test('an empty shift can be withdrawn', async () => {

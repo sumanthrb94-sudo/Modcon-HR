@@ -203,6 +203,39 @@ A shift can be withdrawn only once nobody is assigned to it — the Locations
 precedent. Hours people are still rostered on cannot be retired out from under
 them.
 
+### 3.8 Hours belonging to one person
+
+Somebody who negotiated a 10:00 start is not a shift the company runs.
+Declaring one for them would put their hours in the Settings list and offer
+them to everybody, which is the wrong statement. So a third setting,
+`employeeShiftOverrides`, holds hours against one employee — sparse, sharing
+the same change event, edited from the profile and never added to the shift
+list.
+
+Resolution becomes: **their own hours → their assigned company shift → the
+organisation's default → null.**
+
+- **An entry carries all three figures, every time.** Grace is measured from
+  the start, so overriding one without the other describes a shift nobody
+  specified. The same rule, for the same reason, as the per-employee salary
+  split: a partial entry is refused rather than completed from the
+  organisation's.
+- **Custom hours and an assignment are mutually exclusive.** Each writer clears
+  the other, so the two stores can never hold a contradiction about one person.
+  Resolution prefers the custom hours, so an assignment left behind would
+  silently do nothing.
+- **They resolve to a `Shift` with a synthetic id** (`custom:<employeeId>`) and
+  the name `Custom`, so lateness, the record caption and both attendance tables
+  keep working on one type with no branching. The id is per employee, so two
+  people's custom hours are never mistaken for the same shift.
+- **They stop following Settings.** Retiming General does not move somebody on
+  hours of their own — that is what custom means here, the documented cost of
+  the same tradeoff on salary splits. The profile and the Settings roster both
+  say when hours are somebody's own, so it reads as the exception it is.
+- **An unusable entry falls through rather than being obeyed.** A half-written
+  override resolves to the organisation's hours and is refused at the write, so
+  Settings cannot list an exception that never decides anything.
+
 ## 4. Where HR edits it
 
 **A new Settings tab**, `shifts` — *"Shifts / Working hours & grace"* — beside

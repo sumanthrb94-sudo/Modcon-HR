@@ -98,6 +98,11 @@ export const ORG_SETTINGS = {
   // hours move has to re-render when one person's do, or the two drift on
   // screen because only one of them published.
   employeeShifts: setting('employeeShifts', 'modcon.hr.employeeShifts', 'modcon-hr-shifts-changed'),
+  // Hours belonging to one person rather than to the organisation — somebody
+  // who starts at 10:00 when nobody else does. Kept apart from the shift list
+  // on purpose: declaring a company shift for them would offer their hours to
+  // everybody in Settings. Same change event again, for the same reason.
+  employeeShiftOverrides: setting('employeeShiftOverrides', 'modcon.hr.employeeShiftOverrides', 'modcon-hr-shifts-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it
