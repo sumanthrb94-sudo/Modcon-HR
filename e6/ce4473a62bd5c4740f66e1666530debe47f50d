@@ -1,0 +1,64 @@
+package.json
+  s_7a4c4ef7a43d5b::t_58328ca97fe746 15
+src/pages/settings/ShiftsSection.tsx
+  s_7a4c4ef7a43d5b::t_4ad6237e924c47 1-179,181-307
+  s_7a4c4ef7a43d5b::t_450fc33ffce77f 180
+tests/e2e/check-in-out.spec.ts
+  s_7a4c4ef7a43d5b::t_882d902441ec29 21-26
+src/pages/attendance/index.tsx
+  s_7a4c4ef7a43d5b::t_c7a50dd23fde82 329-331
+  s_7a4c4ef7a43d5b::t_c65140ea4ae990 53
+  s_7a4c4ef7a43d5b::t_60ee68d667bd29 316-319
+src/data/shifts.ts
+  s_7a4c4ef7a43d5b::t_f3ff904f64fb99 1-284
+src/data/attendance.ts
+  s_7a4c4ef7a43d5b::t_8aba01b49addbe 168,171
+  s_7a4c4ef7a43d5b::t_ca15704457be4d 452
+  s_7a4c4ef7a43d5b::t_80a7cd77f9f6df 558-562
+  s_7a4c4ef7a43d5b::t_b03a541365e548 151-154
+  s_7a4c4ef7a43d5b::t_a5111bfb0ac224 28-33,36,39-42,45
+  s_7a4c4ef7a43d5b::t_b3c68466988c44 6-7
+src/data/shiftRules.ts
+  s_7a4c4ef7a43d5b::t_8a5227c9590b21 1-41,44-80,93-95,97,104-146
+  s_7a4c4ef7a43d5b::t_e2ebd92d4248c3 42-43
+  s_7a4c4ef7a43d5b::t_e93623ca91cdd5 81-92,96,98-103
+src/lib/orgSettings.ts
+  s_7a4c4ef7a43d5b::t_59399ce791f6a2 91-100
+src/pages/employees/index.tsx
+  s_7a4c4ef7a43d5b::t_f84223ffe061c1 3015-3018
+  s_7a4c4ef7a43d5b::t_ede896cfbad686 3477-3490
+  s_7a4c4ef7a43d5b::t_7c9486068aef4a 65-71
+  s_7a4c4ef7a43d5b::t_38354f09c70ccf 1793-1806
+  s_7a4c4ef7a43d5b::t_bdff4eacb134c2 2934
+  s_7a4c4ef7a43d5b::t_260b4e357fbc6f 2607-2610
+tests/unit/shiftRules.test.ts
+  s_7a4c4ef7a43d5b::t_0bdcad7b987502 1-145
+playwright.config.ts
+  s_7a4c4ef7a43d5b::t_2e35b11e7cf592 100
+docs/superpowers/specs/2026-08-24-shift-timings-design.md
+  s_7a4c4ef7a43d5b::t_44966cd2aff0a4 248,250-252,254-269
+  s_7a4c4ef7a43d5b::t_fe105182354ed7 188-195
+tests/e2e/shift-timings.spec.ts
+  s_7a4c4ef7a43d5b::t_f0018a96d0312a 1-208
+src/pages/settings/index.tsx
+  s_7a4c4ef7a43d5b::t_77dc2e5635ebaa 20
+  s_7a4c4ef7a43d5b::t_ceb813b6848e18 4500
+  s_7a4c4ef7a43d5b::t_1ffa5ee96068cf 9
+  s_7a4c4ef7a43d5b::t_5f975500245ba2 4561
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e6ce4473a62bd5c4740f66e1666530debe47f50d",
+  "prompts": {},
+  "sessions": {
+    "s_7a4c4ef7a43d5b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c0209b7-0763-4288-aae7-261d965fe91f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
