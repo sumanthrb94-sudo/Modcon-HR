@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-08-24-shift-timings-design.md
+  s_7a4c4ef7a43d5b::t_eaa08d9cb6798d 1-130,132-133,135-180,188-257
+  s_7a4c4ef7a43d5b::t_d214cd3ed9df48 131,134
+  s_7a4c4ef7a43d5b::t_dc6c53aa888408 181-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "616e7927bccab8769411f49e44a89442807f8760",
+  "prompts": {},
+  "sessions": {
+    "s_7a4c4ef7a43d5b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c0209b7-0763-4288-aae7-261d965fe91f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
