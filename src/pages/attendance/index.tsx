@@ -41,7 +41,6 @@ import {
   REGULARIZATIONS_CHANGED_EVENT,
   getCurrentWeekDates,
   getAttendanceRecordFor,
-  isLateCheckIn,
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployee, isWeekOffFor } from '@/data/employees';
@@ -51,6 +50,7 @@ import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevi
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
+import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
@@ -313,9 +313,10 @@ export function AttendancePage() {
     // Lateness is about when the day started, not where it was worked. This
     // form used to require `status === 'Present'`, so a 09:40 Work From Home
     // was on time here while the same day in seed data — which derives from the
-    // check-in alone — was late. One rule now: a recorded arrival after
-    // LATE_AFTER is late, whatever the status; a day with no arrival cannot be.
-    const isLate = checkIn ? isLateCheckIn(checkIn) : false;
+    // check-in alone — was late. One rule now: a recorded arrival past this
+    // employee's own grace period is late, whatever the status; a day with no
+    // arrival cannot be.
+    const isLate = checkIn ? isLateFor(markEmployeeId, checkIn) : false;
 
     const nextRecord: AttendanceRecord = {
       id: `att-manual-${markEmployeeId}-${todayIso()}`,
@@ -325,7 +326,9 @@ export function AttendancePage() {
       checkIn,
       checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
       workedHours,
-      shift: 'General (09:00 – 18:00)',
+      // Was a third copy of the old `General (09:00 – 18:00)` literal, hard
+      // coded here rather than even reading the constant beside it.
+      shift: shiftCaptionFor(markEmployeeId),
       isLate,
     };
 

@@ -185,6 +185,14 @@ shifts it is the **empty string**, and both attendance tables render an empty
 `shift` as "—". `AttendanceRecord.shift` therefore stays a non-nullable
 `string` and neither table column signature changes.
 
+**The guarantee covers stored records, not the regenerated seed.** The demo
+dataset in `attendanceRecords` is rebuilt at module load, so retiming a shift
+does change the caption and the flags on those rows — they were never stored to
+begin with. Records written through `writeRecord` are the ones this is a promise
+about: a real check-in, a manual mark, an approved regularization. That is the
+right boundary, since the seed is demo data and the promise is about what an
+organisation's own attendance says.
+
 ### 3.7 Renaming is free; withdrawing needs an empty shift
 
 Assignment is by `id`, so renaming a shift moves everyone on it with it. This is
@@ -237,14 +245,28 @@ It restores the organisation's pre-run shift configuration at **both ends**: an
 interrupted run otherwise strands a fake shift that is offered to every
 employee and looks exactly like a real one.
 
-Four assertions:
+Five assertions:
 
-1. The configuration reaches the organisation's **Firestore** copy.
-2. The assignment is visible from a **second browser context** — a reload proves
+1. A declared shift reaches the organisation's **Firestore** copy, with its
+   actual hours rather than merely something written.
+2. An assignment is visible from a **second browser context** — a reload proves
    nothing here, because the localStorage cache reloads with it.
-3. A 00:30 check-in on a 22:00 shift **is** late (§3.5).
-4. Retiming a shift leaves a past record's `isLate` and caption **unchanged**
-   (§3.6).
+3. A shift somebody is on **cannot** be withdrawn (§3.7).
+4. Renaming a shift keeps its people, because assignment is by id (§3.7).
+5. An empty shift **can** be withdrawn.
+
+**The arithmetic is unit tested, not driven through the browser.**
+`tests/unit/shiftRules.test.ts` (`npm run test:unit`, node's strip-types
+runner — the `test:progress` pattern) enumerates the grace boundary, the
+unreadable time, the null shift, and the midnight cases from §3.5. That is
+where they can actually be stated: the E2E personas match no employee record,
+so driving a 00:30 arrival through the UI would need a seeded reporting line
+before it could assert anything. It is also where the midnight case **did**
+fail before the +1440 was written.
+
+This is why `src/data/shiftRules.ts` imports nothing at all — the strip-types
+runner resolves neither the `@/*` alias nor firebase, so the arithmetic and the
+storage have to be separate modules for either to be testable at its own level.
 
 Nothing is added to `tests/rules/` — see §3.2.
 

@@ -18,7 +18,12 @@ import { istDay, istToday } from './clock';
  */
 const PERSONA = PERSONAS.admin;
 
-/** Matches the LATE_AFTER constant the app derives lateness from. */
+/**
+ * The demo organisation's General shift starts at 09:00 with a 15-minute
+ * grace, so this is the time it stops being on time. It was a `LATE_AFTER`
+ * platform constant until shift timings became the organisation's own —
+ * see src/data/shifts.ts.
+ */
 const LATE_AFTER = '09:15';
 
 // The clock is anchored on a working day rather than on the wall-clock date —

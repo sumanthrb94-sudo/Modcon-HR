@@ -62,6 +62,13 @@ import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
+import {
+  getShiftAssignments,
+  getShifts,
+  hasOwnShift,
+  setEmployeeShift,
+  shiftCaptionFor,
+} from '@/data/shifts';
 import { linkAccountForEmployee } from '@/data/employeeLinks';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -1783,6 +1790,20 @@ function OverviewTab({
           <InfoRow label="Blood Group" value={emp.bloodGroup} />
           <InfoRow label="Marital Status" value={emp.maritalStatus} />
           <InfoRow label="Week Off" value={weekOffOf(emp)} />
+          {/*
+            Says when the hours are this person's own rather than the
+            organisation's — an unexplained difference from Settings reads as a
+            defect in the flagging rather than as the exception it is. The same
+            reason the leave balance carries a "Custom entitlement" badge.
+          */}
+          <InfoRow
+            label="Shift"
+            value={
+              shiftCaptionFor(emp.id)
+                ? `${shiftCaptionFor(emp.id)}${hasOwnShift(emp.id) ? ' · their own hours' : ''}`
+                : undefined
+            }
+          />
           <InfoRow label="Email" value={emp.email} />
           <InfoRow label="Phone" value={emp.phone} />
           <div className="col-span-2 md:col-span-3">
@@ -2583,6 +2604,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   // days, and there is no "not recorded" option because every employee has a
   // week-off. Someone with none set is off on Sunday, not off on no day.
   const [editWeekOff, setEditWeekOff] = useState<WeekOffDay>('Sunday');
+  // '' means "the organisation's default" — an absence from the assignment map
+  // rather than a shift id, so removing an exception puts them back on the
+  // organisation's hours rather than on nothing.
+  const [editShiftId, setEditShiftId] = useState<string>('');
   const [editAddress, setEditAddress] = useState('');
   const [editReportingManagerId, setEditReportingManagerId] = useState('');
   const [editError, setEditError] = useState('');
@@ -2906,6 +2931,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditBloodGroup(emp.bloodGroup ?? '');
     setEditMaritalStatus(emp.maritalStatus ?? '');
     setEditWeekOff(weekOffOf(emp));
+    setEditShiftId(getShiftAssignments()[emp.id] ?? '');
     setEditAddress(emp.address ?? '');
     setEditReportingManagerId(emp.reportingManagerId ?? '');
     setEditError('');
@@ -2986,6 +3012,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     };
 
     updateEmployeeInDirectory(updatedEmployee);
+    // Written separately, and deliberately not onto the employee record: the
+    // directory is localStorage-backed and client-controlled, so an assignment
+    // held there would never reach the organisation's other administrators.
+    void setEmployeeShift(updatedEmployee.id, editShiftId || null);
     // The form can move someone between departments, so access is re-evaluated
     // on every save rather than only when the department field looks changed.
     syncAccess(updatedEmployee);
@@ -3442,6 +3472,20 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
               value={editWeekOff}
               onChange={(value) => setEditWeekOff(value as WeekOffDay)}
               options={WEEK_OFF_DAYS.map((day) => ({ label: day, value: day }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Shift</label>
+            <Select
+              value={editShiftId}
+              onChange={(value) => setEditShiftId(value)}
+              options={[
+                { label: 'Organisation default', value: '' },
+                ...getShifts().map((shift) => ({
+                  label: `${shift.name} (${shift.start} – ${shift.end})`,
+                  value: shift.id,
+                })),
+              ]}
             />
           </div>
           <div className="md:col-span-2">

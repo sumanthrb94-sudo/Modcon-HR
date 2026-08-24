@@ -3,6 +3,8 @@ import { isWeekOffFor, getEmployee } from '@/data/employees';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
+import { clockMinutes } from '@/data/shiftRules';
+import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -23,57 +25,24 @@ const EMP_IDS = [
   'emp-031', 'emp-032', 'emp-033', 'emp-034', 'emp-035',
 ];
 
-/**
- * A check-in at or before this IST time is on time; after it is late.
- *
- * Declared here, above the seed, because the seed derives from it. It used to
- * be a `'09:15'` literal in the Mark Attendance form while seed records carried
- * `isLate` on check-ins as early as 09:12 — so the data contradicted the only
- * stated rule, and the derived regularization reason quoting the threshold read
- * as a falsehood about the record it described.
- */
-export const LATE_AFTER = '09:15';
-
-export const DEFAULT_SHIFT = 'General (09:00 – 18:00)';
-
-/** `HH:mm` as minutes past midnight, or null if it is not a clock time. */
-export function clockMinutes(time: string | null | undefined): number | null {
-  if (!time) return null;
-  const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (hours > 23 || minutes > 59) return null;
-  return hours * 60 + minutes;
-}
-
-/**
- * True when this `HH:mm` check-in counts as late.
- *
- * Compared as minutes, not as strings. `'9:05' > '09:15'` is true
- * lexicographically — a single unpadded hour would have marked an early
- * arrival late, silently and only for times before 10:00. Nothing produces an
- * unpadded time today, which is exactly why it would have gone unnoticed.
- *
- * An unparseable time is not late: flagging someone on the strength of a value
- * we could not read would be an assertion about a day we know nothing about.
- */
-export function isLateCheckIn(checkIn: string): boolean {
-  const at = clockMinutes(checkIn);
-  const threshold = clockMinutes(LATE_AFTER);
-  if (at === null || threshold === null) return false;
-  return at > threshold;
-}
+// `LATE_AFTER` and `DEFAULT_SHIFT` used to live here: a `'09:15'` grace and a
+// `'General (09:00 – 18:00)'` caption, both platform constants, and unrelated
+// to each other — the start time existed only inside the display string. So a
+// night shift would have been judged against 09:15 and flagged late every
+// night, silently. Both are now the organisation's, per employee: see
+// data/shifts.ts and data/shiftRules.ts.
 
 // Deterministic per-employee, per-date overrides
-type Override = { status: AttendanceStatus; checkIn: string | null; checkOut: string | null; workedHours: number; isLate: boolean };
+type Override = { status: AttendanceStatus; checkIn: string | null; checkOut: string | null; workedHours: number };
 
 /**
- * `isLate` is derived from the check-in rather than passed in, so no seed row
- * can assert a lateness its own time contradicts.
+ * Lateness is deliberately not carried here and is derived where the record is
+ * built, because it depends on *who* the record is about: 09:20 is late on a
+ * General shift and hours early on a Night one. As before, no seed row can
+ * assert a lateness its own check-in contradicts — it simply cannot state one.
  */
 function override(status: AttendanceStatus, checkIn: string | null, checkOut: string | null, workedHours: number): Override {
-  return { status, checkIn, checkOut, workedHours, isLate: checkIn ? isLateCheckIn(checkIn) : false };
+  return { status, checkIn, checkOut, workedHours };
 }
 
 const OVERRIDES: Record<string, Record<string, Override>> = {
@@ -179,8 +148,10 @@ if (!isMockDataCleared()) {
           checkIn: ov.checkIn,
           checkOut: ov.checkOut,
           workedHours: ov.workedHours,
-          shift: DEFAULT_SHIFT,
-          isLate: ov.isLate,
+          shift: shiftCaptionFor(empId),
+          // Derived against this employee's own hours, so an override cannot
+          // claim a lateness their shift disagrees with.
+          isLate: ov.checkIn ? isLateFor(empId, ov.checkIn) : false,
         });
       } else {
         // Default: Present
@@ -194,10 +165,10 @@ if (!isMockDataCleared()) {
           checkIn,
           checkOut,
           workedHours,
-          shift: DEFAULT_SHIFT,
+          shift: shiftCaptionFor(empId),
           // Derived here too, so the standard patterns cannot drift past the
           // threshold while still claiming to be on time.
-          isLate: isLateCheckIn(checkIn),
+          isLate: isLateFor(empId, checkIn),
         });
       }
     });
@@ -478,7 +449,7 @@ function applyRequestedStatus(employeeId: string, date: string, status: Attendan
       checkIn: null,
       checkOut: null,
       workedHours: 0,
-      shift: DEFAULT_SHIFT,
+      shift: shiftCaptionFor(employeeId),
       isLate: false,
     };
 
@@ -584,8 +555,11 @@ export function recordCheckIn(employeeId: string): AttendanceRecord {
     checkOut: existing?.checkOut ?? null,
     checkOutAt: existing?.checkOutAt,
     workedHours: 0,
-    shift: existing?.shift ?? DEFAULT_SHIFT,
-    isLate: isLateCheckIn(time),
+    // The caption is stamped from the shift as it stands now and then left
+    // alone: retiming a shift later applies to days judged from then on, so a
+    // record goes on saying what was true on the day.
+    shift: existing?.shift ?? shiftCaptionFor(employeeId),
+    isLate: isLateFor(employeeId, time),
   };
 
   writeRecord(record);

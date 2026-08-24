@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "bash scripts/e2e.sh",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
     "lint": "eslint .",
     "rules:deploy": "firebase deploy --only firestore:rules",
     "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project modcon-hr \"node --test --test-concurrency=1 tests/rules/*.test.mjs\"",

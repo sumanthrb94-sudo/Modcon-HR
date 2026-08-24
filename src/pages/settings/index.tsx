@@ -6,7 +6,7 @@ import {
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
   AlertCircle, AlertTriangle, CheckCircle2, Star, Database, Trash2, Wallet, MapPin,
-  Upload, Download, RefreshCw,
+  Upload, Download, RefreshCw, Clock,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
@@ -17,6 +17,7 @@ import { employees } from '@/data/employees';
 import { HR_DEPARTMENT, getCompanyProfile, isHrDepartment, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import CheckinPolicySection from './CheckinPolicySection';
+import ShiftsSection from './ShiftsSection';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import {
@@ -4496,6 +4497,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'locations', label: 'Locations', icon: <MapPin size={17} />, description: 'Where the company works' },
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
   { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
+  { id: 'shifts', label: 'Shifts', icon: <Clock size={17} />, description: 'Working hours & grace' },
   { id: 'checkins', label: 'Progress Check-ins', icon: <RefreshCw size={17} />, description: 'Cadence & channels' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
   { id: 'holidays', label: 'Holidays', icon: <CalendarDays size={17} />, description: 'Holiday calendar' },
@@ -4556,6 +4558,7 @@ export function SettingsPage() {
         </>
       );
       case 'checkins': return <CheckinPolicySection />;
+      case 'shifts': return <ShiftsSection />;
       case 'salary': return (
         <>
           <SalaryStructureSection />

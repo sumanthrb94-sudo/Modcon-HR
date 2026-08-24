@@ -88,6 +88,16 @@ export const ORG_SETTINGS = {
   // organisation's split moves has to re-render when an individual's does too,
   // and a breakdown left stale is a wrong statement about somebody's pay.
   employeeSalaryStructures: setting('employeeSalaryStructures', 'modcon.hr.employeeSalaryStructures', 'modcon-hr-salary-structure-changed'),
+  // The hours the organisation runs. Replaced two platform constants — a
+  // display string and an unrelated 09:15 grace literal — so lateness is
+  // judged against the hours somebody actually works. See data/shifts.ts.
+  shifts: setting('shifts', 'modcon.hr.shifts', 'modcon-hr-shifts-changed'),
+  // Who is on which shift, sparse: absent means the organisation's default.
+  // Shares the shift change event on purpose, the same reason the leave and
+  // salary pairs do — every surface that re-renders when the organisation's
+  // hours move has to re-render when one person's do, or the two drift on
+  // screen because only one of them published.
+  employeeShifts: setting('employeeShifts', 'modcon.hr.employeeShifts', 'modcon-hr-shifts-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it
