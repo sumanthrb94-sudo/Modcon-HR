@@ -1,0 +1,47 @@
+src/pages/dashboard/CelebrationsPage.tsx
+  s_233a1cbd4600a1::t_199d3a1cdf7fab 68
+  s_233a1cbd4600a1::t_19fe6ad70604ef 25-26,29-39,43
+  s_233a1cbd4600a1::t_345d4b80ed177a 6-9
+src/pages/my-attendance/index.tsx
+  s_233a1cbd4600a1::t_0c37e4e2c1278b 383-384,386-387,393-400
+  s_233a1cbd4600a1::t_4d62f2ec483a2e 105-107
+  s_233a1cbd4600a1::t_e7035124373618 92-99
+src/data/dashboard.ts
+  s_233a1cbd4600a1::t_e213f85d1df422 300-314,316,322-360,363-366
+  s_233a1cbd4600a1::t_b0bf9dcb631346 20
+src/pages/dashboard/RecentActivityPage.tsx
+  s_233a1cbd4600a1::t_15ef25fbdde123 7,13,16-19
+tests/e2e/employee-self-scope.spec.ts
+  s_233a1cbd4600a1::t_f73721938c6e5d 1-11,19-48,54-91,97-117,122,124-129,131-140,158-160,164,166-177,179,182-190,194,197-209,212-215
+  s_233a1cbd4600a1::t_f054d3617c9ae8 92-96
+  s_233a1cbd4600a1::t_c3e99e60228160 118-121,123,130
+  s_233a1cbd4600a1::t_372c4dc3137b4c 49-53
+  s_233a1cbd4600a1::t_596ef1d1368ff9 141-157,161-163,165,178,180-181,191-193,195-196
+  s_233a1cbd4600a1::t_50b6aeee2cef62 210-211
+  s_233a1cbd4600a1::t_1564e79f843927 12-18
+src/components/layout/Topbar.tsx
+  s_233a1cbd4600a1::t_18e90d1a8fe26e 37-43,50
+  s_233a1cbd4600a1::t_4740c0b17023ea 8
+src/pages/dashboard/index.tsx
+  s_233a1cbd4600a1::t_74318a29816333 619
+playwright.config.ts
+  s_233a1cbd4600a1::t_37ef2ad96c33a9 183-186
+src/App.tsx
+  s_233a1cbd4600a1::t_8711d93fb153ee 208-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "ef7ba244ea81b330123a5c5f17545409e8311938",
+  "prompts": {},
+  "sessions": {
+    "s_233a1cbd4600a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4685ad0-362f-49b3-8d1a-31d1afbce9c6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
