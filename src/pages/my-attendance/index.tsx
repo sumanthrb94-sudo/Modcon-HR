@@ -89,17 +89,22 @@ export function MyAttendancePage() {
   // Admins & managers can view any employee's attendance; a plain employee is
   // locked to their own record.
   const canPickAny = isAdmin || isManager;
-  // Falls back within the viewer's own scope, so an unlinked manager account
-  // lands on someone they may actually see rather than the first seed record.
-  const fallbackId = ownEmployee?.id ?? viewableEmployees[0]?.id ?? directory[0]?.id ?? '';
+  // Falls back within the viewer's own scope, and no further. The trailing
+  // `directory[0]?.id` that used to close this expression reached outside that
+  // scope entirely: an account this app cannot match to a record was shown the
+  // first person in the directory — their name, their avatar and their whole
+  // week — under a banner calling it "sample attendance". It was not a sample,
+  // it was a colleague. Nobody is the honest answer, and the direction a
+  // missing identity has to fail.
+  const fallbackId = ownEmployee?.id ?? viewableEmployees[0]?.id ?? '';
   const [selectedId, setSelectedId] = useState(fallbackId);
 
   const targetId = canPickAny ? selectedId || fallbackId : ownEmployee?.id ?? fallbackId;
   const targetEmployee = directory.find((e) => e.id === targetId);
 
-  // When a non-privileged user isn't linked to an employee record we still show
-  // a representative record so the page is never empty — but say so.
-  const showingSample = !canPickAny && !ownEmployee;
+  // A non-privileged account this app cannot match to an employee record. It
+  // gets an explanation and no attendance, rather than somebody else's.
+  const isUnlinked = !canPickAny && !ownEmployee;
 
   const employeeOptions = useMemo(
     () => viewableEmployees.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id })),
@@ -375,16 +380,24 @@ export function MyAttendancePage() {
         }
       />
 
-      {showingSample && (
-        <div className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-700">
+      {isUnlinked && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="attendance-unlinked-notice">
           <Info size={16} className="shrink-0" />
-          Your account isn’t linked to an employee record yet — showing sample attendance.
+          Your account isn’t linked to an employee record yet, so there is no attendance to show. An
+          administrator can link it from Settings → Database.
         </div>
       )}
 
       {!targetEmployee ? (
         <Card>
-          <EmptyState title="No employee selected" description="Pick an employee to view their attendance." />
+          <EmptyState
+            title={isUnlinked ? 'No attendance to show' : 'No employee selected'}
+            description={
+              isUnlinked
+                ? 'This app has not been told which employee record your account belongs to.'
+                : 'Pick an employee to view their attendance.'
+            }
+          />
         </Card>
       ) : (
         <>

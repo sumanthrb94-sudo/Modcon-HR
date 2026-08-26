@@ -180,7 +180,10 @@ const ORG_SETTINGS_ENABLED =
 // joining-date.spec.ts likewise: who may correct a joining date is a
 // per-persona question — HR and Admin, and pointedly not the manager who may
 // edit every other field in that card.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|joining-date)\.spec\.ts$/;
+// employee-self-scope.spec.ts is here for the same reason: whether a surface
+// shows a colleague is a per-persona question, and the answer is app logic
+// rather than engine behaviour, so one browser settles it.
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|joining-date|employee-self-scope)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',

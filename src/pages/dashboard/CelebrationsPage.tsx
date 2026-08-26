@@ -3,7 +3,10 @@ import { Cake, ChevronLeft, Gift, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { Avatar, Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { employees } from '@/data/employees';
+import { getEmployeeDirectory } from '@/data/employees';
+import { useAuth } from '@/lib/auth';
+import { getVisibleEmployees } from '@/lib/dataScope';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { dayOfMonth, formatDateShort, monthIndexOf, yearOf } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 
@@ -19,12 +22,25 @@ type CelebrationItem = {
 
 export function CelebrationsPage() {
     const navigate = useNavigate();
+    const { profile } = useAuth();
+    const directoryRevision = useEmployeeDirectoryRevision();
     const [selectedMonth, setSelectedMonth] = useState<number>(monthIndexOf(todayIso()));
+
+    // Two things were wrong here. It read the `employees` seed array rather
+    // than the store's getter, so a person hired or removed locally was
+    // missing or lingered; and it was scoped to nobody, so an Employee opening
+    // this page read every colleague's name, department and date of birth.
+    // Both are the same fix: the live directory, filtered by who is looking.
+    // See lib/dataScope.ts.
+    const visibleEmployees = useMemo(
+        () => getVisibleEmployees(profile, getEmployeeDirectory()),
+        [profile, directoryRevision],
+    );
 
     const groupedCelebrations = useMemo(() => {
         const grouped: Record<number, CelebrationItem[]> = Object.fromEntries(MONTHS.map((_, index) => [index, []]));
 
-        employees.forEach((employee) => {
+        visibleEmployees.forEach((employee) => {
             const birthdayMonth = monthIndexOf(employee.dateOfBirth);
             grouped[birthdayMonth].push({
                 type: 'Birthday',
@@ -49,7 +65,7 @@ export function CelebrationsPage() {
         }
 
         return grouped;
-    }, [employees.length]);
+    }, [visibleEmployees]);
 
     const monthItems = groupedCelebrations[selectedMonth] ?? [];
 

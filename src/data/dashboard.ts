@@ -17,7 +17,7 @@ import { getRecordsByDate, getWeekSummary, getRegularizationRequests } from './a
 import { getOnboardings } from './onboarding';
 import { getCandidates, getJobOpenings } from './recruitment';
 import { getReviews } from './performance';
-import { getApprovableEmployeeIds } from '@/lib/dataScope';
+import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import type { UserProfile } from '@/lib/auth';
 import { todayDate, todayIso } from '@/lib/today';
 import { formatMonthShort, formatWeekdayShort } from '@/lib/utils';
@@ -297,47 +297,73 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
 // ---------------------------------------------------------------------------
 // 6. Recent activity — a merged, time-ordered view of real records
 // ---------------------------------------------------------------------------
-export function recentActivity(limit = 25): ActivityItem[] {
+/**
+ * The activity stream, scoped to whoever is reading it.
+ *
+ * Every item names a person, so an unscoped feed is a roster: it told an
+ * Employee who applied for leave, who claimed what expense and who joined
+ * which department. The feed now carries only the people the viewer may
+ * already see — themselves for an Employee, their reporting line plus HR for
+ * a Manager, everyone for HR and Admin. See lib/dataScope.ts.
+ *
+ * `profile` is required rather than optional on purpose. Optional, every
+ * existing call site would have gone on compiling and gone on showing the
+ * whole company — the same reason `updateLeaveRequestStatus` demands the
+ * deciding profile.
+ */
+export function recentActivity(profile: UserProfile | null, limit = 25): ActivityItem[] {
   const directory = getEmployeeDirectory();
+  const visible = getVisibleEmployeeIds(profile, directory);
   const nameById = new Map(directory.map((employee) => [employee.id, employee.fullName]));
   const nameOf = (id: string) => nameById.get(id) ?? 'A team member';
 
   const items: ActivityItem[] = [];
 
-  getLeaveRequests().forEach((request) => items.push({
-    id: `leave-${request.id}`,
-    actor: nameOf(request.employeeId),
-    action: 'applied for',
-    subject: `${request.days}-day ${request.type} leave`,
-    timestamp: request.appliedOn,
-  }));
+  getLeaveRequests()
+    .filter((request) => visible.has(request.employeeId))
+    .forEach((request) => items.push({
+      id: `leave-${request.id}`,
+      actor: nameOf(request.employeeId),
+      action: 'applied for',
+      subject: `${request.days}-day ${request.type} leave`,
+      timestamp: request.appliedOn,
+    }));
 
-  getExpenseClaims().forEach((claim) => items.push({
-    id: `expense-${claim.id}`,
-    actor: nameOf(claim.employeeId),
-    action: 'submitted',
-    subject: `${claim.title} ${inr(claim.amount)}`,
-    timestamp: claim.submittedOn,
-  }));
+  getExpenseClaims()
+    .filter((claim) => visible.has(claim.employeeId))
+    .forEach((claim) => items.push({
+      id: `expense-${claim.id}`,
+      actor: nameOf(claim.employeeId),
+      action: 'submitted',
+      subject: `${claim.title} ${inr(claim.amount)}`,
+      timestamp: claim.submittedOn,
+    }));
 
-  getTickets().forEach((ticket) => items.push({
-    id: `ticket-${ticket.id}`,
-    actor: nameOf(ticket.raisedById),
-    action: 'raised a ticket',
-    subject: ticket.subject,
-    timestamp: ticket.createdOn,
-  }));
+  getTickets()
+    .filter((ticket) => visible.has(ticket.raisedById))
+    .forEach((ticket) => items.push({
+      id: `ticket-${ticket.id}`,
+      actor: nameOf(ticket.raisedById),
+      action: 'raised a ticket',
+      subject: ticket.subject,
+      timestamp: ticket.createdOn,
+    }));
 
-  directory.forEach((employee) => items.push({
-    id: `joined-${employee.id}`,
-    actor: employee.fullName,
-    action: 'joined',
-    subject: `${employee.department} (${employee.designation})`,
-    timestamp: employee.dateOfJoining,
-  }));
+  directory
+    .filter((employee) => visible.has(employee.id))
+    .forEach((employee) => items.push({
+      id: `joined-${employee.id}`,
+      actor: employee.fullName,
+      action: 'joined',
+      subject: `${employee.department} (${employee.designation})`,
+      timestamp: employee.dateOfJoining,
+    }));
 
   getReviews()
-    .filter((review) => review.status === 'Completed')
+    // Matched on `employeeId`, never the denormalised `employeeName` beside
+    // it: a stored name is a copy of the directory at write time, and scoping
+    // on a copy scopes on stale data.
+    .filter((review) => review.status === 'Completed' && visible.has(review.employeeId))
     .forEach((review) => items.push({
       id: `review-${review.id}`,
       actor: review.employeeName,

@@ -616,7 +616,7 @@ function AdminDashboard() {
     [visiblePendingApprovals],
   );
 
-  const activityFeed = useMemo(() => recentActivity(6), [directory, dataRevision]);
+  const activityFeed = useMemo(() => recentActivity(profile, 6), [profile, directory, dataRevision]);
 
   return (
     <div className="space-y-6 animate-fade-in">

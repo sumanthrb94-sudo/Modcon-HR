@@ -205,11 +205,20 @@ function AppRoutes() {
         <Route path="dashboard/pending-approvals/expense-claims" element={<RequireManager><ExpenseClaimsApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals/regularizations" element={<RequireManager><RegularizationsApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals/onboarding-tasks" element={<RequireManager><OnboardingTasksApprovalsPage /></RequireManager>} />
-        <Route path="dashboard/announcements" element={<AnnouncementsPage />} />
-        <Route path="dashboard/celebrations" element={<CelebrationsPage />} />
-        <Route path="dashboard/kpi-graphs" element={<KpiGraphsPage />} />
-        <Route path="dashboard/holiday-calendar" element={<HolidayCalendarPage />} />
-        <Route path="dashboard/recent-activity" element={<RecentActivityPage />} />
+        {/* These five expand a card on the dashboard, and alone among the
+            routes in this file they carried no guard at all — not a role
+            check, not a module check. Announcements and the holiday calendar
+            are company-wide by nature and stay readable by anyone holding the
+            Dashboard module; the other two name people, and are scoped
+            internally by lib/dataScope.ts as well. KPI graphs are
+            organisation-wide analytics — headcount, notice-period rate,
+            average tenure — so they belong to Reports & Analytics, which an
+            Employee does not hold. */}
+        <Route path="dashboard/announcements" element={<RequireModuleAccess module="Dashboard"><AnnouncementsPage /></RequireModuleAccess>} />
+        <Route path="dashboard/celebrations" element={<RequireModuleAccess module="Dashboard"><CelebrationsPage /></RequireModuleAccess>} />
+        <Route path="dashboard/kpi-graphs" element={<RequireModuleAccess module="Reports & Analytics"><KpiGraphsPage /></RequireModuleAccess>} />
+        <Route path="dashboard/holiday-calendar" element={<RequireModuleAccess module="Dashboard"><HolidayCalendarPage /></RequireModuleAccess>} />
+        <Route path="dashboard/recent-activity" element={<RequireModuleAccess module="Dashboard"><RecentActivityPage /></RequireModuleAccess>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

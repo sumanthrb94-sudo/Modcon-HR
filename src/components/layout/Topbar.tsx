@@ -5,6 +5,7 @@ import { Avatar, Button, NotificationsMenu, QuickAddMenu, Select } from '@/compo
 import { getVisibleNavItems } from '@/lib/nav';
 import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { getVisibleEmployees } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { useOrganizations } from '@/lib/useFirestore';
 import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
@@ -33,14 +34,20 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         subtitle: `${item.group} module`,
         path: item.path,
       })),
-      ...getEmployeeDirectory().slice(0, 30).map((employee) => ({
+      // Scoped exactly like the directory itself: an Employee finds only
+      // themselves, a Manager their reporting line plus HR. This search read
+      // the whole directory, and the profile page's `canViewEmployee` guard
+      // does not cover it — that refuses the navigation, by which point the
+      // dropdown has already shown the name, designation and department of up
+      // to thirty colleagues. See lib/dataScope.ts.
+      ...getVisibleEmployees(profile, getEmployeeDirectory()).slice(0, 30).map((employee) => ({
         id: `emp-${employee.id}`,
         label: employee.fullName,
         subtitle: `${employee.designation} · ${employee.department}`,
         path: `/employees/${employee.id}`,
       })),
     ],
-    [directoryRevision, visibleNavItems],
+    [directoryRevision, visibleNavItems, profile],
   );
 
   const results = useMemo(() => {

@@ -4,14 +4,19 @@ import { Link } from 'react-router-dom';
 
 import { Avatar, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { recentActivity } from '@/data/dashboard';
+import { useAuth } from '@/lib/auth';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { timeAgo } from '@/lib/utils';
 
 export function RecentActivityPage() {
+    const { profile } = useAuth();
     const directoryRevision = useEmployeeDirectoryRevision();
     const dataRevision = useDashboardDataRevision();
-    const activityFeed = useMemo(() => recentActivity(100), [directoryRevision, dataRevision]);
+    const activityFeed = useMemo(
+        () => recentActivity(profile, 100),
+        [profile, directoryRevision, dataRevision],
+    );
 
     return (
         <div className="space-y-6 animate-fade-in">
