@@ -67,6 +67,8 @@ export interface AttendanceRecord {
   workedHours: number;
   shift: string;
   isLate: boolean;
+  /** Free-text remark captured when attendance is marked manually. */
+  note?: string;
 }
 
 // ---- Leave ---------------------------------------------------------------

@@ -7,11 +7,11 @@ import {
 } from 'recharts';
 import {
   Users, TrendingDown, Clock, IndianRupee, Heart,
-  BarChart2, Calendar, Briefcase, Award, Activity,
+  Calendar, Briefcase, Award, Activity,
   FileText, Download, ChevronRight, UserCheck,
 } from 'lucide-react';
 import {
-  PageHeader, StatCard, Card, CardHeader, Badge, Button, Select,
+  PageHeader, StatCard, Card, CardHeader, Button, Select,
 } from '@/components/ui';
 import { formatINR } from '@/lib/utils';
 import {
@@ -25,6 +25,7 @@ import {
   attendanceTrend,
   employmentTypeSplit,
   totalHeadcount,
+  activeHeadcount,
   avgTenureYears,
   totalAnnualPayroll,
   diversityRatio,
@@ -116,15 +117,32 @@ export function ReportsPage() {
   const [dateRange, setDateRange] = useState('ytd');
   const [deptFilter, setDeptFilter] = useState('all');
 
-  // Compute derived data
-  const hcByDept = useMemo(() => headcountByDepartment(), []);
+  // The department and date-range controls now actually drive the page. They
+  // previously set state that nothing read, so both Selects were decoration.
+  const isAllDepts = deptFilter === 'all';
+
+  const hcByDept = useMemo(
+    () => headcountByDepartment().filter((d) => isAllDepts || d.department === deptFilter),
+    [isAllDepts, deptFilter],
+  );
   const genderData = useMemo(() => genderDiversity(), []);
   const tenureData = useMemo(() => tenureDistribution().map((d) => ({ name: d.bucket, count: d.count })), []);
-  const salaryData = useMemo(() => salaryByDepartment().map((d) => ({
-    dept: d.department.length > 10 ? d.department.slice(0, 10) + '…' : d.department,
-    cost: d.cost,
-  })), []);
+  const salaryData = useMemo(() => salaryByDepartment()
+    .filter((d) => isAllDepts || d.department === deptFilter)
+    .map((d) => ({
+      dept: d.department.length > 10 ? d.department.slice(0, 10) + '…' : d.department,
+      cost: d.cost,
+    })), [isAllDepts, deptFilter]);
   const empTypeSplit = useMemo(() => employmentTypeSplit(), []);
+
+  // The mock series carry 12 months; honour the selected range by slicing.
+  const rangeMonths = dateRange === 'month' ? 1 : dateRange === 'quarter' ? 3 : 12;
+  const attritionSeries = useMemo(() => attritionTrend.slice(-rangeMonths), [rangeMonths]);
+  const headcountSeries = useMemo(() => headcountGrowth.slice(-rangeMonths), [rangeMonths]);
+  const attendanceSeries = useMemo(
+    () => (dateRange === 'month' ? attendanceTrend.slice(-2) : attendanceTrend),
+    [dateRange],
+  );
 
   const headcount = totalHeadcount();
   const attrition = currentAttritionRate();
@@ -148,7 +166,7 @@ export function ReportsPage() {
       icon: <Users size={20} />,
       title: 'Headcount Report',
       description: 'Workforce composition, department breakdown, and headcount trends over time.',
-      kpis: [{ label: 'Total Employees', value: String(headcount) }, { label: 'Active', value: String(headcount - 2) }],
+      kpis: [{ label: 'Total Employees', value: String(headcount) }, { label: 'Active', value: String(activeHeadcount()) }],
       color: 'text-brand-600',
       bg: 'bg-brand-50',
       route: '/employees',
@@ -283,7 +301,7 @@ export function ReportsPage() {
         {/* Headcount Growth */}
         <ChartCard title="Headcount Growth" subtitle="12-month trajectory">
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={headcountGrowth} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={headcountSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={PALETTE.brand} stopOpacity={0.2} />
@@ -302,7 +320,7 @@ export function ReportsPage() {
         {/* Attrition Trend */}
         <ChartCard title="Attrition Trend" subtitle="Monthly attrition %">
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={attritionTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <LineChart data={attritionSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} domain={[0, 5]} />
@@ -408,7 +426,7 @@ export function ReportsPage() {
         {/* Attendance rate */}
         <ChartCard title="Attendance Rate" subtitle="Weekly trend">
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={attendanceTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={attendanceSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={PALETTE.teal} stopOpacity={0.25} />

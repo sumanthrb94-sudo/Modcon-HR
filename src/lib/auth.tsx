@@ -23,7 +23,6 @@ import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    isSignInWithEmailLink,
     signOut,
     updateProfile,
     type User,
@@ -54,7 +53,15 @@ export interface UserProfile {
 // ---------------------------------------------------------------------------
 // Firestore profile sync
 // ---------------------------------------------------------------------------
-async function upsertUserProfile(user: User): Promise<UserProfile> {
+async function upsertUserProfile(
+    user: User,
+    /**
+     * Name to persist when the Auth record doesn't carry one yet. Sign-up fires
+     * `onAuthStateChanged` before `updateProfile` resolves, so without this the
+     * first write stores the email prefix and the name the user typed is lost.
+     */
+    displayNameOverride?: string,
+): Promise<UserProfile> {
     const email = (user.email ?? '').toLowerCase();
     const isHardcodedAdmin = ADMIN_EMAILS.includes(email);
     const ref = doc(db, 'users', user.uid);
@@ -67,7 +74,11 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
     const profile: UserProfile = {
         uid: user.uid,
         email,
-        displayName: user.displayName || email.split('@')[0],
+        displayName:
+            user.displayName ||
+            displayNameOverride?.trim() ||
+            (existing.exists() ? ((existing.data().displayName as string) ?? '') : '') ||
+            email.split('@')[0],
         photoURL: user.photoURL,
         role,
     };
@@ -159,6 +170,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
             if (name.trim()) {
                 await updateProfile(cred.user, { displayName: name.trim() });
+                // `createUserWithEmailAndPassword` already fired onAuthStateChanged,
+                // which upserted the profile before `updateProfile` resolved — so
+                // that write recorded the email prefix, not the name just typed.
+                // Re-upsert (and refresh context state) now that it's set.
+                const p = await upsertUserProfile(cred.user, name.trim());
+                setProfile(p);
             }
         } catch (err) {
             setError(friendlyAuthError(err));

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   BarChart,
   Bar,
@@ -64,16 +64,20 @@ export function AttendancePage() {
   const [markStatus, setMarkStatus] = useState<AttendanceStatus>('Present');
   const [markCheckIn, setMarkCheckIn] = useState('09:00');
   const [markCheckOut, setMarkCheckOut] = useState('18:00');
+  const [markNote, setMarkNote] = useState('');
 
   // Regularization state — mutable local copy
   const [regRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
 
-  function recordsByDate(date: string) {
-    return attendanceState.filter((record) => record.date === date);
-  }
+  // Memoised so the dependent memos below can list it honestly — as a plain
+  // function it was re-created every render, making their dep arrays a lie.
+  const recordsByDate = useCallback(
+    (date: string) => attendanceState.filter((record) => record.date === date),
+    [attendanceState],
+  );
 
   // Stats for selected date
-  const dayRecords = useMemo(() => recordsByDate(selectedDate), [attendanceState, selectedDate]);
+  const dayRecords = useMemo(() => recordsByDate(selectedDate), [recordsByDate, selectedDate]);
   const todayStats = useMemo(() => {
     const todayRecs = recordsByDate(TODAY);
     return {
@@ -83,7 +87,7 @@ export function AttendancePage() {
       absent: todayRecs.filter((r) => r.status === 'Absent').length,
       late: todayRecs.filter((r) => r.isLate).length,
     };
-  }, [attendanceState]);
+  }, [recordsByDate]);
 
   // Weekly trend data
   const weeklyData = useMemo(() => {
@@ -97,7 +101,7 @@ export function AttendancePage() {
         Absent: records.filter((r) => r.status === 'Absent').length,
       };
     });
-  }, [attendanceState]);
+  }, [recordsByDate]);
 
   // Table rows: join attendance with employee info
   const tableRows = useMemo((): AttendanceRow[] => {
@@ -197,7 +201,12 @@ export function AttendancePage() {
     {
       key: 'shift',
       header: 'Shift',
-      render: (row) => <span className="text-ink-500 text-xs">{row.shift}</span>,
+      render: (row) => (
+        <span className="text-ink-500 text-xs" title={row.note ? `Note: ${row.note}` : undefined}>
+          {row.shift}
+          {row.note && <span className="ml-1 text-brand-500">•</span>}
+        </span>
+      ),
     },
   ];
 
@@ -218,6 +227,13 @@ export function AttendancePage() {
     setMarkStatus('Present');
     setMarkCheckIn('09:00');
     setMarkCheckOut('18:00');
+    setMarkNote('');
+  }
+
+  /** Reset on cancel/backdrop/Esc too, not just on save. */
+  function closeMarkModal() {
+    setMarkModalOpen(false);
+    resetMarkAttendanceForm();
   }
 
   function saveAttendance() {
@@ -243,6 +259,7 @@ export function AttendancePage() {
         workedHours,
         shift: 'General (09:00 – 18:00)',
         isLate,
+        note: markNote.trim() || undefined,
       };
 
       const withoutExisting = prev.filter((record) => !(record.employeeId === markEmployeeId && record.date === TODAY));
@@ -467,12 +484,12 @@ export function AttendancePage() {
       {/* Mark Attendance Modal */}
       <Modal
         open={markModalOpen}
-        onClose={() => setMarkModalOpen(false)}
+        onClose={closeMarkModal}
         title="Mark Attendance"
         subtitle="Record attendance for an employee for today"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setMarkModalOpen(false)}>
+            <Button variant="ghost" onClick={closeMarkModal}>
               Cancel
             </Button>
             <Button variant="primary" onClick={saveAttendance} disabled={!markEmployeeId}>
@@ -515,7 +532,14 @@ export function AttendancePage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-ink-700 mb-1">Note (optional)</label>
-            <textarea className="input w-full h-20 resize-none" placeholder="Any remarks…" />
+            {/* Previously an unbound textarea — whatever was typed here was
+                silently dropped on save. */}
+            <textarea
+              className="input w-full h-20 resize-none"
+              placeholder="Any remarks…"
+              value={markNote}
+              onChange={(e) => setMarkNote(e.target.value)}
+            />
           </div>
         </div>
       </Modal>

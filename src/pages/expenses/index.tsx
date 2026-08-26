@@ -47,6 +47,13 @@ type TabId = 'all' | ExpenseStatus;
 // Constants
 // ---------------------------------------------------------------------------
 
+// The demo's fixed "today", shared with the rest of the app.
+const TODAY = '2026-06-10';
+const APPROVAL_WINDOW_DAYS = 30;
+const WINDOW_START = new Date(
+  new Date(TODAY).getTime() - APPROVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+).toISOString().slice(0, 10);
+
 const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
 const CATEGORY_OPTIONS: { label: string; value: string }[] = [
@@ -95,7 +102,7 @@ const EMPTY_FORM: NewClaimForm = {
   title: '',
   category: '',
   amount: '',
-  date: new Date().toISOString().slice(0, 10),
+  date: TODAY,
   description: '',
 };
 
@@ -126,7 +133,7 @@ function NewClaimModal({ open, onClose, onSubmit }: NewClaimModalProps) {
 
   function handleSubmit() {
     if (!validate()) return;
-    const now = new Date().toISOString().slice(0, 10);
+    const now = TODAY;
     const claim: ExpenseClaim = {
       id: `exp-${Date.now()}`,
       employeeId: form.employeeId,
@@ -295,13 +302,16 @@ export function ExpensesPage() {
     const submittedAmount = claims
       .filter((c) => c.status === 'Submitted')
       .reduce((s, c) => s + c.amount, 0);
-    const approvedThisMonth = claims.filter(
-      (c) => c.status === 'Approved' && c.submittedOn.startsWith('2026-05'),
+    // Relative to the app's pinned "today" instead of a hardcoded '2026-05',
+    // which counted May claims under a "This Month" label while the app sat in
+    // June. A rolling window also stops the figure going stale as data ages.
+    const approvedRecently = claims.filter(
+      (c) => c.status === 'Approved' && c.submittedOn >= WINDOW_START,
     ).length;
     const reimbursedTotal = claims
       .filter((c) => c.status === 'Reimbursed')
       .reduce((s, c) => s + c.amount, 0);
-    return { total, submittedCount, submittedAmount, approvedThisMonth, reimbursedTotal };
+    return { total, submittedCount, submittedAmount, approvedRecently, reimbursedTotal };
   }, [claims]);
 
   // ----- Chart data -----
@@ -466,12 +476,12 @@ export function ExpensesPage() {
           }
         />
         <StatCard
-          label="Approved This Month"
-          value={stats.approvedThisMonth}
+          label="Approved (30 Days)"
+          value={stats.approvedRecently}
           icon={<CheckCircle size={22} />}
           iconClass="bg-emerald-50 text-emerald-600"
           delta={8}
-          deltaLabel="vs last month"
+          deltaLabel="vs prior 30 days"
         />
         <StatCard
           label="Reimbursed (Total)"

@@ -1,4 +1,5 @@
 import type { JobOpening, Candidate, CandidateStage } from '@/types';
+import { employeeIdByCode } from './employees';
 
 // ---------------------------------------------------------------------------
 // Job Openings
@@ -120,7 +121,7 @@ export const jobOpenings: JobOpening[] = [
     openings: 1,
     applicants: 30,
     postedOn: '2026-05-28',
-    hiringManagerId: 'emp-040',
+    hiringManagerId: employeeIdByCode('MC-040'),
     experience: '2–4 yrs',
     description:
       'Create compelling long-form content, case studies, and thought leadership pieces that support demand generation and brand authority in the HR tech space.',
@@ -150,7 +151,7 @@ export const jobOpenings: JobOpening[] = [
     openings: 1,
     applicants: 44,
     postedOn: '2026-03-01',
-    hiringManagerId: 'emp-070',
+    hiringManagerId: employeeIdByCode('MC-070'),
     experience: '3–5 yrs',
     description:
       'Manage a portfolio of mid-market accounts, driving adoption, retention, and expansion revenue. Be the voice of the customer internally.',

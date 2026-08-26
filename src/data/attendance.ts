@@ -1,4 +1,4 @@
-import type { AttendanceRecord, AttendanceStatus } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, RegularizationRequest } from '@/types';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -151,14 +151,10 @@ EMP_IDS.forEach((empId, empIdx) => {
 });
 
 // ---- Regularization Requests ------------------------------------------------
-export interface RegularizationRequest {
-  id: string;
-  employeeId: string;
-  date: string;
-  reason: string;
-  requestedStatus: AttendanceStatus;
-  status: 'Pending' | 'Approved' | 'Rejected';
-}
+// Re-exported from the shared domain model rather than redeclared here: this
+// module and `@/types` each used to declare their own copy, and db.ts and
+// useFirestore.ts imported different ones, so the two could silently drift.
+export type { RegularizationRequest } from '@/types';
 
 export const regularizationRequests: RegularizationRequest[] = [
   {

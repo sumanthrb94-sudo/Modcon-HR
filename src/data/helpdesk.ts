@@ -1,4 +1,4 @@
-import type { Ticket, TicketStatus, TicketPriority } from '@/types';
+import type { Ticket } from '@/types';
 
 export const tickets: Ticket[] = [
   {

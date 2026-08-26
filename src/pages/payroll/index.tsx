@@ -46,6 +46,14 @@ function monthLabel(m: string): string {
   return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 }
 
+/** Last calendar day of a "YYYY-MM" month, as an ISO date. Pay date for a run. */
+function lastDayOfMonth(m: string): string {
+  const [yr, mo] = m.split('-').map(Number);
+  // Day 0 of the following month is the last day of this one.
+  const date = new Date(yr, mo, 0);
+  return `${yr}-${String(mo).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Payslip Modal
 // ---------------------------------------------------------------------------
@@ -135,7 +143,11 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
         </div>
         <div className="text-right text-sm text-brand-100">
           <p>{monthLabel(payslip.month)}</p>
-          <p className="mt-0.5">Paid on {payslip.status === 'Paid' ? '31 May 2026' : '—'}</p>
+          {/* Derived from the payslip's own month — this was hardcoded to
+              "31 May 2026", so a June payslip claimed a May pay date. */}
+          <p className="mt-0.5">
+            Paid on {payslip.status === 'Paid' ? formatDate(lastDayOfMonth(payslip.month)) : '—'}
+          </p>
         </div>
       </div>
     </Modal>
@@ -160,9 +172,22 @@ export function PayrollPage() {
   const [deptFilter, setDeptFilter] = useState('');
   const [payrollRunList, setPayrollRunList] = useState<PayrollRun[]>(initialPayrollRuns);
   const [payslipList, setPayslipList] = useState<Payslip[]>(initialPayslips);
+  const [runNotice, setRunNotice] = useState('');
 
   // ----- Aggregates -----
-  const totalNetPay = useMemo(() => payslipList.reduce((s, p) => s + p.netPay, 0), [payslipList]);
+  // Scope to the most recent payroll month. Summing every payslip ever issued
+  // under a "Monthly Payroll Cost" label roughly doubled the figure the first
+  // time Run Payroll added a second month.
+  const latestPayslipMonth = useMemo(
+    () => payslipList.reduce((latest, p) => (p.month > latest ? p.month : latest), ''),
+    [payslipList],
+  );
+  const totalNetPay = useMemo(
+    () => payslipList
+      .filter((p) => p.month === latestPayslipMonth)
+      .reduce((s, p) => s + p.netPay, 0),
+    [payslipList, latestPayslipMonth],
+  );
   const avgCTC = useMemo(() => {
     const total = employees.reduce((s, e) => s + e.ctc, 0);
     return Math.round(total / employees.length);
@@ -198,9 +223,12 @@ export function PayrollPage() {
   function handleRunPayroll() {
     const alreadyExists = payrollRunList.some((run) => run.month === CURRENT_PAYROLL_MONTH);
     if (alreadyExists) {
+      // Previously this just switched tabs, so the button looked broken.
+      setRunNotice(`Payroll for ${monthLabel(CURRENT_PAYROLL_MONTH)} has already been processed.`);
       setActiveTab('runs');
       return;
     }
+    setRunNotice('');
 
     const monthPayslips = employees.map((employee) => buildPayslip(employee, CURRENT_PAYROLL_MONTH, 'Paid'));
     const grossTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
@@ -218,6 +246,7 @@ export function PayrollPage() {
 
     setPayrollRunList((prev) => [newRun, ...prev]);
     setPayslipList((prev) => [...monthPayslips, ...prev]);
+    setRunNotice(`Payroll for ${monthLabel(CURRENT_PAYROLL_MONTH)} processed for ${employees.length} employees.`);
     setActiveTab('runs');
   }
 
@@ -332,6 +361,12 @@ export function PayrollPage() {
           </Button>
         }
       />
+
+      {runNotice && (
+        <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+          {runNotice}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">

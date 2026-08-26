@@ -41,9 +41,11 @@ from hire to retire — in a single, polished web application.
 
 ```bash
 npm install      # install dependencies
-npm run dev      # start dev server → http://localhost:5173
-npm run build    # type-check + production build
-npm run preview  # preview the production build
+npm run dev        # start dev server → http://localhost:5173
+npm run build      # type-check + production build
+npm run preview    # preview the production build
+npm run lint       # ESLint 9 (flat config) + typescript-eslint
+npm run check:data # cross-module integrity check for the src/data fixtures
 ```
 
 ## 🧱 Architecture

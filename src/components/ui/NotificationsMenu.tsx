@@ -2,25 +2,35 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CalendarOff, CheckSquare, Megaphone, Receipt, Settings } from 'lucide-react';
 import { Button } from './Button';
+import { pendingApprovals } from '@/data/dashboard';
 
 interface NotificationsMenuProps {
     compact?: boolean;
     className?: string;
 }
 
+/**
+ * Counts come from the same derived source as the dashboard tiles, so the bell,
+ * the tiles and the drill-down pages can't disagree. These were hardcoded
+ * strings ("7 approvals are waiting") next to a hardcoded `totalCount = 19`
+ * that matched neither the strings nor the underlying data.
+ */
+const countFor = (type: string) =>
+    pendingApprovals.find((p) => p.type === type)?.count ?? 0;
+
 const notifications = [
     {
         id: 'n1',
         title: 'Leave requests pending',
-        subtitle: '7 approvals are waiting',
-        path: '/dashboard/pending-approvals',
+        subtitle: `${countFor('Leave Requests')} approvals are waiting`,
+        path: '/dashboard/pending-approvals/leave-requests',
         icon: CalendarOff,
     },
     {
         id: 'n2',
         title: 'Expense claims need review',
-        subtitle: '4 claims in queue',
-        path: '/expenses',
+        subtitle: `${countFor('Expense Claims')} claims in queue`,
+        path: '/dashboard/pending-approvals/expense-claims',
         icon: Receipt,
     },
     {
@@ -33,8 +43,8 @@ const notifications = [
     {
         id: 'n4',
         title: 'Tasks require action',
-        subtitle: '5 onboarding tasks due',
-        path: '/dashboard/pending-approvals',
+        subtitle: `${countFor('Onboarding Tasks')} onboarding tasks due`,
+        path: '/dashboard/pending-approvals/onboarding-tasks',
         icon: CheckSquare,
     },
 ];
@@ -43,7 +53,8 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
-    const totalCount = 19;
+    // Sum of the real pending queues rather than a hardcoded 19.
+    const totalCount = pendingApprovals.reduce((sum, p) => sum + p.count, 0);
 
     useEffect(() => {
         function handleOutsideClick(event: MouseEvent) {

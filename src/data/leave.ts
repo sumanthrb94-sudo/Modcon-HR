@@ -1,4 +1,5 @@
 import type { LeaveRequest, LeaveBalance, LeaveType } from '@/types';
+import { employeeIdByCode } from './employees';
 
 // ---- Leave Requests ---------------------------------------------------------
 export const leaveRequests: LeaveRequest[] = [
@@ -12,7 +13,7 @@ export const leaveRequests: LeaveRequest[] = [
     reason: 'Personal family function — attending sister\'s wedding in hometown.',
     status: 'Approved',
     appliedOn: '2026-06-01',
-    approverId: 'emp-010',
+    approverId: employeeIdByCode('MC-010'),
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -25,7 +26,7 @@ export const leaveRequests: LeaveRequest[] = [
     reason: 'Recovering from dengue fever — doctor advised complete rest.',
     status: 'Approved',
     appliedOn: '2026-06-07',
-    approverId: 'emp-010',
+    approverId: employeeIdByCode('MC-010'),
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -137,7 +138,7 @@ export const leaveRequests: LeaveRequest[] = [
     reason: 'Viral fever with doctor consultation.',
     status: 'Approved',
     appliedOn: '2026-06-03',
-    approverId: 'emp-030',
+    approverId: employeeIdByCode('MC-030'),
     approverName: 'Sanjay Malhotra',
   },
   {
@@ -150,7 +151,7 @@ export const leaveRequests: LeaveRequest[] = [
     reason: 'Property registration appointment.',
     status: 'Rejected',
     appliedOn: '2026-05-26',
-    approverId: 'emp-010',
+    approverId: employeeIdByCode('MC-010'),
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -181,8 +182,6 @@ export const leaveRequests: LeaveRequest[] = [
 ];
 
 // ---- Leave Balances ---------------------------------------------------------
-const LEAVE_TYPES: LeaveType[] = ['Casual', 'Sick', 'Earned'];
-
 interface BalanceSeed {
   empId: string;
   casual: [number, number]; // [total, used]

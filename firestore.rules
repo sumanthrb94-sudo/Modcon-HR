@@ -14,26 +14,50 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isAdmin() {
+    // Emails that are always administrators, independent of any stored
+    // role. Mirrors ADMIN_EMAILS in src/lib/auth.tsx — keep both in sync.
+    function isFixedAdmin() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        myProfile().role == 'admin';
+        request.auth.token.email != null &&
+        request.auth.token.email.lower() in [
+          'sumanthbolla97@gmail.com',
+          'saikrishnakoppaka@gmail.com'
+        ];
     }
 
-    // Employee record linked to the signed-in user (matched by email).
-    function myEmployeeDoc() {
-      return get(/databases/$(database)/documents/employees/$(request.auth.uid));
+    function isAdmin() {
+      return isFixedAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        myProfile().role == 'admin'
+      );
     }
 
     // -------------------------------------------------------------------
     // Users directory (roles, profile info)
+    //
+    // SECURITY: `role` on this document is exactly what isAdmin() reads, so
+    // anyone able to write their own `role` can grant themselves admin over
+    // every collection below. Self-writes must leave `role` untouched.
     // -------------------------------------------------------------------
     match /users/{uid} {
       allow read: if isSignedIn();
-      // Users may create/update their own profile (first login upsert),
-      // admins may update anyone (e.g. to change roles).
-      allow create: if isSignedIn() && request.auth.uid == uid;
-      allow update: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+
+      // First-login upsert. A user may create their own profile, but may not
+      // hand themselves a privileged role on the way in; only the fixed
+      // admin emails may self-create as 'admin'.
+      allow create: if isSignedIn() && request.auth.uid == uid && (
+        request.resource.data.role == 'employee' || isFixedAdmin()
+      );
+
+      // Admins may update anyone (e.g. to change roles). Everyone else may
+      // update only their own profile, and only with `role` unchanged.
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (request.auth.uid == uid &&
+          request.resource.data.role == resource.data.role)
+      );
+
       // Only admins can delete a user from the directory, and never a
       // profile whose email is a fixed admin (enforced in-app too).
       allow delete: if isAdmin();
@@ -41,8 +65,15 @@ service cloud.firestore {
 
     // -------------------------------------------------------------------
     // Core HR data — read: any signed-in user, write: admins only.
-    // Adjust per-collection if employees need to self-service specific
-    // actions (e.g. submitting their own leave/expense requests).
+    //
+    // KNOWN LIMITATION: the self-service rules below compare a record's
+    // `employeeId` / `raisedById` against `request.auth.uid`. Those fields
+    // hold directory ids ("emp-007"), never Firebase uids, so the owner
+    // branch never matches and only admins can update these records. That
+    // fails closed, which is the safe direction; wiring up real
+    // self-service needs a `uid` field on each employee document to join
+    // the auth identity to the directory record. Do not relax these to
+    // `isSignedIn()` — that would let any user edit anyone's requests.
     // -------------------------------------------------------------------
     match /employees/{docId} {
       allow read: if isSignedIn();

@@ -37,8 +37,11 @@ async function batchWrite<T extends { id?: string }>(
         const chunk = items.slice(i, i + BATCH_SIZE);
         const batch = writeBatch(db);
         for (const item of chunk) {
-            const id = (item as any).id || '';
-            if (!id) continue; // Skip items without IDs
+            const id = item.id ?? '';
+            if (!id) {
+                // Silently dropping these would make a partial seed look complete.
+                throw new Error(`[seed] ${collectionPath}: a record is missing its "id"`);
+            }
             const ref = doc(db, collectionPath, id);
             // Remove undefined fields (Firestore doesn't accept them)
             const cleaned = Object.fromEntries(
@@ -58,7 +61,7 @@ export async function seedFirestore(
         onProgress?.(msg);
     };
 
-    const collections = [
+    const collections: Array<{ name: string; data: Array<{ id?: string }> }> = [
         { name: 'employees', data: employees },
         { name: 'attendance', data: attendanceRecords },
         { name: 'leave_requests', data: leaveRequests },
@@ -82,13 +85,25 @@ export async function seedFirestore(
         { name: 'regularizations', data: regularizationRequests },
     ];
 
+    // Collect failures rather than swallowing them: previously every collection
+    // could fail and the caller still saw a resolved promise, which the Settings
+    // UI reported as "All collections seeded successfully".
+    const failures: string[] = [];
+
     for (const col of collections) {
         try {
             log(`Seeding ${col.name}…`);
-            await batchWrite(col.name, col.data as any);
+            await batchWrite(col.name, col.data);
         } catch (err) {
-            log(`⚠️  Skipped ${col.name}: ${String(err)}`);
+            failures.push(col.name);
+            log(`⚠️  Failed ${col.name}: ${String(err)}`);
         }
+    }
+
+    if (failures.length > 0) {
+        throw new Error(
+            `Seeding failed for ${failures.length} of ${collections.length} collections: ${failures.join(', ')}`,
+        );
     }
 
     log('✅ Seeding complete.');

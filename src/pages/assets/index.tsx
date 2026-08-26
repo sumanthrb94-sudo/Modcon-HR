@@ -24,7 +24,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { assets as initialAssets, assetsByCategory } from '@/data/assets';
+import { assets as initialAssets } from '@/data/assets';
 import { employees } from '@/data/employees';
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
 import { formatINR, formatDate } from '@/lib/utils';
@@ -155,7 +155,7 @@ function AssignModal({ asset, onClose, onAssign }: AssignModalProps) {
 interface AddAssetModalProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (asset: Omit<Asset, 'id'>) => void;
+  onAdd: (asset: Omit<Asset, 'id' | 'assetCode'>) => void;
 }
 
 const EMPTY_ASSET_FORM = {
@@ -172,14 +172,19 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
 
   if (!open) return null;
 
+  /** Reset on any dismissal, not just save, so stale values don't reappear. */
+  const handleClose = () => {
+    setForm(EMPTY_ASSET_FORM);
+    setError('');
+    onClose();
+  };
+
   const handleSave = () => {
     if (!form.name.trim() || !form.category || !form.serialNumber.trim() || !form.value) {
       setError('Please fill all required fields.');
       return;
     }
-    const assetCode = `AST-${Math.floor(1000 + Math.random() * 9000)}`;
     onAdd({
-      assetCode,
       name: form.name.trim(),
       category: form.category as AssetCategory,
       status: 'Available',
@@ -197,13 +202,13 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Add New Asset"
       subtitle="Register a new company asset"
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={handleClose}>
             Cancel
           </Button>
           <Button onClick={handleSave}>Add Asset</Button>
@@ -287,16 +292,20 @@ export function AssetsPage() {
     return { total, assigned, available, inRepair, totalValue };
   }, [assetList]);
 
-  // Category chart data (uses stable initial data for chart)
-  const categoryData = useMemo(
-    () =>
-      assetsByCategory().map((d) => ({
-        name: d.category,
-        value: d.count,
-        color: CATEGORY_COLORS[d.category as AssetCategory] ?? '#94a3b8',
-      })),
-    [],
-  );
+  // Derived from the live list, not the static module data. This was memoised
+  // over `assetsByCategory()` with empty deps, so adding or reassigning an asset
+  // moved the stat cards while the chart kept showing the original set.
+  const categoryData = useMemo(() => {
+    const counts = new Map<string, number>();
+    assetList.forEach((a) => counts.set(a.category, (counts.get(a.category) ?? 0) + 1));
+    return Array.from(counts.entries())
+      .map(([name, value]) => ({
+        name,
+        value,
+        color: CATEGORY_COLORS[name as AssetCategory] ?? '#94a3b8',
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [assetList]);
 
   // Filtered assets
   const filteredAssets = useMemo(() => {
@@ -329,9 +338,22 @@ export function AssetsPage() {
     );
   };
 
-  const handleAddAsset = (asset: Omit<Asset, 'id'>) => {
-    const newAsset: Asset = { ...asset, id: `ast-${Date.now()}` };
-    setAssetList((prev) => [newAsset, ...prev]);
+  const handleAddAsset = (asset: Omit<Asset, 'id' | 'assetCode'>) => {
+    setAssetList((prev) => {
+      // Derive the next code from the highest existing one. The old
+      // `AST-${1000 + Math.random() * 9000}` could collide with a code already
+      // in the list, producing two assets that look identical to the user.
+      const highest = prev.reduce((max, a) => {
+        const n = Number(a.assetCode.replace(/^AST-/, ''));
+        return Number.isFinite(n) && n > max ? n : max;
+      }, 1000);
+      const newAsset: Asset = {
+        ...asset,
+        id: `ast-${Date.now()}`,
+        assetCode: `AST-${highest + 1}`,
+      };
+      return [newAsset, ...prev];
+    });
   };
 
   const columns: Column<Asset>[] = [

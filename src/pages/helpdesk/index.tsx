@@ -23,7 +23,7 @@ import {
   Select,
 } from '@/components/ui';
 import { tickets as initialTickets, ticketCategories } from '@/data/helpdesk';
-import { getEmployeeName } from '@/data/employees';
+import { employees, getEmployeeName } from '@/data/employees';
 import type { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { timeAgo, formatDate } from '@/lib/utils';
 
@@ -203,6 +203,9 @@ interface RaiseTicketProps {
 }
 
 const CATEGORY_OPTIONS_LIST = ticketCategories.map((c) => ({ label: c, value: c }));
+const RAISED_BY_OPTIONS = employees.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id }));
+/** Helpdesk triage owner for newly raised tickets in this demo build. */
+const DEFAULT_ASSIGNEE = 'Rahul Deshpande';
 const PRIORITY_OPTIONS_LIST: { label: string; value: string }[] = [
   { label: 'Low', value: 'Low' },
   { label: 'Medium', value: 'Medium' },
@@ -214,17 +217,29 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
   const [subject, setSubject] = useState('');
   const [category, setCategory] = useState('IT');
   const [priority, setPriority] = useState('Medium');
+  const [raisedById, setRaisedById] = useState('');
+  const [error, setError] = useState('');
 
   const handleSubmit = () => {
-    if (!subject.trim()) return;
+    // Every ticket used to be attributed to a hardcoded 'emp-001' (the CEO)
+    // because the form never asked who was raising it. This mirrors the
+    // "Employee" select already used by Apply Leave and New Expense Claim.
+    if (!subject.trim()) {
+      setError('Subject is required.');
+      return;
+    }
+    if (!raisedById) {
+      setError('Select who is raising this ticket.');
+      return;
+    }
     onSubmit({
       subject: subject.trim(),
       category,
-      raisedById: 'emp-001', // default to first employee for demo
+      raisedById,
       status: 'Open',
       priority: priority as TicketPriority,
       createdOn: new Date().toISOString(),
-      assignedTo: 'Rahul Deshpande',
+      assignedTo: DEFAULT_ASSIGNEE,
     });
     onClose();
   };
@@ -241,7 +256,7 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!subject.trim()}>
+          <Button onClick={handleSubmit} disabled={!subject.trim() || !raisedById}>
             <Send size={14} className="mr-1" />
             Submit Ticket
           </Button>
@@ -249,6 +264,23 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
       }
     >
       <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+        <div>
+          <label className="text-sm font-medium text-ink-700 block mb-1">
+            Raised By <span className="text-rose-500">*</span>
+          </label>
+          <Select
+            value={raisedById}
+            onChange={(v) => { setRaisedById(v); setError(''); }}
+            options={RAISED_BY_OPTIONS}
+            placeholder="Select employee…"
+            className="w-full"
+          />
+        </div>
         <div>
           <label className="text-sm font-medium text-ink-700 block mb-1">
             Subject <span className="text-rose-500">*</span>
@@ -257,7 +289,7 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
             className="input w-full"
             placeholder="Briefly describe your issue…"
             value={subject}
-            onChange={(e) => setSubject(e.target.value)}
+            onChange={(e) => { setSubject(e.target.value); setError(''); }}
           />
         </div>
         <div>

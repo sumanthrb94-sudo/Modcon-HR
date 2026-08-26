@@ -110,20 +110,22 @@ function SettingsSection({ title, subtitle, children }: {
 // ===========================================================================
 // Section: Company Profile
 // ===========================================================================
+const INITIAL_COMPANY_FORM = {
+  name: 'ModCon Technologies Pvt Ltd',
+  legalName: 'ModCon Technologies Private Limited',
+  industry: 'SaaS / HR Tech',
+  founded: '2019',
+  hq: 'Bengaluru, Karnataka',
+  website: 'https://modcon.io',
+  gstin: '29AACCM1234F1Z5',
+  cin: 'U72900KA2019PTC12345',
+  employeeCount: String(employees.length),
+  supportEmail: 'hr@modcon.io',
+  phone: '+91 80 4567 8900',
+};
+
 function CompanyProfile() {
-  const [form, setForm] = useState({
-    name: 'ModCon Technologies Pvt Ltd',
-    legalName: 'ModCon Technologies Private Limited',
-    industry: 'SaaS / HR Tech',
-    founded: '2019',
-    hq: 'Bengaluru, Karnataka',
-    website: 'https://modcon.io',
-    gstin: '29AACCM1234F1Z5',
-    cin: 'U72900KA2019PTC12345',
-    employeeCount: String(employees.length),
-    supportEmail: 'hr@modcon.io',
-    phone: '+91 80 4567 8900',
-  });
+  const [form, setForm] = useState(INITIAL_COMPANY_FORM);
   const [saved, setSaved] = useState(false);
 
   const update = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -131,6 +133,12 @@ function CompanyProfile() {
   function handleSave() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  }
+
+  /** Discard was previously an inert button that never restored anything. */
+  function handleDiscard() {
+    setForm(INITIAL_COMPANY_FORM);
+    setSaved(false);
   }
 
   return (
@@ -172,7 +180,7 @@ function CompanyProfile() {
           <Button variant="primary" onClick={handleSave} icon={saved ? <CheckCircle2 size={15} /> : undefined}>
             {saved ? 'Saved!' : 'Save Changes'}
           </Button>
-          <Button variant="ghost">Discard</Button>
+          <Button variant="ghost" onClick={handleDiscard}>Discard</Button>
         </div>
       </Card>
     </SettingsSection>
@@ -1415,8 +1423,11 @@ function IntegrationsSection() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="font-semibold text-ink-900 text-sm">{integ.name}</span>
+                      {/* Render the saved badge label — this was hardcoded to
+                          "Connected", so the Configure dialog's Display Label
+                          was stored but never shown. */}
                       {integ.connected && (
-                        <Badge tone="green" dot>Connected</Badge>
+                        <Badge tone="green" dot>{integ.badge || 'Connected'}</Badge>
                       )}
                     </div>
                     <p className="text-xs text-ink-500 leading-relaxed mb-3">{integ.description}</p>
@@ -1497,6 +1508,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   const [addSeatsOpen, setAddSeatsOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [billingEmail, setBillingEmail] = useState('finance@modcon.io');
+  const [billingEmailError, setBillingEmailError] = useState('');
   const [autoRenew, setAutoRenew] = useState(true);
   const [addSeatsValue, setAddSeatsValue] = useState('5');
   const [addSeatsError, setAddSeatsError] = useState('');
@@ -1505,6 +1517,13 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   const usedSeats = employees.length;
   const usedPct = Math.round((usedSeats / totalSeats) * 100);
   const isEnterprise = planTier === 'Enterprise';
+
+  // Next invoice is derived from the plan the customer is actually on. It used
+  // to be a fixed ₹2,99,940 no matter how many seats had been added or whether
+  // they'd upgraded, so the line item and the amount contradicted each other.
+  const PRO_SEAT_PRICE = 4999; // ₹/seat/year, matches the plan card copy
+  const ENTERPRISE_ANNUAL = 899820;
+  const nextInvoiceAmount = isEnterprise ? ENTERPRISE_ANNUAL : totalSeats * PRO_SEAT_PRICE;
 
   const invoices = [
     { id: 'INV-2026-06', date: '2026-06-01', amount: 299940, status: 'Paid' },
@@ -1548,9 +1567,17 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   }
 
   function handleSaveSubscription() {
-    if (!billingEmail.trim()) {
+    const email = billingEmail.trim();
+    // A bare `return` here made "Save Changes" look like a dead button.
+    if (!email) {
+      setBillingEmailError('Billing contact email is required.');
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setBillingEmailError('Enter a valid email address.');
+      return;
+    }
+    setBillingEmailError('');
     setManageOpen(false);
     setActionNotice('Subscription details updated successfully.');
   }
@@ -1671,7 +1698,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
               <span className="text-ink-500">
                 {isEnterprise ? 'Enterprise Plan' : `Pro Plan (${totalSeats} seats)`}
               </span>
-              <span className="font-semibold">{formatAmount(299940)}</span>
+              <span className="font-semibold">{formatAmount(nextInvoiceAmount)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-ink-500">Due date</span>
@@ -1702,10 +1729,22 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
               <tr className="border-b border-ink-200">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">Feature</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">Starter</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-600 uppercase tracking-wide bg-brand-50">
-                  Pro ✓
+                {/* Highlight follows the active tier. Both the "Pro ✓" marker and
+                    the tinted column used to be hardcoded, so after an Enterprise
+                    upgrade the caption "Your current plan is highlighted" still
+                    pointed at Pro. */}
+                <th className={cn(
+                  'px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide',
+                  isEnterprise ? 'text-ink-500' : 'text-brand-600 bg-brand-50',
+                )}>
+                  {isEnterprise ? 'Pro' : 'Pro ✓'}
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-violet-600 uppercase tracking-wide">Enterprise</th>
+                <th className={cn(
+                  'px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-violet-600',
+                  isEnterprise && 'bg-violet-50',
+                )}>
+                  {isEnterprise ? 'Enterprise ✓' : 'Enterprise'}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -1719,14 +1758,14 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                         ? <Check size={16} className="text-emerald-500 mx-auto" />
                         : <X size={16} className="text-ink-300 mx-auto" />}
                   </td>
-                  <td className="px-4 py-3 text-center bg-brand-50">
+                  <td className={cn('px-4 py-3 text-center', !isEnterprise && 'bg-brand-50')}>
                     {typeof row.pro === 'string'
                       ? <span className="font-semibold text-brand-700">{row.pro}</span>
                       : row.pro
                         ? <Check size={16} className="text-brand-600 mx-auto" />
                         : <X size={16} className="text-ink-300 mx-auto" />}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className={cn('px-4 py-3 text-center', isEnterprise && 'bg-violet-50')}>
                     {typeof row.enterprise === 'string'
                       ? <span className="text-violet-700 font-semibold">{row.enterprise}</span>
                       : row.enterprise
@@ -1764,7 +1803,15 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
         )}
       >
         <div className="space-y-4">
-          <Field label="Billing Contact Email" type="email" value={billingEmail} onChange={setBillingEmail} />
+          <Field
+            label="Billing Contact Email"
+            type="email"
+            value={billingEmail}
+            onChange={(v) => {
+              setBillingEmail(v);
+              setBillingEmailError('');
+            }}
+          />
           <div className="rounded-xl border border-ink-100 px-3 py-1">
             <Toggle
               checked={autoRenew}
@@ -1773,6 +1820,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
               description="Renew plan automatically on billing date"
             />
           </div>
+          {billingEmailError && <p className="text-sm text-rose-600">{billingEmailError}</p>}
         </div>
       </Modal>
 
@@ -1906,8 +1954,11 @@ function DatabaseSection() {
           >
             {status === 'running' ? 'Seeding…' : status === 'done' ? 'Seed Again' : 'Seed Firestore'}
           </Button>
+          {/* bg-ink-900, not bg-ink-950: the ink palette stops at 900, so the
+              previous class emitted nothing and this panel rendered emerald
+              text on white — effectively unreadable. */}
           {logs.length > 0 && (
-            <div className="rounded-lg bg-ink-950 text-emerald-400 font-mono text-xs p-4 space-y-1 max-h-64 overflow-y-auto">
+            <div className="rounded-lg bg-ink-900 text-emerald-400 font-mono text-xs p-4 space-y-1 max-h-64 overflow-y-auto">
               {logs.map((log, i) => (
                 <p key={i}>{log}</p>
               ))}
@@ -1958,6 +2009,10 @@ export function SettingsPage() {
   const [active, setActive] = useState('company');
   const [billingUpgradeRequestToken, setBillingUpgradeRequestToken] = useState(0);
 
+  // `location.key` changes on every navigation, even when the URL is identical.
+  // Keying the effect on `location.search` alone meant a second click of the
+  // sidebar's "Upgrade plan" (already at ?action=upgrade-plan) never re-fired,
+  // so the dialog silently refused to reopen once dismissed.
   useEffect(() => {
     const query = new URLSearchParams(location.search);
     const queryTab = query.get('tab');
@@ -1983,7 +2038,7 @@ export function SettingsPage() {
       setActive('billing');
       setBillingUpgradeRequestToken((prev) => prev + 1);
     }
-  }, [location.search, location.state]);
+  }, [location.key, location.search, location.state]);
 
   function renderContent() {
     switch (active) {

@@ -36,11 +36,21 @@ function computeProgress(tasks: OnboardingTask[]): number {
   return Math.round((done / tasks.length) * 100);
 }
 
+/** The demo's fixed "today" — the rest of the app pins to this date. */
+const TODAY = '2026-06-10';
+const CURRENT_MONTH = TODAY.slice(0, 7); // 'YYYY-MM'
+
+/**
+ * A fully-completed onboarding whose cohort started this month.
+ *
+ * This compared against the real system clock while every record is dated
+ * around June 2026, so the tile reported 0 and drifted further each month.
+ * The model has no completion timestamp, so start month stays the proxy — but
+ * it's now measured against the same "today" as the rest of the app.
+ */
 function isCompletedThisMonth(ob: Onboarding): boolean {
   if (ob.progress < 100) return false;
-  const now = new Date();
-  const start = new Date(ob.startDate);
-  return start.getMonth() === now.getMonth() && start.getFullYear() === now.getFullYear();
+  return ob.startDate.startsWith(CURRENT_MONTH);
 }
 
 type TaskCategory = OnboardingTask['category'];
@@ -96,14 +106,6 @@ function deptBadgeTone(dept: string) {
     Legal: 'amber',
   };
   return map[dept] ?? 'gray';
-}
-
-// ---------------------------------------------------------------------------
-// Mutable state type
-// ---------------------------------------------------------------------------
-
-interface OnboardingState {
-  onboardings: Onboarding[];
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +374,7 @@ export function OnboardingPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const inProgress = onboardings.filter((o) => o.progress < 100 && o.progress > 0).length;
+    const inProgress = onboardings.filter((o) => o.progress < 100).length;
     const completedThisMonth = onboardings.filter(isCompletedThisMonth).length;
     const tasksPending = onboardings.reduce(
       (sum, o) => sum + o.tasks.filter((t) => t.status === 'Pending').length,

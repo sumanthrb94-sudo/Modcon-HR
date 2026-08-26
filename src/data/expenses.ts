@@ -1,4 +1,5 @@
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
+import { employeeIdByCode } from './employees';
 
 // ---------------------------------------------------------------------------
 // Seed data — 16 claims spread across employees & categories
@@ -107,7 +108,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-009',
-    employeeId: 'emp-040',
+    employeeId: employeeIdByCode('MC-040'),
     title: 'Marketing Conference — Pune',
     category: 'Accommodation',
     amount: 11200,
@@ -129,7 +130,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-011',
-    employeeId: 'emp-050',
+    employeeId: employeeIdByCode('MC-050'),
     title: 'HR Tech Summit Registration',
     category: 'Training',
     amount: 8500,
@@ -151,7 +152,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-013',
-    employeeId: 'emp-070',
+    employeeId: employeeIdByCode('MC-070'),
     title: 'Client Onboarding Dinner',
     category: 'Meals',
     amount: 5800,
@@ -162,7 +163,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-014',
-    employeeId: 'emp-080',
+    employeeId: employeeIdByCode('MC-080'),
     title: 'Legal Database Subscription',
     category: 'Software',
     amount: 15000,
@@ -184,7 +185,7 @@ const seeds: Seed[] = [
   },
   {
     id: 'exp-016',
-    employeeId: 'emp-062',
+    employeeId: employeeIdByCode('MC-062'),
     title: 'Vendor Coordination Cab',
     category: 'Travel',
     amount: 1800,

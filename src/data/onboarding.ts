@@ -43,7 +43,7 @@ export const standardTaskTemplate: Omit<OnboardingTask, 'id'>[] = [
 const raw: Omit<Onboarding, 'progress'>[] = [
   {
     id: 'ob-001',
-    employeeId: 'emp-015', // Ishaan Gupta — intern already in employees
+    employeeId: 'emp-012', // Ishaan Gupta — intern already in employees
     employeeName: 'Ishaan Gupta',
     designation: 'Software Engineer Intern',
     department: 'Engineering',
@@ -66,6 +66,9 @@ const raw: Omit<Onboarding, 'progress'>[] = [
       { id: 'ob-001-t14', title: '30-day check-in with manager', category: 'Training', status: 'Pending', dueDate: '2026-07-16', assignee: 'Manager' },
     ],
   },
+  // ob-002 onwards are pre-hires: onboarding begins before the directory record
+  // exists, so `employeeId` deliberately carries an `emp-new-*` placeholder that
+  // won't resolve through getEmployee(). Display code reads `employeeName`.
   {
     id: 'ob-002',
     employeeId: 'emp-new-001',

@@ -5,10 +5,8 @@ import {
     UserCog,
     Building2,
     Briefcase,
-    Wallet,
     Loader2,
     ShieldAlert,
-    Search,
     Trash2,
 } from 'lucide-react';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, orderBy, query } from 'firebase/firestore';
@@ -69,19 +67,38 @@ export function AdminDashboardPage() {
         );
     }, [users, search]);
 
+    const [actionError, setActionError] = useState('');
+
     const adminCount = users.filter((u) => u.role === 'admin').length;
     const activeJobs = jobs.filter((j) => j.status === 'Open').length;
     const pendingExpenses = expenses.filter((e) => e.status === 'Submitted').length;
-    const lastPayrollRun = payrollRuns[0];
+    // Firestore returns documents in document-id order, so `payrollRuns[0]` was
+    // `pr-2025-12` — the OLDEST run — under a "Last payroll run" label.
+    const lastPayrollRun = useMemo(
+        () => [...payrollRuns].sort((a, b) => b.month.localeCompare(a.month))[0],
+        [payrollRuns],
+    );
 
     async function setRole(uid: string, role: UserRole) {
-        await updateDoc(doc(db, 'users', uid), { role });
+        setActionError('');
+        try {
+            await updateDoc(doc(db, 'users', uid), { role });
+        } catch (err) {
+            // A rules rejection here used to fail silently, leaving the select
+            // showing a role that was never persisted.
+            setActionError(`Could not update role: ${(err as Error).message}`);
+        }
     }
 
     async function removeUser(uid: string, email: string) {
         if (ADMIN_EMAILS.includes(email.toLowerCase())) return; // never allow removing hard-coded admins
         if (!window.confirm(`Remove ${email} from the directory? Their auth account is unaffected.`)) return;
-        await deleteDoc(doc(db, 'users', uid));
+        setActionError('');
+        try {
+            await deleteDoc(doc(db, 'users', uid));
+        } catch (err) {
+            setActionError(`Could not remove ${email}: ${(err as Error).message}`);
+        }
     }
 
     const columns: Column<UserProfile>[] = [
@@ -157,10 +174,21 @@ export function AdminDashboardPage() {
                 subtitle={`Signed in as ${profile?.email ?? ''} · full platform administration`}
             />
 
+            {actionError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+                    <span>{actionError}</span>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard label="Total Users" value={String(users.length)} icon={<Users size={18} />} />
                 <StatCard label="Admins" value={String(adminCount)} icon={<UserCog size={18} />} />
-                <StatCard label="Employees on record" value={String(employees.length)} icon={<Building2 size={18} />} />
+                <StatCard
+                    label="Employees on record"
+                    value={empLoading ? '…' : String(employees.length)}
+                    icon={<Building2 size={18} />}
+                />
                 <StatCard label="Open Job Postings" value={String(activeJobs)} icon={<Briefcase size={18} />} />
             </div>
 
@@ -199,7 +227,6 @@ export function AdminDashboardPage() {
                         <SnapshotRow
                             label="Last payroll run"
                             value={lastPayrollRun ? lastPayrollRun.month : '—'}
-                            isText
                         />
                         <div className="pt-2 mt-2 border-t border-ink-100">
                             <p className="text-xs text-ink-400 leading-relaxed">
@@ -214,11 +241,11 @@ export function AdminDashboardPage() {
     );
 }
 
-function SnapshotRow({ label, value, isText }: { label: string; value: string | number; isText?: boolean }) {
+function SnapshotRow({ label, value }: { label: string; value: string | number }) {
     return (
         <div className="flex items-center justify-between text-sm">
             <span className="text-ink-500">{label}</span>
-            <span className="font-semibold text-ink-900">{isText ? value : value}</span>
+            <span className="font-semibold text-ink-900">{value}</span>
         </div>
     );
 }

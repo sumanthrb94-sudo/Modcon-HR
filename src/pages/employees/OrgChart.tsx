@@ -13,7 +13,11 @@ interface OrgNodeProps {
 
 function OrgNode({ employee, allEmployees, depth, maxDepth = 4 }: OrgNodeProps) {
   const navigate = useNavigate();
-  const directReports = allEmployees.filter((e) => e.reportingManagerId === employee.id);
+  // Exclude self-references, or a self-managing record would nest inside itself
+  // once per level until maxDepth.
+  const directReports = allEmployees.filter(
+    (e) => e.reportingManagerId === employee.id && e.id !== employee.id,
+  );
 
   return (
     <div className="flex flex-col items-center">
@@ -79,9 +83,20 @@ interface OrgChartProps {
 }
 
 export function OrgChart({ employees }: OrgChartProps) {
-  const root = employees.find((e) => e.reportingManagerId === null);
+  const ids = new Set(employees.map((e) => e.id));
 
-  if (!root) {
+  // A root is anyone without a manager, managed by themselves, or whose manager
+  // isn't in this list (an orphan). Rendering every root — rather than just the
+  // first — stops a newly added employee from replacing the CEO as "the" root
+  // and hiding the company, and keeps orphaned sub-trees visible.
+  const roots = employees.filter(
+    (e) =>
+      !e.reportingManagerId ||
+      e.reportingManagerId === e.id ||
+      !ids.has(e.reportingManagerId),
+  );
+
+  if (roots.length === 0) {
     return (
       <div className="py-12 text-center text-ink-400">
         No root node found. Ensure at least one employee has no reporting manager.
@@ -91,8 +106,10 @@ export function OrgChart({ employees }: OrgChartProps) {
 
   return (
     <div className="overflow-x-auto py-8 px-4">
-      <div className="flex justify-center min-w-max">
-        <OrgNode employee={root} allEmployees={employees} depth={0} maxDepth={3} />
+      <div className="flex justify-center items-start gap-12 min-w-max">
+        {roots.map((root) => (
+          <OrgNode key={root.id} employee={root} allEmployees={employees} depth={0} maxDepth={3} />
+        ))}
       </div>
     </div>
   );

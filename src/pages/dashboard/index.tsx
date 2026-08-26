@@ -9,8 +9,8 @@ import {
 } from 'recharts';
 import {
   Users, CalendarCheck, CalendarOff, Briefcase, TrendingUp,
-  Clock, Bell, IndianRupee, CheckSquare, ChevronRight,
-  Cake, Star, UserPlus, Zap, Gift, MapPin, Megaphone,
+  Clock, IndianRupee, CheckSquare, ChevronRight,
+  Cake, Star, UserPlus, MapPin, Megaphone,
 } from 'lucide-react';
 
 import {
@@ -104,6 +104,7 @@ export function DashboardPage() {
     const active = employees.filter((e) => e.status === 'Active').length;
     const onLeave = employees.filter((e) => e.status === 'On Leave').length;
     const notice = employees.filter((e) => e.status === 'Notice Period').length;
+    const resigned = employees.filter((e) => e.status === 'Resigned').length;
 
     // Present today: active minus on-leave (mock ~87% present)
     const presentToday = Math.round(active * 0.87);
@@ -112,8 +113,10 @@ export function DashboardPage() {
     // Open positions (mock)
     const openPositions = 8;
 
-    // Attrition rate (resigned + notice period / total * 12 for annualized)
-    const attritionRate = parseFloat(((notice / total) * 100 * 4).toFixed(1));
+    // Annualised attrition: leavers (resigned + serving notice) over headcount,
+    // scaled to a yearly rate. The `resigned` term was described in the comment
+    // but missing from the arithmetic.
+    const attritionRate = parseFloat((((notice + resigned) / total) * 100 * 4).toFixed(1));
 
     // Average tenure in years
     const avgTenure = parseFloat(
@@ -157,7 +160,7 @@ export function DashboardPage() {
       .filter((h) => new Date(h.date) > TODAY_DATE)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 5),
-    [holidays]);
+    []);
 
   // ---- June celebrations --------------------------------------------------
   type CelebrationItem =
@@ -175,7 +178,10 @@ export function DashboardPage() {
       .map((e) => {
         const years = TODAY_DATE.getFullYear() - new Date(e.dateOfJoining).getFullYear();
         return { type: 'Anniversary' as const, name: e.fullName, date: e.dateOfJoining, dept: e.department, years };
-      });
+      })
+      // Someone who joined this year has no anniversary yet — they'd otherwise
+      // show up as a "0yr Work Anniversary".
+      .filter((a) => (a as { years: number }).years >= 1);
 
     return [...birthdays, ...anniversaries].sort((a, b) => {
       const da = new Date(a.date).getDate();
@@ -242,7 +248,7 @@ export function DashboardPage() {
         />
         <StatCard
           label="On Leave"
-          value={stats.onLeave + 2}
+          value={stats.onLeave}
           icon={<CalendarOff size={20} />}
           iconClass="bg-violet-50 text-violet-600"
           delta={-1}
@@ -536,7 +542,9 @@ export function DashboardPage() {
                       </div>
                     </div>
                   </div>
-                  <p className="text-xs text-ink-500 mt-1.5 pl-10.5 line-clamp-2 leading-relaxed">{ann.body}</p>
+                  {/* `pl-10.5` isn't in Tailwind's spacing scale (fractions stop
+                      at 3.5), so it emitted no class and the body lost its indent. */}
+                  <p className="text-xs text-ink-500 mt-1.5 pl-10 line-clamp-2 leading-relaxed">{ann.body}</p>
                 </div>
               ))}
             </div>

@@ -38,18 +38,29 @@ export function formatDateShort(iso: string): string {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
-/** Relative "3 days ago" style. */
+/** "5 days" / "1 month" / "2 years" for a positive day count. */
+function relativeSpan(days: number): string {
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'}`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? '' : 's'}`;
+}
+
+/** Relative "3 days ago" style. Handles future dates instead of "-3 days ago". */
 export function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
-  const diff = Date.now() - then;
+  if (Number.isNaN(then)) return iso;
+
   const day = 24 * 60 * 60 * 1000;
-  const days = Math.floor(diff / day);
+  const days = Math.floor((Date.now() - then) / day);
+
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
-  if (days < 30) return `${days} days ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months} month${months > 1 ? 's' : ''} ago`;
-  return `${Math.floor(months / 12)} year${months >= 24 ? 's' : ''} ago`;
+  if (days === -1) return 'Tomorrow';
+  // Future dates used to fall through `days < 30` and render "-5 days ago".
+  if (days < 0) return `in ${relativeSpan(-days)}`;
+  return `${relativeSpan(days)} ago`;
 }
 
 /** Initials from a full name. */

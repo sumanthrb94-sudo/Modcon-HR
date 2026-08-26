@@ -8,7 +8,6 @@ import {
   MapPin,
   Clock,
   Star,
-  ChevronRight,
   BarChart3,
   Layers,
 } from 'lucide-react';
@@ -41,7 +40,7 @@ import {
 import { formatDate, timeAgo } from '@/lib/utils';
 import { jobOpenings as initialJobOpenings, candidates, hiringFunnel } from '@/data/recruitment';
 import type { JobOpening, Candidate, CandidateStage, Department, EmploymentType, JobStatus } from '@/types';
-import { departments, locations, getEmployeeName } from '@/data/employees';
+import { departments, locations, employees, getEmployeeName } from '@/data/employees';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -201,6 +200,7 @@ interface PostJobForm {
   type: string;
   openings: string;
   experience: string;
+  hiringManagerId: string;
 }
 
 const emptyForm: PostJobForm = {
@@ -210,7 +210,13 @@ const emptyForm: PostJobForm = {
   type: 'Full-time',
   openings: '1',
   experience: '',
+  hiringManagerId: '',
 };
+
+const HIRING_MANAGER_OPTIONS = employees.map((e) => ({
+  label: `${e.fullName} — ${e.designation}`,
+  value: e.id,
+}));
 
 interface PostJobModalProps {
   open: boolean;
@@ -220,15 +226,42 @@ interface PostJobModalProps {
 
 function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
   const [form, setForm] = useState<PostJobForm>(emptyForm);
+  const [error, setError] = useState('');
 
   function handleChange(field: keyof PostJobForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setError('');
+  }
+
+  /** Reset on cancel too, so a dismissed draft doesn't reappear next open. */
+  function handleClose() {
+    setForm(emptyForm);
+    setError('');
+    onClose();
   }
 
   function handleSubmit() {
-    if (!form.title.trim() || !form.department || !form.location) return;
+    // A bare `return` here made "Post Job" look like a dead button whenever a
+    // required field was missing.
+    if (!form.title.trim()) {
+      setError('Job title is required.');
+      return;
+    }
+    if (!form.department) {
+      setError('Select a department.');
+      return;
+    }
+    if (!form.location) {
+      setError('Select a location.');
+      return;
+    }
+    if (!form.hiringManagerId) {
+      setError('Select a hiring manager.');
+      return;
+    }
     onSubmit(form);
     setForm(emptyForm);
+    setError('');
     onClose();
   }
 
@@ -244,13 +277,13 @@ function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Post a New Job"
       subtitle="Fill in the details to publish a new job opening."
       size="md"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={handleClose}>Cancel</Button>
           <Button variant="primary" onClick={handleSubmit} icon={<Plus size={15} />}>
             Post Job
           </Button>
@@ -258,6 +291,11 @@ function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
       }
     >
       <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
         <div>
           <label className="label">Job Title <span className="text-rose-500">*</span></label>
           <input
@@ -317,6 +355,16 @@ function PostJobModal({ open, onClose, onSubmit }: PostJobModalProps) {
             placeholder="e.g. 3–5 yrs"
             value={form.experience}
             onChange={(e) => handleChange('experience', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label">Hiring Manager <span className="text-rose-500">*</span></label>
+          <Select
+            className="mt-1"
+            value={form.hiringManagerId}
+            onChange={(v) => handleChange('hiringManagerId', v)}
+            options={HIRING_MANAGER_OPTIONS}
+            placeholder="Select hiring manager"
           />
         </div>
       </div>
@@ -587,10 +635,12 @@ function CandidatePipelineTab({ onCandidateClick }: { onCandidateClick: (c: Cand
 // Analytics Tab
 // ---------------------------------------------------------------------------
 
-function AnalyticsTab() {
+function AnalyticsTab({ jobs }: { jobs: JobOpening[] }) {
   const funnelData = hiringFunnel();
   const total = candidates.length;
-  const openJobs = initialJobOpenings.filter((j) => j.status === 'Open');
+  // Read the live list, not the module's initial array — a freshly posted job
+  // showed under Job Openings but was missing from these analytics.
+  const openJobs = jobs.filter((j) => j.status === 'Open');
 
   const sourceData = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -707,7 +757,7 @@ export function RecruitmentPage() {
     return { open, totalApplicants, inInterview, offers };
   }, [jobs]);
 
-  function handlePostJob(form: { title: string; department: string; location: string; type: string; openings: string; experience: string }) {
+  function handlePostJob(form: PostJobForm) {
     const newJob: JobOpening = {
       id: `job-new-${Date.now()}`,
       title: form.title,
@@ -718,7 +768,7 @@ export function RecruitmentPage() {
       openings: parseInt(form.openings, 10) || 1,
       applicants: 0,
       postedOn: new Date().toISOString().slice(0, 10),
-      hiringManagerId: 'emp-004',
+      hiringManagerId: form.hiringManagerId,
       experience: form.experience || 'Not specified',
       description: '',
     };
@@ -792,7 +842,7 @@ export function RecruitmentPage() {
       {activeTab === 'pipeline' && (
         <CandidatePipelineTab onCandidateClick={setSelectedCandidate} />
       )}
-      {activeTab === 'analytics' && <AnalyticsTab />}
+      {activeTab === 'analytics' && <AnalyticsTab jobs={jobs} />}
 
       <PostJobModal
         open={postJobOpen}

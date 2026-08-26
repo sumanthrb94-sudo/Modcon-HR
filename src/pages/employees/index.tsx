@@ -952,13 +952,18 @@ export function EmployeeDetailPage() {
     return merged;
   }, [baseEmp, profileOverrides]);
 
+  // Depend on the two primitives the effect actually reads. `[emp?.id]` alone
+  // left a stale "Hello <oldName>" subject after a rename; depending on the
+  // whole `emp` object would instead re-run on every unrelated override change.
+  const empId = emp?.id;
+  const empFirstName = emp?.firstName;
   useEffect(() => {
-    if (!emp) return;
-    setMessageSubject(`Hello ${emp.firstName}`);
+    if (!empId) return;
+    setMessageSubject(`Hello ${empFirstName ?? ''}`.trim());
     setMessageBody('');
     setMessageError('');
     setEditError('');
-  }, [emp?.id]);
+  }, [empId, empFirstName]);
 
   function openMessageModal() {
     if (!emp) return;

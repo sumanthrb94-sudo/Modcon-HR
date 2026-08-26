@@ -29,12 +29,23 @@ import {
   balanceEmployeeIds,
 } from '@/data/leave';
 import { holidays } from '@/data/common';
-import { employees, getEmployee, getEmployeeName } from '@/data/employees';
+import { employees, getEmployee, getEmployeeName, employeeIdByCode } from '@/data/employees';
 import type { LeaveRequest, LeaveType, LeaveStatus } from '@/types';
 import { formatDate, formatDateShort, pct } from '@/lib/utils';
 
 const TODAY = '2026-06-10';
+const CURRENT_MONTH = TODAY.slice(0, 7); // 'YYYY-MM'
 const LEAVE_TYPES: LeaveType[] = ['Casual', 'Sick', 'Earned', 'Unpaid', 'Maternity', 'Paternity', 'Comp Off'];
+
+// Whoever is acting on approvals in this demo build. The id is resolved from
+// the stable employee code and the name is derived from it rather than typed
+// out alongside it — a hand-written id/name pair is exactly the drift that put
+// the wrong approver on four leave requests (see src/data/employees.ts).
+const ACTING_APPROVER_ID = employeeIdByCode('MC-004'); // Head of People
+const ACTING_APPROVER = {
+  id: ACTING_APPROVER_ID,
+  name: getEmployeeName(ACTING_APPROVER_ID),
+};
 
 const leaveTypeTone = (type: LeaveType) => {
   if (type === 'Sick') return 'red' as const;
@@ -71,8 +82,10 @@ export function LeavePage() {
 
   // Stats
   const pending = useMemo(() => leaveRequests.filter((r) => r.status === 'Pending').length, [leaveRequests]);
+  // Derived from TODAY rather than a hardcoded '2026-06', so the label and the
+  // figure can't drift apart when the pinned date moves.
   const approvedThisMonth = useMemo(
-    () => leaveRequests.filter((r) => r.status === 'Approved' && r.appliedOn.startsWith('2026-06')).length,
+    () => leaveRequests.filter((r) => r.status === 'Approved' && r.appliedOn.startsWith(CURRENT_MONTH)).length,
     [leaveRequests],
   );
   const onLeaveToday = useMemo(
@@ -84,7 +97,7 @@ export function LeavePage() {
   );
   const upcomingHolidays = useMemo(
     () => holidays.filter((h) => h.date >= TODAY).length,
-    [holidays],
+    [],
   );
 
   // Filtered requests
@@ -102,15 +115,33 @@ export function LeavePage() {
     setLeaveRequests((prev) =>
       prev.map((r) =>
         r.id === id
-          ? { ...r, status: 'Approved' as LeaveStatus, approverId: 'emp-004', approverName: 'Ananya Reddy' }
+          ? { ...r, status: 'Approved' as LeaveStatus, approverId: ACTING_APPROVER.id, approverName: ACTING_APPROVER.name }
           : r,
       ),
     );
   }
   function rejectLeave(id: string) {
+    // Record the decider on rejection too. Without it the Actions column showed
+    // a name after Approve but a bare "—" after Reject, so rejections looked
+    // like they hadn't been actioned by anyone.
     setLeaveRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'Rejected' as LeaveStatus } : r)),
+      prev.map((r) =>
+        r.id === id
+          ? { ...r, status: 'Rejected' as LeaveStatus, approverId: ACTING_APPROVER.id, approverName: ACTING_APPROVER.name }
+          : r,
+      ),
     );
+  }
+
+  /** Clear the draft on any dismissal so it doesn't reappear next open. */
+  function closeApplyModal() {
+    setApplyOpen(false);
+    setFormEmpId('');
+    setFormType('Casual');
+    setFormStart('');
+    setFormEnd('');
+    setFormReason('');
+    setFormError('');
   }
 
   // Submit apply leave
@@ -262,7 +293,7 @@ export function LeavePage() {
   // ---- Holidays sorted by upcoming first ----
   const sortedHolidays = useMemo(
     () => [...holidays].sort((a, b) => a.date.localeCompare(b.date)),
-    [holidays],
+    [],
   );
 
   const statusOptions = [
@@ -497,10 +528,7 @@ export function LeavePage() {
       {/* Apply Leave Modal */}
       <Modal
         open={applyOpen}
-        onClose={() => {
-          setApplyOpen(false);
-          setFormError('');
-        }}
+        onClose={closeApplyModal}
         title="Apply Leave"
         subtitle="Submit a new leave request"
         size="md"
@@ -508,10 +536,7 @@ export function LeavePage() {
           <>
             <Button
               variant="ghost"
-              onClick={() => {
-                setApplyOpen(false);
-                setFormError('');
-              }}
+              onClick={closeApplyModal}
             >
               Cancel
             </Button>

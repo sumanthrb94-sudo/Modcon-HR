@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { type CollectionReference, type DocumentData, type QueryConstraint } from 'firebase/firestore';
+import { type CollectionReference, type QueryConstraint } from 'firebase/firestore';
 import { subscribe } from './db';
 import { Collections } from './db';
 import type {
@@ -49,6 +49,13 @@ function useCollection<T extends { id?: string }>(
             colRef,
             (docs) => {
                 setData(docs);
+                setError(null);
+                setLoading(false);
+            },
+            (err) => {
+                // Clear `loading` on failure too, or the caller's spinner never
+                // resolves and the user is left staring at it indefinitely.
+                setError(err);
                 setLoading(false);
             },
             ...constraints,

@@ -36,13 +36,17 @@ export function CelebrationsPage() {
 
             const anniversaryMonth = new Date(employee.dateOfJoining).getMonth();
             const years = TODAY_DATE.getFullYear() - new Date(employee.dateOfJoining).getFullYear();
-            grouped[anniversaryMonth].push({
-                type: 'Anniversary',
-                name: employee.fullName,
-                dept: employee.department,
-                date: employee.dateOfJoining,
-                years,
-            });
+            // Someone who joined this year has no anniversary yet; including
+            // them rendered a "0yr Work Anniversary".
+            if (years >= 1) {
+                grouped[anniversaryMonth].push({
+                    type: 'Anniversary',
+                    name: employee.fullName,
+                    dept: employee.department,
+                    date: employee.dateOfJoining,
+                    years,
+                });
+            }
         });
 
         for (const monthIndex of Object.keys(grouped).map(Number)) {
