@@ -25,6 +25,30 @@ service cloud.firestore {
         ];
     }
 
+    // The directory record this account acts as, or '' when unlinked. This is
+    // what makes owner-scoped reads expressible: the ownership fields below
+    // hold directory ids ('emp-007'), which never equal request.auth.uid.
+    function myEmployeeId() {
+      return myProfile().get('employeeId', '');
+    }
+
+    function ownsRecord(field) {
+      return isSignedIn() && myEmployeeId() != '' &&
+        resource.data.get(field, '') == myEmployeeId();
+    }
+
+    // A self-set employeeId must belong to a record carrying this account's own
+    // email. Without this the link IS the attack: point employeeId at a
+    // colleague and every owner-scoped read below hands over their payslips.
+    function employeeIdIsMine(eid) {
+      return eid == null || (
+        request.auth.token.email != null &&
+        exists(/databases/$(database)/documents/employees/$(eid)) &&
+        get(/databases/$(database)/documents/employees/$(eid)).data.email.lower()
+          == request.auth.token.email.lower()
+      );
+    }
+
     function isAdmin() {
       return isFixedAdmin() || (
         isSignedIn() &&
@@ -46,16 +70,19 @@ service cloud.firestore {
       // First-login upsert. A user may create their own profile, but may not
       // hand themselves a privileged role on the way in; only the fixed
       // admin emails may self-create as 'admin'.
-      allow create: if isSignedIn() && request.auth.uid == uid && (
-        request.resource.data.role == 'employee' || isFixedAdmin()
-      );
+      allow create: if isSignedIn() && request.auth.uid == uid &&
+        (request.resource.data.role == 'employee' || isFixedAdmin()) &&
+        employeeIdIsMine(request.resource.data.get('employeeId', null));
 
-      // Admins may update anyone (e.g. to change roles). Everyone else may
-      // update only their own profile, and only with `role` unchanged.
+      // Admins may update anyone — that includes correcting an employeeId,
+      // which is how an account with a personal email gets linked. Everyone
+      // else may update only their own profile, with `role` unchanged and an
+      // employeeId that resolves to their own email.
       allow update: if isSignedIn() && (
         isAdmin() ||
         (request.auth.uid == uid &&
-          request.resource.data.role == resource.data.role)
+          request.resource.data.role == resource.data.role &&
+          employeeIdIsMine(request.resource.data.get('employeeId', null)))
       );
 
       // Only admins can delete a user from the directory, and never a
@@ -66,14 +93,20 @@ service cloud.firestore {
     // -------------------------------------------------------------------
     // Core HR data — read: any signed-in user, write: admins only.
     //
-    // KNOWN LIMITATION: the self-service rules below compare a record's
-    // `employeeId` / `raisedById` against `request.auth.uid`. Those fields
-    // hold directory ids ("emp-007"), never Firebase uids, so the owner
-    // branch never matches and only admins can update these records. That
-    // fails closed, which is the safe direction; wiring up real
-    // self-service needs a `uid` field on each employee document to join
-    // the auth identity to the directory record. Do not relax these to
-    // `isSignedIn()` — that would let any user edit anyone's requests.
+    // Ownership is resolved through users/{uid}.employeeId — the link the app
+    // sets by matching the account's work email, and which only an admin may
+    // point anywhere else. Before it existed these clauses compared a directory
+    // id ("emp-007") against request.auth.uid and could never match, so
+    // self-service silently never worked.
+    //
+    // Personal collections are read-scoped to their owner. Note this makes an
+    // UNFILTERED list() illegal for an employee: Firestore evaluates a list
+    // against every document it would return, so the client must carry a
+    // matching where('employeeId','==',myId) clause. That is the intended
+    // behaviour — it is what stops a bulk read of the company.
+    //
+    // Do not relax any of these to `isSignedIn()`; that hands every account
+    // everyone else's records.
     // -------------------------------------------------------------------
     match /employees/{docId} {
       allow read: if isSignedIn();
@@ -81,26 +114,38 @@ service cloud.firestore {
     }
 
     match /attendance/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       allow write: if isAdmin();
     }
 
     match /leave_requests/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       // Employees can create/update their own leave requests; admins can
       // manage all of them (e.g. approve/reject).
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      // A created record must be attributed to the creator; otherwise any
+      // account could file a request in a colleague's name.
+      allow create: if isAdmin() ||
+        (isSignedIn() && myEmployeeId() != '' &&
+          request.resource.data.get('employeeId', '') == myEmployeeId());
+      allow update: if isSignedIn() && (isAdmin() || ownsRecord('employeeId'));
       allow delete: if isAdmin();
     }
 
     match /leave_balances/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       allow write: if isAdmin();
     }
 
     match /payslips/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       allow write: if isAdmin();
     }
 
@@ -125,40 +170,63 @@ service cloud.firestore {
     }
 
     match /goals/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       allow write: if isAdmin();
     }
 
     match /performance_reviews/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       allow write: if isAdmin();
     }
 
     match /expenses/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
       // Employees can submit/edit their own expense claims; admins manage all.
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      // A created record must be attributed to the creator; otherwise any
+      // account could file a request in a colleague's name.
+      allow create: if isAdmin() ||
+        (isSignedIn() && myEmployeeId() != '' &&
+          request.resource.data.get('employeeId', '') == myEmployeeId());
+      allow update: if isSignedIn() && (isAdmin() || ownsRecord('employeeId'));
       allow delete: if isAdmin();
     }
 
     match /assets/{docId} {
-      allow read: if isSignedIn();
+      // Kit is assigned to a person, so an employee sees only their own.
+      allow read: if isAdmin() || ownsRecord('assignedToId');
       allow write: if isAdmin();
     }
 
     match /helpdesk_tickets/{docId} {
-      allow read: if isSignedIn();
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('raisedById','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('raisedById');
       // Employees can raise/update their own tickets; admins manage all.
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.raisedById == request.auth.uid || isAdmin());
+      // A created record must be attributed to the creator; otherwise any
+      // account could file a request in a colleague's name.
+      allow create: if isAdmin() ||
+        (isSignedIn() && myEmployeeId() != '' &&
+          request.resource.data.get('raisedById', '') == myEmployeeId());
+      allow update: if isSignedIn() && (isAdmin() || ownsRecord('raisedById'));
       allow delete: if isAdmin();
     }
 
     match /regularizations/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      // Personal records: an employee reads only their own. A list query must
+      // therefore carry a matching where('employeeId','==',...) clause to be legal.
+      allow read: if isAdmin() || ownsRecord('employeeId');
+      // A created record must be attributed to the creator; otherwise any
+      // account could file a request in a colleague's name.
+      allow create: if isAdmin() ||
+        (isSignedIn() && myEmployeeId() != '' &&
+          request.resource.data.get('employeeId', '') == myEmployeeId());
+      allow update: if isSignedIn() && (isAdmin() || ownsRecord('employeeId'));
       allow delete: if isAdmin();
     }
 

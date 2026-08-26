@@ -34,6 +34,7 @@ import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
 import { buildPayslip, payslips as initialPayslips, payrollRuns as initialPayrollRuns, salaryByDepartment } from '@/data/payroll';
 import { employees, departments, getEmployee } from '@/data/employees';
+import { useOwnRecords, useViewerScope } from '@/lib/scope';
 import type { Payslip, PayrollRun } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -166,12 +167,16 @@ const DEPT_OPTIONS = [
 const CURRENT_PAYROLL_MONTH = '2026-06';
 
 export function PayrollPage() {
-  const [activeTab, setActiveTab] = useState<string>('runs');
+  const [activeTab, setActiveTab] = useState<string>('payslips');
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [payrollRunList, setPayrollRunList] = useState<PayrollRun[]>(initialPayrollRuns);
-  const [payslipList, setPayslipList] = useState<Payslip[]>(initialPayslips);
+  const [allPayslips, setPayslipList] = useState<Payslip[]>(initialPayslips);
+  // Payslips are the most sensitive records here: an employee sees only their
+  // own, and the company run history and cost charts are withheld below.
+  const payslipList = useOwnRecords(allPayslips);
+  const { canSeeEveryone } = useViewerScope();
   const [runNotice, setRunNotice] = useState('');
 
   // ----- Aggregates -----
@@ -353,12 +358,18 @@ export function PayrollPage() {
   return (
     <div>
       <PageHeader
-        title="Payroll"
-        subtitle="Manage salary disbursements, payslips, and compensation analytics"
+        title={canSeeEveryone ? 'Payroll' : 'My Payslips'}
+        subtitle={
+          canSeeEveryone
+            ? 'Manage salary disbursements, payslips, and compensation analytics'
+            : 'Your salary payments and payslip history'
+        }
         actions={
-          <Button icon={<Play size={16} />} variant="primary" onClick={handleRunPayroll}>
-            Run Payroll
-          </Button>
+          canSeeEveryone ? (
+            <Button icon={<Play size={16} />} variant="primary" onClick={handleRunPayroll}>
+              Run Payroll
+            </Button>
+          ) : undefined
         }
       />
 
@@ -368,30 +379,35 @@ export function PayrollPage() {
         </div>
       )}
 
-      {/* Stat Cards */}
+      {/* Stat Cards. The first three are company-wide payroll figures, so a
+          scoped viewer gets their own net pay instead. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Monthly Payroll Cost"
+          label={canSeeEveryone ? 'Monthly Payroll Cost' : 'My Latest Net Pay'}
           value={formatINR(totalNetPay, { compact: true })}
           icon={<IndianRupee size={22} />}
           iconClass="bg-emerald-50 text-emerald-600"
-          delta={2.4}
-          deltaLabel="vs last month"
+          delta={canSeeEveryone ? 2.4 : undefined}
+          deltaLabel={canSeeEveryone ? 'vs last month' : undefined}
         />
-        <StatCard
-          label="Employees on Payroll"
-          value={employees.length}
-          icon={<Users size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
-        />
-        <StatCard
-          label="Average CTC"
-          value={formatINR(avgCTC, { compact: true })}
-          icon={<TrendingUp size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
-          delta={5.1}
-          deltaLabel="year on year"
-        />
+        {canSeeEveryone && (
+          <StatCard
+            label="Employees on Payroll"
+            value={employees.length}
+            icon={<Users size={22} />}
+            iconClass="bg-brand-50 text-brand-600"
+          />
+        )}
+        {canSeeEveryone && (
+          <StatCard
+            label="Average CTC"
+            value={formatINR(avgCTC, { compact: true })}
+            icon={<TrendingUp size={22} />}
+            iconClass="bg-violet-50 text-violet-600"
+            delta={5.1}
+            deltaLabel="year on year"
+          />
+        )}
         <StatCard
           label="Next Pay Date"
           value="30 Jun 2026"
@@ -401,7 +417,8 @@ export function PayrollPage() {
         />
       </div>
 
-      {/* Bar Chart */}
+      {/* Bar Chart — department-level salary cost, admin-only. */}
+      {canSeeEveryone && (
       <Card className="mb-6">
         <CardHeader
           title="Salary Cost by Department"
@@ -434,13 +451,18 @@ export function PayrollPage() {
           </ResponsiveContainer>
         </div>
       </Card>
+      )}
 
       {/* Tabs */}
       <Card padding={false}>
         <div className="px-5 pt-5">
           <Tabs
             tabs={[
-              { id: 'runs', label: 'Payroll Runs', count: payrollRunList.length },
+              // Payroll runs are company-wide totals — gross and net payout for
+              // the whole business — so they are admin-only.
+              ...(canSeeEveryone
+                ? [{ id: 'runs', label: 'Payroll Runs', count: payrollRunList.length }]
+                : []),
               { id: 'payslips', label: 'Payslips', count: payslipList.length },
             ]}
             active={activeTab}

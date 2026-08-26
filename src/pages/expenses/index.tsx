@@ -35,6 +35,7 @@ import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
 import { expenseClaims, expenseByCategory } from '@/data/expenses';
 import { employees, getEmployee, getEmployeeName } from '@/data/employees';
+import { useOwnRecords, useVisibleEmployees } from '@/lib/scope';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -66,7 +67,7 @@ const CATEGORY_OPTIONS: { label: string; value: string }[] = [
   { label: 'Other', value: 'Other' },
 ];
 
-const EMPLOYEE_OPTIONS = employees.map((e) => ({
+const ALL_EMPLOYEE_OPTIONS = employees.map((e) => ({
   label: e.fullName,
   value: e.id,
 }));
@@ -115,6 +116,15 @@ interface NewClaimModalProps {
 function NewClaimModal({ open, onClose, onSubmit }: NewClaimModalProps) {
   const [form, setForm] = useState<NewClaimForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof NewClaimForm, string>>>({});
+  // Scoped, so the claim form can't be used to enumerate colleagues. An admin
+  // still gets the full list.
+  const visible = useVisibleEmployees();
+  const employeeOptions = useMemo(
+    () => (visible.length === employees.length
+      ? ALL_EMPLOYEE_OPTIONS
+      : visible.map((e) => ({ label: e.fullName, value: e.id }))),
+    [visible],
+  );
 
   const set = (field: keyof NewClaimForm) => (value: string) =>
     setForm((f) => ({ ...f, [field]: value }));
@@ -182,7 +192,7 @@ function NewClaimModal({ open, onClose, onSubmit }: NewClaimModalProps) {
           <Select
             value={form.employeeId}
             onChange={set('employeeId')}
-            options={EMPLOYEE_OPTIONS}
+            options={employeeOptions}
             placeholder="Select employee…"
             className="w-full"
           />
@@ -273,7 +283,9 @@ const STATUS_TABS: { id: TabId; label: string }[] = [
 ];
 
 export function ExpensesPage() {
-  const [claims, setClaims] = useState<ExpenseClaim[]>(expenseClaims);
+  const [allClaims, setClaims] = useState<ExpenseClaim[]>(expenseClaims);
+  // Writes act on the full set; the page renders only this viewer's claims.
+  const claims = useOwnRecords(allClaims);
   const [activeTab, setActiveTab] = useState<TabId>('all');
   const [search, setSearch] = useState('');
   const [newClaimOpen, setNewClaimOpen] = useState(false);

@@ -23,7 +23,8 @@ import {
   Select,
 } from '@/components/ui';
 import { tickets as initialTickets, ticketCategories } from '@/data/helpdesk';
-import { employees, getEmployeeName } from '@/data/employees';
+import { getEmployeeName } from '@/data/employees';
+import { useOwnRecords, useVisibleEmployees } from '@/lib/scope';
 import type { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { timeAgo, formatDate } from '@/lib/utils';
 
@@ -203,7 +204,10 @@ interface RaiseTicketProps {
 }
 
 const CATEGORY_OPTIONS_LIST = ticketCategories.map((c) => ({ label: c, value: c }));
-const RAISED_BY_OPTIONS = employees.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id }));
+const toRaiserOption = (e: { fullName: string; employeeCode: string; id: string }) => ({
+  label: `${e.fullName} (${e.employeeCode})`,
+  value: e.id,
+});
 /** Helpdesk triage owner for newly raised tickets in this demo build. */
 const DEFAULT_ASSIGNEE = 'Rahul Deshpande';
 const PRIORITY_OPTIONS_LIST: { label: string; value: string }[] = [
@@ -217,7 +221,11 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
   const [subject, setSubject] = useState('');
   const [category, setCategory] = useState('IT');
   const [priority, setPriority] = useState('Medium');
-  const [raisedById, setRaisedById] = useState('');
+  // Scoped: an employee can only raise a ticket as themselves, so the picker
+  // holds exactly one option and is pre-selected rather than left blank.
+  const selectable = useVisibleEmployees();
+  const raisedByOptions = useMemo(() => selectable.map(toRaiserOption), [selectable]);
+  const [raisedById, setRaisedById] = useState(selectable.length === 1 ? selectable[0].id : '');
   const [error, setError] = useState('');
 
   const handleSubmit = () => {
@@ -276,7 +284,7 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
           <Select
             value={raisedById}
             onChange={(v) => { setRaisedById(v); setError(''); }}
-            options={RAISED_BY_OPTIONS}
+            options={raisedByOptions}
             placeholder="Select employee…"
             className="w-full"
           />
@@ -320,7 +328,9 @@ function RaiseTicketModal({ onClose, onSubmit }: RaiseTicketProps) {
 // ---------------------------------------------------------------------------
 
 export function HelpdeskPage() {
-  const [ticketList, setTicketList] = useState<Ticket[]>(initialTickets);
+  const [allTickets, setTicketList] = useState<Ticket[]>(initialTickets);
+  // An employee sees the tickets they raised, not the whole support queue.
+  const ticketList = useOwnRecords(allTickets, 'raisedById');
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [showRaise, setShowRaise] = useState(false);

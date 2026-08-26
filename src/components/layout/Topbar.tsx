@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Search } from 'lucide-react';
 import { Avatar, Button, NotificationsMenu, QuickAddMenu } from '@/components/ui';
 import { navItems } from '@/lib/nav';
-import { employees } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { useVisibleEmployees } from '@/lib/scope';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -14,6 +14,9 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, signOutUser } = useAuth();
+  // Search must not become a way around the directory scoping — an employee
+  // can only find nav destinations and themselves.
+  const searchableEmployees = useVisibleEmployees();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement | null>(null);
@@ -26,14 +29,17 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         subtitle: `${item.group} module`,
         path: item.path,
       })),
-      ...employees.slice(0, 30).map((employee) => ({
+      ...searchableEmployees.slice(0, 30).map((employee) => ({
         id: `emp-${employee.id}`,
         label: employee.fullName,
         subtitle: `${employee.designation} · ${employee.department}`,
         path: `/employees/${employee.id}`,
       })),
     ],
-    [],
+    // Must depend on the scoped list: it starts empty while auth resolves and
+    // fills in once the viewer is known. An empty dep array would freeze
+    // search on that initial empty value.
+    [searchableEmployees],
   );
 
   const results = useMemo(() => {

@@ -26,6 +26,7 @@ import {
 } from '@/components/ui';
 import { assets as initialAssets } from '@/data/assets';
 import { employees } from '@/data/employees';
+import { useOwnRecords, useViewerScope } from '@/lib/scope';
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
 import { formatINR, formatDate } from '@/lib/utils';
 import {
@@ -275,7 +276,10 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
 // ---------------------------------------------------------------------------
 
 export function AssetsPage() {
-  const [assetList, setAssetList] = useState<Asset[]>(initialAssets);
+  const [allAssets, setAssetList] = useState<Asset[]>(initialAssets);
+  // An employee sees the kit assigned to them, not the company inventory.
+  const assetList = useOwnRecords(allAssets, 'assignedToId');
+  const { canSeeEveryone } = useViewerScope();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -356,7 +360,9 @@ export function AssetsPage() {
     });
   };
 
-  const columns: Column<Asset>[] = [
+  // Reassigning kit is an administrative action, so the Assign/Reassign column
+  // is dropped for a scoped viewer rather than merely disabled.
+  const columns: Column<Asset>[] = ([
     {
       key: 'asset',
       header: 'Asset',
@@ -444,18 +450,24 @@ export function AssetsPage() {
         </Button>
       ),
     },
-  ];
+  ] as Column<Asset>[]).filter((c) => canSeeEveryone || c.key !== 'actions');
 
   return (
     <div>
       <PageHeader
-        title="Assets"
-        subtitle="Manage company assets — hardware, software licences and furniture."
+        title={canSeeEveryone ? 'Assets' : 'My Assets'}
+        subtitle={
+          canSeeEveryone
+            ? 'Manage company assets — hardware, software licences and furniture.'
+            : 'Equipment and licences currently assigned to you.'
+        }
         actions={
-          <Button onClick={() => setAddAssetOpen(true)}>
-            <Plus size={16} className="mr-1" />
-            Add Asset
-          </Button>
+          canSeeEveryone ? (
+            <Button onClick={() => setAddAssetOpen(true)}>
+              <Plus size={16} className="mr-1" />
+              Add Asset
+            </Button>
+          ) : undefined
         }
       />
 

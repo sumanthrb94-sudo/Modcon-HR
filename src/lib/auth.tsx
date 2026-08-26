@@ -29,6 +29,8 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { employeeIdByEmail, getEmployee } from '@/data/employees';
+import type { Employee } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Admin allow-list
@@ -46,6 +48,15 @@ export interface UserProfile {
     displayName: string;
     photoURL: string | null;
     role: UserRole;
+    /**
+     * Directory record this account acts as ('emp-007'), or null if unlinked.
+     *
+     * This is what lets the app answer "which employee is this?". Without it an
+     * employee account cannot be scoped to its own data, and the Firestore
+     * ownership rules have nothing to compare against — they previously matched
+     * a directory id against request.auth.uid, which can never be equal.
+     */
+    employeeId: string | null;
     createdAt?: unknown;
     lastLoginAt?: unknown;
 }
@@ -71,6 +82,16 @@ async function upsertUserProfile(
         ? 'admin'
         : (existing.exists() ? (existing.data().role as UserRole) : 'employee') ?? 'employee';
 
+    // A link an admin has already set wins over the email match, so a manual
+    // correction survives the next sign-in — the same precedence `role` has.
+    // Otherwise fall back to matching the account's work email against the
+    // directory. Unmatched accounts stay null and are blocked, rather than
+    // being guessed into someone else's records.
+    const storedEmployeeId = existing.exists()
+        ? ((existing.data().employeeId as string | null | undefined) ?? null)
+        : null;
+    const employeeId: string | null = storedEmployeeId ?? employeeIdByEmail(email);
+
     const profile: UserProfile = {
         uid: user.uid,
         email,
@@ -81,6 +102,7 @@ async function upsertUserProfile(
             email.split('@')[0],
         photoURL: user.photoURL,
         role,
+        employeeId,
     };
 
     await setDoc(
@@ -104,6 +126,16 @@ interface AuthContextValue {
     profile: UserProfile | null;
     loading: boolean;
     isAdmin: boolean;
+    /** The directory record this account acts as, or null when unlinked. */
+    linkedEmployee: Employee | null;
+    /**
+     * Whether this viewer may see the whole directory. Admins may; an employee
+     * sees only themselves. Read this rather than `isAdmin` when deciding what
+     * DATA to show, so the two concerns stay separable.
+     */
+    canSeeEveryone: boolean;
+    /** Signed in but with no employee record to scope to. */
+    isLinked: boolean;
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
@@ -188,6 +220,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const isAdmin = profile?.role === 'admin';
+    const linkedEmployee = profile?.employeeId ? getEmployee(profile.employeeId) ?? null : null;
+    // Admins see everyone regardless of whether they have a directory record —
+    // the fixed admin accounts deliberately have none.
+    const canSeeEveryone = isAdmin;
+    const isLinked = linkedEmployee !== null;
 
     return (
         <AuthContext.Provider
@@ -196,6 +233,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 profile,
                 loading,
                 isAdmin,
+                linkedEmployee,
+                canSeeEveryone,
+                isLinked,
                 error,
                 clearError,
                 signInEmail,

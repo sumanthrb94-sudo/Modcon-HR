@@ -19,7 +19,8 @@ import {
 } from '@/components/ui';
 import { employees } from '@/data/employees';
 import { holidays, announcements } from '@/data/common';
-import { formatDate, formatDateShort, timeAgo, pct } from '@/lib/utils';
+import { formatDate, formatDateShort, timeAgo, pct, cn } from '@/lib/utils';
+import { useViewerScope } from '@/lib/scope';
 import { useAuth } from '@/lib/auth';
 import {
   headcountSeries, weeklyAttendance, pendingApprovals,
@@ -90,6 +91,7 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
 export function DashboardPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const { canSeeEveryone } = useViewerScope();
   const firstName = (profile?.displayName || profile?.email || 'there').split(' ')[0].split('@')[0];
   const greetingPeriod = () => {
     const hour = new Date().getHours();
@@ -432,8 +434,13 @@ export function DashboardPage() {
       {/* ----------------------------------------------------------------- */}
       {/* Bottom grid: 3-col layout                                         */}
       {/* ----------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* ---- Col 1: Pending Approvals + Activity Feed ---- */}
+      {/* Columns 1 and 3 enumerate other people by name — approvals raised by
+          colleagues, an activity feed of their actions, birthdays, new joiners.
+          Column 2 (announcements, holidays) is company-wide with no individual
+          records, so it stays for everyone. */}
+      <div className={cn('grid grid-cols-1 gap-5', canSeeEveryone && 'lg:grid-cols-3')}>
+        {canSeeEveryone && (
+        /* ---- Col 1: Pending Approvals + Activity Feed ---- */
         <div className="space-y-5">
           {/* Pending approvals */}
           <Card>
@@ -508,6 +515,7 @@ export function DashboardPage() {
             </div>
           </Card>
         </div>
+        )}
 
         {/* ---- Col 2: Announcements + Holidays ---- */}
         <div className="space-y-5">
@@ -592,7 +600,8 @@ export function DashboardPage() {
           </Card>
         </div>
 
-        {/* ---- Col 3: Celebrations + New Joiners ---- */}
+        {canSeeEveryone && (
+        /* ---- Col 3: Celebrations + New Joiners ---- */
         <div className="space-y-5">
           {/* Celebrations */}
           <Card>
@@ -704,6 +713,7 @@ export function DashboardPage() {
             </div>
           </Card>
         </div>
+        )}
       </div>
 
       {/* ----------------------------------------------------------------- */}

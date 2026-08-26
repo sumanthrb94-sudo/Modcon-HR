@@ -40,6 +40,7 @@ import {
   CardHeader,
 } from '@/components/ui';
 import { employees, getEmployee, departments, locations } from '@/data/employees';
+import { useVisibleEmployees, useCanViewEmployee, useViewerScope } from '@/lib/scope';
 import type { Employee, EmployeeStatus, EmploymentType } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { OrgChart } from './OrgChart';
@@ -268,7 +269,13 @@ type DirectoryTab = 'directory' | 'orgchart';
 
 export function EmployeesPage() {
   const navigate = useNavigate();
-  const [employeeList, setEmployeeList] = useState<Employee[]>(employees);
+  const { canSeeEveryone } = useViewerScope();
+  const visibleEmployees = useVisibleEmployees();
+  // Locally-added employees layer on top of whatever this viewer may see. A
+  // scoped viewer sees only their own card, so `added` stays empty for them —
+  // they have no Add Employee button.
+  const [added, setAdded] = useState<Employee[]>([]);
+  const employeeList = useMemo(() => [...added, ...visibleEmployees], [added, visibleEmployees]);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -296,11 +303,13 @@ export function EmployeesPage() {
   const deptCount = new Set(employeeList.map((e) => e.department)).size;
 
   function handleAddEmployee(payload: NewEmployeePayload) {
-    setEmployeeList((prev) => {
-      const nextIndex = prev.length + 1;
+    setAdded((prev) => {
+      // Number off the full directory, not this viewer's slice, so ids stay
+      // unique regardless of what the current account can see.
+      const nextIndex = employees.length + prev.length + 1;
       const nextId = `emp-${String(nextIndex).padStart(3, '0')}`;
       const employeeCode = `MC-${String(nextIndex).padStart(3, '0')}`;
-      const manager = payload.reportingManagerId ? prev.find((e) => e.id === payload.reportingManagerId) : undefined;
+      const manager = payload.reportingManagerId ? getEmployee(payload.reportingManagerId) : undefined;
       const nextEmployee: Employee = {
         id: nextId,
         employeeCode,
@@ -382,22 +391,30 @@ export function EmployeesPage() {
 
   const tabs = [
     { id: 'directory', label: 'Directory' },
-    { id: 'orgchart', label: 'Org Chart' },
+    // The org chart is inherently a view of other people, so it is not offered
+    // to a scoped viewer — a one-node chart of yourself tells you nothing.
+    ...(canSeeEveryone ? [{ id: 'orgchart', label: 'Org Chart' }] : []),
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Employees"
-        subtitle={`${totalCount} people across ${deptCount} departments`}
+        title={canSeeEveryone ? 'Employees' : 'My Profile'}
+        subtitle={
+          canSeeEveryone
+            ? `${totalCount} people across ${deptCount} departments`
+            : 'Your employee record'
+        }
         actions={
-          <Button
-            variant="primary"
-            icon={<Plus size={16} />}
-            onClick={() => setAddModalOpen(true)}
-          >
-            Add Employee
-          </Button>
+          canSeeEveryone ? (
+            <Button
+              variant="primary"
+              icon={<Plus size={16} />}
+              onClick={() => setAddModalOpen(true)}
+            >
+              Add Employee
+            </Button>
+          ) : undefined
         }
       />
 
@@ -921,6 +938,7 @@ type DetailTab = 'overview' | 'team' | 'compensation' | 'documents' | 'timeoff';
 export function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { canSeeEveryone } = useViewerScope();
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [profileOverrides, setProfileOverrides] = useState<Record<string, Partial<Employee>>>({});
 
@@ -941,7 +959,11 @@ export function EmployeeDetailPage() {
   const [editStatus, setEditStatus] = useState<EmployeeStatus>('Active');
   const [editError, setEditError] = useState('');
 
-  const baseEmp = id ? getEmployee(id) : undefined;
+  // A scoped viewer may only open their own record. Resolving to undefined
+  // here means another employee's URL renders the same "not found" state as a
+  // genuinely missing id, rather than confirming that person exists.
+  const canView = useCanViewEmployee(id);
+  const baseEmp = id && canView ? getEmployee(id) : undefined;
   const emp = useMemo(() => {
     if (!baseEmp) return undefined;
     const override = profileOverrides[baseEmp.id];
@@ -1064,7 +1086,10 @@ export function EmployeeDetailPage() {
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
-    { id: 'team', label: 'Team', count: directReports.length },
+    // Team is a roster of other people — manager and direct reports — so it is
+    // withheld from a scoped viewer along with the "Reports To" / "Team Size"
+    // chips below.
+    ...(canSeeEveryone ? [{ id: 'team', label: 'Team', count: directReports.length }] : []),
     { id: 'compensation', label: 'Compensation' },
     { id: 'documents', label: 'Documents' },
     { id: 'timeoff', label: 'Time Off' },
@@ -1140,7 +1165,7 @@ export function EmployeeDetailPage() {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Reports To</span>
-            {emp.reportingManagerId ? (
+            {emp.reportingManagerId && canSeeEveryone ? (
               <Link
                 to={`/employees/${emp.reportingManagerId}`}
                 className="text-sm font-semibold text-brand-700 hover:text-brand-900 transition-colors truncate"
@@ -1148,15 +1173,24 @@ export function EmployeeDetailPage() {
                 {emp.reportingManagerName}
               </Link>
             ) : (
-              <span className="text-sm font-semibold text-ink-800">—</span>
+              // A scoped viewer keeps the manager's NAME — it is a field of
+              // their own record, and an HR profile without one reads as
+              // broken — but not the link, which would dead-end on a record
+              // they are not allowed to open.
+              <span className="text-sm font-semibold text-ink-800 truncate">
+                {emp.reportingManagerName ?? '—'}
+              </span>
             )}
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Team Size</span>
-            <span className="text-sm font-semibold text-ink-800">
-              {directReports.length} direct report{directReports.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+          {/* Team Size counts other people, so it is admin-only. */}
+          {canSeeEveryone && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Team Size</span>
+              <span className="text-sm font-semibold text-ink-800">
+                {directReports.length} direct report{directReports.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
         </div>
       </Card>
 

@@ -21,7 +21,8 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { goals, reviews, ratingDistribution } from '@/data/performance';
+import { goals as allGoals, reviews as allReviews, ratingDistribution } from '@/data/performance';
+import { useOwnRecords, useViewerScope } from '@/lib/scope';
 import { getEmployeeName } from '@/data/employees';
 import type { Goal, PerformanceReview, GoalStatus } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -202,6 +203,11 @@ const reviewColumns: Column<PerformanceReview>[] = [
 // PerformancePage
 // ---------------------------------------------------------------------------
 export function PerformancePage() {
+  // Goals and reviews are per-person, so an employee sees only their own. The
+  // Insights tab aggregates across the company and stays admin-only.
+  const goals = useOwnRecords(allGoals);
+  const reviews = useOwnRecords(allReviews);
+  const { canSeeEveryone } = useViewerScope();
   const [tab, setTab] = useState('goals');
   const [goalSearch, setGoalSearch] = useState('');
   const [goalStatusFilter, setGoalStatusFilter] = useState('');
@@ -271,7 +277,9 @@ export function PerformancePage() {
   const tabList = [
     { id: 'goals', label: 'Goals & OKRs', count: goals.length },
     { id: 'reviews', label: 'Reviews', count: reviews.length },
-    { id: 'insights', label: 'Insights' },
+    // Insights is a company-wide rating distribution and goal breakdown — it
+    // describes everyone else, so it is admin-only.
+    ...(canSeeEveryone ? [{ id: 'insights', label: 'Insights' }] : []),
   ];
 
   return (

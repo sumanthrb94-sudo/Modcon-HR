@@ -29,7 +29,8 @@ import {
   balanceEmployeeIds,
 } from '@/data/leave';
 import { holidays } from '@/data/common';
-import { employees, getEmployee, getEmployeeName, employeeIdByCode } from '@/data/employees';
+import { getEmployee, getEmployeeName, employeeIdByCode } from '@/data/employees';
+import { useOwnRecords, useViewerScope, useVisibleEmployees } from '@/lib/scope';
 import type { LeaveRequest, LeaveType, LeaveStatus } from '@/types';
 import { formatDate, formatDateShort, pct } from '@/lib/utils';
 
@@ -65,7 +66,13 @@ const holidayTypeTone = (type: string) => {
 
 export function LeavePage() {
   const [activeTab, setActiveTab] = useState('requests');
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(initialLeaveRequests);
+  const [allLeaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(initialLeaveRequests);
+  // Writes act on the full set; everything rendered below reads the scoped
+  // view, so an employee sees only their own requests.
+  const leaveRequests = useOwnRecords(allLeaveRequests);
+  const { canSeeEveryone, employee: viewer } = useViewerScope();
+  // The Apply Leave picker must not become a roster of colleagues.
+  const selectableEmployees = useVisibleEmployees();
 
   // Request filters
   const [search, setSearch] = useState('');
@@ -160,7 +167,9 @@ export function LeavePage() {
     const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
 
     const newRequest: LeaveRequest = {
-      id: `lr-${String(leaveRequests.length + 1).padStart(3, '0')}`,
+      // Number off the FULL set, not the viewer's slice — scoping the id
+      // source would collide as soon as two employees each filed a request.
+      id: `lr-${String(allLeaveRequests.length + 1).padStart(3, '0')}`,
       employeeId: formEmpId,
       type: formType,
       startDate: formStart,
@@ -278,10 +287,15 @@ export function LeavePage() {
   // ---- Balances Tab ----
   type BalanceViewItem = { emp: NonNullable<ReturnType<typeof getEmployee>>; balances: ReturnType<typeof getEmployeeBalances> };
   const balancesView = useMemo((): BalanceViewItem[] => {
-    return balanceEmployeeIds
+    // Leave balances are per-person, so a scoped viewer sees only their own
+    // card rather than the whole company's entitlements.
+    const ids = canSeeEveryone
+      ? balanceEmployeeIds
+      : balanceEmployeeIds.filter((empId) => empId === viewer?.id);
+    return ids
       .map((empId) => ({ emp: getEmployee(empId), balances: getEmployeeBalances(empId) }))
       .filter((b): b is BalanceViewItem => b.emp !== undefined);
-  }, []);
+  }, [canSeeEveryone, viewer]);
 
   // ---- Who's Off Tab ----
   const whosOff = useMemo(() => {
@@ -562,7 +576,7 @@ export function LeavePage() {
               onChange={(e) => setFormEmpId(e.target.value)}
             >
               <option value="">Select employee…</option>
-              {employees.map((e) => (
+              {selectableEmployees.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.fullName} ({e.employeeCode})
                 </option>

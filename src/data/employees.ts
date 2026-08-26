@@ -149,6 +149,21 @@ export const employeeIdByCode = (code: string): string => {
 
 export const getEmployeeName = (id: string): string => byId.get(id)?.fullName ?? 'Unknown';
 
+/** Work email → employee id. Lower-cased on both sides so casing never matters. */
+const idByEmail = new Map(employees.map((e) => [e.email.toLowerCase(), e.id]));
+
+/**
+ * Resolve a signed-in account to its employee record by work email.
+ *
+ * This is the only automatic link between an Auth account and the directory:
+ * employee emails are generated as `first.last@modcon.com`, so anyone signing
+ * in with their work address is matched here. Anyone who isn't stays unlinked
+ * until an admin sets the link explicitly — deliberately, because guessing
+ * would hand someone another employee's payslips.
+ */
+export const employeeIdByEmail = (email: string | null | undefined): string | null =>
+  idByEmail.get((email ?? '').trim().toLowerCase()) ?? null;
+
 export const departments: Department[] = [
   'Engineering',
   'Product',

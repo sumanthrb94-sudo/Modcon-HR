@@ -38,7 +38,8 @@ import {
   WEEK_DATES,
   type RegularizationRequest,
 } from '@/data/attendance';
-import { employees, departments, getEmployee } from '@/data/employees';
+import { departments, getEmployee } from '@/data/employees';
+import { useOwnRecords, useViewerScope, useVisibleEmployees } from '@/lib/scope';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
 
@@ -59,7 +60,10 @@ export function AttendancePage() {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [markModalOpen, setMarkModalOpen] = useState(false);
-  const [attendanceState, setAttendanceState] = useState<AttendanceRecord[]>(attendanceRecords);
+  const [allAttendance, setAttendanceState] = useState<AttendanceRecord[]>(attendanceRecords);
+  // Writes act on the full set; the page renders only this viewer's days.
+  const attendanceState = useOwnRecords(allAttendance);
+  const { canSeeEveryone } = useViewerScope();
   const [markEmployeeId, setMarkEmployeeId] = useState('');
   const [markStatus, setMarkStatus] = useState<AttendanceStatus>('Present');
   const [markCheckIn, setMarkCheckIn] = useState('09:00');
@@ -67,7 +71,11 @@ export function AttendancePage() {
   const [markNote, setMarkNote] = useState('');
 
   // Regularization state — mutable local copy
-  const [regRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
+  const [allRegRequests, setRegRequests] = useState<RegularizationRequest[]>(regularizationRequests);
+  const regRequests = useOwnRecords(allRegRequests);
+  // Marking attendance is an HR action, and the picker would otherwise be a
+  // full staff list.
+  const markableEmployees = useVisibleEmployees();
 
   // Memoised so the dependent memos below can list it honestly — as a plain
   // function it was re-created every render, making their dep arrays a lie.
@@ -271,7 +279,10 @@ export function AttendancePage() {
     setSelectedDate(TODAY);
   }
 
-  const regColumns: Column<RegularizationRequest>[] = [
+  // Approving a regularization is an HR decision. Without this an employee
+  // would be able to approve their own request, since the list is now scoped
+  // to exactly their own rows.
+  const regColumns: Column<RegularizationRequest>[] = ([
     {
       key: 'employee',
       header: 'Employee',
@@ -348,12 +359,12 @@ export function AttendancePage() {
           <span className="text-xs text-ink-400">—</span>
         ),
     },
-  ];
+  ] as Column<RegularizationRequest>[]).filter((c) => canSeeEveryone || c.key !== 'actions');
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Attendance"
+        title={canSeeEveryone ? 'Attendance' : 'My Attendance'}
         subtitle={`Week of ${formatDate(WEEK_DATES[0])} – ${formatDate(WEEK_DATES[4])}`}
         actions={
           <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
@@ -503,7 +514,7 @@ export function AttendancePage() {
             <label className="block text-sm font-medium text-ink-700 mb-1">Employee</label>
             <select className="input w-full" value={markEmployeeId} onChange={(e) => setMarkEmployeeId(e.target.value)}>
               <option value="">Select employee…</option>
-              {employees.map((e) => (
+              {markableEmployees.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.fullName} ({e.employeeCode})
                 </option>
