@@ -1,0 +1,22 @@
+src/lib/useFirestore.ts
+  s_5b7b056f6e635f::t_9d46669ae87f10 182-193
+  s_5b7b056f6e635f::t_511a2f86d35edd 73-81
+src/lib/db.ts
+  s_5b7b056f6e635f::t_9007bbd80bc385 158-166,170,174-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "738684dd9f28ebb741f3d47c9e5796fb630c20bb",
+  "prompts": {},
+  "sessions": {
+    "s_5b7b056f6e635f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "312584a3-c502-46ce-a6e6-92ecc9cb2b47",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
