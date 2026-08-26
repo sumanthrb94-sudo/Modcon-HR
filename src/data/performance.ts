@@ -238,7 +238,7 @@ export const goals: Goal[] = isMockDataCleared() ? [] : [
 export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   {
     id: 'rev-001',
-    employeeId: 'emp-008',
+    employeeId: 'emp-007',
     employeeName: 'Karthik Subramaniam',
     cycle: 'H1 2026',
     reviewer: 'Diya Mehta',
@@ -248,7 +248,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-002',
-    employeeId: 'emp-009',
+    employeeId: 'emp-008',
     employeeName: 'Sneha Patil',
     cycle: 'H1 2026',
     reviewer: 'Karthik Subramaniam',
@@ -258,7 +258,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-003',
-    employeeId: 'emp-010',
+    employeeId: 'emp-009',
     employeeName: 'Arjun Verma',
     cycle: 'H1 2026',
     reviewer: 'Karthik Subramaniam',
@@ -268,7 +268,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-004',
-    employeeId: 'emp-017',
+    employeeId: 'emp-014',
     employeeName: 'Nisha Bhatt',
     cycle: 'H1 2026',
     reviewer: 'Rohan Iyer',
@@ -278,7 +278,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-005',
-    employeeId: 'emp-018',
+    employeeId: 'emp-015',
     employeeName: 'Aditya Rao',
     cycle: 'H1 2026',
     reviewer: 'Rohan Iyer',
@@ -288,7 +288,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-006',
-    employeeId: 'emp-022',
+    employeeId: 'emp-018',
     employeeName: 'Sanjay Malhotra',
     cycle: 'H1 2026',
     reviewer: 'Vikram Nair',
@@ -298,7 +298,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-007',
-    employeeId: 'emp-023',
+    employeeId: 'emp-019',
     employeeName: 'Pooja Agarwal',
     cycle: 'H1 2026',
     reviewer: 'Sanjay Malhotra',
@@ -308,7 +308,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-008',
-    employeeId: 'emp-027',
+    employeeId: 'emp-022',
     employeeName: 'Neha Chopra',
     cycle: 'H1 2026',
     reviewer: 'Aarav Sharma',
@@ -318,7 +318,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-009',
-    employeeId: 'emp-033',
+    employeeId: 'emp-025',
     employeeName: 'Ritu Bansal',
     cycle: 'H1 2026',
     reviewer: 'Ananya Reddy',
@@ -338,7 +338,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-011',
-    employeeId: 'emp-037',
+    employeeId: 'emp-028',
     employeeName: 'Manish Goyal',
     cycle: 'H1 2026',
     reviewer: 'Priya Kapoor',
@@ -348,7 +348,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-012',
-    employeeId: 'emp-038',
+    employeeId: 'emp-029',
     employeeName: 'Divya Pandey',
     cycle: 'H1 2026',
     reviewer: 'Priya Kapoor',
@@ -368,7 +368,7 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
   {
     id: 'rev-014',
-    employeeId: 'emp-019',
+    employeeId: 'emp-016',
     employeeName: 'Kavya Menon',
     cycle: 'H1 2026',
     reviewer: 'Rohan Iyer',

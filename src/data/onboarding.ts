@@ -49,7 +49,7 @@ const raw: Omit<Onboarding, 'progress'>[] = isMockDataCleared() ? [] : [
     // The checklist tracks that real start date and is closed out: he has been
     // on staff for five months, so leaving these tasks open reported him as a
     // live onboarding on the dashboard's approval queue.
-    employeeId: 'emp-015',
+    employeeId: 'emp-012',
     employeeName: 'Ishaan Gupta',
     designation: 'Software Engineer Intern',
     department: 'Engineering',

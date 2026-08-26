@@ -20,7 +20,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
     reason: 'Personal family function — attending sister\'s wedding in hometown.',
     status: 'Approved',
     appliedOn: '2026-06-01',
-    approverId: 'emp-010',
+    approverId: 'emp-007',
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -33,7 +33,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
     reason: 'Recovering from dengue fever — doctor advised complete rest.',
     status: 'Approved',
     appliedOn: '2026-06-07',
-    approverId: 'emp-010',
+    approverId: 'emp-007',
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -145,7 +145,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
     reason: 'Viral fever with doctor consultation.',
     status: 'Approved',
     appliedOn: '2026-06-03',
-    approverId: 'emp-030',
+    approverId: 'emp-018',
     approverName: 'Sanjay Malhotra',
   },
   {
@@ -158,7 +158,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
     reason: 'Property registration appointment.',
     status: 'Rejected',
     appliedOn: '2026-05-26',
-    approverId: 'emp-010',
+    approverId: 'emp-007',
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -196,7 +196,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
     reason: 'Doctor consultation and follow-up tests.',
     status: 'Approved',
     appliedOn: '2026-06-12',
-    approverId: 'emp-010',
+    approverId: 'emp-007',
     approverName: 'Karthik Subramaniam',
   },
   {
@@ -221,7 +221,7 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
     reason: 'Seasonal flu with fever.',
     status: 'Approved',
     appliedOn: '2026-05-05',
-    approverId: 'emp-010',
+    approverId: 'emp-007',
     approverName: 'Karthik Subramaniam',
   },
 ];
