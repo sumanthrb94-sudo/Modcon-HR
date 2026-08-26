@@ -1,0 +1,34 @@
+src/data/onboarding.ts
+  s_5b7b056f6e635f::t_96029ddcdbcc3f 52
+src/data/assets.ts
+  s_5b7b056f6e635f::t_96029ddcdbcc3f 25,37,71,107,130,191,203,275,287,299,311,334
+src/data/leave.ts
+  s_5b7b056f6e635f::t_96029ddcdbcc3f 23,36,148,161,199,224
+src/data/performance.ts
+  s_5b7b056f6e635f::t_96029ddcdbcc3f 241,251,261,271,281,291,301,311,321,341,351,371
+src/data/employees.ts
+  s_5b7b056f6e635f::t_96029ddcdbcc3f 25-31,56-61,64-70,73-76,79-82,85-87,90-92,95-98,101-103,106-108,111-115,119,141-144
+package.json
+  s_5b7b056f6e635f::t_b3a15910b8f450 17
+scripts/check-data-integrity.ts
+  s_5b7b056f6e635f::t_f656e1e44a5979 36-42,44
+  s_5b7b056f6e635f::t_4eb9e32f08d2e3 1-35,43,45-75,78-85,87-275
+  s_5b7b056f6e635f::t_7144389cc49486 86
+  s_5b7b056f6e635f::t_f7192bb01487c9 76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "f7b8f6e707f84759b52329381b09a8b97f007839",
+  "prompts": {},
+  "sessions": {
+    "s_5b7b056f6e635f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "312584a3-c502-46ce-a6e6-92ecc9cb2b47",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
