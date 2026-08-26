@@ -1,0 +1,191 @@
+src/pages/leave/index.tsx
+  s_2cd75ddf5c0bd9::t_9102c3cfe35645 118,124-126,128-132
+  s_2cd75ddf5c0bd9::t_9a4f1338533101 85-86,88
+  s_2cd75ddf5c0bd9::t_a2457c64c9fe2a 37
+  s_985e92c1c99276::t_37be8dc8c433a9 32
+  s_985e92c1c99276::t_633348f65b9983 40-48
+  s_985e92c1c99276::t_7e6f9a6750f923 49
+  s_985e92c1c99276::t_ca96f06f049187 100,136-146,296,531,539
+src/lib/db.ts
+  s_2cd75ddf5c0bd9::t_d2aaab289719eb 130-136,140,144-153
+firestore.rules
+  s_985e92c1c99276::t_b4339e4a8a4f33 68-76
+  s_985e92c1c99276::t_888bf468c20550 17-19,21-25,28-33,38-41,45-60
+src/pages/dashboard/index.tsx
+  s_2cd75ddf5c0bd9::t_9e806f0ad46f2b 181-184
+  s_2cd75ddf5c0bd9::t_2bb17a314a278b 251
+  s_2cd75ddf5c0bd9::t_9e219f8ee52b8c 545-547
+  s_2cd75ddf5c0bd9::t_273006bf01e756 107,116-119
+  s_2cd75ddf5c0bd9::t_1c0c3b728f8db5 12-13,163
+src/data/dashboard.ts
+  s_2cd75ddf5c0bd9::t_06d36d58997d94 112-131,133-161
+  s_2cd75ddf5c0bd9::t_99c54fb389fab0 6-15
+  s_2cd75ddf5c0bd9::t_c5a78a1b978162 80-88,91-99
+  s_2cd75ddf5c0bd9::t_cd6ff6fa95049d 53-70,73-75
+  s_2cd75ddf5c0bd9::t_c3d7b7416d46ca 76
+  s_2cd75ddf5c0bd9::t_65c08c70aad454 100
+src/pages/helpdesk/index.tsx
+  s_2cd75ddf5c0bd9::t_81e87b31743763 267-283,292
+  s_2cd75ddf5c0bd9::t_0488e97184b298 220-221,224-234,238,242
+  s_2cd75ddf5c0bd9::t_86efa03a447e31 26,206-208,259
+tsconfig.tsbuildinfo
+  s_985e92c1c99276::t_7f1a4ea64b6c57 1
+src/lib/useFirestore.ts
+  s_2cd75ddf5c0bd9::t_3d6ab5286805c6 52-58
+  s_2cd75ddf5c0bd9::t_670cbb42b3bf68 12
+src/pages/onboarding/index.tsx
+  s_2cd75ddf5c0bd9::t_04e7f7b84cd657 39-50,53
+  s_2cd75ddf5c0bd9::t_488f0bc3f17e9d 377
+package.json
+  s_985e92c1c99276::t_759d58158d09c5 36
+  s_985e92c1c99276::t_7e7a80f735629e 15
+  s_985e92c1c99276::t_2e4f3c4e673e30 37-40,44,47
+  s_985e92c1c99276::t_1431899a6e01f5 30
+src/types/index.ts
+  s_2cd75ddf5c0bd9::t_40edde2ab08c99 70-71
+src/data/leave.ts
+  s_985e92c1c99276::t_69798468c38e57 2
+  s_985e92c1c99276::t_7fd3830ffee577 141
+  s_985e92c1c99276::t_b268923458d226 16,29,154
+src/pages/expenses/index.tsx
+  s_2cd75ddf5c0bd9::t_62388737db3bf8 305-309
+  s_2cd75ddf5c0bd9::t_c295e7f527c022 50-56,105,136,314,479-480,484
+src/pages/payroll/index.tsx
+  s_2cd75ddf5c0bd9::t_d5a67caab835d8 249
+  s_2cd75ddf5c0bd9::t_e5c9e49adf7232 146-150
+  s_2cd75ddf5c0bd9::t_b7940dfbfce7c8 226-227,231
+  s_2cd75ddf5c0bd9::t_9efbc1ebcab145 49-56
+  s_2cd75ddf5c0bd9::t_0652de8e00e69a 178-190
+  s_2cd75ddf5c0bd9::t_7b3491f05641fb 365-370
+  s_2cd75ddf5c0bd9::t_edb69d0c6dcea3 175
+src/data/performance.ts
+  s_2cd75ddf5c0bd9::t_e476b61010c5fe 163
+  s_2cd75ddf5c0bd9::t_f974fc4a7ce524 2
+  s_2cd75ddf5c0bd9::t_ff8beee32f1f9a 307
+  s_2cd75ddf5c0bd9::t_d5a4549421f034 297
+  s_2cd75ddf5c0bd9::t_55f71234a5236c 1,197,207,217,227,237,247,257,267,277,327
+src/pages/admin/index.tsx
+  s_2cd75ddf5c0bd9::t_535165c090d67b 177-183,187-191
+  s_2cd75ddf5c0bd9::t_aac96fe2ab79b2 70-71,75-80,83-90,96-101
+  s_2cd75ddf5c0bd9::t_c3126ef0e8943c 244,248
+src/lib/seed.ts
+  s_2cd75ddf5c0bd9::t_4199cef5eda3e1 64
+  s_2cd75ddf5c0bd9::t_cb4517dbd0c32e 88-92,96,98-99,103-106
+  s_2cd75ddf5c0bd9::t_4dac3d236ed434 40-44
+  s_2cd75ddf5c0bd9::t_0ee292191f67df 107-108
+src/pages/attendance/index.tsx
+  s_2cd75ddf5c0bd9::t_1cb14fb5c33789 72-77,80
+  s_2cd75ddf5c0bd9::t_c27088de8ed833 535-542
+  s_2cd75ddf5c0bd9::t_5c70bb385933f8 262
+  s_2cd75ddf5c0bd9::t_2cc520a4fa1ae3 67
+  s_2cd75ddf5c0bd9::t_30b0dd092aea98 230-236
+  s_2cd75ddf5c0bd9::t_faa5a6570ec9be 1,90,104,204-209,487,492
+src/data/attendance.ts
+  s_2cd75ddf5c0bd9::t_5f49ee433c6abc 154-157
+  s_2cd75ddf5c0bd9::t_9019e30a962739 1
+src/data/assets.ts
+  s_2cd75ddf5c0bd9::t_3dbb69c0682ae0 70
+  s_2cd75ddf5c0bd9::t_e57ca0fdd7ef1a 2
+  s_2cd75ddf5c0bd9::t_76736de18912a0 1,24,36,106,129,190,202,274,286,298,310,333
+eslint.config.js
+  s_985e92c1c99276::t_f3284e497bcd7c 1-58
+README.md
+  s_985e92c1c99276::t_2647ca960b3ef7 44-48
+src/pages/reports/index.tsx
+  s_2cd75ddf5c0bd9::t_2b8dfd4cd158de 120-127,130-135,138-145
+  s_2cd75ddf5c0bd9::t_07fbbd6b513c30 10,14,28,146,169,304,323,429
+src/lib/utils.ts
+  s_2cd75ddf5c0bd9::t_b419c17dd2621d 41-50,53-54,56-57,60-63
+src/pages/settings/index.tsx
+  s_2cd75ddf5c0bd9::t_a0fe4108db0713 128,138-141
+  s_2cd75ddf5c0bd9::t_8380b85cb2db21 1511
+  s_2cd75ddf5c0bd9::t_91aae1666ee757 2041
+  s_2cd75ddf5c0bd9::t_d5014615836048 113-126
+  s_2cd75ddf5c0bd9::t_bdc8404a447ecb 183
+  s_2cd75ddf5c0bd9::t_9b215b39e2a55f 1701
+  s_2cd75ddf5c0bd9::t_3d26e49d377da0 1426-1428,1430
+  s_2cd75ddf5c0bd9::t_5e24e4396fecfa 1732-1746
+  s_2cd75ddf5c0bd9::t_d25ef73485d68f 1957-1959
+  s_2cd75ddf5c0bd9::t_f3f717b93fa60f 1761,1768
+  s_2cd75ddf5c0bd9::t_c267072e629c5f 1570-1577,1580
+  s_2cd75ddf5c0bd9::t_5703ae14c33b0e 1806-1814,1823
+  s_2cd75ddf5c0bd9::t_40216755886be9 2012-2015
+  s_2cd75ddf5c0bd9::t_7332eee5046893 1961
+  s_2cd75ddf5c0bd9::t_00f0ce583090ce 1521-1527
+  s_2cd75ddf5c0bd9::t_17e6bea1b2ba31 142-143
+src/components/ui/NotificationsMenu.tsx
+  s_2cd75ddf5c0bd9::t_17d80601bf2092 12-20,25-26,32-33,46-47
+  s_2cd75ddf5c0bd9::t_24e1c243231b05 5,56-57
+src/pages/employees/index.tsx
+  s_2cd75ddf5c0bd9::t_cd5ceff662f85a 955-959,961-962,966
+src/data/onboarding.ts
+  s_2cd75ddf5c0bd9::t_5cebfbec205307 69-71
+  s_2cd75ddf5c0bd9::t_8c05ca7ab03cb9 46
+scripts/check-data-integrity.ts
+  s_985e92c1c99276::t_749b0f4f094fc5 1-269
+src/lib/auth.tsx
+  s_2cd75ddf5c0bd9::t_1b071edfe0ce08 56-64,77-81
+  s_2cd75ddf5c0bd9::t_caf693f5ce4be4 173-178
+src/data/employees.ts
+  s_2cd75ddf5c0bd9::t_e46be5f304250c 6-11,26-27
+  s_985e92c1c99276::t_b695f22716432f 34-39,42-48,51-54,57-60,63-65,68-70,73-76,79-81,84
+  s_2cd75ddf5c0bd9::t_f41dc39bd80900 139-149
+  s_2cd75ddf5c0bd9::t_11e30feb38792d 87-102,104
+  s_2cd75ddf5c0bd9::t_2e156b253fef10 122
+src/pages/assets/index.tsx
+  s_2cd75ddf5c0bd9::t_1d84322e30b07f 175-181
+  s_2cd75ddf5c0bd9::t_e5f8fdb1ea5471 205,211
+  s_2cd75ddf5c0bd9::t_a60ec45971a7ba 341-356
+  s_2cd75ddf5c0bd9::t_f0d05dc3e6bbc4 295-308
+  s_2cd75ddf5c0bd9::t_ac2f4a36d6798e 158
+  s_2cd75ddf5c0bd9::t_1ff71744580439 27
+src/pages/employees/OrgChart.tsx
+  s_2cd75ddf5c0bd9::t_7d2c1f28c94af0 86-97,99,109-112
+  s_2cd75ddf5c0bd9::t_7e86b143f8b7c9 16-20
+src/pages/recruitment/index.tsx
+  s_2cd75ddf5c0bd9::t_dd31e9356dba48 638,641-643
+  s_2cd75ddf5c0bd9::t_bdf8f996fd830b 203,213,216-219
+  s_2cd75ddf5c0bd9::t_eaf9cefeb373cc 258-261
+  s_2cd75ddf5c0bd9::t_fb66b1a3d68d61 845
+  s_2cd75ddf5c0bd9::t_2068f1263fd197 280
+  s_2cd75ddf5c0bd9::t_4e8425f400c35f 286,294-298
+  s_2cd75ddf5c0bd9::t_de3bf084d1a4eb 229,233-240,244-257,264
+  s_2cd75ddf5c0bd9::t_7837e5fc766d65 360-369
+  s_2cd75ddf5c0bd9::t_7dda21d95374c5 43,220,760,771
+tsconfig.node.tsbuildinfo
+  s_985e92c1c99276::t_7f1a4ea64b6c57 1
+src/pages/dashboard/CelebrationsPage.tsx
+  s_2cd75ddf5c0bd9::t_201675e36108d6 39-49
+package-lock.json
+  s_985e92c1c99276::t_fe868f8689b09f 21,27-31,35,737-893,1537-1602,2229-2235,2273-2567,2589-2628,2681-2687,2725-2731,2758-2768,2816-2825,2857-2873,2963-2969,2977-2991,3166-3172,3268-3458,3465-3471,3511-3524,3547-3559,3573-3589,3650-3670,3739-3762,3790-3826,3907-3913,3930-3952,3966-3986,4000-4023,4044-4059,4072-4078,4140-4152,4191-4197,4237-4319,4530-4539,4580-4589,4808-4817,4937-4959,4996-5008,5032-5044,5186-5198,5212-5224,5239-5262,5300-5309,5428-5453,5531-5543
+src/data/expenses.ts
+  s_2cd75ddf5c0bd9::t_8d15a7c479a457 2,111,133,155,166,188
+src/data/helpdesk.ts
+  s_2cd75ddf5c0bd9::t_622a94adcced0b 1
+src/data/recruitment.ts
+  s_2cd75ddf5c0bd9::t_2d9b03921bff58 2,124,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "ac4a87aefd23cbb056159ec2a8ead9f6b15cb861",
+  "prompts": {},
+  "sessions": {
+    "s_2cd75ddf5c0bd9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb27aa55-e4a1-4e5a-bad8-cec329cd8b7f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    },
+    "s_985e92c1c99276": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c98ab517-b2df-4737-8ad5-443dc3d72e20",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
