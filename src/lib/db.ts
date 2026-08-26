@@ -155,16 +155,32 @@ export async function remove<T>(
     await deleteDoc(doc(colRef, id));
 }
 
-/** Subscribe to a collection in real time. Returns an unsubscribe function. */
+/**
+ * Subscribe to a collection in real time. Returns an unsubscribe function.
+ *
+ * `onError` matters in practice: without it a failed listen — most commonly a
+ * security-rules rejection, which is the expected outcome of an org-scoped
+ * query that forgot its `orgId` filter — is swallowed, the success callback
+ * never fires, and any UI gated on a `loading` flag spins forever with no
+ * indication why.
+ */
 export function subscribe<T extends { id?: string }>(
     colRef: CollectionReference<T>,
     callback: (data: T[]) => void,
+    onError?: (error: Error) => void,
     ...constraints: QueryConstraint[]
 ): Unsubscribe {
     const q = constraints.length ? query(colRef, ...constraints) : colRef;
-    return onSnapshot(q as CollectionReference<T>, (snap) => {
-        callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as T)));
-    });
+    return onSnapshot(
+        q as CollectionReference<T>,
+        (snap) => {
+            callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as T)));
+        },
+        (error) => {
+            console.error(`[db] snapshot listener failed for ${colRef.path}:`, error);
+            onError?.(error);
+        },
+    );
 }
 
 // Re-export query helpers for convenience

@@ -70,6 +70,15 @@ function useCollection<T extends { id?: string }>(
             colRef,
             (docs) => {
                 setData(docs);
+                setError(null);
+                setLoading(false);
+            },
+            (err) => {
+                // Clear `loading` on failure too, or the caller's spinner never
+                // resolves and the reader is left staring at it indefinitely —
+                // which is exactly what a rules rejection looked like from the
+                // UI, `error` staying null the whole time.
+                setError(err);
                 setLoading(false);
             },
             where('orgId', '==', orgKey),
@@ -170,10 +179,18 @@ export function useOrganizations(enabled: boolean = true) {
             return;
         }
         setLoading(true);
-        const unsub = subscribe(Collections.organizations, (docs) => {
-            setData(docs);
-            setLoading(false);
-        });
+        const unsub = subscribe(
+            Collections.organizations,
+            (docs) => {
+                setData(docs);
+                setError(null);
+                setLoading(false);
+            },
+            (err) => {
+                setError(err);
+                setLoading(false);
+            },
+        );
         return unsub;
     }, [enabled]);
 
