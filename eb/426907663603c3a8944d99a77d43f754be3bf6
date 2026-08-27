@@ -1,0 +1,19 @@
+.claude/settings.json
+  s_af9a3d3663bf64::t_f3b972b7b654c8 96-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "eb426907663603c3a8944d99a77d43f754be3bf6",
+  "prompts": {},
+  "sessions": {
+    "s_af9a3d3663bf64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b5e85c6-6709-4210-9c8b-f28ebbab1d53",
+        "model": "unknown"
+      },
+      "human_author": "Mint Studios <mintstudios823@gmail.com>"
+    }
+  }
+}
