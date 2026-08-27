@@ -2,17 +2,26 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { HR_PERSONA, type Persona } from './config';
 
 /**
- * A manager decides leave for the people below them, and for nobody else.
+ * Two routes to deciding leave, and the queue shows exactly the one this
+ * account has.
  *
- * The approval queue was the whole organisation's pending requests, shown
- * identically to every account that could open the page. A team lead was
+ * A manager decides for the people below them and for nobody else. HR and
+ * Admin decide for the whole organisation — including somebody with no
+ * reporting manager recorded, who otherwise has nobody at all and whose
+ * request sits pending until the org chart is edited.
+ *
+ * The queue was once the whole organisation's pending requests shown
+ * identically to every account that could open the page, so a team lead was
  * offered Approve on the leave of people in other departments, on their own
  * manager's leave, and on their own request — and the button worked, because
- * `updateLeaveRequestStatus` asked nothing about who was clicking it.
+ * `updateLeaveRequestStatus` asked nothing about who was clicking it. Fixing
+ * that then over-corrected: authority became a tree position and nothing else,
+ * so an administrator decided nothing and a manager-less employee was
+ * undecidable. The assertions below pin both halves, because either one alone
+ * is satisfied by a rule that is wrong in the other direction.
  *
- * This runs once per role project, so each persona states its own part of the
- * rule: the manager gets the queue, the administrator gets none of it — an
- * admin runs the deployment and is nobody's reporting manager — and the
+ * This runs once per role project, so each persona states its own part: the
+ * manager gets their reporting line, the administrator gets everybody, and the
  * employee cannot reach the page at all.
  *
  * The reporting line has to be seeded rather than driven through the UI. The
@@ -51,6 +60,12 @@ async function login(page: Page, p: { email: string; password: string }) {
  * Three people and two pending requests: somebody below the manager, and
  * somebody who is nothing to do with them. Every assertion below is the
  * difference between those two.
+ *
+ * The outsider is seeded with `reportingManagerId: null` on purpose, so they
+ * carry both halves of the rule at once — outside the manager's line, and with
+ * no line of their own. Their request is the one an administrator has to be
+ * able to decide; before HR and Admin were given organisation-wide authority
+ * it could not be decided by anybody.
  */
 async function seedReportingLine(page: Page, managerEmail: string) {
   await page.evaluate(
@@ -125,7 +140,22 @@ async function seedReportingLine(page: Page, managerEmail: string) {
   await page.reload();
 }
 
-test.describe.serial('leave approval follows the reporting line', () => {
+/**
+ * Approve the request filed for one named employee.
+ *
+ * The queue holds more than one row for anybody deciding organisation-wide, so
+ * `getByRole('button', { name: 'Approve' }).first()` would assert that *a*
+ * decision went through rather than that this one did — and the request that
+ * carries the rule is specifically the employee who reports to nobody.
+ */
+async function approveRequestFor(p: Page, employeeId: string) {
+  await p
+    .locator(`[data-testid="leave-approval-request"][data-employee-id="${employeeId}"]`)
+    .getByRole('button', { name: 'Approve' })
+    .click();
+}
+
+test.describe.serial('leave approval follows the reporting line or the administrator role', () => {
   let context: BrowserContext;
   let page: Page;
 
@@ -158,29 +188,53 @@ test.describe.serial('leave approval follows the reporting line', () => {
 
     if (persona().role === 'manager') {
       await expect(page.getByText(REPORT_NAME)).toBeVisible();
-      // The assertion the whole change is about. Before it, this row was here.
+      // The reporting-line half. Before the scope rule existed, this row was
+      // here — a team lead offered Approve on another department's leave.
       await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
     } else {
-      // An administrator runs the deployment and sits nowhere in the org
-      // chart, so they decide no leave at all — not even the request seeded
-      // below a manager. The page says which of the two empty-queue reasons
-      // this is rather than sitting blank.
-      await expect(page.getByText(REPORT_NAME)).toHaveCount(0);
-      await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
-      await expect(page.getByText(/cannot tell who reports to you/)).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+      // The administrator half. An admin sits nowhere in the org chart, so a
+      // rule made only of tree positions gave them an empty queue and left the
+      // manager-less outsider with nobody at all. Their authority is the role,
+      // so both requests are theirs to decide.
+      await expect(page.getByText(REPORT_NAME)).toBeVisible();
+      await expect(page.getByText(OUTSIDER_NAME)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(2);
+      // The empty-queue explanation that used to fire here told an
+      // administrator to go and link an account, which would not have changed
+      // anything they can decide.
+      await expect(page.getByText(/cannot tell who reports to you/)).toHaveCount(0);
     }
   });
 
-  test('HR gets no organisation-wide approval either', async ({ browser }) => {
+  test('an administrator decides a request that has no reporting line at all', async () => {
+    test.skip(persona().role !== 'admin', 'the organisation-wide route, asserted from the admin project');
+
+    await page.goto(APPROVALS_URL);
+    await expect(page.getByText(OUTSIDER_NAME)).toBeVisible({ timeout: 20_000 });
+
+    // Named rather than "the first Approve button": the request that matters
+    // is the one whose employee reports to nobody, and a queue of two makes
+    // "some button worked" and "this one worked" different claims.
+    await approveRequestFor(page, 'emp-e2e-outsider');
+
+    await expect(page.getByText(OUTSIDER_NAME)).toHaveCount(0);
+    // A refusal is rendered rather than swallowed, so an empty status region
+    // is what proves the write landed instead of being turned away.
+    await expect(page.getByRole('status')).toHaveCount(0);
+    // The other request is untouched — organisation-wide is not "approve
+    // whatever was on screen".
+    await expect(page.getByText(REPORT_NAME)).toBeVisible();
+  });
+
+  test('HR decides organisation-wide, including somebody with no reporting manager', async ({ browser }) => {
     // Runs once rather than once per project: the claim is about the HR
     // persona, who is nobody's persona here.
     test.skip(persona().role !== 'manager', 'asserted once, from the manager project');
 
-    // HR reads every employee's records — that is what oversight needs — and
-    // used to decide every employee's leave along with it. In this app the
-    // organisation's own administrator holds exactly this role, so "the admin
-    // must not approve" is mostly a statement about this account.
+    // HR reads every employee's records, and now decides their leave too. In
+    // this app the organisation's own administrator holds exactly this role
+    // (`src/lib/organizations.ts` provisions the first account as `hr`), so
+    // this is the account an organisation would actually escalate to.
     const fresh = await browser.newContext();
     const hr = await fresh.newPage();
     try {
@@ -189,22 +243,28 @@ test.describe.serial('leave approval follows the reporting line', () => {
       await hr.goto(APPROVALS_URL);
       await expect(hr.getByRole('heading', { name: 'Leave Requests' })).toBeVisible({ timeout: 20_000 });
 
-      await expect(hr.getByText(REPORT_NAME)).toHaveCount(0);
+      await expect(hr.getByText(REPORT_NAME)).toBeVisible();
+      await expect(hr.getByText(OUTSIDER_NAME)).toBeVisible();
+
+      // Its own browser context, so this decision is written to a different
+      // localStorage than the manager's and cannot empty the queue the last
+      // test in this file needs.
+      await approveRequestFor(hr, 'emp-e2e-outsider');
       await expect(hr.getByText(OUTSIDER_NAME)).toHaveCount(0);
-      await expect(hr.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+      await expect(hr.getByRole('status')).toHaveCount(0);
     } finally {
       await hr.close();
       await fresh.close();
     }
   });
 
-  test('a decision this account may make still goes through', async () => {
-    test.skip(persona().role !== 'manager', 'only the manager has anyone to decide for');
+  test('a decision down the reporting line still goes through', async () => {
+    test.skip(persona().role !== 'manager', 'the reporting-line route, asserted from the manager project');
 
     await page.goto(APPROVALS_URL);
     await expect(page.getByText(REPORT_NAME)).toBeVisible({ timeout: 20_000 });
 
-    await page.getByRole('button', { name: 'Approve' }).first().click();
+    await approveRequestFor(page, 'emp-e2e-report');
 
     // Decided, so it leaves the pending queue — and no refusal banner appears,
     // which is what a scope drawn too tightly would produce instead.

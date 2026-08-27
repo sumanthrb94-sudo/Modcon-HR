@@ -52,6 +52,29 @@ export const SUPER_ADMIN = {
   superAdmin: true as const,
 };
 
+/**
+ * The account whose role gets changed underneath a live session.
+ *
+ * Dedicated rather than borrowed from PERSONAS, because the projects run in
+ * parallel: rewriting `users/{uid}.role` for a persona other specs are signed
+ * in as would revoke their access mid-test, and the failure would surface
+ * somewhere far from the cause. This address belongs to one spec, and that
+ * spec puts the role back.
+ *
+ * Deliberately **not** in any of the `E2E_*_EMAIL` allow-lists that
+ * src/lib/auth.tsx honours. Those pin a role whatever the stored profile says,
+ * which is the very mechanism under test — an allow-listed address would keep
+ * its role through every write the spec makes and pass without proving
+ * anything.
+ */
+export const ROLE_CHURN_PERSONA = {
+  role: 'employee' as const,
+  email: process.env.E2E_ROLE_CHURN_EMAIL ?? 'playwright-e2e-role-churn@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Role Churn',
+  roleLabel: 'Employee',
+};
+
 export interface Persona {
   role: Role;
   email: string;

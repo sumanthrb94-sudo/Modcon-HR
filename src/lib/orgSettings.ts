@@ -103,6 +103,11 @@ export const ORG_SETTINGS = {
   // on purpose: declaring a company shift for them would offer their hours to
   // everybody in Settings. Same change event again, for the same reason.
   employeeShiftOverrides: setting('employeeShiftOverrides', 'modcon.hr.employeeShiftOverrides', 'modcon-hr-shifts-changed'),
+  // The day the organisation is closed. The per-employee half already existed
+  // as `weekOff` on the employee record; this is the policy that record
+  // overrides, and it replaced a `?? 'Sunday'` literal no organisation could
+  // change. See data/weekOff.ts.
+  weekOff: setting('weekOff', 'modcon.hr.weekOff', 'modcon-hr-week-off-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it

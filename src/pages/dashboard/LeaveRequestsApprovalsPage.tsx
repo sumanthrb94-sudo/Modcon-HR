@@ -6,6 +6,7 @@ import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT, updateLeaveRequestStatus } from '@/data/leave';
 import { backdatedByDays } from '@/data/leaveApplication';
 import { employees } from '@/data/employees';
+import { resolveAppRole } from '@/lib/accessControl';
 import { useAuth } from '@/lib/auth';
 import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
@@ -41,15 +42,24 @@ export function LeaveRequestsApprovalsPage() {
         setLeaveRequests(result.requests);
     }
 
-    // Whose leave this account may decide: the people beneath it in the
-    // reporting tree, whatever its role. The queue used to be every pending
-    // request in the company regardless of who was reading it, so anyone who
-    // could open the page was offered Approve on the leave of people they have
-    // no authority over — and on their own. See lib/dataScope.ts.
+    // Whose leave this account may decide: for a Manager the people beneath
+    // them in the reporting tree, for HR and Admin the whole organisation.
+    // The queue used to be every pending request in the company regardless of
+    // who was reading it, so a team lead was offered Approve on the leave of
+    // people they have no authority over — and on their own. See
+    // lib/dataScope.ts.
     const approvableEmployeeIds = useMemo(
         () => getApprovableEmployeeIds(profile),
         [profile, directoryRevision],
     );
+
+    // An administrator's queue is the organisation's, so the page has to say
+    // so — "Requests from your reporting line" above a row naming somebody
+    // three departments away reads as a scoping defect rather than the rule.
+    const decidesOrgWide = useMemo(() => {
+        const role = resolveAppRole(profile);
+        return role === 'Admin' || role === 'HR Manager';
+    }, [profile]);
 
     const pendingRequests = useMemo(
         () => leaveRequests
@@ -58,17 +68,23 @@ export function LeaveRequestsApprovalsPage() {
         [leaveRequests, approvableEmployeeIds],
     );
 
-    // An empty queue has three quite different causes, and only one of them is
-    // "nothing to do". An account that was never linked to an employee record
-    // has no reporting line the app can see, which is fixable — but only by
-    // somebody who is told about it.
+    // An empty queue has several quite different causes, and only one of them
+    // is "nothing to do". An account that was never linked to an employee
+    // record has no reporting line the app can see, which is fixable — but
+    // only by somebody who is told about it.
+    //
+    // For HR and Admin none of that applies: their authority is the role, so
+    // an empty queue there means the organisation has nothing pending, and
+    // repeating the unlinked-account warning would send them to fix a link
+    // that changes nothing about what they can decide.
     const emptyReason = useMemo(() => {
-        if (approvableEmployeeIds.size > 0) return 'No pending leave requests from your team';
+        if (approvableEmployeeIds.size > 0) return 'No pending leave requests waiting on you';
+        if (decidesOrgWide) return 'No pending leave requests in the organisation';
         if (getCurrentEmployeeRecord(profile)) {
-            return 'Nobody reports to you, so there are no leave requests for you to decide';
+            return 'Nobody reports to you, so there are no leave requests for you to decide. HR can decide leave for anybody.';
         }
-        return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database.';
-    }, [approvableEmployeeIds, profile, directoryRevision]);
+        return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database, and HR can decide leave in the meantime.';
+    }, [approvableEmployeeIds, decidesOrgWide, profile, directoryRevision]);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -92,7 +108,12 @@ export function LeaveRequestsApprovalsPage() {
             )}
 
             <Card>
-                <CardHeader title="Pending Leave Approval Queue" subtitle="Requests from your reporting line, waiting on you" />
+                <CardHeader
+                    title="Pending Leave Approval Queue"
+                    subtitle={decidesOrgWide
+                        ? 'Every pending request in the organisation — HR and Admin can decide any of them'
+                        : 'Requests from your reporting line, waiting on you'}
+                />
                 {pendingRequests.length === 0 ? (
                     <p className="text-sm text-ink-400 text-center py-6">{emptyReason}</p>
                 ) : (
@@ -107,7 +128,17 @@ export function LeaveRequestsApprovalsPage() {
                             // worked out from the Applied line underneath.
                             const backdated = backdatedByDays(request.startDate, request.appliedOn);
                             return (
-                                <div key={request.id} className="rounded-xl border border-ink-100 bg-white p-4">
+                                // Carries who the request is for so a test can
+                                // decide one named row rather than "the first
+                                // Approve button" — which of the two routes to
+                                // authority a decision came down is only
+                                // visible per employee.
+                                <div
+                                    key={request.id}
+                                    data-testid="leave-approval-request"
+                                    data-employee-id={request.employeeId}
+                                    className="rounded-xl border border-ink-100 bg-white p-4"
+                                >
                                     <div className="flex items-start gap-3">
                                         <div className="h-10 w-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
                                             <CalendarOff size={16} />

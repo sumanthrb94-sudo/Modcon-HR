@@ -1,18 +1,13 @@
-import type { Announcement, Holiday } from '@/types';
+// A second hard-coded copy of the India 2026 holiday calendar lived here,
+// exported and imported by nothing. It was the more dangerous of the two: not
+// gated by `isMockDataCleared()` the way `announcements` below it is, so any
+// page that had ever imported it would have shown those ten days to every
+// organisation, including ones created later in another country. The
+// organisation's calendar has one home — `getHolidayDirectory()` in
+// src/data/holidays.ts, which reads what the organisation declared and returns
+// nothing when it has declared nothing.
+import type { Announcement } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
-
-export const holidays: Holiday[] = [
-  { id: 'h1', name: 'Republic Day', date: '2026-01-26', type: 'National' },
-  { id: 'h2', name: 'Holi', date: '2026-03-04', type: 'National' },
-  { id: 'h3', name: 'Good Friday', date: '2026-04-03', type: 'Optional' },
-  { id: 'h4', name: 'Eid al-Fitr', date: '2026-03-21', type: 'Optional' },
-  { id: 'h5', name: 'Independence Day', date: '2026-08-15', type: 'National' },
-  { id: 'h6', name: 'Ganesh Chaturthi', date: '2026-09-14', type: 'Regional' },
-  { id: 'h7', name: 'Gandhi Jayanti', date: '2026-10-02', type: 'National' },
-  { id: 'h8', name: 'Dussehra', date: '2026-10-20', type: 'Regional' },
-  { id: 'h9', name: 'Diwali', date: '2026-11-08', type: 'National' },
-  { id: 'h10', name: 'Christmas', date: '2026-12-25', type: 'National' },
-];
 
 export const announcements: Announcement[] = isMockDataCleared() ? [] : [
   {

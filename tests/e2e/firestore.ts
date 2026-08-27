@@ -1,4 +1,4 @@
-import { FIREBASE_API_KEY, HR_PERSONA, PERSONAS, SUPER_ADMIN } from './config';
+import { FIREBASE_API_KEY, HR_PERSONA, PERSONAS, ROLE_CHURN_PERSONA, SUPER_ADMIN } from './config';
 
 /**
  * Firestore REST access for the specs, against whichever project the run is
@@ -111,10 +111,39 @@ export async function employeeLinkFor(uid: string): Promise<{ employeeId: string
   return typeof employeeId === 'string' ? { employeeId } : null;
 }
 
+/**
+ * Set one account's stored role directly, for setup and cleanup.
+ *
+ * `updateMask` is what makes this a role change rather than a profile
+ * replacement: a bare PATCH would drop `orgId`, and an account with no orgId
+ * resolves to a sentinel matching nothing, so anything asserted afterwards
+ * would be measuring a tenant lockout instead of a role.
+ *
+ * **Not usable to change a role that an open page is expected to notice.** A
+ * write made through the emulator's `Bearer owner` bypass does not reach the
+ * Watch streams the app's `onSnapshot` listeners are on: the listener stays on
+ * its cached snapshot (`metadata.fromCache` never clears) and no error is
+ * raised, so a spec built this way fails no matter what the client does, and
+ * looks exactly like a broken listener. Drive the change through the UI that
+ * makes it instead — see role-change-propagation.spec.ts, which uses the Admin
+ * dashboard's own control and calls this only to reset the account either side
+ * of the run, before anybody has it open.
+ */
+export async function setStoredRole(uid: string, role: string): Promise<void> {
+  const res = await fetch(`${FIRESTORE_BASE}/users/${uid}?updateMask.fieldPaths=role`, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { role: { stringValue: role } } }),
+  });
+  if (!res.ok) {
+    throw new Error(`[e2e] setting users/${uid}.role=${role} failed: ${res.status} ${await res.text()}`);
+  }
+}
+
 export async function seedPersonaProfiles(): Promise<void> {
   if (!EMULATOR_HOST) return;
 
-  for (const persona of [...Object.values(PERSONAS), HR_PERSONA, SUPER_ADMIN]) {
+  for (const persona of [...Object.values(PERSONAS), HR_PERSONA, SUPER_ADMIN, ROLE_CHURN_PERSONA]) {
     const { uid } = await signInPersona(persona.email, persona.password);
     if (!uid) {
       throw new Error(`[e2e] could not resolve a uid for ${persona.email} — cannot seed its profile`);

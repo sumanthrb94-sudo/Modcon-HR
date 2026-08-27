@@ -12,22 +12,47 @@ export type Gender = 'Male' | 'Female' | 'Other';
 /**
  * The days a week-off may fall on.
  *
- * Deliberately three literals rather than every weekday: the organisation
- * rosters its week-offs across Sunday, Monday and Tuesday only, and an
- * employee takes exactly one of them. Widening this is a policy decision — it
- * changes which days the attendance grid can leave unworked — so it belongs
- * here where the compiler enforces it, not as a free string.
+ * Every day of the week, because which ones an organisation uses is that
+ * organisation's decision (Settings → Week Off) rather than the platform's.
+ * This was three literals — Sunday, Monday and Tuesday — described as the days
+ * "the organisation rosters its week-offs across", which was true of ModCon
+ * Builders' demo roster and of nobody else: a company closed on Saturday, or
+ * on Friday, could not say so at all, and the compiler was enforcing one
+ * tenant's staffing pattern on every other.
+ *
+ * An employee still takes exactly one of them. Six working days with one off
+ * is the week this app's attendance and payroll are built around — see
+ * `getWorkingWeekDatesFor` in data/attendance.ts.
  */
-export type WeekOffDay = 'Sunday' | 'Monday' | 'Tuesday';
+export type WeekOffDay =
+  | 'Sunday'
+  | 'Monday'
+  | 'Tuesday'
+  | 'Wednesday'
+  | 'Thursday'
+  | 'Friday'
+  | 'Saturday';
 
-/** Every week-off the organisation offers, in week order. */
-export const WEEK_OFF_DAYS: readonly WeekOffDay[] = ['Sunday', 'Monday', 'Tuesday'] as const;
+/** Every day a week-off may be set to, in week order. */
+export const WEEK_OFF_DAYS: readonly WeekOffDay[] = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const;
 
 /** `Date.getUTCDay()` index for each week-off day. */
 export const WEEK_OFF_DAY_INDEX: Readonly<Record<WeekOffDay, number>> = {
   Sunday: 0,
   Monday: 1,
   Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
 };
 
 export interface Employee {
@@ -64,12 +89,15 @@ export interface Employee {
   reportingManagerName?: string;
   ctc: number; // annual cost to company (INR)
   /**
-   * The one day a week this person does not work.
+   * The one day a week this person does not work, **when it differs from the
+   * organisation's**.
    *
-   * Absent means Sunday — see `weekOffOf` in data/employees.ts, which is the
-   * only thing that should read this field directly. The rest of the week is
-   * worked: this is a six-day week, so Saturday is a working day for everyone
-   * and Sunday is one for anyone whose week-off is Monday or Tuesday.
+   * Absent means "whatever the organisation's week-off policy says" — it used
+   * to mean the literal Sunday, which is why an organisation could not declare
+   * one of its own. `weekOffOf` in data/employees.ts is the only thing that
+   * should read this field directly; it resolves the person's own day first
+   * and the organisation's second. The rest of the week is worked: this is a
+   * six-day week, so a person off on Monday works the Sunday.
    */
   weekOff?: WeekOffDay;
   bloodGroup?: string;

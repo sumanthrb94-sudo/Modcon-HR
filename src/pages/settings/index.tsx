@@ -48,8 +48,15 @@ import {
   renameLocationInDirectory,
   type LocationRecord,
 } from '@/data/locations';
-import { getEmployeeDirectory, reassignEmployeeLocation } from '@/data/employees';
+import { getEmployeeDirectory, hasOwnWeekOff, reassignEmployeeLocation } from '@/data/employees';
 import { useLocationDirectoryRevision } from '@/lib/useLocationDirectoryRevision';
+import {
+  FALLBACK_WEEK_OFF,
+  getDeclaredOrganisationWeekOff,
+  saveOrganisationWeekOff,
+} from '@/data/weekOff';
+import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
+import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import {
   getSalaryStructure,
@@ -80,7 +87,7 @@ import {
   pinnedPermission,
 } from '@/lib/accessControl';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
-import { getHolidayDirectory, saveHolidayDirectory } from '@/data/holidays';
+import { getHolidayDirectory, holidayYearsCovered, saveHolidayDirectory } from '@/data/holidays';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { getIntegrationPreferences, saveIntegrationPreferences } from '@/data/integrations';
 import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
@@ -2164,6 +2171,89 @@ const PermIcon = ({ level }: { level: PermissionLevel }) => {
 };
 
 // ===========================================================================
+// Section: Week Off
+//
+// The organisation's half of a policy that only had a personal half. See
+// data/weekOff.ts for why a `?? 'Sunday'` literal was not one.
+// ===========================================================================
+function WeekOffSection() {
+  const save = useSaveIndicator();
+  const weekOffRevision = useWeekOffRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const [declared, setDeclared] = useState(() => getDeclaredOrganisationWeekOff());
+
+  useEffect(() => {
+    setDeclared(getDeclaredOrganisationWeekOff());
+  }, [weekOffRevision]);
+
+  // Who this setting does *not* reach. An administrator changing the company's
+  // week-off is entitled to know it will not move these people, because their
+  // record says otherwise — silently leaving them behind is how a roster ends
+  // up disagreeing with the policy that supposedly produced it.
+  const withOwnWeekOff = useMemo(
+    () => getEmployeeDirectory().filter((employee) => hasOwnWeekOff(employee)),
+    [directoryRevision],
+  );
+
+  function choose(day: WeekOffDay) {
+    setDeclared(day);
+    save.track(saveOrganisationWeekOff(day));
+  }
+
+  return (
+    <SettingsSection
+      title="Week Off"
+      subtitle="The day this organisation is closed. Applies to everybody who has not been given a day of their own."
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="max-w-sm">
+          <label className="block text-sm font-medium text-ink-700 mb-1.5" htmlFor="org-week-off">
+            Organisation week off
+          </label>
+          <Select
+            ariaLabel="Organisation week off"
+            value={declared ?? FALLBACK_WEEK_OFF}
+            onChange={(value) => choose(value as WeekOffDay)}
+            options={WEEK_OFF_DAYS.map((day) => ({ label: day, value: day }))}
+          />
+          {/* "Sunday because nobody chose" and "Sunday because somebody chose
+              Sunday" are the same day and different facts. The picker cannot
+              show the difference, so the line under it does. */}
+          <p className="mt-2 text-xs text-ink-500">
+            {declared
+              ? `Everybody without a week-off of their own does not work on ${declared}.`
+              : `Not set — ${FALLBACK_WEEK_OFF} is assumed until somebody chooses. Attendance, leave charges and unpaid-absence deductions are all computed against this day.`}
+          </p>
+        </div>
+
+        <div className="mt-5 border-t border-ink-100 pt-4">
+          <p className="text-sm font-medium text-ink-800">Employees with their own week off</p>
+          <p className="mt-1 text-xs text-ink-500">
+            Set on the person's profile, and it overrides this policy. Changing the
+            organisation's day does not move them.
+          </p>
+          {withOwnWeekOff.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-400">
+              Nobody has a week off of their own — everybody follows the organisation's.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-1.5">
+              {withOwnWeekOff.map((employee) => (
+                <li key={employee.id} className="flex items-center gap-2 text-sm text-ink-700">
+                  <span className="font-medium">{employee.fullName}</span>
+                  <Badge tone="blue">{employee.weekOff}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+    </SettingsSection>
+  );
+}
+
+// ===========================================================================
 // Section: Holidays
 // ===========================================================================
 function HolidaysSection() {
@@ -2333,7 +2423,15 @@ function HolidaysSection() {
       <Card padding={false}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <div className="flex items-center gap-4">
-            <p className="text-sm text-ink-500">{holidayRows.length} holidays — FY 2026</p>
+            {/* The year comes from the holidays themselves. It was the literal
+                "FY 2026" beside a list that can hold any year at all, so the
+                first holiday declared for the next financial year was filed
+                under the wrong one. */}
+            <p className="text-sm text-ink-500">
+              {holidayRows.length === 0
+                ? 'No holidays declared — employees see an empty calendar, and no day is excluded when leave is charged'
+                : `${holidayRows.length} holidays — ${holidayYearsCovered(holidayRows)}`}
+            </p>
             <div className="flex gap-2">
               <Badge tone="green">National</Badge>
               <Badge tone="amber">Regional</Badge>
@@ -4498,6 +4596,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
   { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
   { id: 'shifts', label: 'Shifts', icon: <Clock size={17} />, description: 'Working hours & grace' },
+  { id: 'weekoff', label: 'Week Off', icon: <CalendarDays size={17} />, description: 'The day the company is closed' },
   { id: 'checkins', label: 'Progress Check-ins', icon: <RefreshCw size={17} />, description: 'Cadence & channels' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
   { id: 'holidays', label: 'Holidays', icon: <CalendarDays size={17} />, description: 'Holiday calendar' },
@@ -4559,6 +4658,7 @@ export function SettingsPage() {
       );
       case 'checkins': return <CheckinPolicySection />;
       case 'shifts': return <ShiftsSection />;
+      case 'weekoff': return <WeekOffSection />;
       case 'salary': return (
         <>
           <SalaryStructureSection />

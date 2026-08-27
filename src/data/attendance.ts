@@ -225,10 +225,11 @@ export function regularizationId(employeeId: string, date: string): string {
  *     only exists when a human types one — see `addRegularizationRequest`.
  *   - A day that is the employee's own week-off. Not working on the day you
  *     are rostered off is not an anomaly, and asking someone to account for it
- *     is asking them to justify their week-off. Week-offs differ per person
- *     (Sunday, Monday or Tuesday — see `weekOffOf`), so this cannot be a fixed
- *     "skip weekends" rule: the same Monday is a working day for most of the
- *     company and a day off for the sales and support teams.
+ *     is asking them to justify their week-off. Week-offs differ per person —
+ *     the organisation's day unless somebody has one of their own, see
+ *     `weekOffOf` — so this cannot be a fixed "skip weekends" rule: the same
+ *     Monday is a working day for most of the company and a day off for the
+ *     sales and support teams.
  */
 export function deriveRegularizationRequests(
   records: AttendanceRecord[] = getAttendanceRecords(),
@@ -282,11 +283,11 @@ export function getRecordsByDate(date: string): AttendanceRecord[] {
 /**
  * Monday to Sunday of the week today falls in.
  *
- * All seven days, because the working week is now six days long and *which*
- * day is missing differs per employee: week-offs are rostered across Sunday,
- * Monday and Tuesday (see `weekOffOf` in data/employees.ts). A fixed Mon–Fri
- * window could not show a Saturday — which everyone now works — nor a Sunday,
- * which everyone whose week-off is Monday or Tuesday works.
+ * All seven days, because the working week is six days long and *which* day is
+ * missing differs per employee: the organisation's week-off unless they have
+ * one of their own (see `weekOffOf` in data/employees.ts), and either may be
+ * any day. A fixed Mon–Fri window could show neither a Saturday nor a Sunday,
+ * and both are working days for somebody.
  *
  * So this is a calendar week, not a working week. Ask
  * `getWorkingWeekDatesFor(employee)` for one person's working days.

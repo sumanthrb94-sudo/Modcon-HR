@@ -44,6 +44,7 @@ import {
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployee, isWeekOffFor } from '@/data/employees';
+import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -67,6 +68,9 @@ function dayLabel(iso: string): string {
 export function AttendancePage() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const departmentRevision = useDepartmentDirectoryRevision();
+  // "N on week off" is resolved per person against a policy an administrator
+  // can change while this grid is open.
+  const weekOffRevision = useWeekOffRevision();
   const { profile } = useAuth();
   // Monday–Sunday of whichever week today falls in, not the week the seed
   // records happen to cover. A date literal here would have gone stale the
@@ -213,7 +217,7 @@ export function AttendancePage() {
         .filter((employee) => visibleEmployeeIds.has(employee.id))
         .filter((employee) => employee.status !== 'Resigned')
         .filter((employee) => isWeekOffFor(employee, selectedDate)),
-    [visibleEmployeeIds, directoryRevision, selectedDate],
+    [visibleEmployeeIds, directoryRevision, selectedDate, weekOffRevision],
   );
 
   // Columns for attendance table

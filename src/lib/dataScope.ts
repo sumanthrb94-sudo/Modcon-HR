@@ -108,41 +108,60 @@ export function getVisibleEmployeeIds(
 
 /**
  * Whose leave a person may decide — a narrower question than whose records
- * they may read, and one nothing asked until now.
+ * they may read.
  *
- * Approving is a **position in the reporting tree, not a role**. Whoever an
- * employee reports to decides their leave, and so does anyone further up that
- * same line; no role grants it organisation-wide.
+ * There are **two independent routes to authority**, and either one is
+ * enough: a position in the reporting tree, or the administrator role.
  *
  *   Manager     everyone beneath them in the reporting tree, however many
- *               levels deep, and nobody else.
- *   HR Manager  the same — their own reporting line, and only it. HR reads
- *               every employee's records, which is what oversight needs, but
- *               reading a request is not authority over it.
- *   Admin       the same, which in practice is nobody: platform
- *               administration sits nowhere in an org chart.
+ *               levels deep, and nobody else. This is the reporting-line
+ *               route: whoever an employee reports to decides their leave, as
+ *               does anyone further up that same line.
+ *   HR Manager  every employee in the organisation. HR is the function that
+ *               answers for leave when the reporting line cannot — the manager
+ *               has left, was never recorded, or is themselves the applicant.
+ *   Admin       the same, organisation-wide.
  *   Employee    nobody, whatever the org chart says. The Leave module is
  *               self-service at that permission level, and a person recorded
  *               above somebody else without being made a manager has not been
  *               given the job.
  *
- * Nobody approves their own request at any level — `self` is removed from the
- * subtree it roots. So an employee with no reporting manager recorded has
- * nobody who can decide their leave, and that is the honest answer rather than
- * a defect: somebody has to be named on the profile before anyone can act for
- * them. It is also the one thing that used to hide behind HR's blanket scope.
+ * The second route is why a request is now never undecidable. Approving was a
+ * tree position and nothing else, so an employee with no `reportingManagerId`
+ * recorded had literally nobody who could act for them and the request sat
+ * pending until somebody edited the org chart. HR and Admin are a **standing
+ * alternative rather than a fallback that unlocks only once the manager is
+ * missing**: a route that appears only after the data is already broken is one
+ * nobody finds in time, and the two answers to "can HR decide this?" would
+ * then differ per employee for reasons nothing on the page explains.
  *
- * An account the app cannot match to an employee record decides nothing
- * either: no record means no place in the tree, so the answer is nobody rather
- * than everyone — the direction a missing answer has to fail.
+ * Nobody approves their own request at any level — `self` is removed from
+ * whichever set the role produced. An HR Manager's own leave still goes up
+ * their own reporting line, or to another administrator.
+ *
+ * A Manager the app cannot match to an employee record decides nothing: no
+ * record means no place in the tree, so the answer is nobody rather than
+ * everyone — the direction a missing answer has to fail. HR and Admin are
+ * unaffected by that, because their authority is the role an administrator
+ * granted them, not a row in a directory the client can edit.
  */
 export function getApprovableEmployeeIds(
   profile: UserProfile | null,
   directory: Employee[] = getEmployeeDirectory(),
 ): Set<string> {
-  if (resolveAppRole(profile) === 'Employee') return new Set();
+  const role = resolveAppRole(profile);
+  if (role === 'Employee') return new Set();
 
   const self = getCurrentEmployeeRecord(profile, directory);
+
+  if (role === 'Admin' || role === 'HR Manager') {
+    const everyone = new Set(directory.map((employee) => employee.id));
+    // Only when the account is linked to a record is there a self to exclude;
+    // an unlinked administrator has no request of their own to decide.
+    if (self) everyone.delete(self.id);
+    return everyone;
+  }
+
   if (!self) return new Set();
 
   const reports = collectSubtree(self.id, directory);
@@ -165,6 +184,10 @@ export function canApproveLeaveFor(
  * "You are not allowed to do that" and "this app does not know who you are"
  * produce the same absent button, and only one of them is fixable by the
  * person reading it.
+ *
+ * Every refusal that is about the reporting line now also names the other
+ * route — a manager who cannot decide a request wants to know who can, and
+ * since HR always can, the answer is never "nobody".
  */
 export function leaveApprovalRefusal(
   profile: UserProfile | null,
@@ -173,22 +196,33 @@ export function leaveApprovalRefusal(
 ): string | null {
   if (canApproveLeaveFor(profile, employeeId, directory)) return null;
 
-  if (resolveAppRole(profile) === 'Employee') {
-    return 'Leave requests are decided by the reporting manager of the person who applied.';
+  const role = resolveAppRole(profile);
+  if (role === 'Employee') {
+    return 'Leave requests are decided by the reporting manager of the person who applied, or by HR.';
   }
 
   const self = getCurrentEmployeeRecord(profile, directory);
-  if (!self) {
-    return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database.';
+  // Checked before the role branches: an administrator is refused their own
+  // request for the same reason everybody else is, and telling them their
+  // account is unlinked instead would be answering a different question.
+  if (self && self.id === employeeId) {
+    return 'You cannot decide your own leave request — it goes to whoever you report to, or to another administrator.';
   }
-  if (self.id === employeeId) {
-    return 'You cannot decide your own leave request — it goes to whoever you report to.';
+
+  if (role === 'Admin' || role === 'HR Manager') {
+    // Organisation-wide authority, so the only way to arrive here is a request
+    // naming somebody the directory no longer holds.
+    return 'That request names an employee who is not in the directory, so there is nobody to decide it for.';
+  }
+
+  if (!self) {
+    return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database, and HR can decide the request in the meantime.';
   }
 
   const subject = directory.find((employee) => employee.id === employeeId);
   return subject
-    ? `${subject.fullName} does not report to you. Only their reporting manager, or somebody further up that line, can decide this.`
-    : 'You can only decide leave for the people who report to you.';
+    ? `${subject.fullName} does not report to you. Their reporting manager, somebody further up that line, or HR can decide this.`
+    : 'You can only decide leave for the people who report to you. HR can decide anybody’s.';
 }
 
 /** True when `profile` may see this specific employee's records. */

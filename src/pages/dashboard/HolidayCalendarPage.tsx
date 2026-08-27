@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 
 import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
-import { getHolidayDirectory } from '@/data/holidays';
+import { getHolidayDirectory, holidayYearsCovered } from '@/data/holidays';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { dayOfMonth, formatDate, formatMonthShort, formatMonthYearLong } from '@/lib/utils';
 
@@ -30,11 +30,20 @@ export function HolidayCalendarPage() {
         return Object.entries(groups);
     }, [holidays]);
 
+    // Derived from the holidays themselves rather than a literal year, which
+    // was a second claim about the calendar that could disagree with the list
+    // under it — and did, every January.
+    const yearsCovered = useMemo(() => holidayYearsCovered(holidays), [holidays]);
+
     return (
         <div className="space-y-6 animate-fade-in">
             <PageHeader
                 title="Holiday Calendar"
-                subtitle="Complete holiday schedule for 2026"
+                subtitle={
+                    yearsCovered
+                        ? `Complete holiday schedule for ${yearsCovered}`
+                        : 'No holidays have been declared yet'
+                }
                 actions={
                     <Link to="/">
                         <Button variant="secondary" size="sm" icon={<ArrowLeft size={14} />}>
@@ -52,6 +61,18 @@ export function HolidayCalendarPage() {
                 />
 
                 <div className="space-y-5">
+                    {/* An empty calendar means nobody has declared any, not
+                        that the year has none — and the difference is worth
+                        stating, because everything computed against this
+                        calendar (leave charges, attendance, pay) is currently
+                        being computed against nothing. */}
+                    {byMonth.length === 0 && (
+                        <p className="text-sm text-ink-400 text-center py-8">
+                            No holidays have been declared for this organisation. An administrator
+                            adds them in Settings → Holidays; until then, no day is treated as a
+                            company holiday when leave is charged or attendance is counted.
+                        </p>
+                    )}
                     {byMonth.map(([month, monthHolidays]) => (
                         <section key={month}>
                             <h3 className="text-sm font-semibold text-ink-700 mb-2">{month}</h3>

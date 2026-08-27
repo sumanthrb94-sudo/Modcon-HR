@@ -97,7 +97,15 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * is identical across engines, the same argument that keeps ROLE_SPECS on one
  * engine.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings)\.spec\.ts$/;
+/*
+ * `role-change-propagation` is here for the other half of this gate rather than
+ * the shared-writer reason: it rewrites a stored role through the emulator's
+ * `Bearer owner` bypass, and this is the project that exists only when an
+ * emulator does. It writes no shared configuration — it owns a dedicated
+ * account (ROLE_CHURN_PERSONA) so that changing a role cannot revoke access
+ * underneath a persona the role projects are signed in as, in parallel.
+ */
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.

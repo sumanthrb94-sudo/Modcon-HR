@@ -1,5 +1,6 @@
 import type { Employee, Department, EmploymentType, EmployeeStatus, Gender, WeekOffDay } from '@/types';
 import { WEEK_OFF_DAY_INDEX } from '@/types';
+import { getOrganisationWeekOff } from '@/data/weekOff';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
 import { mergeLocations, LOCATION_DIRECTORY_CHANGED_EVENT } from '@/data/locations';
@@ -32,7 +33,8 @@ interface Seed {
   ctc: number;
   skills: string[];
   /**
-   * Rostered week-off. Absent means Sunday, which is most of the company.
+   * Rostered week-off. Absent means "the organisation's" (Settings → Week
+   * Off), which is most of the company.
    *
    * Set explicitly per person rather than computed from the array index. The
    * index trick is what put blood groups and marital statuses on people by
@@ -159,17 +161,37 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
 }
 
 /**
- * The day this person does not work.
+ * The day this person does not work — **theirs if they have one, otherwise the
+ * organisation's**.
  *
  * Everything that asks "is this employee off today" goes through here rather
- * than reading `employee.weekOff`, so the Sunday default lives in one place.
- * The field is optional because most of the company never needed a row of its
- * own to say "Sunday", and because records created before week-offs existed
- * carry nothing — those people are not off every day of the week, they are off
- * on Sunday like everyone else.
+ * than reading `employee.weekOff`, so the two levels resolve in one place. The
+ * field is optional because most of a company is off on whatever day the
+ * company is closed and needs no row of its own to say so; a record created
+ * before week-offs existed carries nothing, and those people are not off every
+ * day of the week, they are off on the organisation's day like everyone else.
+ *
+ * This used to end `?? 'Sunday'`, which made the platform the policy — see
+ * data/weekOff.ts for what was wrong with that. Read at call time rather than
+ * captured at module load, because an administrator can change it in Settings
+ * and the cache is hydrated from Firestore after sign-in; anything that stays
+ * mounted subscribes with `useWeekOffRevision`.
  */
 export function weekOffOf(employee: Pick<Employee, 'weekOff'> | null | undefined): WeekOffDay {
-  return employee?.weekOff ?? 'Sunday';
+  return employee?.weekOff ?? getOrganisationWeekOff();
+}
+
+/**
+ * True when this person's week-off is their own rather than the
+ * organisation's.
+ *
+ * The surfaces that show a week-off say which it is: a day differing from
+ * Settings with nothing to explain it reads as a defect in the roster rather
+ * than the arrangement it is — the same reason a leave balance carries a
+ * "Custom entitlement" badge.
+ */
+export function hasOwnWeekOff(employee: Pick<Employee, 'weekOff'> | null | undefined): boolean {
+  return Boolean(employee?.weekOff);
 }
 
 /**

@@ -161,10 +161,13 @@ export function LeavePage() {
     [leaveRequests, visibleEmployeeIds],
   );
 
-  // Seeing a request and deciding it are different permissions. A manager's
-  // view includes themselves and the HR Manager — neither is below them — so
-  // the Approve/Reject buttons follow this narrower set, and the row shows why
-  // it has none rather than an unexplained gap. See lib/dataScope.ts.
+  // Seeing a request and deciding it are different permissions, and the two
+  // sets differ by role. A manager's view includes themselves and the HR
+  // Manager — neither is below them — so their buttons follow a narrower set
+  // than their rows. HR and Admin decide organisation-wide, so for them the
+  // only row without buttons is their own request. Either way the row shows
+  // why it has none rather than leaving an unexplained gap. See
+  // lib/dataScope.ts.
   const approvableEmployeeIds = useMemo(
     () => getApprovableEmployeeIds(profile),
     [profile, directoryRevision],
@@ -369,8 +372,10 @@ export function LeavePage() {
             </Button>
           </div>
         ) : row.status === 'Pending' && !isEmployee ? (
-          // Visible but not theirs to decide — their own request, or the HR
-          // Manager's. Saying so beats an empty cell that reads as a bug.
+          // Visible but not theirs to decide. For a Manager that is their own
+          // request or somebody outside their reporting line; for HR and
+          // Admin, who decide organisation-wide, only their own. Saying so
+          // beats an empty cell that reads as a bug.
           <span className="text-xs text-ink-400">Not yours to decide</span>
         ) : row.approverName ? (
           <span className="text-xs text-ink-400">{row.approverName}</span>
@@ -716,6 +721,17 @@ export function LeavePage() {
         {activeTab === 'holidays' && (
           <div className="p-5">
             <div className="space-y-2">
+              {/* Empty means nobody has declared any, not that the year has
+                  none — and it is worth saying here in particular, because
+                  this is the tab beside the one where leave is applied for and
+                  an undeclared holiday is charged as a day of leave. */}
+              {sortedHolidays.length === 0 && (
+                <p className="text-sm text-ink-400 text-center py-8">
+                  No holidays have been declared for this organisation, so no day is excluded
+                  when a leave request is charged. An administrator adds them in
+                  Settings → Holidays.
+                </p>
+              )}
               {sortedHolidays.map((h) => {
                 const isPast = h.date < todayIso();
                 return (

@@ -241,7 +241,9 @@ export function avgTenureYears(): number {
  * behind it agree — a manager told twelve approvals were waiting, who opened
  * the queue and found two, would reasonably conclude the app had lost ten.
  * Omitted, it counts the whole organisation, which is what every caller did
- * before the reporting-line rule existed.
+ * before the reporting-line rule existed. For HR and Admin the scoped figure
+ * *is* the organisation's, minus their own request — that is not the scoping
+ * being skipped, it is what deciding organisation-wide adds up to.
  *
  * The other three rows stay organisation-wide for everybody. That is the same
  * gap in a different workflow, left as it was rather than changed on the way

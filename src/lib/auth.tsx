@@ -7,10 +7,15 @@
  * On every successful sign-in, a profile document is upserted at
  * `users/{uid}` in Firestore with a `role` field. Emails present in
  * `ADMIN_EMAILS` are always granted (and kept synced to) the `admin` role;
- * everyone else defaults to `employee`. Role changes made by an admin via
- * the Admin Dashboard are respected on subsequent logins unless the email
- * is a hard-coded admin (in which case admin access can never be revoked
- * by mistake).
+ * everyone else defaults to `employee`.
+ *
+ * That document is then **subscribed to for the life of the session**
+ * (`watchUserProfile`), so a role changed by an administrator reaches the
+ * session it is about without waiting for a sign-out. It used to be read once
+ * and cached in React state, which meant a revocation had no effect on the
+ * person it was revoking until they happened to log out and back in. A
+ * hard-coded admin address is still pinned to `admin` on both paths, so admin
+ * access can never be revoked by mistake.
  */
 
 import {
@@ -28,7 +33,7 @@ import {
     signOut,
     type User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, authPersistenceReady } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
 import { startOrgSettingsSync } from './orgSettings';
@@ -158,6 +163,113 @@ async function readAssignedRole(email: string): Promise<UserRole | null> {
 // ---------------------------------------------------------------------------
 // Firestore profile sync
 // ---------------------------------------------------------------------------
+/**
+ * The in-memory profile for a resolved role — the one shape both the sign-in
+ * upsert and the live listener below produce.
+ *
+ * Written once rather than twice because the two paths must agree about what a
+ * profile *is*. A second copy is a second chance to drop `superAdmin` or
+ * `orgId`, and dropping `orgId` is not a cosmetic bug: `myOrgKey()` in
+ * firestore.rules resolves an unassigned account to a sentinel matching
+ * nothing, so the session would read none of its own organisation's data.
+ */
+function buildProfile(user: User, role: UserRole, orgId: string | undefined): UserProfile {
+    const email = (user.email ?? '').toLowerCase();
+    return {
+        uid: user.uid,
+        email,
+        displayName: user.displayName || email.split('@')[0],
+        photoURL: user.photoURL,
+        role,
+        superAdmin: SUPER_ADMIN_EMAILS.includes(email),
+        ...(orgId ? { orgId } : {}),
+    };
+}
+
+/**
+ * The role a stored profile confers *right now*, for the live listener.
+ *
+ * The hard-coded allow-lists still win, exactly as they do at sign-in: an
+ * edit to a hard-coded admin's document must not demote them, or the running
+ * app and the next sign-in would disagree about who they are.
+ *
+ * `role_assignments` is deliberately not consulted here. It is a grant made
+ * before an account exists, and `applyRoleToExistingAccount`
+ * (src/data/roleAssignments.ts) mirrors every change to it into `users/{uid}`
+ * for accounts that already do — so this one document is the whole live
+ * signal, and an HR designation granted or withdrawn in Settings arrives
+ * through it like any other role change.
+ */
+function liveRole(email: string, stored: unknown): UserRole {
+    if (ADMIN_EMAILS.includes(email)) return 'admin';
+    if (MANAGER_EMAILS.includes(email)) return 'manager';
+    return asUserRole(stored);
+}
+
+/**
+ * Keep `profile` in step with `users/{uid}` for as long as this session lasts.
+ *
+ * The role was read once, at sign-in, and then held in React state — so every
+ * way of changing somebody's role landed in Firestore and changed nothing
+ * about the app in front of them until they signed out and back in. That is
+ * not a cosmetic lag: `applyRoleToExistingAccount` exists *because* moving
+ * somebody out of the HR department has to revoke their administrator access
+ * immediately, and it wrote the document that nobody was reading. Admin
+ * dashboard role changes, "Set HR admin" and "Review admin roles" in
+ * Organizations, and the HR-designation grant all write here, so one listener
+ * covers every one of them.
+ *
+ * Everything downstream is already derived from `profile` on each render —
+ * the route guards in App.tsx, the sidebar's `navItems` filter, module access,
+ * and `lib/dataScope.ts` — so publishing a new profile is the whole of
+ * "across the app". Somebody demoted while sitting on `/admin` is redirected
+ * by `RequireOrgAdmin` on the next render rather than continuing to act with
+ * an authority the server has already withdrawn.
+ */
+function watchUserProfile(
+    user: User,
+    initialOrgId: string | undefined,
+    apply: (profile: UserProfile) => void,
+): () => void {
+    return onSnapshot(
+        doc(db, 'users', user.uid),
+        (snap) => {
+            const data = snap.exists() ? snap.data() : undefined;
+            const email = (user.email ?? '').toLowerCase();
+            const orgId = data?.orgId as string | undefined;
+
+            // The org moved under this session — "Set HR admin" writes `role`
+            // and `orgId` together. The src/data/* overlay reads its org
+            // namespace at plain module-load time, so only a reload
+            // re-evaluates it; applying the new profile in place would leave
+            // the previous organisation's local data on screen under the new
+            // one's identity. Same reason, same remedy as the sign-in path.
+            //
+            // Guarded on the document still existing, or deleting a profile
+            // (Admin → Remove) would reload into an upsert that recreates it.
+            if (snap.exists() && orgId !== initialOrgId) {
+                window.location.reload();
+                return;
+            }
+
+            // A deleted profile is not "no change" — it is the least
+            // privilege this account can hold. `asUserRole(undefined)` is
+            // `employee`, and dropping `orgId` makes every org-scoped read
+            // fail closed, which is the honest end state for an account the
+            // organisation has removed.
+            apply(buildProfile(user, liveRole(email, data?.role), orgId));
+        },
+        () => {
+            // A listener error (offline, a rules change) also ends the
+            // listener, so role changes stop arriving from here on. The last
+            // known profile is kept rather than the session being torn down
+            // mid-edit over a dropped connection — the next sign-in resolves
+            // it, and firestore.rules refuses anything the stale role should
+            // not have been doing regardless.
+        },
+    );
+}
+
 async function upsertUserProfile(user: User): Promise<UserProfile> {
     const email = (user.email ?? '').toLowerCase();
     const isHardcodedAdmin = ADMIN_EMAILS.includes(email);
@@ -191,15 +303,7 @@ async function upsertUserProfile(user: User): Promise<UserProfile> {
     // the in-memory profile on every subsequent sign-in.
     const existingOrgId = existing.exists() ? (existing.data().orgId as string | undefined) : undefined;
 
-    const profile: UserProfile = {
-        uid: user.uid,
-        email,
-        displayName: user.displayName || email.split('@')[0],
-        photoURL: user.photoURL,
-        role,
-        superAdmin: SUPER_ADMIN_EMAILS.includes(email),
-        ...(existingOrgId ? { orgId: existingOrgId } : {}),
-    };
+    const profile = buildProfile(user, role, existingOrgId);
 
     await setDoc(
         ref,
@@ -265,7 +369,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState('');
 
     useEffect(() => {
+        // Torn down and replaced whenever the account changes, so a signed-out
+        // session never leaves a listener reporting the previous user's role
+        // into the next one's provider.
+        let stopProfileWatch: (() => void) | undefined;
+
         const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+            stopProfileWatch?.();
+            stopProfileWatch = undefined;
             setUser(firebaseUser);
             if (firebaseUser) {
                 try {
@@ -293,6 +404,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // right org's overlay.
                     const record = getEmployeeByEmail(p.email);
                     if (record) linkEmployeeToAuthAccount(record.id, p.uid);
+
+                    // Started only once the upsert has settled the stored
+                    // role, so the listener's first snapshot re-states what
+                    // was just written rather than racing it and briefly
+                    // publishing the pre-sign-in role.
+                    stopProfileWatch = watchUserProfile(firebaseUser, p.orgId, setProfile);
                 } catch {
                     setProfile(null);
                 }
@@ -301,7 +418,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             setLoading(false);
         });
-        return unsub;
+        return () => {
+            stopProfileWatch?.();
+            unsub();
+        };
     }, []);
 
     // Hydrate the organisation's configuration — leave policies, company

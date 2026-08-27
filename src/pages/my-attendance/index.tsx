@@ -37,6 +37,7 @@ import {
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor } from '@/data/employees';
+import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
@@ -62,6 +63,10 @@ export function MyAttendancePage() {
   // Held with empty deps, `ownEmployee` stayed frozen at mount, so linking an
   // account left check-in refused until the page happened to remount.
   const directoryRevision = useEmployeeDirectoryRevision();
+  // The week strip below leaves the week-off unworked, and for most people
+  // that day is the organisation's rather than their own — so it moves when
+  // Settings does, and this page can be open while that happens.
+  useWeekOffRevision();
   const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
   // Mon–Sun of the current week, derived rather than pinned to the week the
   // seed records were written for. All seven days: the week-off that makes it

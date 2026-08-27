@@ -61,7 +61,9 @@ import { OrgChart } from './OrgChart';
 import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
-import { updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
+import { hasOwnWeekOff, updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
+import { getOrganisationWeekOff } from '@/data/weekOff';
+import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import {
   getEmployeeShiftOverrides,
   getShiftAssignments,
@@ -1610,11 +1612,13 @@ function InlineText({
  * Deliberately not an `InlineEditTrigger` like the department and location
  * rows around it: those hide their pencil until hover, which is fine for
  * correcting a value that is already there. This row is most often read when
- * the value is *missing*, and somebody with no manager recorded has nobody who
- * can decide their leave at all — `getApprovableEmployeeIds` answers "nobody"
- * for them, by design (see lib/dataScope.ts). The way to fix that has to be
- * visible on the profile rather than hidden behind a hover on a dash or buried
- * in the whole Edit Profile form.
+ * the value is *missing*, and somebody with no manager recorded has nobody in
+ * their reporting line who can decide their leave — HR and Admin can decide it
+ * organisation-wide (see lib/dataScope.ts), so the request is not stuck, but
+ * every one of them then lands on the administrator rather than on the person
+ * who actually knows the team. The way to fix that has to be visible on the
+ * profile rather than hidden behind a hover on a dash or buried in the whole
+ * Edit Profile form.
  *
  * The candidate list is passed in already pruned of this person and everyone
  * below them — offering a subordinate would close a cycle the org chart walks.
@@ -1794,7 +1798,21 @@ function OverviewTab({
           <InfoRow label="Gender" value={emp.gender} />
           <InfoRow label="Blood Group" value={emp.bloodGroup} />
           <InfoRow label="Marital Status" value={emp.maritalStatus} />
-          <InfoRow label="Week Off" value={weekOffOf(emp)} />
+          {/*
+            Says which of the two levels this day came from. A week-off that
+            differs from Settings with nothing to explain it reads as a defect
+            in the roster rather than the arrangement it is — and one that
+            merely matches Settings today should not look pinned, because it
+            will move when the policy does.
+          */}
+          <InfoRow
+            label="Week Off"
+            value={
+              hasOwnWeekOff(emp)
+                ? `${weekOffOf(emp)} · their own`
+                : `${weekOffOf(emp)} · organisation's`
+            }
+          />
           {/*
             Says when the hours are this person's own rather than the
             organisation's — an unexplained difference from Settings reads as a
@@ -2605,10 +2623,17 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editDateOfBirth, setEditDateOfBirth] = useState('');
   const [editBloodGroup, setEditBloodGroup] = useState('');
   const [editMaritalStatus, setEditMaritalStatus] = useState('');
-  // Typed as WeekOffDay rather than string: the roster offers exactly three
-  // days, and there is no "not recorded" option because every employee has a
-  // week-off. Someone with none set is off on Sunday, not off on no day.
-  const [editWeekOff, setEditWeekOff] = useState<WeekOffDay>('Sunday');
+  // The organisation's day, for naming the "follow organisation" option and
+  // for the profile row below. Subscribed rather than read once: an
+  // administrator can change it in Settings while this page is open.
+  const weekOffRevision = useWeekOffRevision();
+  const organisationWeekOff = useMemo(() => getOrganisationWeekOff(), [weekOffRevision]);
+  // '' means "follow the organisation's week-off" — a state this form has to
+  // be able to return to, now that an absent `weekOff` tracks Settings rather
+  // than meaning a fixed Sunday. Storing the resolved day instead would give
+  // everybody ever edited a personal override equal to whatever the policy
+  // happened to be that day, and quietly stop them following the next change.
+  const [editWeekOff, setEditWeekOff] = useState<WeekOffDay | ''>('');
   // '' means "the organisation's default" — an absence from the assignment map
   // rather than a shift id, so removing an exception puts them back on the
   // organisation's hours rather than on nothing.
@@ -2938,7 +2963,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditDateOfBirth(emp.dateOfBirth ?? '');
     setEditBloodGroup(emp.bloodGroup ?? '');
     setEditMaritalStatus(emp.maritalStatus ?? '');
-    setEditWeekOff(weekOffOf(emp));
+    // Their own day, or the empty "follow the organisation" option — never the
+    // resolved day, which would pin the policy onto them on the next save.
+    setEditWeekOff(emp.weekOff ?? '');
     const ownHours = getEmployeeShiftOverrides()[emp.id];
     setEditShiftId(ownHours ? CUSTOM_SHIFT : (getShiftAssignments()[emp.id] ?? ''));
     // Seeded from the organisation's default when they have none, so the
@@ -3012,10 +3039,11 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       // says "not recorded" instead of "recorded as empty".
       bloodGroup: editBloodGroup.trim() || undefined,
       maritalStatus: (editMaritalStatus as Employee['maritalStatus']) || undefined,
-      // Always written, unlike the optional personal details above: this is a
-      // roster the employer sets, so "unset" is not a state it should reach
-      // once someone has been through this form.
-      weekOff: editWeekOff,
+      // Unset is a real answer here, and the common one: it means this person
+      // follows the organisation's week-off (Settings → Week Off) and keeps
+      // following it when that changes. Only a day chosen deliberately is
+      // stored, because a stored day stops tracking the policy for good.
+      weekOff: editWeekOff || undefined,
       address: editAddress.trim() || undefined,
       reportingManagerId: editReportingManagerId || null,
       // getEmployeeDirectory() recomputes the name on read; setting it here
@@ -3487,14 +3515,33 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
           <div>
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Week Off</label>
             <Select
+              // Same reason as the Shift select below: the label beside it is
+              // not associated with it, so this is the only accessible name
+              // this combobox has.
+              ariaLabel="Week Off"
               value={editWeekOff}
-              onChange={(value) => setEditWeekOff(value as WeekOffDay)}
-              options={WEEK_OFF_DAYS.map((day) => ({ label: day, value: day }))}
+              onChange={(value) => setEditWeekOff(value as WeekOffDay | '')}
+              options={[
+                // Named with the day it resolves to, so choosing it is not a
+                // blind pick — and listed first because following the
+                // organisation is the ordinary case, not the exception.
+                { label: `Follow organisation (${organisationWeekOff})`, value: '' },
+                ...WEEK_OFF_DAYS.map((day) => ({ label: day, value: day })),
+              ]}
             />
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Shift</label>
             <Select
+              // None of the labels in this dialog are associated with their
+              // control — no `htmlFor`, and the select is a sibling rather than
+              // a child — so a `Select` is nameable only through `ariaLabel`.
+              // Without it this combobox has no accessible name at all: a
+              // screen reader announces an unlabelled list of shift times, and
+              // `getByLabel('Shift')` matches nothing. The three custom-hours
+              // inputs beside it were given `aria-label` in the same commit;
+              // this one was missed because it reuses the shared component.
+              ariaLabel="Shift"
               value={editShiftId}
               onChange={(value) => setEditShiftId(value)}
               options={[
