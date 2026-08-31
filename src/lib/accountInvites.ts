@@ -35,18 +35,12 @@ import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 
 import { collection, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { assignRole } from '@/data/roleAssignments';
+import { randomPassword } from './tempPassword';
 import type { UserRole } from './auth';
 
 /** Roles an administrator may hand out here. `admin` is never one of them —
  *  same restriction as role_assignments and the /users rules. */
 export const INVITABLE_ROLES: UserRole[] = ['employee', 'manager', 'hr'];
-
-function randomPassword(length = 14): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-  const bytes = new Uint32Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
-}
 
 export interface InviteAccountInput {
   name: string;

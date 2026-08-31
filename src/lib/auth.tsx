@@ -197,12 +197,29 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * The message shown when sign-in fails.
+ *
+ * Every wrong-credential case returns the *same* sentence, deliberately.
+ * `auth/user-not-found` used to say "No account found with that email", which
+ * answers a question the person asking is not entitled to have answered: it
+ * confirms, one address at a time, exactly who has an account here. On a
+ * product with no self-registration — where holding an account means somebody
+ * decided you should — that list is worth something to an attacker, and
+ * assembling it needs nothing but the login form.
+ *
+ * The trade is a slightly less helpful message for someone who mistyped their
+ * address. Firebase's own rate limiting still surfaces separately, because
+ * "you are locked out for a while" is not a fact about who exists.
+ */
 function friendlyAuthError(err: unknown): string {
     const code = (err as { code?: string })?.code ?? '';
+    const SAME_FOR_EVERY_BAD_CREDENTIAL = 'Incorrect email or password.';
     const map: Record<string, string> = {
-        'auth/invalid-credential': 'Incorrect email or password.',
-        'auth/user-not-found': 'No account found with that email.',
-        'auth/wrong-password': 'Incorrect email or password.',
+        'auth/invalid-credential': SAME_FOR_EVERY_BAD_CREDENTIAL,
+        'auth/user-not-found': SAME_FOR_EVERY_BAD_CREDENTIAL,
+        'auth/wrong-password': SAME_FOR_EVERY_BAD_CREDENTIAL,
+        'auth/invalid-login-credentials': SAME_FOR_EVERY_BAD_CREDENTIAL,
         'auth/email-already-in-use': 'An account already exists with that email.',
         'auth/weak-password': 'Password must be at least 6 characters.',
         'auth/invalid-email': 'Enter a valid email address.',
