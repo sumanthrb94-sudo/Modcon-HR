@@ -24,6 +24,18 @@ npm run test:rules # Firestore security-rules tests (Firestore emulator; needs J
 
 Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.config.ts`).
 
+### Clicking around locally: `npm run sandbox`
+
+`npm run dev` alone points at the live Firebase project, where you need real credentials, where there is deliberately no self-registration to get past the login page, where a careless click writes the organisation's real data, and where the rules in force are whatever was last deployed rather than what is in the working tree.
+
+`npm run sandbox` ([scripts/sandbox.sh](scripts/sandbox.sh)) starts the Firestore and Auth emulators, seeds four accounts and an organisation on a trial, and runs Vite against them — so `firestore.rules` as it stands is the ruleset being exercised, and a rules change can be tried before it ships rather than after.
+
+- **Four accounts, one password** (`Sandbox@123`): `super@modcon.test`, `hr@modcon.test`, `manager@modcon.test`, `employee@modcon.test`. Printed on startup by `scripts/sandbox-banner.mjs`, which is its own step because Vite's banner is printed afterwards and would otherwise scroll the passwords off the top.
+- **The role is `users/{uid}.role` and that is the whole of it** for hr/manager/employee — the sign-in upsert reads a stored role and carries it forward, so no allow-list is involved. The super admin is the exception: `superAdmin` comes from `SUPER_ADMIN_EMAILS` in `src/lib/auth.tsx`, so the sandbox passes its address in as `VITE_E2E_SUPER_ADMIN_EMAIL` and sets `VITE_ENABLE_E2E_ACCOUNTS=true`. A production build ships neither whatever the environment says.
+- **`employee_links/{uid}` is seeded for three of them**, because an account with no link is nobody: it reads none of its own salary or leave and check-in has no day to stamp — failing closed and silently, which is exactly the confusing empty screen the seeding exists to avoid. The super admin deliberately has no `orgId`: it administers every organisation rather than belonging to one.
+- **The seeded trial ends in four days on purpose.** The countdown banner is quiet until the last five (`QUIET_UNTIL_DAYS`), so a fourteen-day trial would show nothing and read as a broken feature.
+- **Every run starts clean, and that is stated rather than worked around.** `--export-on-exit` was tried and removed: under `emulators:exec` it fires when the wrapped command exits normally, and the wrapped command is a dev server stopped with Ctrl-C, so it never ran. A sandbox that claims to keep your data and does not is worse than one that says it will not. An emulator already listening on 8080 is used instead of fought over, which is the documented way to run one with persistence.
+
 ## Architecture
 
 ### Mutable collections are the organisation's, not the browser's

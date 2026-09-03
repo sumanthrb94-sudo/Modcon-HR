@@ -51,3 +51,4 @@ coverage
 
 # Editor and tooling backups
 *.bak
+.sandbox-data/

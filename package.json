@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "sandbox": "bash scripts/sandbox.sh",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "bash scripts/e2e.sh",
