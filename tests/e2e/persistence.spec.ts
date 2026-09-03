@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
+import { waitForOrgRecordsQuiet } from './firestore';
 
 /**
  * Data written through the UI must still be there after a refresh.
@@ -53,6 +54,12 @@ test.describe.serial('data survives a refresh', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('table').getByText(subject)).toBeVisible();
 
+    // The write is optimistic — the click returned before its commit — and a
+    // reload is a fresh Firestore SDK with an empty mutation queue, so an
+    // un-acked write is discarded and the subscription hydrates the cache from
+    // the server's older copy. Wait for the server, then reload. This is what
+    // the assertion is about, so racing it proves nothing either way.
+    await waitForOrgRecordsQuiet('tickets');
     await page.reload();
     await expect(page.getByRole('table').getByText(subject)).toBeVisible();
   });
@@ -75,6 +82,7 @@ test.describe.serial('data survives a refresh', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('table').getByText(assetName)).toBeVisible();
 
+    await waitForOrgRecordsQuiet('assets');
     await page.reload();
     await expect(page.getByRole('table').getByText(assetName)).toBeVisible();
   });
@@ -96,6 +104,7 @@ test.describe.serial('data survives a refresh', () => {
     const before = await page.locator('table tbody tr').count();
     expect(before).toBeGreaterThan(0);
 
+    await waitForOrgRecordsQuiet('attendanceRecords');
     await page.reload();
     await expect(page.locator('table tbody tr').first()).toBeVisible();
     expect(await page.locator('table tbody tr').count()).toBe(before);
@@ -120,8 +129,24 @@ async function pendingCountFor(page: Page, queue: string): Promise<number> {
   await page.goto('/dashboard/pending-approvals');
   const row = page.locator('a', { hasText: queue }).first();
   await expect(row).toBeVisible();
-  const text = (await row.innerText()).replace(/\s+/g, ' ');
-  return Number(text.match(/(\d+) pending items/)?.[1] ?? -1);
+
+  // Read until the figure stops moving. These stores hydrate from Firestore
+  // *after* the page renders, so the first number shown is the cache's and the
+  // subscription can still raise it a moment later. Captured on the way past,
+  // the `before` and `after` of this test straddle that hydration and the
+  // difference between them is not the decision it is supposed to be measuring.
+  const countNow = async () => {
+    const text = (await row.innerText()).replace(/\s+/g, ' ');
+    return Number(text.match(/(\d+) pending items/)?.[1] ?? -1);
+  };
+  let previous = await countNow();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await page.waitForTimeout(300);
+    const current = await countNow();
+    if (current === previous) return current;
+    previous = current;
+  }
+  return previous;
 }
 
 test.describe.serial('changes reflect on related pages', () => {
@@ -143,6 +168,10 @@ test.describe.serial('changes reflect on related pages', () => {
     await page.getByRole('link', { name: 'Attendance', exact: true }).first().click();
     await page.getByRole('button', { name: /^Approve$/ }).first().click();
 
+    // `pendingCountFor` navigates, which reloads the app and therefore the
+    // Firestore SDK. The decision has to be on the server first or it is
+    // thrown away with the page that made it.
+    await waitForOrgRecordsQuiet('regularizationOverrides');
     expect(await pendingCountFor(page, 'Regularizations')).toBe(before - 1);
   });
 

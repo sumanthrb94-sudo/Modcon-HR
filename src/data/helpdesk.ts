@@ -223,6 +223,7 @@ const ticketStore = persistentCollection<Ticket>(
   'modcon.hr.tickets',
   'modcon-hr-tickets-changed',
   () => tickets,
+  'tickets',
 );
 
 export const TICKETS_CHANGED_EVENT = ticketStore.changedEvent;

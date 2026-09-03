@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Monitor,
   Package,
@@ -24,7 +24,7 @@ import {
   Card,
   CardHeader,
 } from '@/components/ui';
-import { assets as initialAssets, getAssets, saveAssets } from '@/data/assets';
+import { assets as initialAssets, getAssets, saveAssets, ASSETS_CHANGED_EVENT } from '@/data/assets';
 import { employees } from '@/data/employees';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { Asset, AssetCategory, AssetStatus } from '@/types';
@@ -39,6 +39,7 @@ import {
 } from 'recharts';
 import { todayIso } from '@/lib/today';
 import { CHART_STATE, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -277,6 +278,11 @@ export function AssetsPage() {
   // Seeded from the store and written through on every change, so an edit
   // is still there after a refresh.
   const [assetList, setAssetListRaw] = useState(() => getAssets());
+  // Re-read when the store changes under us. Before these records were
+  // shared, nothing could change them except this page; now a colleague's
+  // write arrives through the Firestore subscription and has to land here.
+  const assetsRevision = useCollectionRevision(ASSETS_CHANGED_EVENT);
+  useEffect(() => { setAssetListRaw(getAssets()); }, [assetsRevision]);
   const setAssetList = (updater: Parameters<typeof setAssetListRaw>[0]) =>
     setAssetListRaw((prev) => saveAssets(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
   const [search, setSearch] = useState('');

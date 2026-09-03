@@ -1,4 +1,50 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "//": "src/data/persistence.ts subscribes one listener per store rather than one for the whole organisation \u2014 attendance alone is thousands of documents a year, and a page that only needs the ticket list should not stream them. That query filters on orgId and store together, which Firestore cannot serve from single-field indexes.",
+      "collectionGroup": "org_records",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "orgId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "store",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "src/lib/attendanceStamps.ts \u2014 an employee's own stamps. The rules require the query to filter on employeeId as well as orgId, so this index is what makes a legal read possible at all.",
+      "collectionGroup": "attendance_stamps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "orgId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "employeeId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "src/lib/orgFeed.ts \u2014 the board, newest first, scoped to one organisation. Ordering on the server so a page limit later takes the right subset rather than reordering it.",
+      "collectionGroup": "org_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "orgId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

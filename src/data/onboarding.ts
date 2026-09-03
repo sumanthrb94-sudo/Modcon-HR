@@ -187,6 +187,7 @@ const onboardingStore = persistentCollection<Onboarding>(
   'modcon.hr.onboarding.state',
   'modcon-hr-onboarding-changed',
   () => onboardings,
+  'onboarding',
 );
 
 export const ONBOARDING_CHANGED_EVENT = onboardingStore.changedEvent;

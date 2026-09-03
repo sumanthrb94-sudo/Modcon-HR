@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { PERSONAS } from './config';
 import { istToday } from './clock';
+import { clearOrgRecords, listOrgRecords } from './firestore';
 
 /**
  * Attendance → Regularizations → Approvals, end to end.
@@ -37,6 +38,10 @@ async function login(page: Page) {
  * matched by substring rather than pinned.
  */
 async function resetRegularizationStore(page: Page) {
+  // Both copies. Clearing localStorage alone stopped being a reset when these
+  // records moved to Firestore: the subscription hydrates the cache straight
+  // back from the server. See src/data/persistence.ts.
+  await clearOrgRecords('regularizationOverrides');
   await page.goto('/attendance');
   await page.evaluate(() => {
     Object.keys(localStorage)
@@ -240,6 +245,22 @@ test.describe.serial('deciding a regularization', () => {
 
     // Gone from the pending list on the page that decided it.
     await expect(page.getByText(reason)).toHaveCount(0);
+
+    // The decision has to be ON THE SERVER before this page reloads.
+    // `save()` is optimistic — it writes the cache, fires the change event and
+    // returns, committing afterwards — and a reload is a fresh Firestore SDK
+    // with an empty mutation queue, so an un-acked write is simply gone. The
+    // subscription then hydrates the cache from the server's older copy and
+    // the approval silently reverts, which is exactly the failure this used to
+    // produce: the queue on /attendance still said Pending.
+    await expect
+      .poll(async () => {
+        const stored = await listOrgRecords<{ reason?: string; status?: string }>(
+          'regularizationOverrides',
+        );
+        return stored.find((record) => record.reason === reason)?.status ?? null;
+      }, { timeout: 15_000 })
+      .toBe('Approved');
 
     // Still gone after a reload — a decision held in React state only would
     // reappear here, which is the whole point of this assertion.

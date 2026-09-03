@@ -12,6 +12,7 @@ import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataSc
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { formatDate } from '@/lib/utils';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 export function LeaveRequestsApprovalsPage() {
     const navigate = useNavigate();
@@ -19,6 +20,9 @@ export function LeaveRequestsApprovalsPage() {
     const currentEmployee = getCurrentEmployee(profile);
     const directoryRevision = useEmployeeDirectoryRevision();
     const [leaveRequests, setLeaveRequests] = useState(() => getLeaveRequests());
+    // See the note in assets/index.tsx.
+    const leaveRevision = useCollectionRevision(LEAVE_REQUESTS_CHANGED_EVENT);
+    useEffect(() => { setLeaveRequests(getLeaveRequests()); }, [leaveRevision]);
     const [decisionNotice, setDecisionNotice] = useState<string | null>(null);
 
     useEffect(() => {

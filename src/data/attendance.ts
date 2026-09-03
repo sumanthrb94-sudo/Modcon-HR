@@ -330,6 +330,7 @@ const attendanceStore = persistentCollection<AttendanceRecord>(
   'modcon.hr.attendanceRecords',
   'modcon-hr-attendance-changed',
   () => attendanceRecords,
+  'attendanceRecords',
 );
 
 export const ATTENDANCE_CHANGED_EVENT = attendanceStore.changedEvent;
@@ -355,6 +356,7 @@ const regularizationStore = persistentCollection<RegularizationRequest>(
   'modcon.hr.regularizationOverrides',
   'modcon-hr-regularizations-changed',
   () => [],
+  'regularizationOverrides',
 );
 
 export const REGULARIZATIONS_CHANGED_EVENT = regularizationStore.changedEvent;

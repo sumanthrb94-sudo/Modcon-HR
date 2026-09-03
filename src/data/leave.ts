@@ -3,7 +3,7 @@ import type { UserProfile } from '@/lib/auth';
 import { leaveApprovalRefusal } from '@/lib/dataScope';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
-import { orgScopedKey } from '@/lib/orgScope';
+import { persistentCollection } from '@/data/persistence';
 
 const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
 export const LEAVE_REQUESTS_CHANGED_EVENT = 'modcon-hr-leave-requests-changed';
@@ -226,36 +226,28 @@ export const leaveRequests: LeaveRequest[] = isMockDataCleared() ? [] : [
   },
 ];
 
-function readStoredLeaveRequests(): LeaveRequest[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(LEAVE_REQUESTS_STORAGE_KEY));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as LeaveRequest[];
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredLeaveRequests(requests: LeaveRequest[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(LEAVE_REQUESTS_STORAGE_KEY), JSON.stringify(requests));
-}
-
-function notifyLeaveRequestsChanged() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(LEAVE_REQUESTS_CHANGED_EVENT));
-}
+/**
+ * Leave requests, on the shared store like every other record collection.
+ *
+ * This module used to carry its own read/write/notify copy of the
+ * localStorage pattern — written before `persistentCollection` existed and
+ * never folded into it. That is why leave was the one collection the move to
+ * Firestore would have silently skipped: it did not go through the seam
+ * everything else did.
+ */
+const leaveRequestStore = persistentCollection<LeaveRequest>(
+  LEAVE_REQUESTS_STORAGE_KEY,
+  LEAVE_REQUESTS_CHANGED_EVENT,
+  () => leaveRequests,
+  'leaveRequests',
+);
 
 export function getLeaveRequests(): LeaveRequest[] {
-  const stored = readStoredLeaveRequests();
-  return stored ? stored : leaveRequests;
+  return leaveRequestStore.get();
 }
 
 export function saveLeaveRequests(requests: LeaveRequest[]) {
-  writeStoredLeaveRequests(requests);
-  notifyLeaveRequestsChanged();
+  leaveRequestStore.save(requests);
 }
 
 /**

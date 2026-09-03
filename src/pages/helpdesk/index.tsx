@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   TicketCheck,
   Clock,
@@ -22,7 +22,7 @@ import {
   SearchInput,
   Select,
 } from '@/components/ui';
-import { tickets as initialTickets, ticketCategories, getTickets, saveTickets } from '@/data/helpdesk';
+import { tickets as initialTickets, ticketCategories, getTickets, saveTickets, TICKETS_CHANGED_EVENT } from '@/data/helpdesk';
 import { employees, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -30,6 +30,7 @@ import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { Ticket, TicketStatus, TicketPriority } from '@/types';
 import { timeAgo, formatDate } from '@/lib/utils';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 // ---------------------------------------------------------------------------
 // Priority helpers
@@ -344,6 +345,10 @@ export function HelpdeskPage() {
   // Seeded from the store and written through on every change, so an edit
   // is still there after a refresh.
   const [ticketList, setTicketListRaw] = useState(() => getTickets());
+  // See the note in assets/index.tsx: a colleague's write now reaches this
+  // store, so the page has to re-read rather than trust its mount snapshot.
+  const ticketsRevision = useCollectionRevision(TICKETS_CHANGED_EVENT);
+  useEffect(() => { setTicketListRaw(getTickets()); }, [ticketsRevision]);
   const setTicketList = (updater: Parameters<typeof setTicketListRaw>[0]) =>
     setTicketListRaw((prev) => saveTickets(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
   const [tab, setTab] = useState('all');

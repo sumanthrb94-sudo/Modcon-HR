@@ -37,6 +37,7 @@ import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/fires
 import { auth, db, authPersistenceReady } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
 import { startOrgSettingsSync } from './orgSettings';
+import { startSharedCollectionsSync } from '@/data/persistence';
 import { startOrgFeatureSync } from './features';
 import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
 
@@ -441,9 +442,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // rules: configuration the organisation owns, versus a platform
         // decision about which tenants a change has reached yet.
         const stopFeatures = startOrgFeatureSync(profile);
+        // And the record collections themselves — attendance, leave, assets,
+        // expenses, helpdesk, payroll, onboarding. Same arrangement as the
+        // configuration above and for the same reason: the data modules read
+        // localStorage synchronously at module-load time, so this is what makes
+        // that copy the organisation's rather than one browser's. Without it
+        // every module falls back to exactly the per-browser behaviour it had
+        // before. See src/data/persistence.ts.
+        const stopRecords = startSharedCollectionsSync(resolveOrgKeyForProfile(profile));
         return () => {
             stopSettings();
             stopFeatures();
+            stopRecords();
         };
     }, [profile?.uid, profile?.orgId]);
 

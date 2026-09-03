@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
 import { istDay, istToday } from './clock';
+import { clearOrgRecords, listOrgRecords, waitForOrgRecordsQuiet } from './firestore';
 
 /**
  * Check in, check out, and what the captured times then drive.
@@ -50,6 +51,8 @@ async function login(page: Page) {
  *
  * Returns the linked employee's name.
  */
+let linkedEmployeeId = '';
+
 async function linkAccountToEmployee(page: Page): Promise<string> {
   await page.goto('/employees');
   // The directory opens in card view; the clickable rows are in list view.
@@ -59,6 +62,10 @@ async function linkAccountToEmployee(page: Page): Promise<string> {
   await firstRow.click();
   await expect(page).toHaveURL(/\/employees\/emp-/);
 
+  // Kept so `resetAttendance` can scope its clear to this employee: several
+  // specs reset attendance, they run in parallel, and they now share one
+  // server — an org-wide delete wipes another spec's records mid-run.
+  linkedEmployeeId = new URL(page.url()).pathname.split('/').pop() ?? '';
   const name = (await page.getByRole('heading').first().innerText()).trim();
   await page.getByRole('button', { name: /Edit Profile/i }).click();
   const dialog = page.getByRole('dialog');
@@ -70,12 +77,28 @@ async function linkAccountToEmployee(page: Page): Promise<string> {
 
 /** Clear stored records so each arrival scenario starts un-checked-in. */
 async function resetAttendance(page: Page) {
+  // Let the previous scenario's writes land before deleting anything. They are
+  // optimistic — the click returned before the commit — so a delete issued now
+  // is overtaken by it, and the next scenario starts against the very record
+  // this was called to remove.
+  await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
+  await waitForOrgRecordsQuiet('regularizationOverrides', { employeeId: linkedEmployeeId });
+
+  // Both copies. Clearing localStorage alone stopped being a reset when these
+  // records moved to Firestore: the subscription hydrates the cache straight
+  // back from the server, so the next scenario runs against whatever the last
+  // one left. See src/data/persistence.ts.
+  await clearOrgRecords('attendanceRecords', { employeeId: linkedEmployeeId });
+  await clearOrgRecords('regularizationOverrides', { employeeId: linkedEmployeeId });
   await page.goto('/my-attendance');
   await page.evaluate(() => {
     Object.keys(localStorage)
       .filter((key) => /attendance|regulariz/i.test(key))
       .forEach((key) => localStorage.removeItem(key));
   });
+  // Reload so the cleared cache is what the page reads, rather than the state
+  // React is already holding.
+  await page.reload();
 }
 
 // The card heads itself "Today · <date>", or "Open shift · <date>" when it is
@@ -133,6 +156,9 @@ test.describe.serial('check in and check out', () => {
   });
 
   test('the stamp survives a reload', async () => {
+    // The check-in is on the server before the page is thrown away — a reload
+    // is a fresh SDK, and an un-acked write does not survive one.
+    await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
     await page.reload();
     await expect(clockCard(page)).toContainText('In 08:55');
     await expect(page.getByRole('button', { name: 'Check In' })).toBeDisabled();
@@ -240,6 +266,10 @@ test.describe.serial('check in and check out', () => {
     // Midnight passes. Keyed on today alone, the shift became unreachable here:
     // the panel offered a fresh check-in while the real day stayed open at 0h.
     await page.clock.setFixedTime(istDay(1, '00:05'));
+    // Same reason as above: the 23:50 stamp has to have reached the server, or
+    // the reload below discards it and the shift this test is about never
+    // existed.
+    await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
     await page.reload();
 
     const card = clockCard(page);
@@ -260,10 +290,18 @@ test.describe.serial('check in and check out', () => {
     await expect(closed.first()).toContainText('00:05');
 
     // 23:50 -> 00:05 is fifteen minutes, measured across the date boundary.
-    const hours = await page.evaluate(() => {
-      const key = Object.keys(localStorage).find((k) => /attendanceRecords/i.test(k))!;
-      return JSON.parse(localStorage[key]).find((r: any) => r.checkIn === '23:50')?.workedHours;
-    });
-    expect(hours).toBe(0.25);
+    // Asserted against the organisation's copy rather than by reaching into
+    // localStorage: the cache holds an *overlay* now (`{ id, record }` entries,
+    // not records), so the old reach-in found no `checkIn` on anything and
+    // reported `undefined` — a shape change reading as a broken calculation.
+    await expect
+      .poll(async () => {
+        const stored = await listOrgRecords<{ checkIn?: string; workedHours?: number }>(
+          'attendanceRecords',
+          { employeeId: linkedEmployeeId },
+        );
+        return stored.find((record) => record.checkIn === '23:50')?.workedHours;
+      }, { timeout: 15_000 })
+      .toBe(0.25);
   });
 });

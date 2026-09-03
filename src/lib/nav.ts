@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Building2,
   BookOpen,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react';
 import { canAccessModule, type AppModule, type AppRole } from '@/lib/accessControl';
@@ -27,7 +28,16 @@ export interface NavItem {
   path: string;
   icon: LucideIcon;
   group: 'Main' | 'People' | 'Operations';
-  module: AppModule;
+  /**
+   * The permission-matrix module this item is gated by.
+   *
+   * Optional, and only for items that belong to everybody: The Board is the
+   * organisation's own feed, and a noticeboard the matrix can switch off for
+   * employees is a noticeboard nobody reads. An item with no module is always
+   * visible — so leaving it off is a decision, not an oversight, and the
+   * filter below says so.
+   */
+  module?: AppModule;
   /** Visible to an organisation's administrators — Admin and HR Manager. */
   adminOnly?: boolean;
   /** Visible to managers and admins only. */
@@ -38,6 +48,9 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main', module: 'Dashboard' },
+  // No `module`: the board is for everybody in the organisation, so there is
+  // nothing in the permission matrix to filter it by. See the route in App.tsx.
+  { label: 'The Board', path: '/board', icon: Megaphone, group: 'Main' },
   { label: 'Employees', path: '/employees', icon: Users, group: 'People', module: 'Employee Directory' },
   { label: 'Attendance', path: '/attendance', icon: CalendarCheck, group: 'People', module: 'Attendance' },
   { label: 'My Attendance', path: '/my-attendance', icon: CalendarClock, group: 'People', module: 'My Attendance' },
@@ -71,7 +84,8 @@ export function getVisibleNavItems(role: AppRole, isSuperAdmin = false): NavItem
 
   return navItems.filter(
     (item) =>
-      canAccessModule(item.module, role) &&
+      // An item with no module belongs to everybody — see the field's note.
+      (item.module === undefined || canAccessModule(item.module, role)) &&
       (!item.adminOnly || isOrgAdmin) &&
       (!item.managerOnly || canManage) &&
       (!item.superAdminOnly || isSuperAdmin),

@@ -927,6 +927,182 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // The Board — the organisation's own feed.
+    //
+    // What this replaces was a static array in src/data/common.ts: read-only,
+    // identical for every tenant, and impossible for anyone inside a company
+    // to add to. See src/lib/orgFeed.ts.
+    //
+    // The interesting rule is the reaction one. `reactions` is a map of
+    // uid → emoji on the post, and an update may touch only the caller's own
+    // key — so "you may react as yourself and nobody else" is a property of
+    // the storage rather than of the button. A counter would let anybody
+    // increment anything; a subcollection would need a second block and a
+    // second read to say the same thing.
+    // -------------------------------------------------------------------
+    match /org_posts/{postId} {
+      allow get, list: if isSignedIn() && inMyOrg();
+
+      allow create: if isSignedIn() && writingToMyOrg() &&
+        // Attribution cannot be forged.
+        request.resource.data.authorUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.kind in ['post', 'announcement', 'kudos'] &&
+        request.resource.data.body is string &&
+        request.resource.data.body.size() > 0 &&
+        request.resource.data.body.size() <= 3000 &&
+        // A post arrives with nobody's reaction on it and no replies.
+        request.resource.data.reactions.size() == 0 &&
+        request.resource.data.commentCount == 0 &&
+        // Pinning is an administrator's act, including at creation — otherwise
+        // anyone posts straight to the top of everybody's board.
+        (request.resource.data.pinned == false || isOrgAdmin());
+
+      allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() && (
+        reactingAsMyself() ||
+        editingMyOwnPost() ||
+        bumpingCommentCount() ||
+        (isOrgAdmin() && onlyPinning())
+      );
+
+      // Your own, or an administrator clearing the board.
+      allow delete: if isSignedIn() && inMyOrg() &&
+        (resource.data.authorUid == request.auth.uid || isOrgAdmin());
+
+      // Replies. Same tenant read, self-attributed writes, and a reply is
+      // removable by the person who wrote it or by an administrator — not by
+      // the post's author, who does not get to edit the conversation under
+      // their own post.
+      match /comments/{commentId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() &&
+          request.resource.data.authorUid == request.auth.uid &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.body is string &&
+          request.resource.data.body.size() > 0 &&
+          request.resource.data.body.size() <= 1000;
+        allow update: if false;
+        allow delete: if isSignedIn() &&
+          (resource.data.authorUid == request.auth.uid || isOrgAdmin());
+      }
+    }
+
+    /** Only the caller's own key in the reactions map moved. */
+    function reactingAsMyself() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
+        request.resource.data.reactions.diff(resource.data.reactions)
+          .affectedKeys().hasOnly([request.auth.uid]) &&
+        // A closed set, mirrored from REACTIONS in src/lib/orgFeed.ts. Without
+        // it a "reaction" is arbitrary text stored on everyone's board.
+        (!(request.auth.uid in request.resource.data.reactions) ||
+          request.resource.data.reactions[request.auth.uid] in ['👍', '🎉', '❤️', '👏', '💡']);
+    }
+
+    /** The author rewording their own post. The body, and the edit marker. */
+    function editingMyOwnPost() {
+      return resource.data.authorUid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body', 'editedAt']) &&
+        request.resource.data.body is string &&
+        request.resource.data.body.size() > 0 &&
+        request.resource.data.body.size() <= 3000;
+    }
+
+    /**
+     * The denormalised reply count.
+     *
+     * Anyone in the organisation may move it, because anyone may reply — and
+     * it is advisory. It cannot be used to edit a post, because the diff is
+     * restricted to that one field.
+     */
+    function bumpingCommentCount() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']) &&
+        request.resource.data.commentCount is int &&
+        request.resource.data.commentCount >= 0;
+    }
+
+    function onlyPinning() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned']);
+    }
+
+    // -------------------------------------------------------------------
+    // Shared record collections — attendance, leave, assets, expenses,
+    // helpdesk, payroll, onboarding.
+    //
+    // These lived in localStorage and nowhere else, which meant two people in
+    // one company saw two unrelated datasets and a cleared cache was
+    // unrecoverable data loss. See src/data/persistence.ts and
+    // docs/shared-records-spec.md.
+    //
+    // One collection rather than nine, keyed `<orgKey>__<store>__<recordId>`,
+    // with the record itself carried as a JSON string in `data`. Rules cannot
+    // parse that string, so the two fields a rule needs — `employeeId` and
+    // `status` — are lifted out to top-level by the writer.
+    //
+    // WHAT THIS BLOCK IS, PRECISELY. It is a **tenant** boundary: a signed-in
+    // member of an organisation reads and writes that organisation's records
+    // and no other organisation's, and the id cannot be forged to file a
+    // record under a tenant the caller does not belong to. Plus the one
+    // authority rule below, on leave.
+    //
+    // It is NOT yet a per-record authority boundary. Whether a ticket may be
+    // edited by somebody who does not own it, or an expense approved by
+    // somebody who is not a manager, is still decided in the client. That is a
+    // real gap, written up in docs/shared-records-spec.md §5 — and it is
+    // strictly more than existed before, when these records had no server at
+    // all and every check was a hidden button.
+    // -------------------------------------------------------------------
+    match /org_records/{docId} {
+      allow get, list: if isSignedIn() && inMyOrg();
+      allow create, update: if isSignedIn() && writingToMyOrg() &&
+        validOrgRecord(docId) &&
+        leaveDecisionIsAuthorised();
+      // Removal is a tombstone written through the same path, not a delete —
+      // `get()` merges the seed back otherwise. A hard delete is an
+      // administrator clearing data, which is what this allows.
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    function validOrgRecord(docId) {
+      return request.resource.data.store is string &&
+        request.resource.data.store.size() > 0 &&
+        request.resource.data.recordId is string &&
+        request.resource.data.recordId.size() > 0 &&
+        request.resource.data.data is string &&
+        // Firestore's ceiling is 1 MiB for the whole document; a single record
+        // approaching that is a bug in the writer rather than a record.
+        request.resource.data.data.size() <= 200000 &&
+        // The id carries the tenant as well as the store, so a record cannot
+        // be filed under one organisation while claiming another — the same
+        // trick org_settings uses.
+        docId == orgKeyOf(request.resource.data) + '__' +
+                 request.resource.data.store + '__' +
+                 request.resource.data.recordId;
+    }
+
+    /**
+     * Only somebody with authority decides a leave request.
+     *
+     * The one per-record rule in this block, because leave is where the money
+     * is: an approved day is a paid day, and unpaid absence is what payroll
+     * deducts. `src/lib/dataScope.ts` computes the *precise* set — the
+     * reporting line plus the administrators — and that computation needs the
+     * org chart, which these rules cannot walk. So the server enforces the
+     * coarse half that catches the case that matters: an ordinary employee
+     * cannot move a request out of `Pending`, whether it is theirs or
+     * somebody else's.
+     *
+     * Raising a request, cancelling your own, and every other store's writes
+     * are untouched by this.
+     */
+    function leaveDecisionIsAuthorised() {
+      return request.resource.data.store != 'leaveRequests' ||
+        !('status' in request.resource.data) ||
+        request.resource.data.status == 'Pending' ||
+        request.resource.data.status == 'Cancelled' ||
+        isManager();
+    }
+
+    // -------------------------------------------------------------------
     // Geofenced attendance — where each check-in and check-out was captured.
     //
     // This collection is the only reason the feature is worth anything. The

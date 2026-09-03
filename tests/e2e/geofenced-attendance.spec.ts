@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
-import { FIRESTORE_BASE, adminToken, signInPersona } from './firestore';
+import { FIRESTORE_BASE, adminToken, clearOrgRecords, signInPersona } from './firestore';
 import { installGeolocationStub, setDenied, setFix } from './geolocation';
 
 /**
@@ -81,7 +81,12 @@ async function firestore(path: string, init: RequestInit = {}) {
 async function linkAccountToEmployee(page: Page): Promise<string> {
   await page.goto('/employees');
   await page.locator('button[title="List view"]').click();
-  const firstRow = page.locator('table tbody tr').first();
+  // The THIRD row, not the first. `check-in-out.spec.ts` links the first and
+  // `persistence.spec.ts` marks the first offered — and now that attendance
+  // records are the organisation's rather than each browser's, two specs on one
+  // employee race for the same document. Distinct people keep them independent
+  // without giving up parallelism.
+  const firstRow = page.locator('table tbody tr').nth(2);
   await expect(firstRow).toBeVisible();
   await firstRow.click();
   await expect(page).toHaveURL(/\/employees\/emp-/);
@@ -123,6 +128,9 @@ async function linkAccountToEmployee(page: Page): Promise<string> {
  * by loosening the rule.
  */
 async function resetAttendance(page: Page, employeeId: string) {
+  // The attendance record now lives on the server too, so clearing the cache
+  // alone leaves the previous scenario's check-in to be hydrated straight back.
+  await clearOrgRecords('attendanceRecords', { employeeId });
   await page.goto('/my-attendance');
   await page.evaluate(() => {
     Object.keys(localStorage)

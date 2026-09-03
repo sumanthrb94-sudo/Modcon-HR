@@ -256,6 +256,7 @@ const expenseStore = persistentCollection<ExpenseClaim>(
   'modcon.hr.expenseClaims',
   'modcon-hr-expenses-changed',
   () => expenseClaims,
+  'expenseClaims',
 );
 
 export const EXPENSES_CHANGED_EVENT = expenseStore.changedEvent;

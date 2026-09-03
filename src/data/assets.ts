@@ -356,6 +356,7 @@ const assetsStore = persistentCollection<Asset>(
   'modcon.hr.assets',
   'modcon-hr-assets-changed',
   () => assets,
+  'assets',
 );
 
 export const ASSETS_CHANGED_EVENT = assetsStore.changedEvent;

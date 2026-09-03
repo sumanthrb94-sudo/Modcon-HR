@@ -105,7 +105,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * account (ROLE_CHURN_PERSONA) so that changing a role cannot revoke access
  * underneath a persona the role projects are signed in as, in parallel.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.
@@ -199,7 +199,30 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: true,
-  workers: process.env.CI ? 2 : 4,
+  /**
+   * One worker, because the records these specs write are now the
+   * organisation's rather than each browser's.
+   *
+   * Before attendance, leave, assets, helpdesk and the rest moved to Firestore
+   * (see src/data/persistence.ts), every spec had a private dataset: its own
+   * localStorage, in its own context. Four workers could safely mark the same
+   * employee absent on the same day. They now share one server and one demo
+   * organisation, so they interfere — a reset in one spec deletes records
+   * another just wrote, and the regularization queue is derived from *all*
+   * attendance, so a day marked anywhere shows up everywhere.
+   *
+   * `fullyParallel` cannot express this: it parallelises across files, and the
+   * interference is between files. Per-employee scoping (`clearOrgRecords`
+   * takes an `employeeId`) removes most of it and the org-wide derived queues
+   * defeat the rest. So the suite trades wall-clock for determinism — the same
+   * trade the org-isolation dependency edge below already makes, for the same
+   * reason.
+   *
+   * The way back to parallelism is a per-spec organisation rather than the
+   * shared demo one; that needs provisioning in global-setup and is written up
+   * in docs/shared-records-spec.md §8.
+   */
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   projects: [

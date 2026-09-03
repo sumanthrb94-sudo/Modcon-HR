@@ -173,3 +173,232 @@ export async function seedPersonaProfiles(): Promise<void> {
     );
   }
 }
+
+/**
+ * Delete every record one store holds for the default organisation.
+ *
+ * Specs used to reset a collection by clearing `localStorage` and nothing else,
+ * which worked while that was the only copy. Now that records live in
+ * `org_records` (see src/data/persistence.ts) the subscription hydrates the
+ * cache straight back from the server, and a spec that cleared only the browser
+ * is testing against whatever an earlier test in the run left behind.
+ *
+ * Uses the emulator's owner bypass, which is right here: this is setup, not a
+ * thing the app does, and no page is expected to notice it — the specs that use
+ * it reload afterwards.
+ */
+export async function clearOrgRecords(
+  store: string,
+  options: { employeeId?: string; orgKey?: string } = {},
+): Promise<void> {
+  const { employeeId, orgKey = 'default' } = options;
+  const token = await adminToken();
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'Content-Type': 'application/json',
+  };
+
+  const res = await fetch(`${FIRESTORE_BASE}:runQuery`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'org_records' }],
+        where: {
+          compositeFilter: {
+            op: 'AND',
+            filters: [
+              { fieldFilter: { field: { fieldPath: 'orgId' }, op: 'EQUAL', value: { stringValue: orgKey } } },
+              { fieldFilter: { field: { fieldPath: 'store' }, op: 'EQUAL', value: { stringValue: store } } },
+              // Scoped to one person when the caller names one, and that is not
+              // an optimisation. Several specs reset attendance, they run in
+              // parallel across workers, and they now share one server — an
+              // org-wide delete wipes the records another spec wrote a moment
+              // ago. `employeeId` is lifted to a top-level field by
+              // src/data/persistence.ts, which is what makes this filterable.
+              ...(employeeId
+                ? [{ fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: employeeId } } }]
+                : []),
+            ],
+          },
+        },
+      },
+    }),
+  });
+  if (!res.ok) return;
+
+  const rows = (await res.json()) as Array<{ document?: { name?: string } }>;
+  await Promise.all(
+    rows
+      .map((row) => row.document?.name)
+      .filter((name): name is string => Boolean(name))
+      // `name` is the full resource path; the REST base already ends at
+      // `/documents`, so only the part after it is appended.
+      .map((name) => {
+        const relative = name.slice(name.indexOf('/documents/') + '/documents/'.length);
+        return fetch(`${FIRESTORE_BASE}/${relative}`, { method: 'DELETE', headers });
+      }),
+  );
+}
+
+/**
+ * Read one `org_records` document back from the server.
+ *
+ * The counterpart to `clearOrgRecords`, and it exists for the same reason:
+ * writes through `src/data/persistence.ts` are **optimistic**. `save()` updates
+ * the cache, fires the change event and returns; the batch commit happens
+ * afterwards and is never awaited, because no page should wait on the network
+ * to show what the user just did.
+ *
+ * The consequence for a spec is that a reload issued immediately after a click
+ * races that commit — and a reload is not neutral, because a fresh page is a
+ * fresh Firestore SDK with an empty mutation queue. The un-acked write is gone,
+ * the subscription hydrates the cache from the server's older copy, and the
+ * decision the test just made silently reverts. That is what this is for:
+ * `waitForOrgRecord` before a reload turns the race into a wait.
+ *
+ * Returns the record as the app stored it, or null when the document is absent.
+ */
+export async function readOrgRecord<T = Record<string, unknown>>(
+  store: string,
+  recordId: string,
+  orgKey = 'default',
+): Promise<T | null> {
+  const token = await adminToken();
+  const res = await fetch(`${FIRESTORE_BASE}/org_records/${orgKey}__${store}__${recordId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as {
+    fields?: { data?: { stringValue?: string }; deleted?: { booleanValue?: boolean } };
+  };
+  if (body.fields?.deleted?.booleanValue) return null;
+  const json = body.fields?.data?.stringValue;
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wait until the server's copy of one record satisfies `predicate`.
+ *
+ * Throws on timeout rather than returning false: a spec that goes on to reload
+ * anyway would fail later, somewhere unrelated, with the revert described above
+ * as its symptom.
+ */
+export async function waitForOrgRecord<T = Record<string, unknown>>(
+  store: string,
+  recordId: string,
+  predicate: (record: T | null) => boolean,
+  options: { orgKey?: string; timeoutMs?: number } = {},
+): Promise<T | null> {
+  const { orgKey = 'default', timeoutMs = 15_000 } = options;
+  const deadline = Date.now() + timeoutMs;
+  let last: T | null = null;
+  while (Date.now() < deadline) {
+    last = await readOrgRecord<T>(store, recordId, orgKey);
+    if (predicate(last)) return last;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `org_records/${orgKey}__${store}__${recordId} never satisfied the predicate ` +
+      `within ${timeoutMs}ms; last value was ${JSON.stringify(last)}`,
+  );
+}
+
+/**
+ * Every record this organisation has stored for one store, as the app wrote it.
+ *
+ * The list form of `readOrgRecord`, for the common case where a spec knows what
+ * it did but not the id the app derived for it — a regularization is keyed on
+ * an employee id the page never shows. Tombstoned records are omitted; they are
+ * deletions, and no assertion wants them.
+ */
+export async function listOrgRecords<T = Record<string, unknown>>(
+  store: string,
+  options: { employeeId?: string; orgKey?: string } = {},
+): Promise<T[]> {
+  const { employeeId, orgKey = 'default' } = options;
+  const token = await adminToken();
+  const res = await fetch(`${FIRESTORE_BASE}:runQuery`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'org_records' }],
+        where: {
+          compositeFilter: {
+            op: 'AND',
+            filters: [
+              { fieldFilter: { field: { fieldPath: 'orgId' }, op: 'EQUAL', value: { stringValue: orgKey } } },
+              { fieldFilter: { field: { fieldPath: 'store' }, op: 'EQUAL', value: { stringValue: store } } },
+              ...(employeeId
+                ? [{ fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: employeeId } } }]
+                : []),
+            ],
+          },
+        },
+      },
+    }),
+  });
+  if (!res.ok) return [];
+  const rows = (await res.json()) as Array<{
+    document?: { fields?: { data?: { stringValue?: string }; deleted?: { booleanValue?: boolean } } };
+  }>;
+  return rows.flatMap((row) => {
+    const fields = row.document?.fields;
+    if (!fields || fields.deleted?.booleanValue) return [];
+    const json = fields.data?.stringValue;
+    if (!json) return [];
+    try {
+      return [JSON.parse(json) as T];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/**
+ * Wait until this store has stopped changing on the server.
+ *
+ * The generic form of the race `waitForOrgRecord` names: a write through
+ * `src/data/persistence.ts` is optimistic, so a click returns before its commit
+ * lands. Two things in a spec are then unsafe until it has:
+ *
+ *   - **a reload**, because a fresh page is a fresh Firestore SDK with an empty
+ *     mutation queue — the un-acked write is gone, and the subscription
+ *     hydrates the cache from the server's older copy, reverting what the test
+ *     just did;
+ *   - **a reset**, because a delete issued before the commit is overtaken by
+ *     it, and the scenario starts against the record it thought it removed.
+ *
+ * Use this where the spec does not know the id it is waiting on (a reset clears
+ * whatever is there); use `waitForOrgRecord` where it can state the value it
+ * expects, which is the stronger assertion.
+ *
+ * "Quiet" is two identical reads `settleMs` apart rather than one, because a
+ * single read a moment after a click sees the state *before* it just as
+ * convincingly as the state after.
+ */
+export async function waitForOrgRecordsQuiet(
+  store: string,
+  options: { employeeId?: string; orgKey?: string; settleMs?: number; timeoutMs?: number } = {},
+): Promise<void> {
+  const { employeeId, orgKey = 'default', settleMs = 400, timeoutMs = 15_000 } = options;
+  const deadline = Date.now() + timeoutMs;
+  let previous: string | null = null;
+  while (Date.now() < deadline) {
+    const current = JSON.stringify(await listOrgRecords(store, { employeeId, orgKey }));
+    if (previous !== null && current === previous) return;
+    previous = current;
+    await new Promise((resolve) => setTimeout(resolve, settleMs));
+  }
+  // Falling through is deliberate: a store that genuinely never settles is a
+  // failure the assertions after this will state far better than a throw here.
+}

@@ -256,6 +256,7 @@ const payrollRunStore = persistentCollection<PayrollRun>(
   'modcon.hr.payrollRuns',
   'modcon-hr-payroll-runs-changed',
   () => payrollRuns,
+  'payrollRuns',
 );
 
 export const PAYROLL_RUNS_CHANGED_EVENT = payrollRunStore.changedEvent;
@@ -269,6 +270,7 @@ const payslipStore = persistentCollection<Payslip>(
   'modcon.hr.payslips',
   'modcon-hr-payslips-changed',
   seedPayslips,
+  'payslips',
 );
 
 export const PAYSLIPS_CHANGED_EVENT = payslipStore.changedEvent;

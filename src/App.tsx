@@ -17,6 +17,7 @@ const EmployeesPage = lazy(() => import('@/pages/employees').then((m) => ({ defa
 const EmployeeDetailPage = lazy(() => import('@/pages/employees').then((m) => ({ default: m.EmployeeDetailPage })));
 const AttendancePage = lazy(() => import('@/pages/attendance').then((m) => ({ default: m.AttendancePage })));
 const MyAttendancePage = lazy(() => import('@/pages/my-attendance').then((m) => ({ default: m.MyAttendancePage })));
+const FeedPage = lazy(() => import('@/pages/feed').then((m) => ({ default: m.FeedPage })));
 const LeavePage = lazy(() => import('@/pages/leave').then((m) => ({ default: m.LeavePage })));
 const FinancePage = lazy(() => import('@/pages/finance').then((m) => ({ default: m.FinancePage })));
 const PayrollPage = lazy(() => import('@/pages/payroll').then((m) => ({ default: m.PayrollPage })));
@@ -179,6 +180,10 @@ function AppRoutes() {
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
         <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />
         <Route path="my-attendance" element={<RequireModuleAccess module="My Attendance"><MyAttendancePage /></RequireModuleAccess>} />
+        {/* Deliberately ungated: an organisation-wide board the permission
+            matrix can switch off for employees is a noticeboard nobody reads.
+            It carries no personal record — only what people chose to post. */}
+        <Route path="board" element={<FeedPage />} />
         <Route path="leave" element={<RequireModuleAccess module="Leave Management"><LeavePage /></RequireModuleAccess>} />
         <Route path="finance" element={<RequireModuleAccess module="Finance"><FinancePage /></RequireModuleAccess>} />
         <Route path="payroll" element={<RequireModuleAccess module="Payroll"><PayrollPage /></RequireModuleAccess>} />

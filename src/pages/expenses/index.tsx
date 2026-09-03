@@ -47,7 +47,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate, cn } from '@/lib/utils';
-import { expenseByCategory, getExpenseClaims, saveExpenseClaims } from '@/data/expenses';
+import { expenseByCategory, getExpenseClaims, saveExpenseClaims, EXPENSES_CHANGED_EVENT } from '@/data/expenses';
 import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -57,6 +57,7 @@ import { useExpenses } from '@/lib/useFirestore';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { currentMonthIso, todayIso } from '@/lib/today';
 import { CHART_AXIS, CHART_GRID, CHART_PRIMARY, CHART_SERIES, CHART_TICK_FILL, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -717,6 +718,9 @@ export function ExpensesPage() {
   // Seeded from the store and written through on every change, so an edit
   // is still there after a refresh.
   const [claims, setClaimsRaw] = useState(() => getExpenseClaims());
+  // See the note in assets/index.tsx.
+  const claimsRevision = useCollectionRevision(EXPENSES_CHANGED_EVENT);
+  useEffect(() => { setClaimsRaw(getExpenseClaims()); }, [claimsRevision]);
   const setClaims = (updater: Parameters<typeof setClaimsRaw>[0]) =>
     setClaimsRaw((prev) => saveExpenseClaims(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
   const [activeTab, setActiveTab] = useState<TabId>('all');
