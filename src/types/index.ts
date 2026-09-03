@@ -104,6 +104,28 @@ export interface Employee {
   maritalStatus?: 'Single' | 'Married';
   address?: string;
   skills?: string[];
+
+  /**
+   * The identifiers a statutory return is filed against.
+   *
+   * All optional, and absent means *not recorded* rather than not applicable —
+   * a record can be created before a new joiner has produced their PAN card,
+   * and inventing a placeholder is how a wrong number reaches a return. Payroll
+   * computes contributions whether or not these are present, because the
+   * arithmetic does not depend on them; what needs them is the filing, and
+   * Settings → Payroll Compliance names everyone whose details are missing so
+   * the gap is found before the 15th rather than on it.
+   *
+   * `uan` is the Universal Account Number, which follows a person between
+   * employers; `pfAccountNumber` is this establishment's member id for them.
+   * Both appear on the ECR and they are not interchangeable.
+   */
+  pan?: string;
+  uan?: string;
+  pfAccountNumber?: string;
+  esicNumber?: string;
+  bankAccountNumber?: string;
+  bankIfsc?: string;
 }
 
 // `ctc` lives on `Employee` above for the in-app mock/demo dataset, which is

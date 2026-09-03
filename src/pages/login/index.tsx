@@ -235,52 +235,27 @@ export function LoginPage() {
 
                         {/*
                           * SECURITY: a "Quick Demo Login" block used to live here with a
-                          * hardcoded email/password pair for a real admin account (one of
-                          * the entries in ADMIN_EMAILS, see src/lib/auth.tsx). Because Vite
-                          * inlines client code as-is, that password was shipped in plain
-                          * text to every visitor's browser and readable in the compiled JS
-                          * — effectively a public admin credential. It has been removed.
+                          * hardcoded email/password pair. Because Vite inlines client code
+                          * as-is, that password shipped in plain text to every visitor's
+                          * browser and was readable in the compiled JS — a public
+                          * credential for whatever account it named.
                           *
-                          * If that account's password was ever committed/deployed, rotate
-                          * it in the Firebase console — removing this code does not undo
-                          * an already-exposed credential.
+                          * It was removed once for an ADMIN_EMAILS account, then came back
+                          * pointing at a demo employee, which is the same defect at a
+                          * lower privilege: anybody who opened this page could sign in as
+                          * a real member of the demo organisation and read its directory,
+                          * attendance and pay. Removed again, and this comment is here so
+                          * the third attempt does not look like a fresh idea.
                           *
-                          * If a one-click demo login is still wanted, point it at a
-                          * dedicated, low-privilege, non-real demo account (not an entry
-                          * in ADMIN_EMAILS), and prefer reading its credentials from a
-                          * non-committed env var over hardcoding them here — keeping in
-                          * mind Vite still inlines VITE_-prefixed env vars into the client
-                          * bundle, so this only keeps the secret out of git, not out of
-                          * the shipped app.
+                          * If a one-click demo is wanted, it needs an account that is
+                          * MEANT to be public — provisioned into an organisation that
+                          * holds nothing real — and the credential still cannot hide in a
+                          * VITE_ env var, because those are inlined into the bundle too.
+                          * That keeps it out of git and not out of the shipped app.
+                          *
+                          * If either password was ever deployed, rotate it in the Firebase
+                          * console: deleting the code does not undo an exposed credential.
                           */}
-                        <>
-                                <div className="relative flex py-2 items-center">
-                                    <div className="flex-grow border-t border-ink-200"></div>
-                                    <span className="flex-shrink mx-3 text-[10px] uppercase tracking-wider text-ink-400 font-semibold">Quick Demo Login</span>
-                                    <div className="flex-grow border-t border-ink-200"></div>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        className="text-xs btn-block py-2"
-                                        onClick={async () => {
-                                            setSubmitting(true);
-                                            try {
-                                                await signInEmail('riya.sharma@modconhr.test', 'Employee@123');
-                                            } catch (err) {
-                                                console.error('Demo Employee sign in failed:', err);
-                                            } finally {
-                                                setSubmitting(false);
-                                            }
-                                        }}
-                                        disabled={submitting}
-                                    >
-                                        Employee Profile
-                                    </Button>
-                                </div>
-                        </>
 
                         {/*
                           * No self-registration. An account created here carried no

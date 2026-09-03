@@ -91,9 +91,10 @@ import { earliestLeaveBefore, getLeaveRequests } from '@/data/leave';
 import { getEntitlements } from '@/data/leaveEntitlements';
 import { getLeavePolicies, hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
-import { buildPayslipComponents } from '@/data/payroll';
+import { buildPayslipComponents, deductionRows, employerContributionRows } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
+import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
 import { CHART_SERIES } from '@/lib/chartTheme';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
@@ -1982,14 +1983,18 @@ function CompensationTab({ emp }: { emp: Employee }) {
   // This tab stays mounted while an administrator edits the split in Settings,
   // and the cache is also hydrated from Firestore after sign-in.
   useSalaryStructureRevision();
+  // Switching EPF on in Settings changes what this tab shows about somebody's
+  // pay, and this component stays mounted while an administrator does it.
+  useStatutoryRevision();
   const annual = emp.ctc;
   // Reuse payroll's own split rather than restating the 50/25 ratios and the
   // flat allowances here — duplicating them meant this tab could silently
   // disagree with the payslip.
+  const components = buildPayslipComponents(emp);
   const {
     monthly, splitConfigured,
     basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance: special,
-  } = buildPayslipComponents(emp);
+  } = components;
 
   // Percentages are computed from the amounts, not asserted alongside them.
   // "Special Allowance" was labelled a flat 40% while actually being the
@@ -2029,6 +2034,16 @@ function CompensationTab({ emp }: { emp: Employee }) {
             <p className="text-sm font-medium text-ink-500 mb-1">Annual CTC</p>
             <p className="text-3xl font-bold text-ink-900">{formatINR(annual)}</p>
             <p className="text-sm text-ink-400 mt-1">Monthly gross: <span className="font-semibold text-ink-700" data-testid="monthly-gross" data-amount={monthly}>{formatINR(monthly)}</span></p>
+            {/* Gross is CTC ÷ 12 unless the organisation says its employer
+                contributions come out of the CTC it quoted. When they do, the
+                two figures differ and an unexplained gap between them reads as
+                an arithmetic bug rather than the arrangement it is. */}
+            {components.statutory?.employerShareInCtc && (
+              <p className="text-xs text-ink-500 mt-1 max-w-sm leading-relaxed">
+                Lower than CTC ÷ 12 by {formatINR(components.statutory.employerTotal)} — this
+                organisation counts the employer&rsquo;s statutory contributions inside the CTC.
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3 sm:ml-auto">
             <Badge tone="green">Active Package</Badge>
@@ -2036,6 +2051,67 @@ function CompensationTab({ emp }: { emp: Employee }) {
           </div>
         </div>
       </Card>
+
+      {/* What is actually withheld, and what the employer pays on top.
+          Absent entirely for an organisation that has declared no registration —
+          a card of zeroes would read as contributions calculated at nothing
+          rather than as schemes this company does not run. */}
+      {components.statutory && (
+        <Card>
+          <CardHeader
+            title="Statutory"
+            subtitle={`This month, on a gross of ${formatINR(monthly)}`}
+          />
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-400 mb-2">
+                Withheld from salary
+              </p>
+              {deductionRows(components).filter((row) => row.value > 0).length === 0 ? (
+                <p className="text-sm text-ink-500">Nothing withheld this month.</p>
+              ) : (
+                deductionRows(components)
+                  .filter((row) => row.value > 0)
+                  .map((row) => (
+                    <div key={row.label} className="flex items-center justify-between text-sm py-1">
+                      <span className="text-ink-600">
+                        {row.label}
+                        {row.hint && <span className="text-ink-400 ml-1.5 text-xs">{row.hint}</span>}
+                      </span>
+                      <span className="font-medium text-rose-700">{formatINR(row.value)}</span>
+                    </div>
+                  ))
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-400 mb-2">
+                Paid by the employer
+              </p>
+              {employerContributionRows(components).length === 0 ? (
+                <p className="text-sm text-ink-500">No employer contribution this month.</p>
+              ) : (
+                employerContributionRows(components).map((row) => (
+                  <div key={row.label} className="flex items-center justify-between text-sm py-1">
+                    <span className="text-ink-600">{row.label}</span>
+                    <span className="font-medium text-ink-800">{formatINR(row.value)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {components.statutory.wageFloor && !components.statutory.wageFloor.compliant && (
+            <p className="mt-4 border-t border-ink-200 pt-3 text-xs leading-relaxed text-amber-700">
+              Basic is {components.statutory.wageFloor.wagePercent}% of this gross. Under the Code
+              on Wages, provident fund and gratuity are owed on at least{' '}
+              {components.statutory.wageFloor.floorPercent}% —{' '}
+              {formatINR(components.statutory.wageFloor.statutoryWages)} rather than{' '}
+              {formatINR(basic)}. The figures above are computed on the declared Basic; changing
+              that is a decision for this organisation, in Settings → Salary Structure.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Breakdown + Chart — only once the organisation has said how it splits
           a salary. Showing a plausible default instead would be telling this

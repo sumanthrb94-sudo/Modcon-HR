@@ -18,8 +18,15 @@ import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { usePayslipDocuments } from '@/lib/payslipDocuments';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
+import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
 import { downloadPayslipDocument } from '@/pages/payroll';
-import { buildPayslip, buildPayslipComponents, getPayrollRuns } from '@/data/payroll';
+import {
+  buildPayslip,
+  buildPayslipComponents,
+  deductionRows,
+  employerContributionRows,
+  getPayrollRuns,
+} from '@/data/payroll';
 import { formatINR, formatDate } from '@/lib/utils';
 import type { Payslip } from '@/types';
 import { PayrollPage } from '@/pages/payroll';
@@ -36,6 +43,7 @@ function EmployeeFinancePage() {
   // The organisation's salary split can change under a mounted page — and is
   // hydrated from Firestore shortly after this one first renders.
   useSalaryStructureRevision();
+  useStatutoryRevision();
   const employee = getCurrentEmployee(profile);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);
@@ -339,15 +347,25 @@ function EmployeeFinancePage() {
         </Card>
 
         <Card>
-          <CardHeader title="Deductions" subtitle="Pay withheld for unpaid absence" />
+          <CardHeader
+            title="Deductions"
+            subtitle={
+              salary.statutory
+                ? 'Unpaid absence and statutory withholding'
+                : 'Pay withheld for unpaid absence'
+            }
+          />
           <div className="space-y-3">
-            {/* Attendance is the only basis for deduction, so PF and TDS are
-                not withheld and are not shown — see buildPayslipComponents. */}
-            {[
-              { label: 'Loss of Pay (unpaid absence)', value: salary.otherDeductions },
-            ].map((item) => (
+            {/* One definition of these rows — see `deductionRows`. This list was
+                hand-written and read `otherDeductions` under the label "Loss of
+                Pay", which is a different field, so it showed ₹0 however much
+                absence there was. */}
+            {deductionRows(salary).map((item) => (
               <div key={item.label} className="flex items-center justify-between text-sm">
-                <span className="text-ink-600">{item.label}</span>
+                <span className="text-ink-600">
+                  {item.label}
+                  {item.hint && <span className="text-ink-400 ml-1.5 text-xs">{item.hint}</span>}
+                </span>
                 <span className="font-medium text-rose-700">{formatINR(item.value)}</span>
               </div>
             ))}
@@ -355,6 +373,31 @@ function EmployeeFinancePage() {
               <span className="font-semibold text-ink-900">Total Deductions</span>
               <span className="font-bold text-rose-700">{formatINR(salary.totalDeductions)}</span>
             </div>
+
+            {employerContributionRows(salary).length > 0 && (
+              <div className="border-t border-ink-100 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-400 mb-2">
+                  Your employer also contributes
+                </p>
+                {/* Not a deduction and deliberately outside the total above:
+                    these are paid by the employer, and listing them beside what
+                    is withheld is how a payslip ends up appearing to take twice
+                    as much as it does. */}
+                {employerContributionRows(salary).map((item) => (
+                  <div key={item.label} className="flex items-center justify-between text-sm py-0.5">
+                    <span className="text-ink-600">{item.label}</span>
+                    <span className="font-medium text-ink-700">{formatINR(item.value)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!salary.statutory && (
+              <p className="text-xs text-ink-500 border-t border-ink-100 pt-3 leading-relaxed">
+                Your employer has not set up statutory payroll in this app, so no provident fund,
+                ESI, professional tax or tax at source is withheld here.
+              </p>
+            )}
           </div>
         </Card>
       </div>

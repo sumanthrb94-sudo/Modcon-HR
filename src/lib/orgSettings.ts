@@ -124,6 +124,18 @@ export const ORG_SETTINGS = {
   // on purpose: a surface that re-renders when the fence moves has to
   // re-render when somebody stops being subject to it.
   geofenceExemptions: setting('geofenceExemptions', 'modcon.hr.geofenceExemptions', 'modcon-hr-attendance-geofence-changed'),
+  // Which statutory schemes this organisation is registered for, and the
+  // choices within them. Off for everybody until an administrator declares a
+  // registration — the rates are the law and are shipped, but whether an
+  // establishment is covered depends on headcount, state and business, and an
+  // app that assumed it would either withhold money it should not or
+  // under-deduct and leave the employer liable. See data/statutoryRules.ts.
+  statutoryConfig: setting('statutoryConfig', 'modcon.hr.statutoryConfig', 'modcon-hr-statutory-changed'),
+  // Each employee's tax regime election and declared deductions, sparse.
+  // Shares the statutory change event, the same reason every other pair here
+  // does: a payslip showing an old regime beside a new deduction is two
+  // statements about one person's pay that disagree.
+  employeeTaxElections: setting('employeeTaxElections', 'modcon.hr.employeeTaxElections', 'modcon-hr-statutory-changed'),
 } as const;
 
 export const ALL_ORG_SETTINGS: OrgSetting[] = Object.values(ORG_SETTINGS);

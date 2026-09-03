@@ -41,6 +41,7 @@ import { currentMonthIso, todayDate } from '@/lib/today';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
+import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
 import { useAuth } from '@/lib/auth';
 import {
   canUploadPayslips,
@@ -200,13 +201,23 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
         <div>
           <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-3">Deductions</p>
           <div className="space-y-2.5">
-            {/* Deductions come exclusively from attendance (see
-                buildPayslipComponents), so Provident Fund and TDS are not
-                withheld and are not listed — a row reading "PF ₹0" would
-                suggest a contribution was calculated and came to nothing. */}
+            {/* A STORED payslip, so these are the document's own figures and
+                not a recomputation — a payslip is a record of what was paid,
+                and re-deriving it from today's settings would rewrite history
+                every time an administrator changed a rate.
+                The shared `Payslip` shape has fields for provident fund and tax
+                and nothing for ESI or professional tax, so those two ride in
+                `otherDeductions` alongside loss of pay and the row is labelled
+                for what it actually holds. Live surfaces (Finance, the profile's
+                Compensation tab) split them out through `deductionRows`.
+                A head that came to zero is omitted rather than shown: "PF ₹0"
+                reads as a contribution that was calculated and came to nothing,
+                which is not what an organisation running no PF scheme means. */}
             {[
-              { label: 'Loss of Pay (unpaid absence)', value: payslip.otherDeductions },
-            ].map((row) => (
+              { label: 'Loss of Pay, ESI & Professional Tax', value: payslip.otherDeductions },
+              { label: 'Provident Fund (employee)', value: payslip.pf },
+              { label: 'Tax Deducted at Source', value: payslip.tax },
+            ].filter((row) => row.value > 0).map((row) => (
               <div key={row.label} className="flex items-center justify-between">
                 <span className="text-sm text-ink-600">{row.label}</span>
                 <span className="text-sm font-medium text-rose-700">{formatINR(row.value)}</span>
@@ -247,6 +258,7 @@ export function PayrollPage() {
   // Payslip figures are derived from the organisation's split, which an
   // administrator can change while this page is open.
   const salaryStructureRevision = useSalaryStructureRevision();
+  useStatutoryRevision();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);

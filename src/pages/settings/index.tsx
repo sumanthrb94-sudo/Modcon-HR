@@ -6,7 +6,7 @@ import {
   Plus, Edit2, Zap, ToggleLeft, ToggleRight,
   Slack, Chrome, Package, Code2, Leaf,
   AlertCircle, AlertTriangle, CheckCircle2, Star, Database, Trash2, Wallet, MapPin,
-  Upload, Download, RefreshCw, Clock,
+  Upload, Download, RefreshCw, Clock, Landmark,
 } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Table, Modal, EmptyState,
@@ -16,8 +16,11 @@ import { Select } from '@/components/ui';
 import { employees } from '@/data/employees';
 import { HR_DEPARTMENT, getCompanyProfile, isHrDepartment, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
+import { statutoryConfigOrNone } from '@/data/statutory';
+import { wageFloorFinding } from '@/data/statutoryRules';
 import CheckinPolicySection from './CheckinPolicySection';
 import ShiftsSection from './ShiftsSection';
+import StatutorySection from './StatutorySection';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import {
@@ -4012,6 +4015,14 @@ function SalaryStructureSection() {
   // The same function payroll computes a payslip with, so the preview cannot
   // promise a split the payslip does not pay.
   const preview = complete && !invalid ? splitMonthlyGross(SAMPLE_MONTHLY_GROSS, parsed) : null;
+  // The Code on Wages floor, checked against the split being previewed rather
+  // than against the saved one — the point is to say so BEFORE it is saved.
+  // Suppressed when the organisation has turned the check off in Payroll
+  // Compliance; a warning an administrator has declined is a warning they will
+  // stop reading. Silent when there is nothing to check.
+  const wageFloor = preview && statutoryConfigOrNone().enforceWageFloor
+    ? wageFloorFinding({ wages: preview.basic, totalRemuneration: SAMPLE_MONTHLY_GROSS })
+    : null;
 
   function set(key: keyof SalaryStructureForm, value: string) {
     setDirty(true);
@@ -4271,6 +4282,30 @@ function SalaryStructureSection() {
               Fill in all four fields to see what they would pay on a{' '}
               {formatINR(SAMPLE_MONTHLY_GROSS)} monthly gross.
             </p>
+          )}
+
+          {wageFloor && !wageFloor.compliant && (
+            <div className="flex items-start gap-2 border border-amber-500 bg-amber-50 px-4 py-3 text-sm text-ink-900">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+              <div className="leading-relaxed">
+                <p className="font-medium">
+                  Basic is {wageFloor.wagePercent}% of gross. The Code on Wages floor is{' '}
+                  {wageFloor.floorPercent}%.
+                </p>
+                <p className="mt-1">
+                  The Code defines wages as basic plus dearness allowance, and where the excluded
+                  allowances exceed half of total remuneration the excess is added back — so
+                  provident fund and gratuity are owed on{' '}
+                  <strong>{formatINR(wageFloor.statutoryWages)}</strong> a month on this example,
+                  not on the {formatINR(preview!.basic)} this structure allocates. This split is
+                  lawful to pay; the contributions on it are the higher figure either way.
+                </p>
+                <p className="mt-1 text-ink-600">
+                  Nothing is recomputed automatically — raising Basic and contributing on the
+                  higher figure are both decisions for this organisation, not for this app.
+                </p>
+              </div>
+            </div>
           )}
 
           <div className="flex items-center gap-2">
@@ -4612,6 +4647,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'locations', label: 'Locations', icon: <MapPin size={17} />, description: 'Where the company works' },
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
   { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
+  { id: 'statutory', label: 'Payroll Compliance', icon: <Landmark size={17} />, description: 'PF, ESI, PT & TDS' },
   { id: 'shifts', label: 'Shifts', icon: <Clock size={17} />, description: 'Working hours & grace' },
   { id: 'weekoff', label: 'Week Off', icon: <CalendarDays size={17} />, description: 'The day the company is closed' },
   { id: 'geofence', label: 'Attendance Locations', icon: <MapPin size={17} />, description: 'Where check-in is accepted' },
@@ -5027,6 +5063,7 @@ export function SettingsPage() {
           <EmployeeSalaryStructuresSection />
         </>
       );
+      case 'statutory': return <StatutorySection />;
       case 'roles': return <RolesPermissions />;
       case 'holidays': return <HolidaysSection />;
       case 'notifications': return <NotificationsSection />;
