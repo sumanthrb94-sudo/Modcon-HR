@@ -217,7 +217,20 @@ export function OrganizationsPage() {
 
     function copyCredentials() {
         if (!result) return;
-        const text = `Organization: ${result.adminEmail}\nEmail: ${result.adminEmail}\nTemporary password: ${result.tempPassword}`;
+        // The organisation's *name*, not the administrator's address. This line
+        // read `Organization: ${result.adminEmail}`, so every handoff message a
+        // super admin pasted named the organisation as an email address —
+        // and `CreateOrganizationResult` carries no name, which is why the form
+        // field is the source. `orgName` is still in state here because the
+        // dialog stays open to show the credentials.
+        const text = [
+            `Organization: ${orgName.trim()}`,
+            `Sign in at: ${window.location.origin}/login`,
+            `Email: ${result.adminEmail}`,
+            `Temporary password: ${result.tempPassword}`,
+            '',
+            'Change this password after the first sign-in.',
+        ].join('\n');
         void navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);

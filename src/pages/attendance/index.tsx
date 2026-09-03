@@ -49,6 +49,7 @@ import { departments } from '@/data/departments';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useAuth } from '@/lib/auth';
+import { LocationReviewQueue } from './LocationReviewQueue';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
@@ -496,6 +497,10 @@ export function AttendancePage() {
           icon={<Clock size={20} />}
         />
       </div>
+
+      {/* Stamps whose location needs a human. Renders nothing for anyone who
+          cannot review, so it is safe to mount unconditionally. */}
+      <LocationReviewQueue />
 
       {/* Daily Attendance Table */}
       <Card padding={false}>

@@ -9,7 +9,7 @@ import {
   Upload, Download, RefreshCw, Clock,
 } from 'lucide-react';
 import {
-  PageHeader, Card, CardHeader, Badge, Button, Table, Modal,
+  PageHeader, Card, CardHeader, Badge, Button, Table, Modal, EmptyState,
 } from '@/components/ui';
 import type { Column } from '@/components/ui';
 import { Select } from '@/components/ui';
@@ -56,6 +56,23 @@ import {
   saveOrganisationWeekOff,
 } from '@/data/weekOff';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
+import {
+  exemptEmployeeFromGeofence,
+  getGeofenceConfig,
+  getGeofenceExemptions,
+  newSiteId,
+  removeGeofenceExemption,
+  removeGeofenceSite,
+  setGeofenceMode,
+  upsertGeofenceSite,
+} from '@/data/attendanceGeofence';
+import {
+  MAX_GEOFENCE_RADIUS_METRES,
+  buildSite,
+  type GeofenceMode,
+} from '@/data/geofenceRules';
+import { useAttendanceGeofenceRevision } from '@/lib/useAttendanceGeofenceRevision';
+import { captureLocationFix, describeGeolocationFailure } from '@/lib/geolocation';
 import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import {
@@ -4597,6 +4614,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'salary', label: 'Salary Structure', icon: <Wallet size={17} />, description: 'Basic, HRA & allowances' },
   { id: 'shifts', label: 'Shifts', icon: <Clock size={17} />, description: 'Working hours & grace' },
   { id: 'weekoff', label: 'Week Off', icon: <CalendarDays size={17} />, description: 'The day the company is closed' },
+  { id: 'geofence', label: 'Attendance Locations', icon: <MapPin size={17} />, description: 'Where check-in is accepted' },
   { id: 'checkins', label: 'Progress Check-ins', icon: <RefreshCw size={17} />, description: 'Cadence & channels' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
   { id: 'holidays', label: 'Holidays', icon: <CalendarDays size={17} />, description: 'Holiday calendar' },
@@ -4605,6 +4623,349 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'billing', label: 'Billing', icon: <CreditCard size={17} />, description: 'Plan & payments' },
   { id: 'database', label: 'Database', icon: <Database size={17} />, description: 'Firestore seed & config' },
 ];
+
+
+// ===========================================================================
+// Attendance locations — the geofence HR draws, and who it does not apply to.
+//
+// There is deliberately no default fence: an organisation that has not set one
+// up has `mode: 'off'` and nothing is captured. A plausible default here would
+// mean people are refused a check-in at a place nobody chose, which is the same
+// reasoning that leaves the holiday calendar and the salary split unset.
+// ===========================================================================
+function AttendanceLocationsSection() {
+  const save = useSaveIndicator();
+  const geofenceRevision = useAttendanceGeofenceRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const [config, setConfig] = useState(() => getGeofenceConfig());
+  const [addOpen, setAddOpen] = useState(false);
+  const [draft, setDraft] = useState({ name: '', lat: '', lng: '', radius: '200' });
+  const [draftError, setDraftError] = useState('');
+  const [capturing, setCapturing] = useState(false);
+  const [exemptOpen, setExemptOpen] = useState(false);
+  const [exemptId, setExemptId] = useState('');
+  const [exemptReason, setExemptReason] = useState('');
+
+  useEffect(() => {
+    setConfig(getGeofenceConfig());
+  }, [geofenceRevision]);
+
+  const exemptions = useMemo(() => getGeofenceExemptions(), [geofenceRevision]);
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
+  const exemptRows = useMemo(
+    () =>
+      Object.entries(exemptions).map(([employeeId, entry]) => ({
+        employeeId,
+        name: directory.find((e) => e.id === employeeId)?.fullName ?? employeeId,
+        reason: entry.reason,
+      })),
+    [exemptions, directory],
+  );
+
+  function setMode(mode: GeofenceMode) {
+    setConfig((current) => ({ ...current, mode }));
+    save.track(setGeofenceMode(mode));
+  }
+
+  /**
+   * Fill the coordinate fields from where this browser is now.
+   *
+   * The ordinary way a fence gets drawn: an administrator stands in the office
+   * and presses this. Typing coordinates by hand is still possible, because
+   * somebody setting up a second site is rarely standing in it.
+   */
+  async function useMyPosition() {
+    setCapturing(true);
+    setDraftError('');
+    try {
+      const { fix, failure } = await captureLocationFix();
+      if (!fix) {
+        setDraftError(failure ? describeGeolocationFailure(failure) : 'No position available.');
+        return;
+      }
+      setDraft((d) => ({ ...d, lat: fix.lat.toFixed(6), lng: fix.lng.toFixed(6) }));
+    } finally {
+      setCapturing(false);
+    }
+  }
+
+  function addSite() {
+    const site = buildSite({
+      id: newSiteId(),
+      name: draft.name,
+      lat: Number(draft.lat),
+      lng: Number(draft.lng),
+      radiusMetres: Number(draft.radius),
+    });
+    if (!site) {
+      setDraftError('A name and a valid latitude and longitude are required.');
+      return;
+    }
+    save.track(upsertGeofenceSite(site));
+    setAddOpen(false);
+    setDraft({ name: '', lat: '', lng: '', radius: '200' });
+    setDraftError('');
+  }
+
+  const modeCopy: Record<GeofenceMode, string> = {
+    off: 'Nothing is captured. Check-in and check-out work exactly as they did before.',
+    advisory:
+      'Positions are captured and judged, and nobody is ever refused. Run this first: it is how you find out that your office wifi geolocates down the road before that locks anyone out.',
+    enforced:
+      'A check-in from outside every attendance area is refused. The attempt is still recorded, so the review queue shows it.',
+  };
+
+  return (
+    <SettingsSection
+      title="Attendance Locations"
+      subtitle="Where this organisation accepts a check-in from, and how firmly it insists."
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <CardHeader title="Enforcement" subtitle="What happens to a stamp that fails the fence." />
+        <div className="space-y-2 max-w-2xl">
+          {(['off', 'advisory', 'enforced'] as GeofenceMode[]).map((mode) => (
+            <label
+              key={mode}
+              className={cn(
+                'flex cursor-pointer items-start gap-3 border p-3 transition-colors',
+                config.mode === mode ? 'border-brand-600 bg-brand-100' : 'border-ink-200 hover:bg-ink-50',
+              )}
+            >
+              <input
+                type="radio"
+                name="geofence-mode"
+                className="mt-1"
+                checked={config.mode === mode}
+                onChange={() => setMode(mode)}
+              />
+              <span>
+                <span className="block text-sm font-semibold capitalize text-ink-900">{mode}</span>
+                <span className="block text-xs text-ink-600 mt-0.5">{modeCopy[mode]}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {config.mode === 'enforced' && config.sites.length === 0 && (
+          <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2">
+            Enforcement is on but no attendance area has been drawn, so nothing is being enforced.
+            Nobody is locked out — add a location below.
+          </p>
+        )}
+      </Card>
+
+      <Card className="mt-5">
+        <CardHeader
+          title="Attendance areas"
+          subtitle={`A circle around each place people work. ${MAX_GEOFENCE_RADIUS_METRES} m is the widest a fence may be.`}
+          action={
+            <Button icon={<Plus size={15} />} onClick={() => setAddOpen(true)}>
+              Add location
+            </Button>
+          }
+        />
+        {config.sites.length === 0 ? (
+          <EmptyState
+            icon={<MapPin size={26} />}
+            title="No attendance areas"
+            description="Until one is drawn, nothing is captured and nobody is judged against anything."
+          />
+        ) : (
+          <div className="divide-y divide-ink-200">
+            {config.sites.map((site) => (
+              <div key={site.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink-900">{site.name}</p>
+                  <p className="text-xs text-ink-500 font-mono">
+                    {site.lat.toFixed(6)}, {site.lng.toFixed(6)} · {site.radiusMetres} m
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => save.track(removeGeofenceSite(site.id))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-4 text-xs text-ink-500 max-w-2xl">
+          A position is judged against the nearest area only, and a device&rsquo;s own margin of error
+          is never added to the radius — a deliberately vague reading would otherwise widen every
+          fence it met. Readings vaguer than {config.maxAccuracyMetres} m are treated as unable to
+          place anybody.
+        </p>
+      </Card>
+
+      <Card className="mt-5">
+        <CardHeader
+          title="Employees this does not apply to"
+          subtitle="Site engineers, field sales, anyone whose work is not at a fixed address."
+          action={
+            <Button variant="secondary" icon={<Plus size={15} />} onClick={() => setExemptOpen(true)}>
+              Add exemption
+            </Button>
+          }
+        />
+        {exemptRows.length === 0 ? (
+          <p className="text-sm text-ink-500">
+            Nobody is exempt. Everyone&rsquo;s position is captured when they check in or out.
+          </p>
+        ) : (
+          <div className="divide-y divide-ink-200">
+            {exemptRows.map((row) => (
+              <div key={row.employeeId} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink-900">{row.name}</p>
+                  <p className="text-xs text-ink-500">{row.reason || 'No reason recorded.'}</p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => save.track(removeGeofenceExemption(row.employeeId))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-4 text-xs text-ink-500 max-w-2xl">
+          An exempt employee&rsquo;s position is not captured at all — not captured and ignored, but
+          never asked for. A fence that refuses field staff every morning is a fence that gets
+          switched off for everybody inside a week.
+        </p>
+      </Card>
+
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Add attendance area"
+        subtitle="Stand in the place and use your own position, or type the coordinates."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={addSite}>Add location</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label" htmlFor="geofence-name">Name</label>
+            <input
+              id="geofence-name"
+              className="input"
+              placeholder="e.g. Head Office"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="geofence-lat">Latitude</label>
+              <input
+                id="geofence-lat"
+                className="input"
+                inputMode="decimal"
+                placeholder="12.971600"
+                value={draft.lat}
+                onChange={(e) => setDraft({ ...draft, lat: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="geofence-lng">Longitude</label>
+              <input
+                id="geofence-lng"
+                className="input"
+                inputMode="decimal"
+                placeholder="77.594600"
+                value={draft.lng}
+                onChange={(e) => setDraft({ ...draft, lng: e.target.value })}
+              />
+            </div>
+          </div>
+          <Button variant="secondary" onClick={useMyPosition} disabled={capturing} icon={<MapPin size={15} />}>
+            {capturing ? 'Locating…' : 'Use my current position'}
+          </Button>
+          <div>
+            <label className="label" htmlFor="geofence-radius">
+              Radius — metres (max {MAX_GEOFENCE_RADIUS_METRES})
+            </label>
+            <input
+              id="geofence-radius"
+              className="input"
+              inputMode="numeric"
+              value={draft.radius}
+              onChange={(e) => setDraft({ ...draft, radius: e.target.value })}
+            />
+            <p className="mt-1.5 text-xs text-ink-500">
+              Anything above {MAX_GEOFENCE_RADIUS_METRES} m is reduced to it. A fence wide enough to
+              cover the next street stops answering the question it was drawn for.
+            </p>
+          </div>
+          {draftError && <p className="text-sm text-rose-600">{draftError}</p>}
+        </div>
+      </Modal>
+
+      <Modal
+        open={exemptOpen}
+        onClose={() => setExemptOpen(false)}
+        title="Exempt an employee"
+        subtitle="Their position stops being captured entirely."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setExemptOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!exemptId) return;
+                save.track(exemptEmployeeFromGeofence(exemptId, exemptReason));
+                setExemptOpen(false);
+                setExemptId('');
+                setExemptReason('');
+              }}
+            >
+              Exempt
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label" htmlFor="geofence-exempt-employee">Employee</label>
+            <Select
+              ariaLabel="Employee"
+              value={exemptId}
+              onChange={setExemptId}
+              options={[
+                { label: 'Select an employee…', value: '' },
+                ...directory
+                  .filter((e) => !(e.id in exemptions))
+                  .map((e) => ({ label: `${e.fullName} · ${e.designation}`, value: e.id })),
+              ]}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="geofence-exempt-reason">Reason</label>
+            <input
+              id="geofence-exempt-reason"
+              className="input"
+              placeholder="e.g. Site engineer — works on client sites"
+              value={exemptReason}
+              onChange={(e) => setExemptReason(e.target.value)}
+            />
+            <p className="mt-1.5 text-xs text-ink-500">
+              Shown beside their name here. &ldquo;Why is this person exempt&rdquo; is the first
+              question anyone reviewing this list asks.
+            </p>
+          </div>
+        </div>
+      </Modal>
+    </SettingsSection>
+  );
+}
 
 // ===========================================================================
 // Main page
@@ -4659,6 +5020,7 @@ export function SettingsPage() {
       case 'checkins': return <CheckinPolicySection />;
       case 'shifts': return <ShiftsSection />;
       case 'weekoff': return <WeekOffSection />;
+      case 'geofence': return <AttendanceLocationsSection />;
       case 'salary': return (
         <>
           <SalaryStructureSection />

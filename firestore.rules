@@ -927,6 +927,215 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Geofenced attendance — where each check-in and check-out was captured.
+    //
+    // This collection is the only reason the feature is worth anything. The
+    // attendance records themselves are a localStorage overlay the employee's
+    // own browser owns; a stamp its author can edit afterwards is not evidence
+    // of anything. So four properties are enforced here and nowhere else:
+    //
+    //   1. A stamp is written by the employee it is about, and by nobody else
+    //      (`isSelf`). A captured position is evidence that a particular
+    //      person was somewhere; letting a third party produce one makes it an
+    //      assertion again — the same reasoning that keeps Check In off other
+    //      people's records in the UI.
+    //   2. A stamp is IMMUTABLE to its author. There is no `update` an
+    //      employee can make and no `delete` at all short of an org admin.
+    //      A check-in recorded 4 km from the office stays recorded 4 km from
+    //      the office. Everything else here is detail; this is the feature.
+    //   3. `recordedAt` is `request.time`. The device's clock does not get a
+    //      vote on when somebody arrived.
+    //   4. A claim of `inside` is RECOMPUTED here against the organisation's
+    //      own fence, read from `attendance_geofences/{orgKey}`. A client that
+    //      posts `outcome: 'inside'` while sending coordinates in another city
+    //      is refused, as is one naming a site the organisation never drew.
+    //
+    // What none of this proves is that the coordinates are TRUE. No browser
+    // API can establish that, and these rules cannot either: they check the
+    // arithmetic and the provenance of the fence, not of the position.
+    // Mock-location detection is a set of heuristics recorded in `signals`,
+    // and the finding that an employee falsified a position is a human's
+    // (`review`), made after checking whether they were in the office. That is
+    // why `review` is the one field an administrator may add, why it may only
+    // be added to a stamp whose other fields stay byte-identical, and why the
+    // employee the stamp is about can never write it.
+    // -------------------------------------------------------------------
+    match /attendance_stamps/{docId} {
+      // Administrators read the organisation's stamps; an employee reads their
+      // own. As with payslip_documents, the employee's query MUST filter on
+      // employeeId as well as orgId — a list is evaluated against every
+      // document it returns and fails whole otherwise.
+      allow get: if inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId));
+      allow list: if inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId));
+
+      allow create: if isSignedIn() && writingToMyOrg() &&
+        isSelf(request.resource.data.employeeId) &&
+        validAttendanceStamp(docId);
+
+      // The ONLY permitted update: an administrator attaching a review, with
+      // every other field byte-identical to what is stored. Without the diff
+      // check, "review this stamp" would double as "rewrite where it says I
+      // was" for anyone who is also an org admin.
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review']) &&
+        validStampReview();
+
+      // Never the employee, and never as a way to unsay a stamp: an admin can
+      // remove one (a test record, a person who left), and that is all.
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    // -------------------------------------------------------------------
+    // The fences themselves, in a shape these rules can read.
+    //
+    // The app's own copy is `org_settings/<orgKey>__attendanceGeofence`, whose
+    // payload is a JSON *string* — deliberately, so the org-settings sync can
+    // treat every setting alike, and because nothing queries inside one. These
+    // rules have no JSON parser, so that copy is unreadable here, and a rule
+    // that cannot read the fence cannot check a claim against it.
+    //
+    // Hence this: a structured projection, one document per organisation,
+    // written by `saveGeofenceConfig` in the same act as the settings copy. It
+    // exists for `withinClaimedSite` below and for nothing else — the app never
+    // reads it, so the two cannot drift into disagreeing about what the app
+    // shows. If the projection is missing or stale, an `inside` claim is
+    // refused: the fail-closed direction, and one an administrator fixes by
+    // saving the fence again.
+    // -------------------------------------------------------------------
+    match /attendance_geofences/{orgKey} {
+      // Readable by the org so an employee's client can verify it is looking at
+      // the same fence the server will judge it against. It carries no personal
+      // data — coordinates of the company's own offices.
+      allow get: if isSignedIn() && (isSuperAdmin() || orgKey == myOrgKey());
+      allow list: if isSignedIn() && inMyOrg();
+      allow create, update: if isOrgAdmin() && writingToMyOrg() &&
+        orgKey == orgKeyOf(request.resource.data) &&
+        request.resource.data.sites is map &&
+        request.resource.data.sites.size() <= 50;
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    /** The organisation's fence projection, or null when it has none. */
+    function geofenceOf(orgKey) {
+      return exists(/databases/$(database)/documents/attendance_geofences/$(orgKey))
+        ? get(/databases/$(database)/documents/attendance_geofences/$(orgKey)).data
+        : null;
+    }
+
+    /**
+     * Squared metres between the submitted position and a site.
+     *
+     * Squared because these rules have no `sqrt` — `d² <= r²` answers "inside"
+     * exactly as well as `d <= r`. The longitude scale factor cannot be
+     * computed here either (no `cos`), so it is stored on the site by the
+     * administrator who drew it and range-checked by `plausibleScale`. Mirrors
+     * `squaredMetresBetween` in src/data/geofenceRules.ts — change the two
+     * together, or the server will accept stamps the app refused.
+     */
+    function squaredMetres(lat, lng, site) {
+      return ((lat - site.lat) * 110574) * ((lat - site.lat) * 110574) +
+             ((lng - site.lng) * site.metresPerDegreeLng) * ((lng - site.lng) * site.metresPerDegreeLng);
+    }
+
+    /**
+     * A site's stored scale factor is plausible for its latitude.
+     *
+     * Metres per degree of longitude is 111320·cos(lat): never negative, never
+     * above the equatorial figure. A forged projection claiming a longitude
+     * degree is worth ten metres would widen every fence by four orders of
+     * magnitude — but only an org administrator can write the projection at
+     * all, so this is a guard against a mistake rather than against an
+     * outsider. The radius cap is the one that matters, and it is the same 500
+     * m the app enforces.
+     */
+    function plausibleScale(site) {
+      return site.metresPerDegreeLng is number &&
+        site.metresPerDegreeLng >= 0 &&
+        site.metresPerDegreeLng <= 111320 &&
+        site.radiusMetres is number &&
+        site.radiusMetres > 0 &&
+        site.radiusMetres <= 500;
+    }
+
+    /**
+     * The position is inside the site the stamp names, in the org's own fence.
+     *
+     * Reads the site out of the projection by the `siteId` the stamp claims,
+     * so naming a site the organisation never drew fails on the `in` test
+     * rather than passing with geometry the caller supplied.
+     */
+    function withinClaimedSite(orgKey) {
+      return geofenceOf(orgKey) != null &&
+        geofenceOf(orgKey).sites is map &&
+        request.resource.data.siteId in geofenceOf(orgKey).sites &&
+        plausibleScale(geofenceOf(orgKey).sites[request.resource.data.siteId]) &&
+        squaredMetres(
+          request.resource.data.lat,
+          request.resource.data.lng,
+          geofenceOf(orgKey).sites[request.resource.data.siteId]
+        ) <= geofenceOf(orgKey).sites[request.resource.data.siteId].radiusMetres *
+             geofenceOf(orgKey).sites[request.resource.data.siteId].radiusMetres;
+    }
+
+    /**
+     * The claimed outcome agrees with the organisation's fence.
+     *
+     * Only `inside` is checked against the geometry, and that asymmetry is
+     * deliberate: `inside` is the only claim worth forging. `outside`,
+     * `inaccurate` and `unavailable` are claims against the employee's own
+     * interest, and the two configuration outcomes describe the org rather
+     * than the person — a stricter rule there would refuse honest stamps from
+     * an organisation whose fence has since moved, which is a real event.
+     */
+    function outcomeMatchesFence(orgKey) {
+      return request.resource.data.outcome != 'inside' ||
+        (
+          request.resource.data.lat is number &&
+          request.resource.data.lng is number &&
+          request.resource.data.siteId is string &&
+          withinClaimedSite(orgKey)
+        );
+    }
+
+    function validAttendanceStamp(docId) {
+      return request.resource.data.id == docId &&
+        // The id carries employee, day and kind, so a stamp cannot be filed
+        // under one day while claiming another — and the determinism is what
+        // makes a second check-in on the same day a refused create rather than
+        // a silent overwrite of the first.
+        docId == orgKeyOf(request.resource.data) + '__' +
+                 request.resource.data.employeeId + '__' +
+                 request.resource.data.date + '__' +
+                 request.resource.data.kind &&
+        // Attribution cannot be forged.
+        request.resource.data.employeeUid == request.auth.uid &&
+        // The moment is the server's, not the device's.
+        request.resource.data.recordedAt == request.time &&
+        request.resource.data.date is string &&
+        request.resource.data.date.size() == 10 &&
+        (request.resource.data.kind == 'in' || request.resource.data.kind == 'out') &&
+        request.resource.data.outcome in
+          ['inside', 'outside', 'no-sites', 'inaccurate', 'unavailable', 'exempt'] &&
+        request.resource.data.mode in ['off', 'advisory', 'enforced'] &&
+        request.resource.data.signals is list &&
+        request.resource.data.signals.size() <= 10 &&
+        // A stamp arrives unreviewed, always. Filing one that already carries
+        // HR's blessing is the whole attack this feature is about.
+        !('review' in request.resource.data) &&
+        outcomeMatchesFence(orgKeyOf(request.resource.data));
+    }
+
+    function validStampReview() {
+      return request.resource.data.review.verdict in ['genuine', 'falsified', 'inconclusive'] &&
+        // The reviewer is the caller, and cannot be the person the stamp is
+        // about — nobody clears their own flag.
+        request.resource.data.review.reviewedByUid == request.auth.uid &&
+        !isSelf(resource.data.employeeId) &&
+        request.resource.data.review.note is string &&
+        request.resource.data.review.note.size() <= 500;
+    }
+
+    // -------------------------------------------------------------------
     // Organisation configuration — leave policies, the company profile, the
     // holiday calendar, departments, the permission matrix, preferences.
     //

@@ -43,6 +43,7 @@ import type {
     PayslipDocument,
     EmployeeDocument,
     JobApplication,
+    AttendanceStamp,
 } from '@/types';
 import type { RegularizationRequest } from '@/data/attendance';
 
@@ -95,6 +96,11 @@ export const Collections = {
     // candidate applying from the public careers page has no account here.
     // See src/lib/jobApplications.ts and the rules block of the same name.
     jobApplications: col<JobApplication>('job_applications'),
+    // Where each check-in and check-out was captured. Separate from the
+    // localStorage attendance overlay on purpose: a stamp is evidence, and
+    // evidence its own author can edit is not evidence. See
+    // src/lib/attendanceStamps.ts.
+    attendanceStamps: col<AttendanceStamp>('attendance_stamps'),
 } as const;
 
 // ---------------------------------------------------------------------------

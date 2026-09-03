@@ -105,7 +105,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * account (ROLE_CHURN_PERSONA) so that changing a role cannot revoke access
  * underneath a persona the role projects are signed in as, in parallel.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.

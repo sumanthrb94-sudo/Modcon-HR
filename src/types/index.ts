@@ -584,3 +584,68 @@ export interface Organization {
    */
   features?: Record<string, boolean>;
 }
+
+// ---- Geofenced attendance ------------------------------------------------
+
+/**
+ * One captured check-in or check-out, with where the device said it was.
+ *
+ * Deliberately NOT part of `AttendanceRecord`. Attendance records are a
+ * localStorage overlay the employee's own browser owns, which is fine for a
+ * time somebody typed and useless for evidence somebody may want to falsify.
+ * A stamp lives in Firestore where `firestore.rules` can refuse to let its
+ * author edit it afterwards — see src/lib/attendanceStamps.ts.
+ */
+export interface AttendanceStamp {
+  /** `<orgId>__<employeeId>__<YYYY-MM-DD>__in|out`. One stamp per kind per day. */
+  id: ID;
+  orgId: string;
+  employeeId: ID;
+  /** `YYYY-MM-DD`, the attendance day this stamp belongs to. */
+  date: string;
+  kind: 'in' | 'out';
+  /** Server time. The client cannot set it; the rules require request.time. */
+  recordedAt: string;
+  /** What the device reported. Null when no position was captured at all. */
+  lat: number | null;
+  lng: number | null;
+  accuracyMetres: number | null;
+  /** The fence this was judged against, and how far from its centre. */
+  siteId: string | null;
+  siteName: string | null;
+  distanceMetres: number | null;
+  /** The verdict, recomputed by the rules from the org's own fence. */
+  outcome: GeofenceStampOutcome;
+  /** The mode in force when the stamp was made, so a later switch cannot rewrite it. */
+  mode: 'off' | 'advisory' | 'enforced';
+  /** Integrity signal codes raised at capture. Empty is the ordinary case. */
+  signals: string[];
+  /** Always the caller's own uid — the rules refuse any other value. */
+  employeeUid: ID;
+  /** HR's finding, once somebody has looked. Absent means nobody has. */
+  review?: AttendanceStampReview;
+}
+
+export type GeofenceStampOutcome =
+  | 'inside'
+  | 'outside'
+  | 'no-sites'
+  | 'inaccurate'
+  | 'unavailable'
+  | 'exempt';
+
+/**
+ * What HR concluded after checking whether the person was actually there.
+ *
+ * This is the "consequences" half, and it is a human's finding rather than the
+ * system's: a flag says a fix looked wrong, and only somebody who verified in
+ * the office can say whether it was. `falsified` is the only outcome that
+ * counts against an employee, and it can only be written by an administrator.
+ */
+export interface AttendanceStampReview {
+  verdict: 'genuine' | 'falsified' | 'inconclusive';
+  note: string;
+  reviewedAt: string;
+  reviewedByUid: ID;
+  reviewedByName: string;
+}

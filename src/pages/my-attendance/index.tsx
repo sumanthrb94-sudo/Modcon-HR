@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut } from 'lucide-react';
+import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut, MapPin } from 'lucide-react';
 import {
   PageHeader,
   StatCard,
@@ -46,6 +46,15 @@ import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { CHART_GRID, CHART_PRIMARY, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
+import { getGeofenceConfigFor } from '@/data/attendanceGeofence';
+import { useAttendanceGeofenceRevision } from '@/lib/useAttendanceGeofenceRevision';
+import { captureLocationFix, describeGeolocationFailure } from '@/lib/geolocation';
+import { describeVerdict, evaluateFix } from '@/data/geofenceRules';
+import {
+  fileAttendanceStamp,
+  lastKnownFix,
+  useMyAttendanceStamps,
+} from '@/lib/attendanceStamps';
 
 function dayLabel(iso: string): string {
   return formatWeekdayLong(iso);
@@ -167,6 +176,21 @@ export function MyAttendancePage() {
   const openFromEarlierDay = Boolean(todayRecord && todayRecord.date !== todayIso());
   const [clockError, setClockError] = useState('');
 
+  // ---- Geofencing ------------------------------------------------------------
+  // The fence is read at call time and re-read on its own event, so a fence an
+  // administrator moves in Settings reaches a panel that is already open.
+  const geofenceRevision = useAttendanceGeofenceRevision();
+  const { config: geofenceConfig, exempt: geofenceExempt } = useMemo(
+    () => getGeofenceConfigFor(targetId),
+    [targetId, geofenceRevision],
+  );
+  const geofenceActive = geofenceConfig.mode !== 'off' && !geofenceExempt;
+  // The employee's own stamps, for the impossible-travel comparison and for the
+  // "where you were" line under the panel. Scoped to them by the query, because
+  // the rules require an employee's list to filter on employeeId as well as org.
+  const [locating, setLocating] = useState(false);
+  const [locationNote, setLocationNote] = useState('');
+
   /**
    * Checking in is something you do, not something done to you.
    *
@@ -179,18 +203,94 @@ export function MyAttendancePage() {
    */
   const isOwnRecord = Boolean(ownEmployee && targetId === ownEmployee.id);
 
+  // The employee's own stamps, for the impossible-travel comparison and for the
+  // "where you were" line under the panel. Scoped to them by the query, because
+  // the rules require an employee's list to filter on employeeId as well as on
+  // the organisation — an unfiltered read is denied, not merely wasteful.
+  const ownStamps = useMyAttendanceStamps(profile, isOwnRecord ? targetId : null);
+
+  /**
+   * Capture a position, judge it against the fence, and file the evidence.
+   *
+   * Runs before the attendance record moves, and the order matters: under
+   * enforcement a refused fix must leave the day exactly as it was, or the
+   * refusal is cosmetic. The stamp is filed either way — including when the
+   * check-in is refused — because "this person tried to check in from 4 km
+   * away" is precisely the thing the review queue exists to hold.
+   *
+   * Returns whether the caller may proceed.
+   */
+  async function stampLocation(kind: 'in' | 'out', date: string): Promise<boolean> {
+    if (!targetId) return false;
+    if (!geofenceActive) return true;
+
+    setLocating(true);
+    setLocationNote('');
+    try {
+      const { fix, failure } = await captureLocationFix();
+      const verdict = evaluateFix({
+        config: geofenceConfig,
+        fix,
+        exempt: geofenceExempt,
+        previous: lastKnownFix(ownStamps),
+      });
+
+      const filed = await fileAttendanceStamp({
+        profile,
+        employeeId: targetId,
+        date,
+        kind,
+        fix,
+        verdict,
+        mode: geofenceConfig.mode,
+      });
+
+      if (!verdict.accepted) {
+        // The device's own reason is more actionable than ours when there is
+        // one — "location is blocked for this site" tells them what to change.
+        setClockError(
+          failure ? describeGeolocationFailure(failure) : describeVerdict(verdict, geofenceConfig.mode),
+        );
+        return false;
+      }
+
+      // A stamp that could not be filed is reported rather than swallowed. The
+      // attendance record still moves — refusing to record a day because its
+      // evidence did not save would punish the employee for a network fault —
+      // but nobody is told the location was confirmed when it was not.
+      setLocationNote(
+        filed
+          ? describeVerdict(verdict, geofenceConfig.mode)
+          : 'Recorded, but your location could not be filed. Tell HR if this keeps happening.',
+      );
+      return true;
+    } finally {
+      setLocating(false);
+    }
+  }
+
   // Both handlers re-check `isOwnRecord`. The buttons already hide for someone
   // else's record, but a guard that lives only in what is rendered is one
   // refactor away from being no guard at all.
-  function handleCheckIn() {
+  async function handleCheckIn() {
     setClockError('');
+    setLocationNote('');
     if (!targetId || !isOwnRecord) return;
+    // The stamp is keyed to the day the record will land on, so the two agree
+    // even when the click happens either side of midnight.
+    if (!(await stampLocation('in', todayIso()))) return;
     recordCheckIn(targetId);
   }
 
-  function handleCheckOut() {
+  async function handleCheckOut() {
     setClockError('');
+    setLocationNote('');
     if (!targetId || !isOwnRecord) return;
+    // A shift begun at 23:50 is closed against the day it *started*, matching
+    // `recordCheckOut`, so the pair of stamps belongs to one shift rather than
+    // to two days.
+    const closingDate = todayRecord?.date ?? todayIso();
+    if (!(await stampLocation('out', closingDate))) return;
     if (!recordCheckOut(targetId)) {
       // Only reachable if the record changed under us; the button is disabled
       // without a check-in.
@@ -465,6 +565,26 @@ export function MyAttendancePage() {
                   <p className="text-sm text-ink-500 mt-1">Not checked in yet today.</p>
                 )}
                 {clockError && <p className="text-sm text-rose-600 mt-2">{clockError}</p>}
+                {locationNote && !clockError && (
+                  <p className="text-sm text-ink-600 mt-2" data-testid="geofence-note">
+                    {locationNote}
+                  </p>
+                )}
+                {/* Said before the button is pressed, not after. A page that
+                    asks for a location without warning reads as the app
+                    reaching for something it was not given; and under
+                    enforcement the employee needs to know a refusal is coming
+                    while they can still walk twenty metres. */}
+                {isOwnRecord && geofenceActive && (
+                  <p className="text-xs text-ink-500 mt-2 flex items-start gap-1.5" data-testid="geofence-notice">
+                    <MapPin size={13} className="mt-0.5 shrink-0" />
+                    <span>
+                      {geofenceConfig.mode === 'enforced'
+                        ? 'Your location is checked against your organisation’s attendance areas when you check in or out.'
+                        : 'Your location is recorded when you check in or out. It is not used to refuse a stamp.'}
+                    </span>
+                  </p>
+                )}
               </div>
               {isOwnRecord ? (
                 <div className="flex items-center gap-2">
@@ -474,15 +594,15 @@ export function MyAttendancePage() {
                     onClick={handleCheckIn}
                     // The first stamp is the one that happened; re-stamping would
                     // quietly erase a late arrival.
-                    disabled={Boolean(todayRecord?.checkIn)}
+                    disabled={Boolean(todayRecord?.checkIn) || locating}
                   >
-                    Check In
+                    {locating ? 'Locating…' : 'Check In'}
                   </Button>
                   <Button
                     variant="secondary"
                     icon={<LogOut size={16} />}
                     onClick={handleCheckOut}
-                    disabled={!todayRecord?.checkIn || Boolean(todayRecord?.checkOut)}
+                    disabled={!todayRecord?.checkIn || Boolean(todayRecord?.checkOut) || locating}
                   >
                     Check Out
                   </Button>

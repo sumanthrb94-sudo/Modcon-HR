@@ -115,6 +115,15 @@ export const ORG_SETTINGS = {
   // still reads the server-backed profile role — but it stops one browser's
   // devtools edit from being the whole of it. See G5.
   accessControl: setting('accessControl', 'modcon.hr.accessControl.permissions', 'modcon-hr-access-control-changed'),
+  // Where the organisation accepts attendance from, and how hard it insists.
+  // The fences themselves are configuration; the stamps they judge are
+  // evidence and live in Firestore's `attendance_stamps`, not here — see
+  // lib/attendanceStamps.ts for why that split matters.
+  attendanceGeofence: setting('attendanceGeofence', 'modcon.hr.attendanceGeofence', 'modcon-hr-attendance-geofence-changed'),
+  // Who the fence does not apply to, sparse. Shares the geofence change event
+  // on purpose: a surface that re-renders when the fence moves has to
+  // re-render when somebody stops being subject to it.
+  geofenceExemptions: setting('geofenceExemptions', 'modcon.hr.geofenceExemptions', 'modcon-hr-attendance-geofence-changed'),
 } as const;
 
 export const ALL_ORG_SETTINGS: OrgSetting[] = Object.values(ORG_SETTINGS);
