@@ -40,6 +40,7 @@ import {
   hrHealthMetrics, noticePeriodRate, onLeaveToday, openPositionsCount,
   pendingApprovalsSummary, recentActivity, weeklyAttendanceSeries, ATTENDANCE_COLORS,
 } from '@/data/dashboard';
+import { BRAND_ACCENT, CHART_GRID, CHART_TICK_FILL, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Announcement category → badge tone helper
@@ -199,8 +200,8 @@ function EmployeeDashboard() {
       title: 'Request Leave',
       subtitle: 'View balances and apply',
       to: '/leave',
-      icon: <CalendarOff size={18} className="text-violet-600" />,
-      accent: 'bg-violet-50 border-violet-100',
+      icon: <CalendarOff size={18} className="text-ink-900" />,
+      accent: 'bg-ink-100 border-ink-200',
     },
     {
       title: 'Submit Expense',
@@ -560,9 +561,9 @@ function AdminDashboard() {
   const genderData = useMemo(() => {
     const countBy = (gender: string) => directory.filter((e) => e.gender === gender).length;
     return [
-      { name: 'Male', value: countBy('Male'), fill: '#3366ff' },
-      { name: 'Female', value: countBy('Female'), fill: '#ec4899' },
-      { name: 'Other', value: countBy('Other'), fill: '#10b981' },
+      { name: 'Male', value: countBy('Male'), fill: chartSeriesColor(0) },
+      { name: 'Female', value: countBy('Female'), fill: chartSeriesColor(1) },
+      { name: 'Other', value: countBy('Other'), fill: chartSeriesColor(2) },
     ].filter((entry) => entry.value > 0);
   }, [directory]);
 
@@ -647,13 +648,11 @@ function AdminDashboard() {
           label="Total Employees"
           value={stats.total}
           icon={<Users size={20} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="Present Today"
           value={stats.attendanceMarked === 0 ? '—' : stats.presentToday}
           icon={<CalendarCheck size={20} />}
-          iconClass="bg-emerald-50 text-emerald-600"
           footer={
             <span className="text-ink-400">
               {stats.attendanceMarked === 0 ? 'No attendance marked' : `${stats.wfhToday} working remotely`}
@@ -664,25 +663,21 @@ function AdminDashboard() {
           label="On Leave"
           value={stats.onLeave}
           icon={<CalendarOff size={20} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="Open Positions"
           value={stats.openPositions}
           icon={<Briefcase size={20} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="On Notice"
           value={`${stats.noticeRate}%`}
           icon={<TrendingUp size={20} />}
-          iconClass="bg-rose-50 text-rose-600"
         />
         <StatCard
           label="Avg. Tenure"
           value={`${stats.avgTenure} yrs`}
           icon={<Clock size={20} />}
-          iconClass="bg-cyan-50 text-cyan-600"
         />
       </div>
 
@@ -710,23 +705,23 @@ function AdminDashboard() {
               <AreaChart data={headcountSeries} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="hcGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3366ff" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#3366ff" stopOpacity={0} />
+                    <stop offset="5%" stopColor={BRAND_ACCENT} stopOpacity={0.18} />
+                    <stop offset="95%" stopColor={BRAND_ACCENT} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} domain={[0, 'dataMax + 2']} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: CHART_TICK_FILL }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: CHART_TICK_FILL }} axisLine={false} tickLine={false} domain={[0, 'dataMax + 2']} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Area
                   type="monotone"
                   dataKey="count"
                   name="Headcount"
-                  stroke="#3366ff"
+                  stroke={BRAND_ACCENT}
                   strokeWidth={2.5}
                   fill="url(#hcGrad)"
-                  dot={{ r: 3, fill: '#3366ff', strokeWidth: 0 }}
-                  activeDot={{ r: 5, fill: '#3366ff' }}
+                  dot={{ r: 3, fill: BRAND_ACCENT, strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: BRAND_ACCENT }}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -760,7 +755,7 @@ function AdminDashboard() {
                   </Pie>
                   <Tooltip
                     formatter={(value) => [`${value} (${pct(Number(value), stats.total)}%)`, '']}
-                    contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -803,9 +798,9 @@ function AdminDashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={weeklyAttendance} margin={{ top: 4, right: 8, left: -20, bottom: 0 }} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="day" tick={{ fontSize: 12, fill: CHART_TICK_FILL }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: CHART_TICK_FILL }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="Present" fill={ATTENDANCE_COLORS.Present} radius={[3, 3, 0, 0]} maxBarSize={32} />
                 <Bar dataKey="WFH" fill={ATTENDANCE_COLORS.WFH} radius={[3, 3, 0, 0]} maxBarSize={32} />
@@ -840,7 +835,7 @@ function AdminDashboard() {
                   </Pie>
                   <Tooltip
                     formatter={(value, name) => [`${value} (${pct(Number(value), deptTotal)}%)`, name]}
-                    contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -900,7 +895,7 @@ function AdminDashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       {item.urgentCount > 0 && (
-                        <span className="h-5 w-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                        <span className="h-5 w-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center">
                           {item.urgentCount}
                         </span>
                       )}

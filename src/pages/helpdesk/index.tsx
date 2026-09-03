@@ -497,25 +497,21 @@ export function HelpdeskPage() {
           label="Open"
           value={stats.open}
           icon={<TicketCheck size={22} />}
-          iconClass="bg-blue-50 text-blue-600"
         />
         <StatCard
           label="In Progress"
           value={stats.inProgress}
           icon={<Clock size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Resolved"
           value={stats.resolved}
           icon={<CheckCircle2 size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Urgent"
           value={stats.urgent}
           icon={<AlertTriangle size={22} />}
-          iconClass="bg-rose-50 text-rose-600"
         />
       </div>
 

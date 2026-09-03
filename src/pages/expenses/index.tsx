@@ -56,6 +56,7 @@ import { Collections, patch, upsert } from '@/lib/db';
 import { useExpenses } from '@/lib/useFirestore';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { currentMonthIso, todayIso } from '@/lib/today';
+import { CHART_AXIS, CHART_GRID, CHART_PRIMARY, CHART_SERIES, CHART_TICK_FILL, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,7 +69,7 @@ type CategoryFilter = 'all' | ExpenseCategory;
 // Constants
 // ---------------------------------------------------------------------------
 
-const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+const PIE_COLORS = CHART_SERIES;
 
 const CATEGORY_OPTIONS: { label: string; value: string }[] = [
   { label: 'Travel', value: 'Travel' },
@@ -565,7 +566,7 @@ function ClaimDetailModal({ claim, onClose, onApprove, onReject, onReimburse, ca
                     onReimburse(claim.id);
                     onClose();
                   }}
-                  className="text-violet-700 hover:bg-violet-50 border-violet-200"
+                  className="text-ink-900 hover:bg-ink-100 border-ink-300"
                 >
                   Reimburse
                 </Button>
@@ -1001,7 +1002,7 @@ export function ExpensesPage() {
                 e.stopPropagation();
                 handleReimburse(c.id);
               }}
-              className="text-violet-700 hover:bg-violet-50"
+              className="text-ink-900 hover:bg-ink-100"
             >
               Reimburse
             </Button>
@@ -1032,7 +1033,6 @@ export function ExpensesPage() {
           label="Total Claims"
           value={stats.total}
           icon={<IndianRupee size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
           onClick={() => setActiveTab('all')}
           active={activeTab === 'all'}
         />
@@ -1040,7 +1040,6 @@ export function ExpensesPage() {
           label="Pending Approval"
           value={stats.submittedCount}
           icon={<Clock size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
           onClick={() => setActiveTab('Submitted')}
           active={activeTab === 'Submitted'}
           footer={
@@ -1053,7 +1052,6 @@ export function ExpensesPage() {
           label="Approved This Month"
           value={stats.approvedThisMonth}
           icon={<CheckCircle size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
           onClick={() => setActiveTab('Approved')}
           active={activeTab === 'Approved'}
         />
@@ -1061,7 +1059,6 @@ export function ExpensesPage() {
           label="Reimbursed (Total)"
           value={formatINR(stats.reimbursedTotal, { compact: true })}
           icon={<Wallet size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
           onClick={() => setActiveTab('Reimbursed')}
           active={activeTab === 'Reimbursed'}
         />
@@ -1137,13 +1134,13 @@ export function ExpensesPage() {
                   </Pie>
                   <Tooltip
                     formatter={(value: number) => [formatINR(value, { compact: true }), 'Amount']}
-                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
                   />
                   <Legend
                     iconType="circle"
                     iconSize={8}
                     formatter={(value: string) => (
-                      <span style={{ fontSize: 12, color: '#6b7280' }}>{value}</span>
+                      <span style={{ fontSize: 12, color: CHART_TICK_FILL }}>{value}</span>
                     )}
                   />
                 </PieChart>
@@ -1236,16 +1233,16 @@ export function ExpensesPage() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={statusChartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                  <XAxis dataKey="status" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="status" tick={{ fontSize: 12 }} stroke={CHART_AXIS} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke={CHART_AXIS} />
                   <Tooltip
                     formatter={(value: number) => [value, 'Claims']}
-                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
                   />
                   <Bar
                     dataKey="count"
-                    fill="#6366f1"
+                    fill={CHART_PRIMARY}
                     radius={[6, 6, 0, 0]}
                     onClick={(point: { status?: string }) => {
                       if (!point?.status) return;
@@ -1273,19 +1270,19 @@ export function ExpensesPage() {
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={monthlySpendData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                    <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke={CHART_AXIS} />
+                    <YAxis tick={{ fontSize: 12 }} stroke={CHART_AXIS} />
                     <Tooltip
                       formatter={(value: number) => [formatINR(value), 'Submitted']}
-                      contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                      contentStyle={CHART_TOOLTIP_STYLE}
                     />
                     <Line
                       type="monotone"
                       dataKey="total"
-                      stroke="#10b981"
+                      stroke={CHART_PRIMARY}
                       strokeWidth={3}
-                      dot={{ r: 4, fill: '#10b981' }}
+                      dot={{ r: 4, fill: CHART_PRIMARY }}
                       activeDot={{ r: 6 }}
                     />
                   </LineChart>

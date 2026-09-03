@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { appendBillingInvoice, getBillingPreferences, saveBillingPreferences } from '@/data/billing';
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
-import { Button, Modal } from '@/components/ui';
+import { BrandMark, Button, Modal, Wordmark } from '@/components/ui';
 import { todayIso } from '@/lib/today';
 
 interface SidebarProps {
@@ -79,18 +79,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {/* Brand */}
-        <div className="flex h-16 items-center justify-between gap-2 px-5 border-b border-ink-100">
+        {/* Brand — the primary lockup, flush left, over a 2px rule. */}
+        <div className="flex h-16 items-center justify-between gap-2 px-5 border-b-2 border-ink-900/40">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white font-bold text-lg shadow-sm">
-              M
-            </div>
+            <BrandMark size={32} />
             <div>
-              <p className="font-bold text-ink-900 leading-tight">ModCon HR</p>
-              <p className="text-[11px] text-ink-400 leading-tight">People Platform</p>
+              <Wordmark size={18} className="block leading-none" />
+              <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-ink-500 leading-none">People Platform</p>
             </div>
           </div>
-          <button onClick={onClose} className="lg:hidden rounded-lg p-1.5 text-ink-400 hover:bg-ink-100">
+          <button onClick={onClose} className="lg:hidden p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900">
             <X size={20} />
           </button>
         </div>
@@ -99,7 +97,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {navGroups.map((group) => (
             <div key={group}>
-              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">{group}</p>
+              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500">{group}</p>
               <div className="space-y-0.5">
                 {visibleItems
                   .filter((i) => i.group === group)
@@ -111,10 +109,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       onClick={onClose}
                       className={({ isActive }) =>
                         cn(
-                          'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                          'flex items-center gap-3 border-l-2 px-3 py-2 text-sm font-medium transition-colors',
                           isActive
-                            ? 'bg-brand-50 text-brand-700'
-                            : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900',
+                            ? 'border-brand-600 bg-brand-100 text-brand-800'
+                            : 'border-transparent text-ink-600 hover:bg-ink-900/[0.05] hover:text-ink-900',
                         )
                       }
                     >
@@ -130,18 +128,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* Upgrade card */}
         {isAdmin ? (
           <div className="p-3">
-          <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 p-4 text-white">
-            <p className="text-sm font-semibold">ModCon HR {planLabel}</p>
-            <p className="text-xs text-brand-100 mt-0.5">Unlock advanced analytics & automations.</p>
+          <div className="bg-ink-900 p-4 text-white">
+            <p className="text-[10px] uppercase tracking-[0.1em] text-brand-500">ModCon HR</p>
+            <p className="mt-1 font-display text-sm font-extrabold">{planLabel}</p>
+            <p className="text-xs text-ink-300 mt-0.5">Unlock advanced analytics & automations.</p>
             <button
               type="button"
               onClick={handleUpgradePlan}
-              className="mt-3 w-full rounded-lg bg-white/15 hover:bg-white/25 py-1.5 text-xs font-semibold transition-colors"
+              className="mt-3 w-full bg-brand-600 hover:bg-brand-700 py-1.5 text-xs font-display font-extrabold text-left px-2 transition-colors"
             >
               {billingPreferences.planTier === 'Enterprise' ? 'Enterprise Active' : 'Upgrade to Enterprise'}
             </button>
           </div>
-          <div className="mt-2 space-y-0.5 px-1 text-[11px] text-ink-400">
+          <div className="mt-2 space-y-0.5 px-1 text-[11px] text-ink-500">
             <p>{seatLabel}</p>
             <p className="truncate">Billing: {billingPreferences.billingEmail}</p>
             <p>{renewalLabel}</p>

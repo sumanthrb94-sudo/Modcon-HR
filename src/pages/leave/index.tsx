@@ -468,25 +468,21 @@ export function LeavePage() {
           label="Pending Requests"
           value={pending}
           icon={<Clock size={20} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Approved This Month"
           value={approvedThisMonth}
           icon={<CheckCircle2 size={20} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="On Leave Today"
           value={onLeaveToday}
           icon={<Users size={20} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="Upcoming Holidays"
           value={upcomingHolidays}
           icon={<CalendarDays size={20} />}
-          iconClass="bg-blue-50 text-blue-600"
         />
       </div>
 
@@ -932,26 +928,26 @@ export function LeavePage() {
           )}
 
           {formStart && formEnd && formEnd >= formStart && (
-            <div className="rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-sm px-4 py-2 space-y-1">
+            <div className="bg-ink-100 border border-ink-300 text-ink-800 text-sm px-4 py-2 space-y-1">
               <div>
                 Charged:{' '}
                 <strong>{policyCheck.chargeableDays} day(s)</strong>
                 {policyCheck.chargeableDays !== policyCheck.calendarDays && (
-                  <span className="text-blue-600"> of {policyCheck.calendarDays} calendar day(s)</span>
+                  <span className="text-ink-600"> of {policyCheck.calendarDays} calendar day(s)</span>
                 )}
                 {policyCheck.balanceAfter !== null && policyCheck.errors.length === 0 && (
-                  <span className="text-blue-600">
+                  <span className="text-ink-600">
                     {' '}· {policyCheck.balanceAfter} day(s) would remain
                   </span>
                 )}
               </div>
               {policyCheck.excludedHolidays.map((h) => (
-                <div key={h.date} className="text-xs text-blue-600">
+                <div key={h.date} className="text-xs text-ink-600">
                   {formatDateShort(h.date)} — {h.name} (holiday, not charged)
                 </div>
               ))}
               {policyCheck.excludedWeekOffs.map((d) => (
-                <div key={d} className="text-xs text-blue-600">
+                <div key={d} className="text-xs text-ink-600">
                   {formatDateShort(d)} — {formatWeekdayLong(d)} week-off (not charged)
                 </div>
               ))}

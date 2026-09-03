@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui';
+import { BrandLockup, Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { getActiveOrgKey } from '@/lib/orgScope';
 import { careersPath } from '@/lib/publishedJobs';
@@ -93,11 +93,9 @@ export function LoginPage() {
         <main className="min-h-screen bg-ink-50 px-4 py-8">
             <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center justify-center">
                 <section className="card w-full p-6 sm:p-8">
-                    <div className="flex items-center gap-2.5 mb-2">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white font-bold text-lg shadow-sm">
-                            M
-                        </div>
-                        <p className="font-bold text-ink-900">ModCon HR</p>
+                    <div className="mb-4">
+                        <BrandLockup size={40} />
+                        <div className="mt-4 h-0.5 bg-ink-900" />
                     </div>
                     {mode === 'reset' ? (
                         <>
@@ -139,7 +137,7 @@ export function LoginPage() {
                                     </p>
                                 ) : null}
 
-                                <Button type="submit" className="w-full justify-center" disabled={submitting}>
+                                <Button type="submit" className="btn-block" disabled={submitting}>
                                     {submitting ? (
                                         <Loader2 className="animate-spin" size={16} />
                                     ) : resetSent ? (
@@ -149,7 +147,7 @@ export function LoginPage() {
                                     )}
                                 </Button>
 
-                                <p className="text-center text-sm text-ink-500">
+                                <p className="text-sm text-ink-500">
                                     <button
                                         type="button"
                                         className="font-medium text-brand-600 hover:text-brand-700 hover:underline"
@@ -159,7 +157,7 @@ export function LoginPage() {
                                     </button>
                                 </p>
 
-                                <p className="text-center text-sm text-ink-500">
+                                <p className="text-sm text-ink-500">
                                     Still stuck? Your organization&rsquo;s administrator can reset it for you.
                                 </p>
                             </form>
@@ -221,14 +219,14 @@ export function LoginPage() {
                             </p>
                         ) : null}
 
-                        <Button type="submit" className="w-full justify-center" disabled={submitting}>
+                        <Button type="submit" className="btn-block" disabled={submitting}>
                             {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Sign In'}
                         </Button>
 
                         {/* The way in for somebody who does not have an account
                             and is not supposed to: a candidate. This is the only
                             page they would think to look at. */}
-                        <p className="text-center text-sm text-ink-500">
+                        <p className="text-sm text-ink-500">
                             Looking for a job?{' '}
                             <Link to={careersHref} className="font-medium text-brand-600 hover:underline">
                                 See our open roles
@@ -257,16 +255,16 @@ export function LoginPage() {
                           */}
                         <>
                                 <div className="relative flex py-2 items-center">
-                                    <div className="flex-grow border-t border-ink-150"></div>
+                                    <div className="flex-grow border-t border-ink-200"></div>
                                     <span className="flex-shrink mx-3 text-[10px] uppercase tracking-wider text-ink-400 font-semibold">Quick Demo Login</span>
-                                    <div className="flex-grow border-t border-ink-150"></div>
+                                    <div className="flex-grow border-t border-ink-200"></div>
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-2">
                                     <Button
                                         type="button"
                                         variant="secondary"
-                                        className="text-xs justify-center py-2"
+                                        className="text-xs btn-block py-2"
                                         onClick={async () => {
                                             setSubmitting(true);
                                             try {
@@ -298,7 +296,7 @@ export function LoginPage() {
                           * provisioning, or an administrator attaching an existing one.
                           * See G7 in docs/tenant-isolation-spec.md.
                           */}
-                        <p className="text-center text-sm text-ink-500">
+                        <p className="text-sm text-ink-500">
                             No account? Your organization&rsquo;s administrator creates one for you.
                         </p>
                     </form>

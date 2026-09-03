@@ -19,7 +19,7 @@ export function Avatar({ name, size = 'md', className, imageSrc }: AvatarProps) 
   return (
     <div
       className={cn(
-        'flex items-center justify-center overflow-hidden rounded-full font-semibold text-white shrink-0 ring-2 ring-white',
+        'flex items-center justify-center overflow-hidden font-semibold text-ink-50 shrink-0 ring-2 ring-white',
         avatarColor(name),
         sizes[size],
         className,
@@ -27,7 +27,7 @@ export function Avatar({ name, size = 'md', className, imageSrc }: AvatarProps) 
       title={name}
     >
       {imageSrc ? (
-        <img src={imageSrc} alt={name} className="h-full w-full object-cover" />
+        <img src={imageSrc} alt={name} className="h-full w-full object-cover grayscale-photo" />
       ) : (
         initials(name)
       )}
@@ -52,7 +52,7 @@ export function AvatarGroup({ names, max = 4, size = 'sm' }: AvatarGroupProps) {
       {extra > 0 && (
         <div
           className={cn(
-            'flex items-center justify-center rounded-full bg-ink-200 text-ink-600 font-semibold ring-2 ring-white',
+            'flex items-center justify-center bg-ink-200 text-ink-700 font-semibold ring-2 ring-white',
             sizes[size],
           )}
         >

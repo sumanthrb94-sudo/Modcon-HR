@@ -77,6 +77,7 @@ import {
   useJobApplications,
 } from '@/lib/jobApplications';
 import type { JobApplication } from '@/types';
+import { BRAND_ACCENT, CHART_CURSOR_FILL, CHART_GRID, CHART_PRIMARY, CHART_STATE, CHART_TICK_FILL, CHART_TOOLTIP_STYLE, INK_RAMP } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,8 +94,8 @@ function stageColor(stage: CandidateStage): string {
   const map: Record<CandidateStage, string> = {
     Applied: 'bg-ink-100 border-ink-200',
     Screening: 'bg-amber-50 border-amber-200',
-    Interview: 'bg-blue-50 border-blue-200',
-    Offer: 'bg-violet-50 border-violet-200',
+    Interview: 'bg-ink-100 border-ink-300',
+    Offer: 'bg-brand-100 border-brand-300',
     Hired: 'bg-emerald-50 border-emerald-200',
     Rejected: 'bg-rose-50 border-rose-200',
   };
@@ -105,8 +106,8 @@ function stageHeaderColor(stage: CandidateStage): string {
   const map: Record<CandidateStage, string> = {
     Applied: 'bg-ink-200 text-ink-700',
     Screening: 'bg-amber-200 text-amber-800',
-    Interview: 'bg-blue-200 text-blue-800',
-    Offer: 'bg-violet-200 text-violet-800',
+    Interview: 'bg-ink-200 text-ink-900',
+    Offer: 'bg-brand-200 text-brand-800',
     Hired: 'bg-emerald-200 text-emerald-800',
     Rejected: 'bg-rose-200 text-rose-800',
   };
@@ -115,14 +116,14 @@ function stageHeaderColor(stage: CandidateStage): string {
 
 function funnelBarColor(stage: CandidateStage): string {
   const map: Record<CandidateStage, string> = {
-    Applied: '#94a3b8',
-    Screening: '#fbbf24',
-    Interview: '#3b82f6',
-    Offer: '#8b5cf6',
-    Hired: '#10b981',
-    Rejected: '#f43f5e',
+    Applied: INK_RAMP[400],
+    Screening: INK_RAMP[600],
+    Interview: INK_RAMP[800],
+    Offer: BRAND_ACCENT,
+    Hired: CHART_STATE.positive,
+    Rejected: CHART_STATE.negative,
   };
-  return map[stage] ?? '#94a3b8';
+  return map[stage] ?? CHART_STATE.neutral;
 }
 
 function StarRating({ rating }: { rating: number }) {
@@ -1057,12 +1058,12 @@ function AnalyticsTab({ jobs, candidates: candidateList }: { jobs: JobOpening[];
           <CardHeader title="Hiring Funnel" subtitle="Candidates by stage" />
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={funnelData} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="stage" tick={{ fontSize: 12, fill: '#64748b' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+              <XAxis dataKey="stage" tick={{ fontSize: 12, fill: CHART_TICK_FILL }} />
+              <YAxis tick={{ fontSize: 12, fill: CHART_TICK_FILL }} />
               <Tooltip
-                contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}
-                cursor={{ fill: '#f8fafc' }}
+                contentStyle={CHART_TOOLTIP_STYLE}
+                cursor={{ fill: CHART_CURSOR_FILL }}
               />
               <Bar dataKey="count" radius={[6, 6, 0, 0]} name="Candidates">
                 {funnelData.map((entry) => (
@@ -1077,14 +1078,14 @@ function AnalyticsTab({ jobs, candidates: candidateList }: { jobs: JobOpening[];
           <CardHeader title="Source Breakdown" subtitle="Where candidates come from" />
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={sourceData} layout="vertical" margin={{ top: 4, right: 16, left: 32, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 12, fill: '#64748b' }} />
-              <YAxis dataKey="source" type="category" tick={{ fontSize: 12, fill: '#64748b' }} width={72} />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 12, fill: CHART_TICK_FILL }} />
+              <YAxis dataKey="source" type="category" tick={{ fontSize: 12, fill: CHART_TICK_FILL }} width={72} />
               <Tooltip
-                contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}
-                cursor={{ fill: '#f8fafc' }}
+                contentStyle={CHART_TOOLTIP_STYLE}
+                cursor={{ fill: CHART_CURSOR_FILL }}
               />
-              <Bar dataKey="count" fill="#6366f1" radius={[0, 6, 6, 0]} name="Candidates" />
+              <Bar dataKey="count" fill={CHART_PRIMARY} radius={[0, 0, 0, 0]} name="Candidates" />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -1418,25 +1419,21 @@ export function RecruitmentPage() {
           label="Open Positions"
           value={stats.open}
           icon={<Briefcase size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="Total Applicants"
           value={stats.totalApplicants}
           icon={<Users size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="In Interview"
           value={stats.inInterview}
           icon={<MessageSquare size={22} />}
-          iconClass="bg-blue-50 text-blue-600"
         />
         <StatCard
           label="Offers Extended"
           value={stats.offers}
           icon={<Gift size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
       </div>
 

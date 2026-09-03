@@ -94,6 +94,7 @@ import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents } from '@/data/payroll';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
+import { CHART_SERIES } from '@/lib/chartTheme';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -1075,13 +1076,11 @@ export function EmployeesPage() {
               label="Total Employees"
               value={totalCount}
               icon={<Users size={22} />}
-              iconClass="bg-brand-50 text-brand-600"
             />
             <StatCard
               label="Active"
               value={activeCount}
               icon={<UserCheck size={22} />}
-              iconClass="bg-emerald-50 text-emerald-600"
             />
           </>
         )}
@@ -1089,13 +1088,11 @@ export function EmployeesPage() {
           label="Probation / Notice"
           value={probationNotice}
           icon={<Clock size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Departments"
           value={deptCount}
           icon={<Building2 size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
       </div>
 
@@ -1979,7 +1976,7 @@ function TeamTab({ emp, embeddedSelfView = false }: { emp: Employee; embeddedSel
 // ---------------------------------------------------------------------------
 // Compensation Tab
 // ---------------------------------------------------------------------------
-const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#a855f7'];
+const PIE_COLORS = CHART_SERIES;
 
 function CompensationTab({ emp }: { emp: Employee }) {
   // This tab stays mounted while an administrator edits the split in Settings,
@@ -2006,11 +2003,13 @@ function CompensationTab({ emp }: { emp: Employee }) {
     color: string;
     tone: 'brand' | 'green' | 'amber' | 'red';
   }> = [
-    { label: 'Basic Salary', amount: basic, pct: share(basic), color: 'text-indigo-600', tone: 'brand' },
-    { label: 'HRA', amount: hra, pct: share(hra), color: 'text-emerald-600', tone: 'green' },
-    { label: 'Medical Allowance', amount: medicalAllowance, pct: share(medicalAllowance), color: 'text-cyan-600', tone: 'brand' },
-    { label: 'Conveyance Allowance', amount: conveyanceAllowance, pct: share(conveyanceAllowance), color: 'text-violet-600', tone: 'green' },
-    { label: 'Special Allowance', amount: special, pct: share(special), color: 'text-amber-600', tone: 'amber' },
+    // Components of one gross, not statuses: the accent marks the largest and
+    // the rest step down the ink ramp, so the row reads as a single split.
+    { label: 'Basic Salary', amount: basic, pct: share(basic), color: 'text-brand-700', tone: 'brand' },
+    { label: 'HRA', amount: hra, pct: share(hra), color: 'text-ink-900', tone: 'brand' },
+    { label: 'Medical Allowance', amount: medicalAllowance, pct: share(medicalAllowance), color: 'text-ink-700', tone: 'brand' },
+    { label: 'Conveyance Allowance', amount: conveyanceAllowance, pct: share(conveyanceAllowance), color: 'text-ink-600', tone: 'brand' },
+    { label: 'Special Allowance', amount: special, pct: share(special), color: 'text-ink-500', tone: 'brand' },
   ];
 
   const pieData = [
@@ -3140,7 +3139,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                 <span
                   className={cn(
                     'absolute -bottom-1 -right-1 h-4 w-4 rounded-full ring-2 ring-white',
-                    emp.status === 'Active' ? 'bg-emerald-400' : emp.status === 'On Leave' ? 'bg-violet-400' : 'bg-amber-400'
+                    emp.status === 'Active' ? 'bg-emerald-400' : emp.status === 'On Leave' ? 'bg-ink-500' : 'bg-amber-400'
                   )}
                 />
               </div>

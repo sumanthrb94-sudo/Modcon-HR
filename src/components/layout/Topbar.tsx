@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Search, Building2 } from 'lucide-react';
-import { Avatar, Button, NotificationsMenu, QuickAddMenu, Select } from '@/components/ui';
+import { Avatar, BrandMark, Button, NotificationsMenu, QuickAddMenu, Select } from '@/components/ui';
 import { getVisibleNavItems } from '@/lib/nav';
 import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
@@ -90,10 +90,14 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-ink-200 bg-white/90 backdrop-blur px-4 lg:px-6">
-      <button onClick={onMenuClick} className="lg:hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100">
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b-2 border-ink-900/40 bg-white px-4 lg:px-6">
+      <button onClick={onMenuClick} className="lg:hidden p-2 text-ink-600 hover:bg-ink-100 hover:text-ink-900">
         <Menu size={20} />
       </button>
+      {/* The sidebar carries the lockup on desktop; on mobile it is closed, so
+          chrome keeps the tile alone — the kit drops the wordmark below 20px
+          and this is the same call at a narrow width. */}
+      <BrandMark size={24} className="lg:hidden" />
 
       {role !== 'Employee' ? (
         <div className="relative hidden sm:block w-full max-w-md" ref={searchRef}>
@@ -102,7 +106,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             type="text"
             value={query}
             placeholder="Search employees, requests, documents…"
-            className="input pl-9 bg-ink-50 border-transparent focus:bg-white"
+            className="input pl-9 bg-ink-100 border-ink-200 focus:bg-white"
             onFocus={() => setOpen(true)}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -120,7 +124,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           />
 
           {open && query.trim() ? (
-            <div className="absolute left-0 right-0 z-50 mt-2 rounded-xl border border-ink-100 bg-white p-1.5 shadow-card-hover">
+            <div className="absolute left-0 right-0 z-50 mt-2 border border-ink-300 bg-white p-1.5 shadow-card-hover">
               {results.length === 0 ? (
                 <p className="px-2.5 py-2 text-sm text-ink-500">No matching results</p>
               ) : (
@@ -128,7 +132,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                   <button
                     key={item.id}
                     type="button"
-                    className="block w-full rounded-lg px-2.5 py-2 text-left hover:bg-ink-50"
+                    className="block w-full px-2.5 py-2 text-left hover:bg-ink-100"
                     onClick={() => goTo(item.path)}
                   >
                     <span className="block text-sm font-medium text-ink-800">{item.label}</span>
@@ -143,7 +147,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
       <div className="ml-auto flex items-center gap-2">
         {isSuperAdmin ? (
-          <div className="hidden sm:flex items-center gap-1.5 rounded-lg bg-brand-50 pl-2 pr-1 py-1">
+          <div className="hidden sm:flex items-center gap-1.5 border border-ink-300 bg-brand-100 pl-2 pr-1 py-1">
             <Building2 size={14} className="text-brand-600 shrink-0" />
             <Select
               value={getActiveOrgKey()}
@@ -167,12 +171,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           <Avatar name={profile?.displayName || profile?.email || 'User'} size="sm" />
           <div className="hidden md:block leading-tight">
             <p className="text-sm font-semibold text-ink-900">{profile?.displayName || profile?.email}</p>
-            <p className="text-[11px] text-ink-400">{role === 'Admin' ? 'Administrator' : role}</p>
+            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-500">{role === 'Admin' ? 'Administrator' : role}</p>
           </div>
           <button
             type="button"
             onClick={() => signOutUser()}
-            className="ml-1 rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-rose-600"
+            className="ml-1 p-1.5 text-ink-500 hover:bg-ink-100 hover:text-brand-700"
             title="Sign out"
           >
             <LogOut size={16} />

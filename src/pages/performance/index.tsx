@@ -41,6 +41,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { CHART_CURSOR_FILL, CHART_PRIMARY, CHART_STATE, CHART_TOOLTIP_STYLE, INK } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,13 +81,13 @@ function StarRating({ rating }: { rating: number | null }) {
 // Goal Status Donut data
 // ---------------------------------------------------------------------------
 const DONUT_COLORS: Record<GoalStatus, string> = {
-  'On Track': '#10b981',
-  Completed: '#6366f1',
-  'At Risk': '#f59e0b',
-  Behind: '#f43f5e',
+  'On Track': CHART_STATE.positive,
+  Completed: INK,
+  'At Risk': CHART_STATE.caution,
+  Behind: CHART_STATE.negative,
 };
 
-const BAR_COLOR = '#6366f1';
+const BAR_COLOR = CHART_PRIMARY;
 
 // ---------------------------------------------------------------------------
 // Columns
@@ -555,25 +556,21 @@ export function PerformancePage() {
           label="Active Goals"
           value={activeGoals}
           icon={<Target size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="Avg Goal Progress"
           value={`${avgProgress}%`}
           icon={<TrendingUp size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="Reviews In Progress"
           value={reviewsInProgress}
           icon={<ClipboardList size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Avg Rating"
           value={avgRating}
           icon={<Award size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
       </div>
 
@@ -640,8 +637,8 @@ export function PerformancePage() {
                   <XAxis dataKey="rating" tick={{ fontSize: 12 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                   <Tooltip
-                    contentStyle={{ borderRadius: '8px', fontSize: '13px' }}
-                    cursor={{ fill: '#f1f5f9' }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    cursor={{ fill: CHART_CURSOR_FILL }}
                   />
                   <Bar dataKey="count" fill={BAR_COLOR} radius={[4, 4, 0, 0]} name="Employees" />
                 </BarChart>
@@ -665,11 +662,11 @@ export function PerformancePage() {
                     {goalStatusData.map((entry) => (
                       <Cell
                         key={entry.name}
-                        fill={DONUT_COLORS[entry.name as GoalStatus] ?? '#94a3b8'}
+                        fill={DONUT_COLORS[entry.name as GoalStatus] ?? CHART_STATE.neutral}
                       />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '13px' }} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                   <Legend
                     iconType="circle"
                     iconSize={10}

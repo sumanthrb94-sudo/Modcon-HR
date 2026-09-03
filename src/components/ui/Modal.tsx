@@ -32,7 +32,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="absolute inset-0 bg-ink-900/50 animate-fade-in" onClick={onClose} />
       {/* Announced as a dialog and labelled by its own heading. Without this a
           screen reader met the contents as loose page text, and a button inside
           the modal was indistinguishable from an identically-named one behind
@@ -41,19 +41,19 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={cn('relative w-full card animate-fade-in max-h-[90vh] flex flex-col', sizes[size])}
+        className={cn('relative w-full card elev-lg animate-fade-in max-h-[90vh] flex flex-col', sizes[size])}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-ink-100 p-5">
+        <div className="flex items-start justify-between gap-4 border-b-2 border-ink-900/40 p-5">
           <div>
             <h2 id={titleId} className="text-lg font-semibold text-ink-900">{title}</h2>
             {subtitle && <p className="text-sm text-ink-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button aria-label="Close dialog" onClick={onClose} className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700">
+          <button aria-label="Close dialog" onClick={onClose} className="p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900">
             <X size={20} />
           </button>
         </div>
         <div className="p-5 overflow-y-auto">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-ink-100 p-4">{footer}</div>}
+        {footer && <div className="flex items-center justify-end gap-2 border-t border-ink-200 p-4">{footer}</div>}
       </div>
     </div>
   );

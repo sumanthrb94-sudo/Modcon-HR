@@ -1,4 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#3366ff"/>
-  <path d="M9 22V10h2.6l4.4 7 4.4-7H23v12h-2.5v-7.4L16.5 20h-1L11.5 14.6V22z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Modcon HR">
+  <!-- The Modcon HR mark: an enclosed monogram, the letter M cut into three
+       modules and knocked out of a solid tile. Two full columns carry the
+       structure, the short accent column is the person moving through it.
+       No rounded tile and no padding — the OS applies its own mask. -->
+  <rect width="24" height="24" fill="#201e1d"/>
+  <rect x="4.5" y="5" width="4" height="14" fill="#ffffff"/>
+  <rect x="10" y="5" width="4" height="7.5" fill="#ec3013"/>
+  <rect x="15.5" y="5" width="4" height="14" fill="#ffffff"/>
 </svg>

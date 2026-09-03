@@ -401,7 +401,7 @@ function CompanyProfile() {
       <Card>
         {/* Logo block */}
         <div className="flex items-center gap-5 pb-6 mb-6 border-b border-ink-100">
-          <div className="h-20 w-20 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-violet-600 flex items-center justify-center shrink-0 shadow-md">
+          <div className="h-20 w-20 overflow-hidden rounded-2xl bg-ink-900 flex items-center justify-center shrink-0">
             {logoDataUrl ? (
               <img src={logoDataUrl} alt="Company logo" className="h-full w-full object-cover" />
             ) : (
@@ -2668,7 +2668,7 @@ const defaultIntegrations: Integration[] = [
     name: 'Google Workspace',
     description: 'Sync employee directory with Google accounts and enable SSO login.',
     icon: <Chrome size={22} />,
-    iconBg: 'bg-blue-50 text-blue-600',
+    iconBg: 'bg-ink-100 text-ink-900',
     category: 'Identity & SSO',
     connected: true,
     badge: 'Connected',
@@ -3042,7 +3042,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
 
   return (
     <SettingsSection title="Billing & Plan" subtitle="Manage your subscription, seats, and invoices.">
-      <Card className="mb-5 border-2 border-brand-200 bg-gradient-to-br from-brand-50 to-violet-50">
+      <Card className="mb-5 border-2 border-brand-600 bg-brand-100">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-xl bg-brand-600 flex items-center justify-center">
@@ -3166,7 +3166,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                 <th className="px-4 py-3 text-center text-xs font-semibold text-brand-600 uppercase tracking-wide bg-brand-50">
                   Pro ✓
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-violet-600 uppercase tracking-wide">Enterprise</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-700 uppercase tracking-wide">Enterprise</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -3189,9 +3189,9 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                   </td>
                   <td className="px-4 py-3 text-center">
                     {typeof row.enterprise === 'string'
-                      ? <span className="text-violet-700 font-semibold">{row.enterprise}</span>
+                      ? <span className="text-brand-700 font-semibold">{row.enterprise}</span>
                       : row.enterprise
-                        ? <Check size={16} className="text-violet-500 mx-auto" />
+                        ? <Check size={16} className="text-brand-600 mx-auto" />
                         : <X size={16} className="text-ink-300 mx-auto" />}
                   </td>
                 </tr>
@@ -4723,7 +4723,7 @@ export function SettingsPage() {
             {/* Footer info */}
             <div className="border-t border-ink-100 px-4 py-3">
               <div className="flex items-center gap-2">
-                <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-brand-600 to-violet-600 flex items-center justify-center">
+                <div className="h-7 w-7 rounded-lg bg-ink-900 flex items-center justify-center">
                   <span className="text-white text-xs font-black">MC</span>
                 </div>
                 <div className="min-w-0">

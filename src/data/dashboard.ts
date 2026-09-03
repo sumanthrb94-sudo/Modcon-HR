@@ -21,6 +21,7 @@ import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope
 import type { UserProfile } from '@/lib/auth';
 import { todayDate, todayIso } from '@/lib/today';
 import { formatMonthShort, formatWeekdayShort } from '@/lib/utils';
+import { CHART_STATE, chartSeriesColor } from '@/lib/chartTheme';
 
 export interface MonthlyHeadcount {
   month: string;  // "Jun '26"
@@ -53,6 +54,9 @@ export interface ApprovalItem {
   type: string;
   count: number;
   urgentCount: number;
+  // These four queues are parallel, not ranked, so they share one ink tile
+  // rather than each claiming a hue — the accent on this row is spent on the
+  // urgent count, which is the thing worth looking at.
   colorClass: string;
   bgClass: string;
 }
@@ -267,31 +271,31 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
       count: leave.length,
       // Urgent = leave that starts within 3 days and still has no decision.
       urgentCount: leave.filter((request) => daysUntil(request.startDate) <= 3).length,
-      colorClass: 'text-violet-600',
-      bgClass: 'bg-violet-50',
+      colorClass: 'text-ink-900',
+      bgClass: 'bg-ink-100',
     },
     {
       type: 'Expense Claims',
       count: expenses.length,
       // Urgent = sitting in the queue for a week or more.
       urgentCount: expenses.filter((claim) => daysSince(claim.submittedOn) >= 7).length,
-      colorClass: 'text-amber-600',
-      bgClass: 'bg-amber-50',
+      colorClass: 'text-ink-900',
+      bgClass: 'bg-ink-100',
     },
     {
       type: 'Regularizations',
       count: regularizations.length,
       urgentCount: regularizations.filter((request) => daysSince(request.date) >= 7).length,
-      colorClass: 'text-blue-600',
-      bgClass: 'bg-brand-50',
+      colorClass: 'text-ink-900',
+      bgClass: 'bg-ink-100',
     },
     {
       type: 'Onboarding Tasks',
       count: onboardingTasks.length,
       // Urgent = past its due date.
       urgentCount: onboardingTasks.filter((task) => task.dueDate && daysUntil(task.dueDate) < 0).length,
-      colorClass: 'text-emerald-600',
-      bgClass: 'bg-emerald-50',
+      colorClass: 'text-ink-900',
+      bgClass: 'bg-ink-100',
     },
   ];
 }
@@ -444,29 +448,36 @@ export function departmentDistribution(): DeptChartEntry[] {
   });
 
   return Array.from(counts.entries())
-    .map(([name, value]) => ({ name, value, fill: DEPT_COLORS[name] ?? '#94a3b8' }))
+    .map(([name, value]) => ({ name, value, fill: DEPT_COLORS[name] ?? CHART_STATE.neutral }))
     .sort((a, b) => b.value - a.value);
 }
 
 // ---------------------------------------------------------------------------
 // 9. Chart palettes — presentation constants, not data
 // ---------------------------------------------------------------------------
+// Departments have no inherent colour, so they walk the categorical sequence
+// in `lib/chartTheme.ts` — accent first, then down the ink ramp — rather than
+// each claiming a hue of its own. A department not listed (every organisation
+// but the demo one names its own) falls to the neutral step, which is what the
+// sequence would have given it anyway.
 export const DEPT_COLORS: Record<string, string> = {
-  Engineering:      '#3366ff',
-  Product:          '#8b5cf6',
-  Design:           '#ec4899',
-  Sales:            '#10b981',
-  Marketing:        '#f59e0b',
-  'Human Resources':'#06b6d4',
-  Finance:          '#6366f1',
-  Operations:       '#f97316',
-  'Customer Success':'#14b8a6',
-  Legal:            '#94a3b8',
+  Engineering:        chartSeriesColor(0),
+  Product:            chartSeriesColor(1),
+  Design:             chartSeriesColor(2),
+  Sales:              chartSeriesColor(3),
+  Marketing:          chartSeriesColor(4),
+  'Human Resources':  chartSeriesColor(5),
+  Finance:            chartSeriesColor(6),
+  Operations:         chartSeriesColor(7),
+  'Customer Success': chartSeriesColor(8),
+  Legal:              chartSeriesColor(9),
 };
 
+// Attendance is a semantic scale — present and absent have to stay tellable
+// apart — so it reads the state colours rather than the categorical sequence.
 export const ATTENDANCE_COLORS = {
-  Present: '#3366ff',
-  WFH:     '#8b5cf6',
-  Leave:   '#f59e0b',
-  Absent:  '#f43f5e',
+  Present: CHART_STATE.positive,
+  WFH:     CHART_STATE.info,
+  Leave:   CHART_STATE.caution,
+  Absent:  CHART_STATE.negative,
 };

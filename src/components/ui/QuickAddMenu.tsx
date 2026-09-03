@@ -57,7 +57,7 @@ export function QuickAddMenu({ size = 'sm', variant = 'primary', className }: Qu
             </Button>
 
             {open ? (
-                <div className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-ink-100 bg-white p-1.5 shadow-card-hover">
+                <div className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-ink-300 bg-white p-1.5 shadow-card-hover">
                     {quickActions.map((item) => {
                         const Icon = item.icon;
                         return (

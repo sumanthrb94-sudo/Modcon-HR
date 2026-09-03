@@ -7,7 +7,6 @@ interface StatCardProps {
   label: string;
   value: string | number;
   icon?: ReactNode;
-  iconClass?: string;
   delta?: number; // percent change
   deltaLabel?: string;
   footer?: ReactNode;
@@ -19,7 +18,6 @@ export function StatCard({
   label,
   value,
   icon,
-  iconClass,
   delta,
   deltaLabel,
   footer,
@@ -30,19 +28,23 @@ export function StatCard({
   return (
     <Card
       className={cn(
-        'hover:shadow-card-hover transition-all duration-200',
-        onClick && 'cursor-pointer select-none active:scale-[0.98]',
-        active && 'ring-2 ring-brand-500 border-brand-500 bg-brand-50/10'
+        'transition-colors duration-150',
+        onClick && 'hover:border-ink-900',
+        onClick && 'cursor-pointer select-none',
+        active && 'border-brand-600 bg-brand-100'
       )}
       onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-ink-500">{label}</p>
-          <p className="text-2xl font-bold text-ink-900 mt-1">{value}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-600">{label}</p>
+          <p className="font-display text-2xl font-extrabold text-ink-900 mt-1">{value}</p>
         </div>
+        {/* One ink tile for every stat card. The icon is a label, not a
+            status — sixty-two of these carried six unrelated hues, which is
+            what "never recolour outside the palette" rules out. */}
         {icon && (
-          <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl', iconClass ?? 'bg-brand-50 text-brand-600')}>
+          <div className="flex h-11 w-11 items-center justify-center bg-ink-100 text-ink-900">
             {icon}
           </div>
         )}

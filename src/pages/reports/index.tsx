@@ -41,21 +41,27 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { todayIso } from '@/lib/today';
+import { CHART_GRID, CHART_PRIMARY, chartSeriesColor } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Color palette
 // ---------------------------------------------------------------------------
+// The keys are the names the charts below already call these series by; what
+// they resolve to is the brand's categorical sequence (accent first, then down
+// the ink ramp), so the hue names no longer describe the colour. Renaming them
+// would touch every chart in the file for no gain — read `lib/chartTheme.ts`
+// for what a step actually is.
 const PALETTE = {
-  brand: '#6366f1',
-  emerald: '#10b981',
-  amber: '#f59e0b',
-  rose: '#f43f5e',
-  violet: '#8b5cf6',
-  cyan: '#06b6d4',
-  indigo: '#4f46e5',
-  teal: '#14b8a6',
-  pink: '#ec4899',
-  orange: '#f97316',
+  brand: CHART_PRIMARY,
+  emerald: chartSeriesColor(1),
+  amber: chartSeriesColor(2),
+  rose: chartSeriesColor(3),
+  violet: chartSeriesColor(4),
+  cyan: chartSeriesColor(5),
+  indigo: chartSeriesColor(6),
+  teal: chartSeriesColor(7),
+  pink: chartSeriesColor(8),
+  orange: chartSeriesColor(9),
 };
 
 const PIE_COLORS = [PALETTE.brand, PALETTE.emerald, PALETTE.amber, PALETTE.rose, PALETTE.violet, PALETTE.cyan];
@@ -214,8 +220,8 @@ export function ReportsPage() {
       title: 'Recruitment Report',
       description: 'Open positions, offer acceptance rates, time-to-hire, and source effectiveness.',
       kpis: [{ label: 'Open Roles', value: String(openRoles) }, { label: 'Avg TTH', value: `${avgTTH} days` }],
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
+      color: 'text-ink-900',
+      bg: 'bg-ink-100',
       route: '/recruitment',
     },
     {
@@ -232,8 +238,8 @@ export function ReportsPage() {
       title: 'Performance Report',
       description: 'Review completion rates, rating distributions, goal attainment, and top performers.',
       kpis: [{ label: 'Completed', value: `${performance.completedPercent}%` }, { label: 'Avg Rating', value: `${performance.avgRating}/5` }],
-      color: 'text-cyan-600',
-      bg: 'bg-cyan-50',
+      color: 'text-ink-900',
+      bg: 'bg-ink-100',
       route: '/performance',
     },
   ];
@@ -278,31 +284,26 @@ export function ReportsPage() {
           label="Total Headcount"
           value={headcount}
           icon={<Users size={20} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="On Notice"
           value={`${attrition}%`}
           icon={<TrendingDown size={20} />}
-          iconClass="bg-rose-50 text-rose-600"
         />
         <StatCard
           label="Avg Tenure"
           value={`${tenure} yrs`}
           icon={<Clock size={20} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Annual Payroll"
           value={formatINR(payroll, { compact: true })}
           icon={<IndianRupee size={20} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Diversity Ratio"
           value={`${diversity}% F`}
           icon={<UserCheck size={20} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
       </div>
 
@@ -321,7 +322,7 @@ export function ReportsPage() {
                     <stop offset="95%" stopColor={PALETTE.brand} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} domain={[0, 'auto']} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
@@ -348,7 +349,7 @@ export function ReportsPage() {
         <ChartCard title="Headcount by Department" subtitle="Current distribution" className="lg:col-span-2">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={hcByDept} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="department" tick={{ fontSize: 11 }} width={60} />
               <Tooltip content={<CustomTooltip />} />
@@ -388,7 +389,7 @@ export function ReportsPage() {
         <ChartCard title="Tenure Distribution">
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={tenureData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
               <XAxis dataKey="name" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip content={<CustomTooltip />} />
@@ -428,7 +429,7 @@ export function ReportsPage() {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={funnelData} layout="vertical" margin={{ top: 0, right: 20, left: 40, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                 <YAxis type="category" dataKey="stage" tick={{ fontSize: 11 }} width={55} />
                 <Tooltip content={<CustomTooltip />} />
@@ -451,7 +452,7 @@ export function ReportsPage() {
                     <stop offset="95%" stopColor={PALETTE.teal} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                 <XAxis dataKey="period" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip content={<CustomTooltip formatter={(v) => `${v}%`} />} />
@@ -466,7 +467,7 @@ export function ReportsPage() {
       <ChartCard title="Monthly Salary Cost by Department" subtitle="Cost to company / 12">
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={salaryData} margin={{ top: 5, right: 20, left: 20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
             <XAxis dataKey="dept" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatINR(v, { compact: true })} />
             <Tooltip content={<CustomTooltip formatter={(v) => formatINR(Number(v), { compact: true })} />} />
@@ -515,7 +516,7 @@ export function ReportsPage() {
       </div>
 
       {/* Quick insight banner */}
-      <Card className="bg-gradient-to-r from-brand-600 to-violet-600 text-white">
+      <Card className="bg-ink-900 text-white">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Activity size={24} className="shrink-0 opacity-80" />

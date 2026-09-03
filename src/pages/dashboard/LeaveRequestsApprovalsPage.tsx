@@ -140,7 +140,7 @@ export function LeaveRequestsApprovalsPage() {
                                     className="rounded-xl border border-ink-100 bg-white p-4"
                                 >
                                     <div className="flex items-start gap-3">
-                                        <div className="h-10 w-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+                                        <div className="h-10 w-10 bg-ink-100 text-ink-900 flex items-center justify-center shrink-0">
                                             <CalendarOff size={16} />
                                         </div>
                                         <div className="flex-1 min-w-0">

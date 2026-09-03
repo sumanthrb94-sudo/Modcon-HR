@@ -128,17 +128,16 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
+// Steps of the ink ramp with one accent, rather than a rainbow: the identity
+// is mono, and a spread of unrelated hues was the loudest thing on a page of
+// people. The steps are all dark enough to carry white initials.
 const AVATAR_COLORS = [
-  'bg-brand-500',
-  'bg-emerald-500',
-  'bg-violet-500',
-  'bg-amber-500',
-  'bg-rose-500',
-  'bg-cyan-500',
-  'bg-indigo-500',
-  'bg-pink-500',
-  'bg-teal-500',
-  'bg-orange-500',
+  'bg-ink-900',
+  'bg-ink-700',
+  'bg-brand-700',
+  'bg-ink-800',
+  'bg-ink-600',
+  'bg-brand-800',
 ];
 
 /** Deterministic avatar color from a string seed. */

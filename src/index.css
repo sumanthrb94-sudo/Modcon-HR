@@ -2,44 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Modcon HR — Modernist.
+
+   Flat, architectural and set entirely in Archivo: near-mono ink on paper
+   with one accent, a visible modular grid, zero corner radius and strong
+   2px rules. Nothing floats and nothing is decorated — alignment and the
+   strength of the dividers do the organising.
+
+   Every colour, size and shadow here comes from `tailwind.config.js`, which
+   carries the brand kit's tokens. Don't hard-code a hex in a component.
+   ───────────────────────────────────────────────────────────────────────── */
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply bg-ink-50 text-ink-800 font-sans;
+    @apply bg-ink-50 text-ink-900 font-sans;
   }
   * {
     @apply border-ink-200;
   }
+
+  /* Headings are Archivo 800 with the kit's display tracking: -0.035em at
+     display sizes, -0.015em from h1 down. */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-extrabold;
+    letter-spacing: -0.015em;
+    line-height: 1.12;
+  }
+
+  /* Keyboard focus is themed, never the browser's blue ring. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid theme('colors.brand.600');
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: rgb(236 48 19 / 0.3);
+  }
 }
 
 @layer components {
+  /* A card is a surface with a rule around it — no radius, no lift. The
+     shadow tokens stay available (`.elev-sm/md/lg`) for the few things that
+     genuinely sit above the page, like menus and modals. */
   .card {
-    @apply bg-white rounded-2xl shadow-card border border-ink-100;
+    @apply bg-white border border-ink-300;
   }
+  .elev-sm {
+    @apply shadow-card;
+  }
+  .elev-md {
+    @apply shadow-card-hover;
+  }
+  .elev-lg {
+    @apply shadow-modal;
+  }
+
+  /* A strong 2px horizontal rule — the system's main organising device. */
+  .hr {
+    @apply my-4 h-0.5 border-0 bg-ink-900/40;
+  }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-display font-extrabold transition-colors duration-150 focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-300 shadow-sm;
+    @apply btn bg-brand-600 text-ink-50 hover:bg-brand-700 active:bg-brand-800;
   }
   .btn-secondary {
-    @apply btn bg-white text-ink-700 border border-ink-200 hover:bg-ink-50 focus:ring-ink-200;
+    @apply btn bg-transparent text-ink-900 border border-ink-900/40 hover:bg-ink-900/[0.07] active:bg-ink-900/[0.14];
   }
   .btn-ghost {
-    @apply btn text-ink-600 hover:bg-ink-100;
+    @apply btn text-brand-700 hover:bg-brand-600/10 active:bg-brand-600/20;
   }
+  /* A button wider than its label starts the text at the left padding edge —
+     labels are flush left, never centred. */
+  .btn-block {
+    @apply w-full justify-start text-left;
+  }
+
   .input {
-    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 placeholder-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100;
+    @apply w-full border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600;
   }
+  /* Labels are the kit's 11-12px uppercase, tracked out. */
   .label {
-    @apply block text-sm font-medium text-ink-600 mb-1.5;
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-600;
+  }
+
+  /* Every content photograph prints in pure black and white. */
+  .grayscale-photo {
+    filter: grayscale(1) contrast(1.08);
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — squared off, in the ink ramp. */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -48,9 +110,8 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: #bab6b6;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #7d7979;
 }

@@ -13,3 +13,4 @@ export { EmptyState } from './EmptyState';
 export { Select } from './Select';
 export { QuickAddMenu } from './QuickAddMenu';
 export { NotificationsMenu } from './NotificationsMenu';
+export { BrandMark, Wordmark, BrandLockup } from './BrandMark';

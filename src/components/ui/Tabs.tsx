@@ -15,7 +15,7 @@ interface TabsProps {
 
 export function Tabs({ tabs, active, onChange, className }: TabsProps) {
   return (
-    <div className={cn('flex items-center gap-1 border-b border-ink-200 overflow-x-auto', className)}>
+    <div className={cn('flex items-center gap-1 border-b-2 border-ink-900/40 overflow-x-auto', className)}>
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -32,7 +32,7 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
             <span
               className={cn(
                 'ml-2 rounded-full px-1.5 py-0.5 text-xs font-semibold',
-                active === tab.id ? 'bg-brand-100 text-brand-700' : 'bg-ink-100 text-ink-500',
+                active === tab.id ? 'bg-brand-100 text-brand-800' : 'bg-ink-100 text-ink-500',
               )}
             >
               {tab.count}

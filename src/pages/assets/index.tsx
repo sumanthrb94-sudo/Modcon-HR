@@ -38,18 +38,19 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { todayIso } from '@/lib/today';
+import { CHART_STATE, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const CATEGORY_COLORS: Record<AssetCategory, string> = {
-  Laptop: '#6366f1',
-  Monitor: '#06b6d4',
-  Phone: '#f59e0b',
-  Accessories: '#10b981',
-  Furniture: '#f43f5e',
-  'Software License': '#8b5cf6',
+  Laptop: chartSeriesColor(0),
+  Monitor: chartSeriesColor(1),
+  Phone: chartSeriesColor(2),
+  Accessories: chartSeriesColor(3),
+  Furniture: chartSeriesColor(4),
+  'Software License': chartSeriesColor(5),
 };
 
 const CATEGORY_OPTIONS: { label: string; value: string }[] = [
@@ -314,7 +315,7 @@ export function AssetsPage() {
         .map(([category, value]) => ({
           name: category,
           value,
-          color: CATEGORY_COLORS[category as AssetCategory] ?? '#94a3b8',
+          color: CATEGORY_COLORS[category as AssetCategory] ?? CHART_STATE.neutral,
         }));
     },
     [assetList, directoryRevision],
@@ -468,31 +469,26 @@ export function AssetsPage() {
           label="Total Assets"
           value={stats.total}
           icon={<Package size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="Assigned"
           value={stats.assigned}
           icon={<CheckCircle2 size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Available"
           value={stats.available}
           icon={<Monitor size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="In Repair"
           value={stats.inRepair}
           icon={<Wrench size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Total Value"
           value={formatINR(stats.totalValue, { compact: true })}
           icon={<IndianRupee size={22} />}
-          iconClass="bg-rose-50 text-rose-600"
         />
       </div>
 
@@ -515,7 +511,7 @@ export function AssetsPage() {
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{ borderRadius: '8px', fontSize: '13px' }}
+              contentStyle={CHART_TOOLTIP_STYLE}
               formatter={(value: number, name: string) => [value, name]}
             />
             <Legend

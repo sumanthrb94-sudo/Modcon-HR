@@ -51,6 +51,7 @@ import {
 } from '@/lib/payslipDocuments';
 import { PayslipUploadModal } from './PayslipUploadModal';
 import type { Payslip, PayrollRun, PayslipDocument } from '@/types';
+import { CHART_GRID, CHART_PRIMARY, CHART_TICK_FILL, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -520,25 +521,21 @@ export function PayrollPage() {
           label="Monthly Payroll Cost"
           value={formatINR(totalNetPay, { compact: true })}
           icon={<IndianRupee size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Employees on Payroll"
           value={employees.length}
           icon={<Users size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="Average CTC"
           value={formatINR(avgCTC, { compact: true })}
           icon={<TrendingUp size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="Next Pay Date"
           value={formatDate(nextPayDate)}
           icon={<CalendarClock size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
           footer={
             <span className="text-ink-400 text-sm">
               {daysToPayDate === 0 ? 'Today' : `${daysToPayDate} day${daysToPayDate === 1 ? '' : 's'} away`}
@@ -556,16 +553,16 @@ export function PayrollPage() {
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
               <XAxis
                 dataKey="display"
-                tick={{ fontSize: 11, fill: '#6b7280' }}
+                tick={{ fontSize: 11, fill: CHART_TICK_FILL }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 tickFormatter={(v: number) => `₹${v}L`}
-                tick={{ fontSize: 11, fill: '#6b7280' }}
+                tick={{ fontSize: 11, fill: CHART_TICK_FILL }}
                 axisLine={false}
                 tickLine={false}
                 width={52}
@@ -573,9 +570,9 @@ export function PayrollPage() {
               <Tooltip
                 formatter={(value: number) => [`₹${value.toFixed(2)}L`, 'Monthly Cost']}
                 labelFormatter={(label: string) => `Dept: ${label}`}
-                contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                contentStyle={CHART_TOOLTIP_STYLE}
               />
-              <Bar dataKey="totalLakh" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="totalLakh" fill={CHART_PRIMARY} radius={[0, 0, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

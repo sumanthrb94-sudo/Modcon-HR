@@ -79,7 +79,7 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
             {compact ? (
                 <button
                     type="button"
-                    className={className ?? 'relative rounded-lg p-2 text-ink-500 hover:bg-ink-100'}
+                    className={className ?? 'relative p-2 text-ink-600 hover:bg-ink-100 hover:text-ink-900'}
                     onClick={() => setOpen((prev) => !prev)}
                     aria-expanded={open}
                     aria-haspopup="menu"
@@ -89,7 +89,7 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                     {/* The dot was painted unconditionally, so the bell always
                         looked like it had something waiting. */}
                     {totalCount > 0 ? (
-                        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+                        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white" />
                     ) : null}
                 </button>
             ) : (
@@ -104,7 +104,7 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                 >
                     Notifications
                     {totalCount > 0 ? (
-                        <span className="ml-1 h-4 min-w-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                        <span className="ml-1 h-4 min-w-4 px-1 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center">
                             {totalCount}
                         </span>
                     ) : null}
@@ -112,7 +112,7 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
             )}
 
             {open ? (
-                <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-ink-100 bg-white p-1.5 shadow-card-hover">
+                <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-ink-300 bg-white p-1.5 shadow-card-hover">
                     <div className="flex items-center justify-between px-2.5 py-2">
                         <p className="text-sm font-semibold text-ink-800">Notifications</p>
                         <span className="text-xs text-ink-500">

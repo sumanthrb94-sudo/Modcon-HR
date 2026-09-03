@@ -55,6 +55,7 @@ import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
+import { CHART_GRID, CHART_STATE, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
 
 type AttendanceRow = AttendanceRecord & { employee: Employee };
 
@@ -473,31 +474,26 @@ export function AttendancePage() {
           label="Present Today"
           value={todayStats.present}
           icon={<Users size={20} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Work From Home"
           value={todayStats.wfh}
           icon={<Monitor size={20} />}
-          iconClass="bg-blue-50 text-blue-600"
         />
         <StatCard
           label="On Leave"
           value={todayStats.onLeave}
           icon={<Calendar size={20} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
         <StatCard
           label="Absent"
           value={todayStats.absent}
           icon={<UserX size={20} />}
-          iconClass="bg-rose-50 text-rose-600"
         />
         <StatCard
           label="Late Arrivals"
           value={todayStats.late}
           icon={<Clock size={20} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
       </div>
 
@@ -560,17 +556,17 @@ export function AttendancePage() {
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weeklyData} barSize={18} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
               <XAxis dataKey="day" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip
-                contentStyle={{ borderRadius: '8px', fontSize: '13px', border: '1px solid #e5e7eb' }}
+                contentStyle={CHART_TOOLTIP_STYLE}
               />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="Present" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="WFH" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="Leave" stackId="a" fill="#8b5cf6" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="Absent" stackId="a" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Present" stackId="a" fill={CHART_STATE.positive} radius={[0, 0, 0, 0]} />
+              <Bar dataKey="WFH" stackId="a" fill={CHART_STATE.info} radius={[0, 0, 0, 0]} />
+              <Bar dataKey="Leave" stackId="a" fill={CHART_STATE.caution} radius={[0, 0, 0, 0]} />
+              <Bar dataKey="Absent" stackId="a" fill={CHART_STATE.negative} radius={[0, 0, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

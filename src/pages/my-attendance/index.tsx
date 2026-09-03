@@ -45,6 +45,7 @@ import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
+import { CHART_GRID, CHART_PRIMARY, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
 
 function dayLabel(iso: string): string {
   return formatWeekdayLong(iso);
@@ -497,11 +498,11 @@ export function MyAttendancePage() {
 
           {/* Weekly stat cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <StatCard label="Present" value={stats.present} icon={<Users size={20} />} iconClass="bg-emerald-50 text-emerald-600" />
-            <StatCard label="Work From Home" value={stats.wfh} icon={<Monitor size={20} />} iconClass="bg-blue-50 text-blue-600" />
-            <StatCard label="On Leave" value={stats.onLeave} icon={<Calendar size={20} />} iconClass="bg-violet-50 text-violet-600" />
-            <StatCard label="Absent" value={stats.absent} icon={<UserX size={20} />} iconClass="bg-rose-50 text-rose-600" />
-            <StatCard label="Late Arrivals" value={stats.late} icon={<Clock size={20} />} iconClass="bg-amber-50 text-amber-600" />
+            <StatCard label="Present" value={stats.present} icon={<Users size={20} />} />
+            <StatCard label="Work From Home" value={stats.wfh} icon={<Monitor size={20} />} />
+            <StatCard label="On Leave" value={stats.onLeave} icon={<Calendar size={20} />} />
+            <StatCard label="Absent" value={stats.absent} icon={<UserX size={20} />} />
+            <StatCard label="Late Arrivals" value={stats.late} icon={<Clock size={20} />} />
           </div>
 
           {/* Attendance records */}
@@ -545,14 +546,14 @@ export function MyAttendancePage() {
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} barSize={28} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                     <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      contentStyle={{ borderRadius: '8px', fontSize: '13px', border: '1px solid #e5e7eb' }}
+                      contentStyle={CHART_TOOLTIP_STYLE}
                       formatter={(value) => [`${value}h`, 'Worked']}
                     />
-                    <Bar dataKey="Hours" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Hours" fill={CHART_PRIMARY} radius={[0, 0, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

@@ -29,7 +29,7 @@ import {
   Paperclip,
   Search,
 } from 'lucide-react';
-import { Badge, Button, EmptyState } from '@/components/ui';
+import { Badge, BrandMark, Button, EmptyState } from '@/components/ui';
 import { formatDate, timeAgo } from '@/lib/utils';
 import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import { careersJobPath, careersPath, usePublicJobOpenings } from '@/lib/publishedJobs';
@@ -53,15 +53,15 @@ function typeBadgeTone(type: EmploymentType) {
 function CareersShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-ink-50">
-      <header className="border-b border-ink-200 bg-white">
+      {/* This is the one page read by somebody who does not work here, so it
+          carries the mark rather than a generic briefcase glyph. */}
+      <header className="border-b-2 border-ink-900/40 bg-white">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white">
-              <Briefcase size={18} />
-            </span>
+            <BrandMark size={32} />
             <div>
-              <p className="text-base font-semibold leading-tight text-ink-900">Careers</p>
-              <p className="text-xs text-ink-500">Open roles and applications</p>
+              <p className="font-display text-base font-extrabold leading-tight text-ink-900">Careers</p>
+              <p className="text-[10px] uppercase tracking-[0.1em] text-ink-500">Open roles and applications</p>
             </div>
           </div>
           <Link to="/login" className="text-sm font-medium text-ink-500 hover:text-brand-600">

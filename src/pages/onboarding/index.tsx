@@ -92,8 +92,8 @@ const CATEGORY_ICONS: Record<TaskCategory, ReactNode> = {
 };
 
 const CATEGORY_COLOR: Record<TaskCategory, string> = {
-  Documentation: 'bg-blue-50 text-blue-700 border-blue-200',
-  'IT Setup': 'bg-violet-50 text-violet-700 border-violet-200',
+  Documentation: 'bg-ink-100 text-ink-800 border-ink-300',
+  'IT Setup': 'bg-ink-100 text-ink-800 border-ink-300',
   Orientation: 'bg-amber-50 text-amber-700 border-amber-200',
   Compliance: 'bg-rose-50 text-rose-700 border-rose-200',
   Training: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -494,25 +494,21 @@ export function OnboardingPage() {
           label="Onboarding In Progress"
           value={stats.inProgress}
           icon={<ClipboardList size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="Completed This Month"
           value={stats.completedThisMonth}
           icon={<CheckSquare size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Tasks Pending"
           value={stats.tasksPending}
           icon={<Circle size={22} />}
-          iconClass="bg-amber-50 text-amber-600"
         />
         <StatCard
           label="Avg Completion"
           value={`${stats.avgCompletion}%`}
           icon={<TrendingUp size={22} />}
-          iconClass="bg-violet-50 text-violet-600"
         />
       </div>
 

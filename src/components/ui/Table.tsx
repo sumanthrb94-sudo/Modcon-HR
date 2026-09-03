@@ -22,12 +22,12 @@ export function Table<T>({ columns, data, keyExtractor, onRowClick, emptyMessage
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-ink-200 text-left">
+          <tr className="border-b-2 border-ink-900/40 bg-ink-100 text-left">
             {columns.map((col) => (
               <th
                 key={col.key}
                 className={cn(
-                  'px-4 py-3 font-semibold text-ink-500 text-xs uppercase tracking-wide whitespace-nowrap',
+                  'px-4 py-3 font-semibold text-ink-600 text-[11px] uppercase tracking-[0.08em] whitespace-nowrap',
                   col.align === 'right' && 'text-right',
                   col.align === 'center' && 'text-center',
                   col.className,
@@ -38,7 +38,7 @@ export function Table<T>({ columns, data, keyExtractor, onRowClick, emptyMessage
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-ink-100">
+        <tbody className="divide-y divide-ink-200">
           {data.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="px-4 py-12 text-center text-ink-400">
@@ -50,7 +50,7 @@ export function Table<T>({ columns, data, keyExtractor, onRowClick, emptyMessage
               <tr
                 key={keyExtractor(row)}
                 onClick={() => onRowClick?.(row)}
-                className={cn('transition-colors', onRowClick && 'cursor-pointer hover:bg-ink-50')}
+                className={cn('transition-colors', onRowClick && 'cursor-pointer hover:bg-ink-900/[0.04]')}
               >
                 {columns.map((col) => (
                   <td

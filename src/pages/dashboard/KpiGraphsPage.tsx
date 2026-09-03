@@ -11,6 +11,7 @@ import {
 } from '@/data/dashboard';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+import { CHART_GRID, CHART_TICK_FILL, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
 
 type Unit = 'count' | 'percent' | 'years';
 
@@ -51,7 +52,7 @@ export function KpiGraphsPage() {
                 label: 'Total Employees',
                 current: directory.length,
                 unit: 'count',
-                color: '#3366ff',
+                color: chartSeriesColor(0),
                 icon: <Users size={16} />,
                 series: headcount.map((point) => ({ period: point.month, value: point.count })),
                 seriesLabel: 'Cumulative joiners, last 12 months',
@@ -61,7 +62,7 @@ export function KpiGraphsPage() {
                 label: 'Present Today',
                 current: today.present,
                 unit: 'count',
-                color: '#10b981',
+                color: chartSeriesColor(1),
                 icon: <CalendarCheck size={16} />,
                 series: week.map((day) => ({ period: day.day, value: day.Present })),
                 seriesLabel: 'Marked present, current week',
@@ -74,7 +75,7 @@ export function KpiGraphsPage() {
                 label: 'On Leave',
                 current: onLeaveToday(),
                 unit: 'count',
-                color: '#8b5cf6',
+                color: chartSeriesColor(2),
                 icon: <CalendarOff size={16} />,
                 series: week.map((day) => ({ period: day.day, value: day.Leave })),
                 seriesLabel: 'On leave, current week',
@@ -85,7 +86,7 @@ export function KpiGraphsPage() {
                 label: 'Open Positions',
                 current: openPositionsCount(),
                 unit: 'count',
-                color: '#f59e0b',
+                color: chartSeriesColor(3),
                 icon: <Briefcase size={16} />,
                 // Job openings carry no history — only their current status.
                 series: [],
@@ -97,7 +98,7 @@ export function KpiGraphsPage() {
                 label: 'On Notice',
                 current: noticePeriodRate(),
                 unit: 'percent',
-                color: '#f43f5e',
+                color: chartSeriesColor(4),
                 icon: <TrendingUp size={16} />,
                 // Employee status is a point-in-time field with no audit trail.
                 series: [],
@@ -109,7 +110,7 @@ export function KpiGraphsPage() {
                 label: 'Avg. Tenure',
                 current: tenure.length ? tenure[tenure.length - 1].years : 0,
                 unit: 'years',
-                color: '#06b6d4',
+                color: chartSeriesColor(5),
                 icon: <Clock size={16} />,
                 series: tenure.map((point) => ({ period: point.month, value: point.years })),
                 seriesLabel: 'Mean tenure, last 12 months',
@@ -166,12 +167,12 @@ export function KpiGraphsPage() {
                             {hasSeries ? (
                                 <ResponsiveContainer width="100%" height={220}>
                                     <BarChart data={card.series} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                        <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                                        <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={card.unit !== 'count'} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                                        <XAxis dataKey="period" tick={{ fontSize: 11, fill: CHART_TICK_FILL }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fontSize: 11, fill: CHART_TICK_FILL }} axisLine={false} tickLine={false} allowDecimals={card.unit !== 'count'} />
                                         <Tooltip
                                             formatter={(value: number) => [formatValue(Number(value), card.unit), card.label]}
-                                            contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 12 }}
+                                            contentStyle={CHART_TOOLTIP_STYLE}
                                         />
                                         <Bar dataKey="value" fill={card.color} radius={[8, 8, 0, 0]} maxBarSize={52} />
                                     </BarChart>

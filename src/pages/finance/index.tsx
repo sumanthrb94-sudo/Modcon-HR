@@ -267,25 +267,21 @@ function EmployeeFinancePage() {
           label="Annual CTC"
           value={formatINR(employee.ctc)}
           icon={<IndianRupee size={22} />}
-          iconClass="bg-brand-50 text-brand-600"
         />
         <StatCard
           label="Monthly Gross"
           value={formatINR(currentPayslip.grossEarnings)}
           icon={<Wallet size={22} />}
-          iconClass="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           label="Total Deductions"
           value={formatINR(currentPayslip.totalDeductions)}
           icon={<ReceiptText size={22} />}
-          iconClass="bg-rose-50 text-rose-600"
         />
         <StatCard
           label="Net Pay"
           value={formatINR(currentPayslip.netPay)}
           icon={<Landmark size={22} />}
-          iconClass="bg-cyan-50 text-cyan-700"
         />
       </div>
 
