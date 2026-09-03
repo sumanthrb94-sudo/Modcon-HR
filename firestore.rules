@@ -509,6 +509,47 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Subscription requests — the tenant's ONLY write in the billing feature,
+    // and it grants nothing.
+    //
+    // The subscription itself lives on `organizations/{orgId}`, which is
+    // super-admin-writable above. That is what makes a trial a trial: an
+    // organisation cannot extend its own, mark itself paid, or comp itself,
+    // however much of the client it rewrites.
+    //
+    // It also means a tenant cannot pay, so this is how they ask. An org
+    // administrator creates a request — "we want to activate", "here is the
+    // reference of the transfer we made" — and a super admin confirms it
+    // against the payment provider's own dashboard before writing the term.
+    //
+    // The manual step is deliberate and it is honest about being manual: the
+    // only trustworthy signal that money arrived is a signed webhook to a
+    // server, and this project has no backend to receive one. Anything a
+    // browser reports about a payment is a claim by the party who owes it.
+    // -------------------------------------------------------------------
+    match /subscription_requests/{docId} {
+      // A tenant reads its own queue; a super admin reads every queue. A list
+      // is evaluated per document, so an org's query MUST filter on orgId.
+      allow get, list: if isSuperAdmin() || (isSignedIn() && inMyOrg());
+
+      allow create: if isOrgAdmin() && writingToMyOrg() &&
+        // Pinned, so a request cannot be created already actioned — which
+        // would be a tenant granting itself whatever the queue grants.
+        request.resource.data.status == 'open' &&
+        request.resource.data.kind in ['activate', 'extend-trial', 'add-seats'] &&
+        request.resource.data.requestedByUid == request.auth.uid &&
+        request.resource.data.reference is string &&
+        request.resource.data.reference.size() <= 200 &&
+        request.resource.data.note is string &&
+        request.resource.data.note.size() <= 1000;
+
+      // Only the platform closes one. A tenant that could set its own request
+      // to `actioned` would be marking its own payment received — which grants
+      // nothing on its own, but it empties the queue the platform works from.
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // -------------------------------------------------------------------
     // Core HR data — read: any signed-in user, write: organisation
     // administrators (admins and HR managers, see isOrgAdmin()).
     // Adjust per-collection if employees need to self-service specific

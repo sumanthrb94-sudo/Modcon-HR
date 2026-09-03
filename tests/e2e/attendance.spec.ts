@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
+import { waitForOrgRecordsQuiet } from './firestore';
 
 /**
  * The Mark Attendance employee select must offer the people who are actually
@@ -133,6 +134,14 @@ test.describe.serial('raising a regularization', () => {
     await page.goto('/attendance');
     await expect(page.getByRole('table').getByText(reason)).toBeVisible();
 
+    // The request has to be on the server before this page is thrown away.
+    // `save()` is optimistic — it writes the cache, fires the change event and
+    // returns — and a reload is a fresh Firestore SDK with an empty mutation
+    // queue, so an un-acked write is discarded and the subscription hydrates
+    // the cache from the server's older copy. Surviving a reload is what this
+    // test is about, so racing the commit proves nothing either way.
+    // See docs/shared-records-spec.md §9.
+    await waitForOrgRecordsQuiet('regularizationOverrides');
     await page.reload();
     await expect(page.getByRole('table').getByText(reason)).toBeVisible();
   });

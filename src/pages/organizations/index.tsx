@@ -29,6 +29,7 @@ import {
 } from '@/components/ui';
 import type { Organization } from '@/types';
 import { APP_TIME_ZONE } from '@/lib/today';
+import SubscriptionsPanel from './SubscriptionsPanel';
 
 function formatCreatedAt(value: unknown): string {
     const seconds = (value as { seconds?: number } | undefined)?.seconds;
@@ -355,6 +356,11 @@ export function OrganizationsPage() {
                     <Table columns={columns} data={filtered} keyExtractor={(o) => o.id ?? o.adminEmail} />
                 )}
             </Card>
+
+            {/* Everything commercial about a tenant, and it is only here:
+                `organizations/{orgId}` is super-admin-writable and nothing else
+                is, which is what makes a trial a trial. */}
+            <SubscriptionsPanel organizations={organizations} loading={loading} />
 
             <Modal
                 open={createOpen}

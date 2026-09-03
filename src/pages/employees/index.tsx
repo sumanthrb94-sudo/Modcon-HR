@@ -95,6 +95,7 @@ import { buildPayslipComponents, deductionRows, employerContributionRows } from 
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
+import { useWorkspaceLocked } from '@/lib/subscription';
 import { CHART_SERIES } from '@/lib/chartTheme';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
@@ -889,6 +890,8 @@ type DirectoryTab = 'directory' | 'orgchart';
 export function EmployeesPage() {
   const navigate = useNavigate();
   const { profile, isHR, isAdmin } = useAuth();
+  // The billing gate. Presentation only — see useWorkspaceLocked.
+  const workspaceLocked = useWorkspaceLocked();
   /**
    * Who numbers this company's people. HR is the organisation's own
    * administrator here, and the platform `admin` role sits above it — a
@@ -1063,6 +1066,8 @@ export function EmployeesPage() {
             variant="primary"
             icon={<Plus size={16} />}
             onClick={() => setAddModalOpen(true)}
+            disabled={workspaceLocked}
+            title={workspaceLocked ? 'Paused until billing is arranged — Settings → Billing' : undefined}
           >
             Add Employee
           </Button>

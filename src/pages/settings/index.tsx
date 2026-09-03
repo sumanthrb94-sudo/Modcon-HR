@@ -21,6 +21,7 @@ import { wageFloorFinding } from '@/data/statutoryRules';
 import CheckinPolicySection from './CheckinPolicySection';
 import ShiftsSection from './ShiftsSection';
 import StatutorySection from './StatutorySection';
+import SubscriptionCard from './SubscriptionCard';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import {
@@ -5068,7 +5069,18 @@ export function SettingsPage() {
       case 'holidays': return <HolidaysSection />;
       case 'notifications': return <NotificationsSection />;
       case 'integrations': return <IntegrationsSection />;
-      case 'billing': return <BillingSection upgradeRequestToken={billingUpgradeRequestToken} />;
+      case 'billing': return (
+        <>
+          {/* The real subscription, above the plan/seat/invoice UI below it —
+              which is still the demo dataset. What decides whether this
+              workspace works is the record on `organizations/{orgId}`, and it
+              is the first thing on the page for that reason. */}
+          <div className="mb-6">
+            <SubscriptionCard />
+          </div>
+          <BillingSection upgradeRequestToken={billingUpgradeRequestToken} />
+        </>
+      );
       case 'database': return <DatabaseSection />;
       default: return null;
     }

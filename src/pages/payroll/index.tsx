@@ -42,6 +42,8 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
+import { useWorkspaceLocked } from '@/lib/subscription';
+import StatutoryReturnsPanel from './StatutoryReturnsPanel';
 import { useAuth } from '@/lib/auth';
 import {
   canUploadPayslips,
@@ -259,6 +261,7 @@ export function PayrollPage() {
   // administrator can change while this page is open.
   const salaryStructureRevision = useSalaryStructureRevision();
   useStatutoryRevision();
+  const workspaceLocked = useWorkspaceLocked();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -520,7 +523,18 @@ export function PayrollPage() {
                 Upload payslips
               </Button>
             )}
-            <Button icon={<Play size={16} />} variant="primary" onClick={handleRunPayroll}>
+            {/* The billing gate. Presentation only, deliberately — see
+                useWorkspaceLocked: the rules protect who owns the subscription
+                record, not whether the app runs, because an HR system that
+                denied reads over an invoice would take a company's attendance
+                history away from it. */}
+            <Button
+              icon={<Play size={16} />}
+              variant="primary"
+              onClick={handleRunPayroll}
+              disabled={workspaceLocked}
+              title={workspaceLocked ? 'Paused until billing is arranged — Settings → Billing' : undefined}
+            >
               Run Payroll
             </Button>
           </div>
@@ -589,6 +603,14 @@ export function PayrollPage() {
           </ResponsiveContainer>
         </div>
       </Card>
+
+      {/* The returns are built from what payroll computes, so they sit with
+          payroll rather than in Settings — the month being filed is the month
+          on this page, and the people missing a UAN are the ones in the run
+          below. */}
+      <div className="mb-6">
+        <StatutoryReturnsPanel />
+      </div>
 
       {/* Tabs */}
       <Card padding={false}>
