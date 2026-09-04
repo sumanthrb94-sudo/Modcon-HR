@@ -56,26 +56,41 @@ async function login(page: Page) {
   });
 }
 
+/** Which organisation this browser has stepped into, as the app stores it. */
+function selectedOrg(page: Page): Promise<string | null> {
+  return page.evaluate(() => localStorage.getItem('modcon.hr.superAdminSelectedOrg'));
+}
+
 /**
  * Step into the demo organisation.
  *
  * Its row may not exist — `organizations/default` predates the collection —
  * so this is the stat card's control rather than a row button, and it is a
  * no-op when the browser is already managing it.
+ *
+ * "Already managing it" is read from storage rather than from the control's
+ * absence. Counting the button decides on whatever has rendered *so far*: the
+ * card paints before the organisation list behind it loads, so a count taken
+ * on arrival is zero for an organisation that is simply not fetched yet, and
+ * the helper would return having entered nothing — leaving every later
+ * assertion looking at the platform console instead of the tenant.
  */
 async function manageDefaultOrg(page: Page) {
   await page.goto('/organizations');
-  const enter = page.getByRole('button', { name: 'Manage ModCon Builders (Default)' });
-  if (await enter.count()) {
-    await enter.first().click();
-    await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
-  }
-  // The control disappears exactly when the browser is inside that
-  // organisation, which is a sharper assertion than the name appearing —
-  // the topbar's organisation picker carries the same words.
-  await expect(page.getByRole('button', { name: 'Manage ModCon Builders (Default)' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  if ((await selectedOrg(page)) === 'default') return;
+
+  // `click()` waits for the control to attach, which is the wait the count
+  // above could not express.
+  await page.getByRole('button', { name: 'Manage ModCon Builders (Default)' }).first().click();
+  // Switching reloads, so the storage read has to be polled rather than taken
+  // once — the first one can land on the page being torn down.
+  await expect.poll(() => selectedOrg(page), { timeout: 20_000 }).toBe('default');
+  await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 async function openSalaryStructure(page: Page) {
