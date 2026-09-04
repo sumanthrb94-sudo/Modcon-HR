@@ -61,7 +61,7 @@ function dayLabel(iso: string): string {
 }
 
 export function MyAttendancePage() {
-  const { profile, isAdmin, isManager } = useAuth();
+  const { profile, isAdmin, isManager, linkedEmployeeId } = useAuth();
   // Both stores are read below, and the regularization list is *derived* from
   // the attendance one — so every memo that touches either has to re-run when
   // either changes. Marking a day elsewhere otherwise left this page showing
@@ -87,7 +87,7 @@ export function MyAttendancePage() {
   // company — the picker below offers exactly what they are entitled to see.
   const viewableEmployees = useMemo(
     () => getVisibleEmployees(profile, directory),
-    [profile, directory],
+    [profile, directory, linkedEmployeeId],
   );
 
   // The same resolver the rest of the app identifies people with: authUid
@@ -96,9 +96,12 @@ export function MyAttendancePage() {
   // changes, because the uid link survives a profile edit and the address does
   // not. The effect was an employee still recognised everywhere else silently
   // losing the ability to check in.
+  // `linkedEmployeeId` is in the deps rather than merely read: it is what
+  // decides the answer, it arrives after the first render on a fresh sign-in,
+  // and neither `profile` nor `directory` changes when it does.
   const ownEmployee = useMemo(
     () => getCurrentEmployeeRecord(profile, directory),
-    [directory, profile],
+    [directory, profile, linkedEmployeeId],
   );
 
   // Admins & managers can view any employee's attendance; a plain employee is

@@ -173,6 +173,34 @@ account comes later), so `employeeId` cannot be the uid at creation time.
 
 ---
 
+### The client reads the same document now
+
+Written after the fact, because the mapping above was built for the *rules* and
+the client went on answering the question its own way — `authUid`, then work
+email, then display name, all against the localStorage directory.
+
+Two answers to "who is this account" is one too many. Where they disagreed the
+UI acted as one person and every write was judged as another: a check-in stamp
+refused by `isSelf`, a payslip the employee could not read, a document filed as
+somebody else — each arriving as a console error with nothing on screen.
+Editing a work email was enough to cause it.
+
+So `resolveEmployeeForAccount` ([src/lib/currentEmployee.ts](../src/lib/currentEmployee.ts))
+consults `employee_links/{uid}` first and the directory match only when there is
+no link, and `getCurrentEmployee` / `getCurrentEmployeeRecord` are both that one
+function. `data/employeeLinks.ts` holds the synchronous reader — a localStorage
+cache kept current by a subscription started with the session, the same shape as
+the org-settings hydration, because the callers are render paths that cannot
+await.
+
+The directory match survives as the fallback and nothing more: an account with
+no link is ordinary (accounts predate the collection; `backfillEmployeeLinks` is
+how they get one), and answering "nobody" for all of them would take people's
+own leave and attendance away from them. A link naming a record the directory
+does not hold resolves to nobody rather than to a guess.
+
+---
+
 ## 4. Manager visibility — a limit worth stating plainly
 
 `src/lib/dataScope.ts` defines who sees whom: a manager sees their whole

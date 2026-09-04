@@ -427,11 +427,20 @@ export function reassignEmployeeLocation(fromLocation: string, toLocation: strin
 
 export const getEmployee = (id: string): Employee | undefined => getEmployeeDirectory().find((employee) => employee.id === id);
 
-export const getEmployeeByEmail = (email: string): Employee | undefined =>
-  getEmployeeDirectory().find((employee) => employee.email.toLowerCase() === email.toLowerCase());
+// Both take the directory they should search, defaulting to the live one. The
+// callers that already hold a directory — a component that read it once for a
+// render — would otherwise search a second, freshly-built copy, and the two can
+// differ mid-edit.
+export const getEmployeeByEmail = (
+  email: string,
+  directory: Employee[] = getEmployeeDirectory(),
+): Employee | undefined =>
+  directory.find((employee) => employee.email.toLowerCase() === email.toLowerCase());
 
-export const getEmployeeByAuthUid = (uid: string): Employee | undefined =>
-  getEmployeeDirectory().find((employee) => employee.authUid === uid);
+export const getEmployeeByAuthUid = (
+  uid: string,
+  directory: Employee[] = getEmployeeDirectory(),
+): Employee | undefined => directory.find((employee) => employee.authUid === uid);
 
 /**
  * Record which directory record a signed-in account belongs to.

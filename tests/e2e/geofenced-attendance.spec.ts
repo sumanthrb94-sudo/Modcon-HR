@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
-import { PERSONAS } from './config';
+import { GEOFENCE_PERSONA } from './config';
 import { FIRESTORE_BASE, adminToken, clearOrgRecords, signInPersona } from './firestore';
 import { installGeolocationStub, setDenied, setFix } from './geolocation';
 
@@ -28,7 +28,11 @@ import { installGeolocationStub, setDenied, setFix } from './geolocation';
  * real people out.
  */
 
-const PERSONA = PERSONAS.admin;
+// Its own address, not PERSONAS.admin. This spec writes `employee_links/{uid}`,
+// which is Firestore and therefore shared with every other project and worker
+// in the run — linking a shared persona repoints who that account *is* for
+// specs that never mention links. See GEOFENCE_PERSONA in config.ts.
+const PERSONA = GEOFENCE_PERSONA;
 
 // ModCon Builders' notional head office, and a point ~330 m north of it —
 // outside a 200 m fence by enough that the projection rather than a rounding
@@ -59,22 +63,19 @@ async function firestore(path: string, init: RequestInit = {}) {
 
 /**
  * Point an employee record at the signed-in account, so the page has an
- * employee for it to *be*, and tell the *server* about it too.
+ * employee for it to *be* — and tell the server, which is the half that counts.
  *
- * Two halves, because the app has two notions of "who this account is":
+ * `employee_links/{uid}` is what `isSelf()` in firestore.rules resolves, and
+ * therefore what decides whether the stamp write is allowed at all. It is now
+ * also what the app resolves the account to, so seeding it is no longer a
+ * server-side detail beside a UI one: it is the identity.
  *
- *   1. The localStorage employee directory, which is what My Attendance reads
- *      to decide whether the check-in panel is yours. Set through Edit Profile,
- *      the same way an administrator does it.
- *   2. `employee_links/{uid}`, which is what `isSelf()` in firestore.rules
- *      resolves against — and therefore what decides whether the stamp write is
- *      allowed at all.
- *
- * Editing the work email does **not** write the second one: `linkAccountForEmployee`
- * runs on Add Employee, not on an edit. That is a real gap in the app (an
- * existing employee given a matching address stays unlinked, and the identity
- * backfill in Settings → Database is the intended remedy), but it is not this
- * spec's subject, so the link is seeded directly the way careers.spec.ts does.
+ * The work email is still set through Edit Profile, because the two must agree
+ * for this spec to be testing the ordinary case rather than the disagreement.
+ * Editing an email does not itself write a link — `linkAccountForEmployee`
+ * runs on Add Employee, not on an edit, and the identity backfill in
+ * Settings → Database is the remedy for records that predate it — so the link
+ * is seeded directly the way careers.spec.ts does.
  *
  * Returns the employee id that was linked.
  */
@@ -237,6 +238,16 @@ test.describe.serial('geofenced attendance', () => {
       } catch {
         // Best effort — a failure here must not mask the one that caused it.
       }
+    }
+    // And unlink the account. The link is the app's answer to "who is this
+    // account" now, so one left behind is this spec deciding that for every
+    // later run — including runs of specs that resolve identity the older way,
+    // through the work email.
+    try {
+      const { uid } = await signInPersona(PERSONA.email, PERSONA.password);
+      if (uid) await firestore(`employee_links/${uid}`, { method: 'DELETE' });
+    } catch {
+      // Best effort, as above.
     }
     await context?.close();
   });

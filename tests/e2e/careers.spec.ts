@@ -24,7 +24,7 @@
  * visible to the public, and only removable by whoever notices.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { PERSONAS } from './config';
+import { HIRING_MANAGER_PERSONA } from './config';
 import { FIRESTORE_BASE, adminToken, signInPersona } from './firestore';
 
 const ORG = 'default';
@@ -181,7 +181,7 @@ test.describe('careers page — applying without an account', () => {
 test.describe('the hiring manager runs their own shortlist', () => {
   let managerUid = '';
 
-  async function signIn(page: Page, persona: typeof PERSONAS.manager) {
+  async function signIn(page: Page, persona: typeof HIRING_MANAGER_PERSONA) {
     await page.goto('/login');
     await page.locator('#username').fill(persona.email);
     await page.locator('#password').fill(persona.password);
@@ -197,7 +197,7 @@ test.describe('the hiring manager runs their own shortlist', () => {
   }
 
   test.beforeAll(async () => {
-    const { uid } = await signInPersona(PERSONAS.manager.email, PERSONAS.manager.password);
+    const { uid } = await signInPersona(HIRING_MANAGER_PERSONA.email, HIRING_MANAGER_PERSONA.password);
     expect(uid, 'could not resolve the manager persona uid').toBeTruthy();
     managerUid = uid as string;
 
@@ -244,7 +244,7 @@ test.describe('the hiring manager runs their own shortlist', () => {
   });
 
   test('the named hiring manager advances an applicant, and it lands', async ({ page }) => {
-    await signIn(page, PERSONAS.manager);
+    await signIn(page, HIRING_MANAGER_PERSONA);
     await openApplicant(page);
 
     await expect(page.getByText('Move to')).toBeVisible();
@@ -260,7 +260,7 @@ test.describe('the hiring manager runs their own shortlist', () => {
     // Hand the role to somebody else while the same manager is signed in.
     await publishTestJob('emp-somebody-else');
 
-    await signIn(page, PERSONAS.manager);
+    await signIn(page, HIRING_MANAGER_PERSONA);
     await openApplicant(page);
 
     await expect(page.getByRole('dialog')).toContainText('hiring manager');

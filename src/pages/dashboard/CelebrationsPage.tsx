@@ -22,7 +22,7 @@ type CelebrationItem = {
 
 export function CelebrationsPage() {
     const navigate = useNavigate();
-    const { profile } = useAuth();
+    const { profile, linkedEmployeeId } = useAuth();
     const directoryRevision = useEmployeeDirectoryRevision();
     const [selectedMonth, setSelectedMonth] = useState<number>(monthIndexOf(todayIso()));
 
@@ -34,7 +34,7 @@ export function CelebrationsPage() {
     // See lib/dataScope.ts.
     const visibleEmployees = useMemo(
         () => getVisibleEmployees(profile, getEmployeeDirectory()),
-        [profile, directoryRevision],
+        [profile, directoryRevision, linkedEmployeeId],
     );
 
     const groupedCelebrations = useMemo(() => {

@@ -1,24 +1,25 @@
 /**
- * Which employee record the signed-in account *is*, as the server sees it.
+ * Which employee record the signed-in account *is*, and whether that has been
+ * settled yet.
  *
- * There are two answers to that question in this codebase and only one of them
- * counts. `getCurrentEmployeeRecord` (src/lib/dataScope.ts) matches the account
- * against the employee directory, which lives in localStorage and is therefore
- * a claim the client makes about itself — fine for scoping what to render,
- * worthless as a permission input. `employee_links/{uid}` is an
- * administrator-authored document, and it is what `myEmployeeId()` in
- * firestore.rules resolves against.
+ * `employee_links/{uid}` is an administrator-authored document and it is what
+ * `myEmployeeId()` in firestore.rules resolves against. `getLinkedEmployeeId`
+ * (data/employeeLinks.ts) reads the same thing synchronously, from a cache, and
+ * is what `resolveEmployeeForAccount` uses — so the app and the server now give
+ * one answer where they used to give two, the client's being a directory match
+ * it made about itself.
  *
- * So anything whose *server* answer depends on identity — may I advance this
- * candidate, is this my job opening — has to ask this one, or the UI offers
- * controls the rules will refuse and the refusal arrives as a console error
- * with no explanation attached. See docs/salary-leave-access-spec.md §3.
+ * What this hook adds is the distinction that cache cannot make: **"linked to
+ * nobody" versus "not resolved yet"** both read as null there. Anything that
+ * must not offer a control on a guess asks here, because "you are not this
+ * role's hiring manager" and "nobody has told this app who you are" produce the
+ * same empty space and only one of them is fixable by the person reading it.
+ * See docs/salary-leave-access-spec.md §3.
  *
- * Resolves to `null` for an account with no link, which is the same fail-closed
- * answer the rules give. Callers must say so rather than simply hiding the
- * control: "you are not the hiring manager" and "nobody has told this app who
- * you are" look identical otherwise, and only one of them is fixable by the
- * person looking at the screen.
+ * Its own `getDoc` rather than the shared cache, deliberately: `resolved` has
+ * to mean this lookup finished, and a cache that is merely empty cannot say
+ * whether it is empty because the answer is nothing or because nothing has
+ * asked yet.
  */
 import { useEffect, useState } from 'react';
 import { getEmployeeLink } from '@/data/employeeLinks';

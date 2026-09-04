@@ -27,7 +27,7 @@ interface TopbarProps {
 export function Topbar({ onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, signOutUser, isSuperAdmin } = useAuth();
+  const { profile, signOutUser, isSuperAdmin, linkedEmployeeId } = useAuth();
   const { data: organizations } = useOrganizations(isSuperAdmin);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -65,7 +65,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         path: `/employees/${employee.id}`,
       })),
     ],
-    [directoryRevision, visibleNavItems, profile, insideOrg],
+    [directoryRevision, visibleNavItems, profile, insideOrg, linkedEmployeeId],
   );
 
   const results = useMemo(() => {

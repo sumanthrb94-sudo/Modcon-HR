@@ -73,7 +73,7 @@ export function AttendancePage() {
   // "N on week off" is resolved per person against a policy an administrator
   // can change while this grid is open.
   const weekOffRevision = useWeekOffRevision();
-  const { profile } = useAuth();
+  const { profile, linkedEmployeeId } = useAuth();
   // Monday–Sunday of whichever week today falls in, not the week the seed
   // records happen to cover. A date literal here would have gone stale the
   // following Monday and stayed wrong forever. All seven days: the working
@@ -84,7 +84,7 @@ export function AttendancePage() {
   // a Manager gets their own reporting line plus HR. See lib/dataScope.ts.
   const visibleEmployeeIds = useMemo(
     () => getVisibleEmployeeIds(profile),
-    [profile, directoryRevision],
+    [profile, directoryRevision, linkedEmployeeId],
   );
   // Today is always one of weekDates, so this needs no clamping into the
   // week — and must not clamp, or a day marked on a date the old Mon–Fri

@@ -29,7 +29,7 @@ import type { UserProfile } from '@/lib/auth';
 import { getEmployeeDirectory } from '@/data/employees';
 import { carriesHrFunction } from '@/data/companyProfile';
 import { resolveAppRole } from '@/lib/accessControl';
-import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { resolveEmployeeForAccount } from '@/lib/currentEmployee';
 
 /**
  * The employee records that represent the HR Manager(s).
@@ -240,23 +240,15 @@ export function canViewEmployee(
  * `getCurrentEmployee` deliberately returns undefined for non-Employee roles —
  * it backs the self-service pages, where a manager viewing "my payslip" would
  * be meaningless. Scoping needs the record regardless of role, so the same
- * uid-then-email match is applied here without that guard.
+ * resolution is applied here without that guard, and it is literally the same:
+ * this used to hold its own copy of the uid-then-email match, which is how two
+ * surfaces could name two different people for one account. See
+ * `resolveEmployeeForAccount` — the link an administrator wrote decides, and
+ * the directory match is only what answers when there is none.
  */
 export function getCurrentEmployeeRecord(
   profile: UserProfile | null,
   directory: Employee[] = getEmployeeDirectory(),
 ): Employee | undefined {
-  if (!profile) return undefined;
-
-  const byUid = directory.find((employee) => employee.authUid === profile.uid);
-  if (byUid) return byUid;
-
-  const email = profile.email.trim().toLowerCase();
-  const byEmail = email
-    ? directory.find((employee) => employee.email.trim().toLowerCase() === email)
-    : undefined;
-  if (byEmail) return byEmail;
-
-  // Employee-role accounts additionally fall back to a display-name match.
-  return getCurrentEmployee(profile);
+  return resolveEmployeeForAccount(profile, directory);
 }

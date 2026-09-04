@@ -889,7 +889,7 @@ type DirectoryTab = 'directory' | 'orgchart';
 
 export function EmployeesPage() {
   const navigate = useNavigate();
-  const { profile, isHR, isAdmin } = useAuth();
+  const { profile, isHR, isAdmin, linkedEmployeeId } = useAuth();
   // The billing gate. Presentation only — see useWorkspaceLocked.
   const workspaceLocked = useWorkspaceLocked();
   /**
@@ -926,7 +926,9 @@ export function EmployeesPage() {
     };
   }, []);
 
-  const currentEmployee = useMemo(() => getCurrentEmployee(profile), [profile, employeeList]);
+  // linkedEmployeeId: see the note in my-attendance — it settles who this
+  // account is and it lands after the first render.
+  const currentEmployee = useMemo(() => getCurrentEmployee(profile), [profile, employeeList, linkedEmployeeId]);
   const isEmployeeSelfView = resolveAppRole(profile) === 'Employee';
   // HR and Admin see the whole company; a manager sees their own reporting line
   // plus HR; an employee sees only themselves. The self-only case used to be
@@ -935,7 +937,7 @@ export function EmployeesPage() {
   // visible. See lib/dataScope.ts.
   const visibleEmployeeList = useMemo(
     () => getVisibleEmployees(profile, employeeList),
-    [profile, employeeList],
+    [profile, employeeList, linkedEmployeeId],
   );
 
   const filtered = useMemo(() => {
@@ -3754,7 +3756,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
 
 export function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { profile } = useAuth();
+  const { profile, linkedEmployeeId } = useAuth();
   const directoryRevision = useEmployeeDirectoryRevision();
 
   const currentEmployee = getCurrentEmployee(profile);
@@ -3767,7 +3769,7 @@ export function EmployeeDetailPage() {
   // URL. The same rule that filters the directory now guards the record itself.
   const allowed = useMemo(
     () => (resolvedEmployeeId ? canViewEmployee(profile, resolvedEmployeeId) : false),
-    [profile, resolvedEmployeeId, directoryRevision],
+    [profile, resolvedEmployeeId, directoryRevision, linkedEmployeeId],
   );
 
   if (!resolvedEmployeeId) return null;

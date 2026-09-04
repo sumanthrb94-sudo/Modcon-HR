@@ -75,6 +75,50 @@ export const ROLE_CHURN_PERSONA = {
   roleLabel: 'Employee',
 };
 
+/**
+ * The two personas that are *linked* to an employee record — one address per
+ * spec that writes `employee_links/{uid}`.
+ *
+ * That document is what firestore.rules resolves an account to, and — since
+ * the client started reading the same document instead of matching the
+ * directory by work email — it is what the app resolves it to as well. It
+ * lives in Firestore, so it is shared across every project, worker and browser
+ * context in the run: writing one changes who that account *is* everywhere at
+ * once, until it is deleted. A shared persona would therefore be repointed
+ * underneath specs that never mention links —
+ *
+ *   PERSONAS.admin   check-in-out and persistence resolve it through the work
+ *                    email they set, at a different employee.
+ *   PERSONAS.manager leave-approval-scope seeds it a reporting line and matches
+ *                    it by email, also at a different employee.
+ *
+ * — and because the linking spec and the affected one run in different
+ * projects at the same time, the failure would be intermittent and would
+ * surface nowhere near its cause. Same reasoning as ROLE_CHURN_PERSONA, for
+ * the other half of an account's identity.
+ *
+ * Both take their role from the stored profile rather than an allow-list, so
+ * both depend on `seedPersonaProfiles`, which runs against the emulator only —
+ * as HR_PERSONA already does. Both specs are in the emulator-gated
+ * org-settings project, so that holds.
+ */
+export const GEOFENCE_PERSONA = {
+  role: 'hr' as const,
+  email: process.env.E2E_GEOFENCE_EMAIL ?? 'playwright-e2e-geofence@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Geofence',
+  roleLabel: 'HR Manager',
+};
+
+/** The hiring manager in careers.spec.ts — see the note above. */
+export const HIRING_MANAGER_PERSONA = {
+  role: 'manager' as const,
+  email: process.env.E2E_HIRING_MANAGER_EMAIL ?? 'playwright-e2e-hiring@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Hiring Manager',
+  roleLabel: 'Manager',
+};
+
 export interface Persona {
   role: Role;
   email: string;

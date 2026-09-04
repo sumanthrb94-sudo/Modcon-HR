@@ -16,7 +16,7 @@ import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 export function LeaveRequestsApprovalsPage() {
     const navigate = useNavigate();
-    const { profile } = useAuth();
+    const { profile, linkedEmployeeId } = useAuth();
     const currentEmployee = getCurrentEmployee(profile);
     const directoryRevision = useEmployeeDirectoryRevision();
     const [leaveRequests, setLeaveRequests] = useState(() => getLeaveRequests());
@@ -54,7 +54,7 @@ export function LeaveRequestsApprovalsPage() {
     // lib/dataScope.ts.
     const approvableEmployeeIds = useMemo(
         () => getApprovableEmployeeIds(profile),
-        [profile, directoryRevision],
+        [profile, directoryRevision, linkedEmployeeId],
     );
 
     // An administrator's queue is the organisation's, so the page has to say

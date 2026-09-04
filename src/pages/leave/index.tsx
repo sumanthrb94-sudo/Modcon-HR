@@ -65,7 +65,7 @@ const holidayTypeTone = (type: string) => {
 };
 
 export function LeavePage() {
-  const { profile } = useAuth();
+  const { profile, linkedEmployeeId } = useAuth();
   const role = resolveAppRole(profile);
   const isEmployee = role === 'Employee';
   const currentEmployee = getCurrentEmployee(profile);
@@ -155,7 +155,7 @@ export function LeavePage() {
   // wasn't a plain Employee saw the whole company's leave; now HR and Admin do,
   // a Manager sees their own reporting line plus HR, and an Employee sees only
   // themselves. See lib/dataScope.ts.
-  const visibleEmployeeIds = useMemo(() => getVisibleEmployeeIds(profile), [profile]);
+  const visibleEmployeeIds = useMemo(() => getVisibleEmployeeIds(profile), [profile, linkedEmployeeId]);
   const scopedRequests = useMemo(
     () => leaveRequests.filter((request) => visibleEmployeeIds.has(request.employeeId)),
     [leaveRequests, visibleEmployeeIds],
@@ -170,7 +170,7 @@ export function LeavePage() {
   // lib/dataScope.ts.
   const approvableEmployeeIds = useMemo(
     () => getApprovableEmployeeIds(profile),
-    [profile, directoryRevision],
+    [profile, directoryRevision, linkedEmployeeId],
   );
 
   // Stats

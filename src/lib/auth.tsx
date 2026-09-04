@@ -36,6 +36,12 @@ import {
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, authPersistenceReady } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
+import {
+    clearEmployeeLinkCache,
+    getLinkedEmployeeId,
+    startEmployeeLinkSync,
+    EMPLOYEE_LINK_CHANGED_EVENT,
+} from '@/data/employeeLinks';
 import { startOrgSettingsSync } from './orgSettings';
 import { startSharedCollectionsSync } from '@/data/persistence';
 import { startOrgFeatureSync } from './features';
@@ -333,6 +339,20 @@ interface AuthContextValue {
     isManager: boolean;
     /** Reserved for future cross-org scoping; not yet enforced anywhere. */
     isSuperAdmin: boolean;
+    /**
+     * The employee record an administrator linked this account to, or null.
+     *
+     * Here rather than only in `data/employeeLinks.ts` so that resolving it
+     * re-renders everything that asks who this account is. The cache the
+     * synchronous readers use is empty until the first snapshot lands, and a
+     * component that answered during that window would otherwise hold the
+     * fallback — the directory's email match — for the life of the page.
+     *
+     * Null means "no link, not signed in, or not resolved yet", the same three
+     * states `getLinkedEmployeeId` collapses; `useMyEmployeeId` is the reader
+     * that can tell the last one apart.
+     */
+    linkedEmployeeId: string | null;
     error: string;
     clearError: () => void;
     signInEmail: (email: string, password: string) => Promise<void>;
@@ -448,10 +468,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // every module falls back to exactly the per-browser behaviour it had
         // before. See src/data/persistence.ts.
         const stopRecords = startSharedCollectionsSync(resolveOrgKeyForProfile(profile));
+        // And which employee record this account *is*, as the administrator
+        // who wrote `employee_links/{uid}` said and as firestore.rules reads
+        // it. Same arrangement again — Firestore is the answer, a localStorage
+        // cache is how the synchronous callers reach it (data/employeeLinks.ts)
+        // — and a subscription rather than one read, because unlinking an
+        // account is supposed to take effect on the session it is about.
+        const stopLink = startEmployeeLinkSync(profile.uid);
         return () => {
             stopSettings();
             stopFeatures();
             stopRecords();
+            stopLink();
         };
     }, [profile?.uid, profile?.orgId]);
 
@@ -504,8 +532,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // existing one. See G7 in docs/tenant-isolation-spec.md.
 
     async function signOutUser() {
+        // Forget who this account was before the next one signs in. The cache
+        // is keyed by uid so a stale entry cannot answer for somebody else,
+        // but leaving one employee's identity in the next person's browser is
+        // not a thing to rely on a key check for.
+        clearEmployeeLinkCache();
         await signOut(auth);
     }
+
+    // Republished into the context so every consumer re-renders when the link
+    // resolves or an administrator changes it — see the field's note.
+    const [linkedEmployeeId, setLinkedEmployeeId] = useState<string | null>(null);
+    useEffect(() => {
+        const read = () => setLinkedEmployeeId(getLinkedEmployeeId(profile?.uid));
+        read();
+        window.addEventListener(EMPLOYEE_LINK_CHANGED_EVENT, read);
+        return () => window.removeEventListener(EMPLOYEE_LINK_CHANGED_EVENT, read);
+    }, [profile?.uid]);
 
     const isAdmin = profile?.role === 'admin';
     const isHR = profile?.role === 'hr';
@@ -517,6 +560,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             value={{
                 user,
                 profile,
+                linkedEmployeeId,
                 loading,
                 isAdmin,
                 isHR,
