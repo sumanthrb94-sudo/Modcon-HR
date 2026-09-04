@@ -56,6 +56,21 @@ async function login(page: Page) {
   });
 }
 
+/**
+ * The organisation's row in the *directory* table.
+ *
+ * Scoped to that card because the page carries two tables listing every
+ * organisation — the directory, and the Subscriptions panel below it — so a
+ * bare row match is ambiguous the moment both have rendered. It resolved to one
+ * element only while the second table was still loading, which is a pass that
+ * depended on being early.
+ */
+function orgRow(page: Page, name: string) {
+  return page
+    .locator('.card', { hasText: 'All Organizations' })
+    .getByRole('row', { name: new RegExp(name) });
+}
+
 /** Which organisation this browser has stepped into, as the app stores it. */
 function selectedOrg(page: Page): Promise<string | null> {
   return page.evaluate(() => localStorage.getItem('modcon.hr.superAdminSelectedOrg'));
@@ -177,19 +192,19 @@ test.describe.serial('a second organisation shares no salary structure with the 
     await dialog.getByRole('button', { name: 'Done' }).click();
     // The row, not any text node: the dialog is still fading out and carries
     // the same name, so an unscoped match resolves to the hidden copy.
-    await expect(page.getByRole('row', { name: new RegExp(NEW_ORG) })).toBeVisible();
+    await expect(orgRow(page, NEW_ORG)).toBeVisible();
   });
 
   test('the new organisation inherits no salary structure', async () => {
     // The assertion this whole spec exists for. A fresh organisation showing
     // Basic 50% / HRA 25% would be showing it ModCon Builders' compensation
     // policy as its own.
-    await page.getByRole('row', { name: new RegExp(NEW_ORG) }).getByRole('button', { name: 'Manage this org' }).click();
+    await orgRow(page, NEW_ORG).getByRole('button', { name: 'Manage this org' }).click();
     // Switching reloads the app so every org-scoped module re-evaluates. The
     // new organisation's own row is what says it is the one being managed —
     // the stat card carries the same words, hence the row scope.
     await expect(
-      page.getByRole('row', { name: new RegExp(NEW_ORG) }).getByRole('button', { name: 'Currently managing' }),
+      orgRow(page, NEW_ORG).getByRole('button', { name: 'Currently managing' }),
     ).toBeVisible({ timeout: 20_000 });
     newOrgId = await page.evaluate(() => localStorage.getItem('modcon.hr.superAdminSelectedOrg') ?? '');
     expect(newOrgId, 'the browser did not switch organisation').not.toBe('');
