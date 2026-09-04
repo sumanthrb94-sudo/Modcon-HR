@@ -1,6 +1,12 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { GEOFENCE_PERSONA } from './config';
-import { FIRESTORE_BASE, adminToken, clearOrgRecords, signInPersona } from './firestore';
+import {
+  FIRESTORE_BASE,
+  adminToken,
+  clearOrgRecords,
+  signInPersona,
+  waitForOrgRecordsQuiet,
+} from './firestore';
 import { installGeolocationStub, setDenied, setFix } from './geolocation';
 
 /**
@@ -129,6 +135,15 @@ async function linkAccountToEmployee(page: Page): Promise<string> {
  * by loosening the rule.
  */
 async function resetAttendance(page: Page, employeeId: string) {
+  // Let the previous scenario's writes land before deleting anything. They are
+  // optimistic — the click returned before the commit — so a delete issued now
+  // is overtaken by it and the next scenario starts against the very record
+  // this was called to remove. That is what happened: the enforced-fence test
+  // opened on a day already checked in at 17:17 by the advisory one, found the
+  // Check In button disabled, and waited out its timeout for a refusal nothing
+  // had asked for. check-in-out.spec.ts guards its own reset the same way.
+  await waitForOrgRecordsQuiet('attendanceRecords', { employeeId });
+
   // The attendance record now lives on the server too, so clearing the cache
   // alone leaves the previous scenario's check-in to be hydrated straight back.
   await clearOrgRecords('attendanceRecords', { employeeId });
@@ -138,6 +153,9 @@ async function resetAttendance(page: Page, employeeId: string) {
       .filter((key) => /attendance|regulariz/i.test(key))
       .forEach((key) => localStorage.removeItem(key));
   });
+  // Reload so the cleared cache is what the page reads, rather than the state
+  // React is already holding.
+  await page.reload();
 
   const today = istDate(new Date());
   await Promise.all(
