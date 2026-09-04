@@ -81,6 +81,32 @@ export function getSuperAdminSelectedOrg(): string {
     }
 }
 
+/**
+ * Whether a super admin has deliberately stepped *into* an organisation.
+ *
+ * The absence of the key and the default organisation used to be the same
+ * state, and that is what put a tenant's HR app in front of an account that
+ * belongs to no tenant: a super admin who had never chosen anything resolved
+ * to `default` and was shown ModCon Builders' attendance, leave and payroll as
+ * though they worked there. They are separate states now — nothing selected is
+ * the platform console, and the default organisation is a company like any
+ * other that has to be entered on purpose.
+ *
+ * The storage value stays the org key rather than gaining a sentinel, so
+ * `resolveOrgKeyForProfile` still answers `default` for a super admin who is
+ * outside every org: the namespace a page would read if one somehow rendered
+ * is the same one it read before, and nothing about where data is filed
+ * changes with this.
+ */
+export function isSuperAdminInsideOrg(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+        return Boolean(window.localStorage.getItem(SUPER_ADMIN_SELECTED_ORG_STORAGE));
+    } catch {
+        return false;
+    }
+}
+
 function setSuperAdminSelectedOrg(orgKey: string) {
     if (typeof window === 'undefined') return;
     try {
@@ -104,12 +130,34 @@ export function resolveOrgKeyForProfile(profile: { orgId?: string; superAdmin?: 
 
 /** Switches which org a super admin is currently acting on and reloads so
  * every org-scoped module re-evaluates under the new namespace. No-op (and
- * does not reload) if the org didn't actually change. */
+ * does not reload) if the org didn't actually change.
+ *
+ * The no-op test is on the *selection*, not on `getActiveOrgKey()`. Those two
+ * agree for every org but one: a super admin outside every organisation has an
+ * active key of `default` and no selection, so comparing active keys refused to
+ * let them enter the default organisation at all — the one company on the
+ * platform they could not open. */
 export function switchSuperAdminOrg(orgKey: string) {
     if (typeof window === 'undefined') return;
     const next = orgKey || DEFAULT_ORG_KEY;
-    if (next === getActiveOrgKey()) return;
+    if (isSuperAdminInsideOrg() && next === getSuperAdminSelectedOrg() && next === getActiveOrgKey()) return;
     setSuperAdminSelectedOrg(next);
     setActiveOrgKey(next);
+    window.location.reload();
+}
+
+/** Steps a super admin back out to the platform console, and reloads for the
+ * same reason switching in does: the `src/data/*` modules read their namespace
+ * at module-load time, so leaving one in place would show the org they just
+ * left under the identity of somebody who is in none. */
+export function leaveSuperAdminOrg() {
+    if (typeof window === 'undefined') return;
+    if (!isSuperAdminInsideOrg()) return;
+    try {
+        window.localStorage.removeItem(SUPER_ADMIN_SELECTED_ORG_STORAGE);
+    } catch {
+        // ignore
+    }
+    setActiveOrgKey(DEFAULT_ORG_KEY);
     window.location.reload();
 }

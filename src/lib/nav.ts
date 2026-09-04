@@ -44,6 +44,15 @@ export interface NavItem {
   managerOnly?: boolean;
   /** Visible to super admins only (see useAuth().isSuperAdmin). */
   superAdminOnly?: boolean;
+  /**
+   * Part of the platform console rather than of a company's HR system.
+   *
+   * A super admin belongs to no organisation, so these are the only items that
+   * mean anything until they step into one. Everything else on this list is a
+   * tenant's own app and is hidden from them while they are outside every
+   * tenant — see the filter below.
+   */
+  platform?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -68,19 +77,39 @@ export const navItems: NavItem[] = [
   // No adminOnly/managerOnly flag: the handbook is readable by every role, and
   // only the upload panel inside the page is HR-gated.
   { label: 'Documents', path: '/documents', icon: BookOpen, group: 'Main', module: 'Documents' },
-  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Operations', module: 'Admin', adminOnly: true },
-  { label: 'Organizations', path: '/organizations', icon: Building2, group: 'Operations', module: 'Admin', adminOnly: true, superAdminOnly: true },
+  // Both are platform items for a super admin: the Admin dashboard's user list
+  // is deliberately cross-organisation for them (see useUserDirectory in
+  // pages/admin), and Organizations is the console itself.
+  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Operations', module: 'Admin', adminOnly: true, platform: true },
+  { label: 'Organizations', path: '/organizations', icon: Building2, group: 'Operations', module: 'Admin', adminOnly: true, superAdminOnly: true, platform: true },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Operations', module: 'Settings' },
 ];
 
 export const navGroups: NavItem['group'][] = ['Main', 'People', 'Operations'];
 
-export function getVisibleNavItems(role: AppRole, isSuperAdmin = false): NavItem[] {
+/**
+ * The sidebar for one viewer.
+ *
+ * `superAdminInsideOrg` is the third state this used to be missing. A super
+ * admin has `role: 'admin'`, so every check below passed and they were shown a
+ * full HR system — Attendance, Leave, Payroll — belonging to whichever
+ * organisation their browser happened to be namespaced to, usually the default
+ * one. They administer the platform and work at none of these companies, so
+ * outside an organisation they get the platform console and nothing else;
+ * stepping into one (Organizations → Manage this org) is what puts that
+ * company's app in front of them, and the topbar says which company it is.
+ */
+export function getVisibleNavItems(
+  role: AppRole,
+  isSuperAdmin = false,
+  superAdminInsideOrg = false,
+): NavItem[] {
   const canManage = role === 'Admin' || role === 'HR Manager' || role === 'Manager';
   // An HR Manager administers their own company, so admin-flagged entries are
   // theirs too. Cross-organisation entries stay behind `superAdminOnly`, which
   // no amount of org-level administration satisfies.
   const isOrgAdmin = role === 'Admin' || role === 'HR Manager';
+  const platformOnly = isSuperAdmin && !superAdminInsideOrg;
 
   return navItems.filter(
     (item) =>
@@ -88,6 +117,7 @@ export function getVisibleNavItems(role: AppRole, isSuperAdmin = false): NavItem
       (item.module === undefined || canAccessModule(item.module, role)) &&
       (!item.adminOnly || isOrgAdmin) &&
       (!item.managerOnly || canManage) &&
-      (!item.superAdminOnly || isSuperAdmin),
+      (!item.superAdminOnly || isSuperAdmin) &&
+      (!platformOnly || item.platform === true),
   );
 }

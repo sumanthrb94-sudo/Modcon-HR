@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { canAccessModule, isModuleExcluded, resolveAppRole, type AppModule } from '@/lib/accessControl';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
+import { isSuperAdminInsideOrg } from '@/lib/orgScope';
 
 import { Card } from '@/components/ui';
 
@@ -111,7 +112,57 @@ function RequireManager({ children }: { children: JSX.Element }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  return isManager ? children : <Navigate to="/" replace />;
+  // Approvals are one company's queue — a super admin has to be in that
+  // company before there is anything here to decide.
+  return isManager ? <RequireOrgContext>{children}</RequireOrgContext> : <Navigate to="/" replace />;
+}
+
+/**
+ * The modules that are the platform console rather than a company's HR system.
+ *
+ * Mirrors `platform` in lib/nav.ts, which hides the same items from the
+ * sidebar — the two have to agree or a super admin is offered a link to a page
+ * this guard then refuses them.
+ */
+const PLATFORM_MODULES: readonly AppModule[] = ['Admin'];
+
+function PickAnOrganisationPage() {
+  return (
+    <div className="py-10">
+      <Card>
+        <div className="p-6 sm:p-8">
+          <h1 className="text-xl font-semibold text-ink-900">Which organization?</h1>
+          <p className="mt-2 text-sm text-ink-500">
+            This is a company&rsquo;s own HR system, and your account does not belong to a company —
+            it administers the platform every company sits on. Open an organization from
+            Organizations (or the picker in the top bar) and this page will show you theirs.
+          </p>
+          <Link to="/organizations" className="btn-primary mt-4 inline-flex">
+            Go to Organizations
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * Keeps a super admin out of a tenant page until they say which tenant.
+ *
+ * A super admin has `role: 'admin'`, so every role guard in this file passed
+ * and the whole HR system rendered — against whichever organisation their
+ * browser happened to be namespaced to, which for a fresh account is the
+ * default one. So an account that belongs to no company was shown one
+ * company&rsquo;s attendance, leave and payroll as though it were its own.
+ *
+ * The remedy is a context rather than a permission: they may still open any
+ * organisation, and once they do (Organizations → Manage this org) the same
+ * pages render for that company. See isSuperAdminInsideOrg in lib/orgScope.
+ */
+function RequireOrgContext({ children }: { children: JSX.Element }) {
+  const { isSuperAdmin } = useAuth();
+  if (isSuperAdmin && !isSuperAdminInsideOrg()) return <PickAnOrganisationPage />;
+  return children;
 }
 
 function AccessDeniedPage({ module, excluded }: { module: AppModule; excluded: boolean }) {
@@ -153,7 +204,28 @@ function RequireModuleAccess({ module, children }: { module: AppModule; children
     return <AccessDeniedPage module={module} excluded={isModuleExcluded(module, role)} />;
   }
 
-  return children;
+  // Every module but the platform console's own is a tenant's, so a super
+  // admin needs to have named the tenant first.
+  if (PLATFORM_MODULES.includes(module)) return children;
+  return <RequireOrgContext>{children}</RequireOrgContext>;
+}
+
+/**
+ * Where signing in lands you.
+ *
+ * A tenant's dashboard for everybody who works at one; the platform console
+ * for a super admin who has not opened a company, since a dashboard of
+ * somebody else's headcount is not their home page. Once they open one, this
+ * is that company's dashboard like anybody else's.
+ */
+function HomeRoute() {
+  const { isSuperAdmin } = useAuth();
+  if (isSuperAdmin && !isSuperAdminInsideOrg()) return <Navigate to="/organizations" replace />;
+  return (
+    <RequireModuleAccess module="Dashboard">
+      <DashboardPage />
+    </RequireModuleAccess>
+  );
 }
 
 function AppRoutes() {
@@ -175,7 +247,7 @@ function AppRoutes() {
       <Route path="careers/:orgKey" element={<CareersPage />} />
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route index element={<RequireModuleAccess module="Dashboard"><DashboardPage /></RequireModuleAccess>} />
+        <Route index element={<HomeRoute />} />
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
         <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />
@@ -183,7 +255,7 @@ function AppRoutes() {
         {/* Deliberately ungated: an organisation-wide board the permission
             matrix can switch off for employees is a noticeboard nobody reads.
             It carries no personal record — only what people chose to post. */}
-        <Route path="board" element={<FeedPage />} />
+        <Route path="board" element={<RequireOrgContext><FeedPage /></RequireOrgContext>} />
         <Route path="leave" element={<RequireModuleAccess module="Leave Management"><LeavePage /></RequireModuleAccess>} />
         <Route path="finance" element={<RequireModuleAccess module="Finance"><FinancePage /></RequireModuleAccess>} />
         <Route path="payroll" element={<RequireModuleAccess module="Payroll"><PayrollPage /></RequireModuleAccess>} />

@@ -45,7 +45,37 @@ async function login(page: Page) {
   await page.locator('#username').fill(SUPER_ADMIN.email);
   await page.locator('#password').fill(SUPER_ADMIN.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  // A super admin lands on the platform console, not on a company's dashboard:
+  // they belong to no organisation, so there is no HR system that is theirs
+  // until they open one. This used to wait for the Employees link — which was
+  // visible, because the whole tenant app rendered against whichever
+  // organisation the browser happened to be namespaced to. See
+  // isSuperAdminInsideOrg in src/lib/orgScope.ts.
+  await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+}
+
+/**
+ * Step into the demo organisation.
+ *
+ * Its row may not exist — `organizations/default` predates the collection —
+ * so this is the stat card's control rather than a row button, and it is a
+ * no-op when the browser is already managing it.
+ */
+async function manageDefaultOrg(page: Page) {
+  await page.goto('/organizations');
+  const enter = page.getByRole('button', { name: 'Manage ModCon Builders (Default)' });
+  if (await enter.count()) {
+    await enter.first().click();
+    await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+  }
+  // The control disappears exactly when the browser is inside that
+  // organisation, which is a sharper assertion than the name appearing —
+  // the topbar's organisation picker carries the same words.
+  await expect(page.getByRole('button', { name: 'Manage ModCon Builders (Default)' })).toHaveCount(0);
 }
 
 async function openSalaryStructure(page: Page) {
@@ -100,6 +130,7 @@ test.describe.serial('a second organisation shares no salary structure with the 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await login(page);
+    await manageDefaultOrg(page);
     // The demo organisation's own split, so "unchanged at the end" means
     // something specific rather than whatever a previous run left behind.
     await openSalaryStructure(page);
@@ -110,12 +141,7 @@ test.describe.serial('a second organisation shares no salary structure with the 
     try {
       // Leave the browser managing the demo organisation again: the org key is
       // per-browser and every other spec assumes the default.
-      await page.goto('/organizations');
-      const back = page.getByRole('button', { name: 'Switch back to Default' });
-      if (await back.count()) {
-        await back.click();
-        await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible();
-      }
+      await manageDefaultOrg(page);
     } finally {
       await page?.close();
     }
@@ -182,11 +208,54 @@ test.describe.serial('a second organisation shares no salary structure with the 
   });
 
   test('switching back shows the first organisation its own figures, unchanged', async () => {
-    await page.goto('/organizations');
-    await page.getByRole('button', { name: 'Switch back to Default' }).click();
-    await expect(page.getByRole('heading', { name: 'Organizations', exact: true })).toBeVisible({ timeout: 20_000 });
+    await manageDefaultOrg(page);
 
     await openSalaryStructure(page);
     await expectStructure(page, DEMO);
   });
+});
+
+/**
+ * A super admin is not a member of any company, and the app now says so.
+ *
+ * Their role is `admin`, so every role guard in the app passed and the entire
+ * HR system rendered for them — Attendance, Leave, Payroll — against whichever
+ * organisation the browser was namespaced to, which for a fresh account is the
+ * default one. That is a tenant's data shown to somebody who does not work
+ * there, presented as though it were their own company.
+ *
+ * Its own browser context: the organisation a super admin is inside is
+ * per-browser state, so sharing the serial block's page would mean asserting
+ * "outside every organisation" against a page that has deliberately stepped
+ * into one.
+ */
+test('a super admin outside every organisation sees the platform, not a tenant', async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await login(page);
+
+    // Landed on the console rather than on a company's dashboard.
+    await expect(page).toHaveURL(/\/organizations$/);
+
+    // The platform console, and nothing that belongs to a company.
+    await expect(page.getByRole('link', { name: 'Organizations' })).toBeVisible();
+    for (const tenantPage of ['Attendance', 'Leave', 'Payroll', 'Employees', 'The Board']) {
+      await expect(page.getByRole('link', { name: tenantPage, exact: true })).toHaveCount(0);
+    }
+
+    // And typing the address does not get around it — the nav filter and the
+    // route guard have to agree, or the sidebar merely hides a page that still
+    // renders somebody else's payroll.
+    await page.goto('/payroll');
+    await expect(page.getByRole('heading', { name: 'Which organization?' })).toBeVisible();
+
+    // Stepping into one is what makes it theirs.
+    await manageDefaultOrg(page);
+    await expect(page.getByRole('link', { name: 'Payroll', exact: true })).toBeVisible();
+    await page.goto('/payroll');
+    await expect(page.getByRole('heading', { name: 'Which organization?' })).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
 });

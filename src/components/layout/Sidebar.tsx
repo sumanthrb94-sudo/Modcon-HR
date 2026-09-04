@@ -9,6 +9,7 @@ import { appendBillingInvoice, getBillingPreferences, saveBillingPreferences } f
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { BrandMark, Button, Modal, Wordmark } from '@/components/ui';
 import { todayIso } from '@/lib/today';
+import { isSuperAdminInsideOrg } from '@/lib/orgScope';
 
 interface SidebarProps {
   open: boolean;
@@ -23,7 +24,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   void billingRevision;
   const role = profile ? resolveAppRole(profile) : 'Employee';
-  const visibleItems = getVisibleNavItems(role, isSuperAdmin);
+  // A super admin sees the platform console until they step into a company.
+  // See getVisibleNavItems — their role is `admin`, so without this they were
+  // shown a tenant's Attendance, Leave and Payroll as if they worked there.
+  const visibleItems = getVisibleNavItems(role, isSuperAdmin, isSuperAdminInsideOrg());
   const planLabel = billingPreferences.planTier;
   const seatLabel = billingPreferences.planTier === 'Enterprise'
     ? 'Unlimited seats'

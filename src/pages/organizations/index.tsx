@@ -14,7 +14,13 @@ import {
     type OrgAdminMigrationCandidate,
 } from '@/lib/organizations';
 import { FEATURE_FLAGS } from '@/lib/features';
-import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
+import {
+    getActiveOrgKey,
+    isSuperAdminInsideOrg,
+    leaveSuperAdminOrg,
+    switchSuperAdminOrg,
+    DEFAULT_ORG_KEY,
+} from '@/lib/orgScope';
 import {
     PageHeader,
     StatCard,
@@ -64,7 +70,10 @@ export function OrganizationsPage() {
     const [adminName, setAdminName] = useState('');
     const [adminEmail, setAdminEmail] = useState('');
     const [result, setResult] = useState<CreateOrganizationResult | null>(null);
-    const [copied, setCopied] = useState(false);
+    // Which of the three copy buttons was last pressed, not merely that one
+    // was: three controls sharing a boolean all say "Copied" together, which
+    // is exactly the confusion this dialog exists to remove.
+    const [copied, setCopied] = useState<'all' | 'email' | 'password' | null>(null);
 
     // Per-organisation feature flags: which tenants a change has reached. One
     // Firebase project means code ships to everyone at once, so staging a
@@ -181,6 +190,10 @@ export function OrganizationsPage() {
 
     const activeOrgKey = getActiveOrgKey();
     const activeOrgName = organizations.find((o) => o.id === activeOrgKey)?.name;
+    // Being inside an organisation is a deliberate act now, distinct from the
+    // default one — a super admin who has opened nothing administers the
+    // platform and is a member of no company's HR system.
+    const insideOrg = isSuperAdminInsideOrg();
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -244,6 +257,24 @@ export function OrganizationsPage() {
         }
     }
 
+    /**
+     * Copy one field on its own.
+     *
+     * The password is fourteen random characters and it has to survive a
+     * handoff — pasted into a message, or read off a laptop and typed into a
+     * phone. Twice now it has not, and both times the account was correct on
+     * the server and simply refused the password that reached it, which
+     * presents as "incorrect email or password" and sends whoever is
+     * diagnosing it to look at everything except the transcription. Copying
+     * just the password removes the typing from the path entirely.
+     */
+    function copyField(field: 'email' | 'password') {
+        if (!result) return;
+        void navigator.clipboard.writeText(field === 'email' ? result.adminEmail : result.tempPassword);
+        setCopied(field);
+        setTimeout(() => setCopied(null), 2000);
+    }
+
     function copyCredentials() {
         if (!result) return;
         // The organisation's *name*, not the administrator's address. This line
@@ -261,8 +292,8 @@ export function OrganizationsPage() {
             'Change this password after the first sign-in.',
         ].join('\n');
         void navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setCopied('all');
+        setTimeout(() => setCopied(null), 2000);
     }
 
     const columns: Column<Organization>[] = [
@@ -300,7 +331,7 @@ export function OrganizationsPage() {
             key: 'actions',
             header: 'Actions',
             render: (o) => {
-                const isActive = o.id === getActiveOrgKey();
+                const isActive = insideOrg && o.id === activeOrgKey;
                 return (
                     <div className="flex items-center gap-2">
                     {FLAG_LIST.length > 0 && (
@@ -355,18 +386,39 @@ export function OrganizationsPage() {
                 <StatCard label="Signed in as" value={profile?.email ?? '—'} icon={<ShieldCheck size={18} />} />
                 <StatCard
                     label="Currently managing"
-                    value={activeOrgKey === DEFAULT_ORG_KEY ? 'ModCon Builders (Default)' : (activeOrgName ?? activeOrgKey)}
+                    value={
+                        !insideOrg
+                            ? 'None — platform only'
+                            : activeOrgKey === DEFAULT_ORG_KEY
+                                ? 'ModCon Builders (Default)'
+                                : (activeOrgName ?? activeOrgKey)
+                    }
                     icon={<Building2 size={18} />}
                     footer={
-                        activeOrgKey !== DEFAULT_ORG_KEY ? (
-                            <button
-                                type="button"
-                                onClick={() => switchSuperAdminOrg(DEFAULT_ORG_KEY)}
-                                className="text-xs font-semibold text-brand-700 hover:underline"
-                            >
-                                Switch back to Default
-                            </button>
-                        ) : null
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {/* The default organisation predates the
+                                `organizations` collection and may have no row
+                                in the table below, so this is the only way in
+                                to it from this page. */}
+                            {activeOrgKey !== DEFAULT_ORG_KEY || !insideOrg ? (
+                                <button
+                                    type="button"
+                                    onClick={() => switchSuperAdminOrg(DEFAULT_ORG_KEY)}
+                                    className="text-xs font-semibold text-brand-700 hover:underline"
+                                >
+                                    Manage ModCon Builders (Default)
+                                </button>
+                            ) : null}
+                            {insideOrg ? (
+                                <button
+                                    type="button"
+                                    onClick={leaveSuperAdminOrg}
+                                    className="text-xs font-semibold text-brand-700 hover:underline"
+                                >
+                                    Step back out to the platform
+                                </button>
+                            ) : null}
+                        </div>
                     }
                 />
             </div>
@@ -430,18 +482,54 @@ export function OrganizationsPage() {
             >
                 {result ? (
                     <div className="space-y-3 text-sm">
-                        <div className="rounded-lg bg-ink-50 p-3 space-y-1.5">
-                            <p><span className="text-ink-400">HR administrator email:</span> <span className="font-mono text-ink-900">{result.adminEmail}</span></p>
-                            <p><span className="text-ink-400">Temporary password:</span> <span className="font-mono text-ink-900">{result.tempPassword}</span></p>
+                        <div className="bg-ink-50 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-xs text-ink-400">HR administrator email</p>
+                                    <p className="font-mono text-ink-900 break-all">{result.adminEmail}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => copyField('email')}
+                                    className="btn-secondary shrink-0 gap-1.5 px-2 py-1 text-xs"
+                                >
+                                    {copied === 'email' ? <Check size={13} /> : <Copy size={13} />}
+                                    {copied === 'email' ? 'Copied' : 'Copy'}
+                                </button>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 border-t border-ink-200 pt-2">
+                                <div className="min-w-0">
+                                    <p className="text-xs text-ink-400">Temporary password</p>
+                                    <p className="font-mono text-ink-900 break-all">{result.tempPassword}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => copyField('password')}
+                                    className="btn-secondary shrink-0 gap-1.5 px-2 py-1 text-xs"
+                                >
+                                    {copied === 'password' ? <Check size={13} /> : <Copy size={13} />}
+                                    {copied === 'password' ? 'Copied' : 'Copy'}
+                                </button>
+                            </div>
                         </div>
                         <button
                             type="button"
                             onClick={copyCredentials}
                             className="btn-secondary w-full inline-flex items-center justify-center gap-2 text-xs"
                         >
-                            {copied ? <Check size={14} /> : <Copy size={14} />}
-                            {copied ? 'Copied' : 'Copy credentials'}
+                            {copied === 'all' ? <Check size={14} /> : <Copy size={14} />}
+                            {copied === 'all' ? 'Copied' : 'Copy the whole handoff message'}
                         </button>
+                        {/* Not decoration. This password does not survive being
+                            read off one screen and typed into another — it has
+                            failed that way twice, and both times the account was
+                            correct and the sign-in still said the password was
+                            wrong. */}
+                        <p className="text-xs text-ink-500">
+                            Paste the password rather than typing it. Every character matters, and a
+                            mistyped one is indistinguishable from a wrong account: the sign-in screen
+                            says &ldquo;incorrect email or password&rdquo; either way.
+                        </p>
                         <p className="text-xs text-ink-400">
                             They can sign in with these and start building out their organization's HR system. The account administers that organization only — it cannot grant the Admin role or reach any other organization.
                         </p>

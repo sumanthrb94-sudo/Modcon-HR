@@ -8,7 +8,17 @@ import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { useOrganizations } from '@/lib/useFirestore';
-import { getActiveOrgKey, switchSuperAdminOrg, DEFAULT_ORG_KEY } from '@/lib/orgScope';
+import {
+  getActiveOrgKey,
+  isSuperAdminInsideOrg,
+  leaveSuperAdminOrg,
+  switchSuperAdminOrg,
+  DEFAULT_ORG_KEY,
+} from '@/lib/orgScope';
+
+/** The selector's value for "not inside any organisation". Not an org key, and
+ * deliberately not `''` — an organisation whose id was empty would collide. */
+const PLATFORM_CONTEXT = '__platform__';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -24,7 +34,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const [directoryRevision, setDirectoryRevision] = useState(0);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const role = resolveAppRole(profile);
-  const visibleNavItems = getVisibleNavItems(role);
+  // A super admin outside every organisation gets the platform console only —
+  // and that includes what this search can find. Reading the whole thing off
+  // one call keeps the search and the sidebar from disagreeing about what this
+  // account is currently looking at.
+  const insideOrg = !isSuperAdmin || isSuperAdminInsideOrg();
+  const visibleNavItems = getVisibleNavItems(role, isSuperAdmin, insideOrg);
 
   const searchableItems = useMemo(
     () => [
@@ -40,14 +55,17 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       // does not cover it — that refuses the navigation, by which point the
       // dropdown has already shown the name, designation and department of up
       // to thirty colleagues. See lib/dataScope.ts.
-      ...getVisibleEmployees(profile, getEmployeeDirectory()).slice(0, 30).map((employee) => ({
+      // Nobody works at "the platform", so a super admin outside an
+      // organisation has no colleagues to find — and the names that would
+      // otherwise surface are a tenant's.
+      ...(insideOrg ? getVisibleEmployees(profile, getEmployeeDirectory()) : []).slice(0, 30).map((employee) => ({
         id: `emp-${employee.id}`,
         label: employee.fullName,
         subtitle: `${employee.designation} · ${employee.department}`,
         path: `/employees/${employee.id}`,
       })),
     ],
-    [directoryRevision, visibleNavItems, profile],
+    [directoryRevision, visibleNavItems, profile, insideOrg],
   );
 
   const results = useMemo(() => {
@@ -149,11 +167,25 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         {isSuperAdmin ? (
           <div className="hidden sm:flex items-center gap-1.5 border border-ink-300 bg-brand-100 pl-2 pr-1 py-1">
             <Building2 size={14} className="text-brand-600 shrink-0" />
+            {/* "No organisation" is a real option, not the absence of one.
+                It used to be indistinguishable from the default organisation,
+                which is how an account that belongs to no company ended up
+                being shown one company's HR system by default. */}
             <Select
-              value={getActiveOrgKey()}
-              onChange={switchSuperAdminOrg}
+              ariaLabel="Organisation context"
+              value={isSuperAdminInsideOrg() ? getActiveOrgKey() : PLATFORM_CONTEXT}
+              onChange={(value) => (value === PLATFORM_CONTEXT ? leaveSuperAdminOrg() : switchSuperAdminOrg(value))}
               options={[
-                { label: 'ModCon Builders (Default)', value: DEFAULT_ORG_KEY },
+                { label: 'Platform — no organisation', value: PLATFORM_CONTEXT },
+                // The default organisation is listed by hand because it
+                // predates the `organizations` collection and may have no
+                // record in it — but on a deployment where somebody has since
+                // created one, it does, and offering both produced two options
+                // with the same value (React's duplicate-key warning on this
+                // page came from exactly that).
+                ...(organizations.some((o) => o.id === DEFAULT_ORG_KEY)
+                  ? []
+                  : [{ label: 'ModCon Builders (Default)', value: DEFAULT_ORG_KEY }]),
                 ...organizations.map((o) => ({ label: o.name, value: o.id ?? '' })),
               ]}
               className="!py-1 !text-xs !border-0 !bg-transparent !shadow-none w-40 md:w-48"
