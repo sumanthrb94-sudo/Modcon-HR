@@ -4676,7 +4676,7 @@ function AttendanceLocationsSection() {
   const directoryRevision = useEmployeeDirectoryRevision();
   const [config, setConfig] = useState(() => getGeofenceConfig());
   const [addOpen, setAddOpen] = useState(false);
-  const [draft, setDraft] = useState({ name: '', lat: '', lng: '', radius: '200' });
+  const [draft, setDraft] = useState({ name: '', location: '', lat: '', lng: '', radius: '200' });
   const [draftError, setDraftError] = useState('');
   const [capturing, setCapturing] = useState(false);
   const [exemptOpen, setExemptOpen] = useState(false);
@@ -4689,6 +4689,14 @@ function AttendanceLocationsSection() {
 
   const exemptions = useMemo(() => getGeofenceExemptions(), [geofenceRevision]);
   const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
+  // The organisation's declared work locations, so a fence can be tied to the
+  // office it is drawn around rather than standing as unrelated free text.
+  // Same list Settings → Locations manages: declared ∪ where people actually
+  // are (data/locations.ts).
+  const workLocations = useMemo(
+    () => buildLocationDirectory(directory.map((employee) => employee.location).filter(Boolean)),
+    [directory],
+  );
   const exemptRows = useMemo(
     () =>
       Object.entries(exemptions).map(([employeeId, entry]) => ({
@@ -4729,7 +4737,12 @@ function AttendanceLocationsSection() {
   function addSite() {
     const site = buildSite({
       id: newSiteId(),
-      name: draft.name,
+      // A fence tied to a work location takes that location's name when
+      // nothing else was typed: "Bengaluru HQ" is what the rest of the app
+      // calls the place, and a second name for it on the review queue reads
+      // as a second place.
+      name: draft.name.trim() || draft.location,
+      locationName: draft.location || undefined,
       lat: Number(draft.lat),
       lng: Number(draft.lng),
       radiusMetres: Number(draft.radius),
@@ -4740,7 +4753,7 @@ function AttendanceLocationsSection() {
     }
     save.track(upsertGeofenceSite(site));
     setAddOpen(false);
-    setDraft({ name: '', lat: '', lng: '', radius: '200' });
+    setDraft({ name: '', location: '', lat: '', lng: '', radius: '200' });
     setDraftError('');
   }
 
@@ -4812,7 +4825,14 @@ function AttendanceLocationsSection() {
             {config.sites.map((site) => (
               <div key={site.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-ink-900">{site.name}</p>
+                  <p className="text-sm font-semibold text-ink-900">
+                    {site.name}
+                    {site.locationName && site.locationName !== site.name ? (
+                      <span className="ml-2 text-xs font-normal text-ink-500">
+                        · {site.locationName}
+                      </span>
+                    ) : null}
+                  </p>
                   <p className="text-xs text-ink-500 font-mono">
                     {site.lat.toFixed(6)}, {site.lng.toFixed(6)} · {site.radiusMetres} m
                   </p>
@@ -4899,6 +4919,23 @@ function AttendanceLocationsSection() {
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             />
+          </div>
+          <div>
+            <label className="label" htmlFor="geofence-location">Work location</label>
+            <Select
+              ariaLabel="Work location"
+              value={draft.location}
+              onChange={(value) => setDraft((d) => ({ ...d, location: value }))}
+              options={[
+                { label: 'Not tied to a work location', value: '' },
+                ...workLocations.map((record) => ({ label: record.name, value: record.name })),
+              ]}
+            />
+            <p className="mt-1.5 text-xs text-ink-500">
+              Optional, and it only names the place — a fence applies to whoever checks in
+              nearest to it, not only to the people posted there. Leave it unset for a site
+              the organisation has not declared yet.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
