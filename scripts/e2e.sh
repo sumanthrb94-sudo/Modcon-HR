@@ -24,5 +24,5 @@ fi
 
 echo "[e2e] no emulator on $PORT — starting one for this run."
 exec npx -y firebase-tools@latest emulators:exec \
-  --only firestore,auth --project modcon-hr \
+  --only firestore,auth --project modconhr-b2789 \
   "npx playwright test $*"

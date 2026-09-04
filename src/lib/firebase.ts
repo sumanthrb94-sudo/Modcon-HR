@@ -4,13 +4,15 @@ import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'fir
 import { connectAuthEmulator, getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 
 export const firebaseConfig = {
-    apiKey: 'AIzaSyCDTZ1Sc3ajyKE7fKnzDguzoIphn9tDRQU',
-    authDomain: 'modcon-hr.firebaseapp.com',
-    projectId: 'modcon-hr',
-    storageBucket: 'modcon-hr.firebasestorage.app',
-    messagingSenderId: '1073004872818',
-    appId: '1:1073004872818:web:4edb04f9dba2564a832eeb',
-    measurementId: 'G-K1S5CCNGLK',
+    apiKey: 'AIzaSyAAl32aMY8mZ36PPcB4wZEc4pOkB2qpFDA',
+    authDomain: 'modconhr-b2789.firebaseapp.com',
+    projectId: 'modconhr-b2789',
+    storageBucket: 'modconhr-b2789.firebasestorage.app',
+    messagingSenderId: '257832557844',
+    appId: '1:257832557844:web:4dcbba495886cabcc7f601',
+    // No `measurementId`: Analytics is not enabled on this project and the app
+    // never called getAnalytics. Carrying a stale one would be a value nothing
+    // reads that looks like configuration somebody chose.
 };
 
 export const firebaseApp = initializeApp(firebaseConfig);

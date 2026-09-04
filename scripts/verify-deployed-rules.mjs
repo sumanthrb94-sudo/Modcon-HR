@@ -17,13 +17,21 @@
  *
  * Auth comes from the Firebase CLI's own stored credential, the same one
  * `firebase deploy` uses. If you are not logged in, run `firebase login`.
+ *
+ * A service-account key works too, and is what to reach for when the CLI is not
+ * logged in: set GOOGLE_APPLICATION_CREDENTIALS and mint a token from it. Note
+ * that the default `firebase-adminsdk` service account can read and write rules
+ * but **cannot create indexes** (`datastore.indexes.create`), and `firebase
+ * deploy` refuses before it starts because it also lacks
+ * `serviceusage.services.get` — so a key-based deploy has to call the Rules API
+ * directly rather than going through the CLI.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const PROJECT = 'modcon-hr';
+const PROJECT = 'modconhr-b2789';
 const LOCAL_RULES = 'firestore.rules';
 // Public client credentials of firebase-tools, as shipped in its source.
 const CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com';

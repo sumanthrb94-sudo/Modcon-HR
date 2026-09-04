@@ -206,10 +206,10 @@ service cloud.firestore {
     // trusted here). Used so a self-write can never grant elevated access:
     // see selfCreateRoleIsValid / selfUpdateRoleIsValid below.
     function fixedAdminEmails() {
-      return ['sumanthbolla97@gmail.com', 'saikrishnakoppaka@gmail.com', 'info@modconbuilders.com'];
+      return ['sumanthbolla97@gmail.com'];
     }
     function fixedSuperAdminEmails() {
-      return ['saikrishnakoppaka@gmail.com'];
+      return ['sumanthbolla97@gmail.com'];
     }
     function fixedRoleForEmail(email) {
       return email in fixedAdminEmails() ? 'admin' : 'employee';

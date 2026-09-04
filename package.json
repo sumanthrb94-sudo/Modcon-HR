@@ -17,8 +17,8 @@
     "lint": "eslint .",
     "check:data": "esbuild scripts/check-data-integrity.ts --bundle --platform=node --format=cjs --alias:@=./src --define:import.meta.env={} --log-level=error --outfile=node_modules/.cache/check-data-integrity.cjs && node node_modules/.cache/check-data-integrity.cjs",
     "rules:deploy": "firebase deploy --only firestore:rules",
-    "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project modcon-hr \"node --test --test-concurrency=1 tests/rules/*.test.mjs\"",
-    "test:e2e:emulator": "firebase emulators:exec --only firestore,auth --project modcon-hr \"E2E_FIRESTORE_EMULATOR=127.0.0.1:8080 E2E_AUTH_EMULATOR=127.0.0.1:9099 E2E_ORG_SETTINGS_DEPLOYED=true playwright test --project=org-settings\"",
+    "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project modconhr-b2789 \"node --test --test-concurrency=1 tests/rules/*.test.mjs\"",
+    "test:e2e:emulator": "firebase emulators:exec --only firestore,auth --project modconhr-b2789 \"E2E_FIRESTORE_EMULATOR=127.0.0.1:8080 E2E_AUTH_EMULATOR=127.0.0.1:9099 E2E_ORG_SETTINGS_DEPLOYED=true playwright test --project=org-settings\"",
     "rules:verify": "node scripts/verify-deployed-rules.mjs",
     "typecheck:progress": "tsc -p progress-tracking",
     "test:progress": "node --experimental-strip-types --test progress-tracking/test/pure.test.ts progress-tracking/test/schedule.test.ts progress-tracking/test/firebase-auth.test.ts progress-tracking/test/firestore-user.test.ts progress-tracking/test/policy-input.test.ts"

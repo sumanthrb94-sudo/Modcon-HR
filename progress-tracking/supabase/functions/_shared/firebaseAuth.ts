@@ -9,7 +9,7 @@
 // (CLAUDE.md, Auth & roles), so a file that could answer both questions would
 // be claiming an authority the token does not carry.
 
-const PROJECT_ID = "modcon-hr";
+const PROJECT_ID = "modconhr-b2789";
 const ISSUER = `https://securetoken.google.com/${PROJECT_ID}`;
 const JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";

@@ -38,7 +38,7 @@ import {
   where,
 } from 'firebase/firestore';
 
-const PROJECT_ID = process.env.GCLOUD_PROJECT ?? 'modcon-hr';
+const PROJECT_ID = process.env.GCLOUD_PROJECT ?? 'modconhr-b2789';
 const HOST = '127.0.0.1';
 const PORT = 8080;
 

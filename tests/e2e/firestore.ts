@@ -4,7 +4,7 @@ import { FIREBASE_API_KEY, HR_PERSONA, PERSONAS, ROLE_CHURN_PERSONA, SUPER_ADMIN
  * Firestore REST access for the specs, against whichever project the run is
  * pointed at.
  *
- * The suite normally talks to the live `modcon-hr` project, which has a daily
+ * The suite normally talks to the live `modconhr-b2789` project, which has a daily
  * quota: exhaust it and every publish comes back `429 RESOURCE_EXHAUSTED`,
  * which reads exactly like an app that has stopped saving. Setting
  * `E2E_FIRESTORE_EMULATOR=host:port` points both the app bundle (see
@@ -26,8 +26,8 @@ export const EMULATOR_HOST = process.env.E2E_FIRESTORE_EMULATOR ?? '';
 export const AUTH_EMULATOR_HOST = process.env.E2E_AUTH_EMULATOR ?? '';
 
 export const FIRESTORE_BASE = EMULATOR_HOST
-  ? `http://${EMULATOR_HOST}/v1/projects/modcon-hr/databases/(default)/documents`
-  : 'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
+  ? `http://${EMULATOR_HOST}/v1/projects/modconhr-b2789/databases/(default)/documents`
+  : 'https://firestore.googleapis.com/v1/projects/modconhr-b2789/databases/(default)/documents';
 
 /**
  * Identity Toolkit, live or emulated.

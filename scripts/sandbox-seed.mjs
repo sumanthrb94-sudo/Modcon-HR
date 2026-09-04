@@ -25,7 +25,7 @@
 
 const FIRESTORE_HOST = process.env.SANDBOX_FIRESTORE ?? '127.0.0.1:8080';
 const AUTH_HOST = process.env.SANDBOX_AUTH ?? '127.0.0.1:9099';
-const PROJECT = 'modcon-hr';
+const PROJECT = 'modconhr-b2789';
 
 const FIRESTORE = `http://${FIRESTORE_HOST}/v1/projects/${PROJECT}/databases/(default)/documents`;
 const IDENTITY = `http://${AUTH_HOST}/identitytoolkit.googleapis.com/v1`;

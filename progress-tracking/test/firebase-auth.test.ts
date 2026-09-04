@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 
 import { verifyFirebaseToken, type FirebaseKeySource } from "../supabase/functions/_shared/firebaseAuth.ts";
 
-const PROJECT = "modcon-hr";
+const PROJECT = "modconhr-b2789";
 
 const b64url = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const b64urlBytes = (b: ArrayBuffer) =>

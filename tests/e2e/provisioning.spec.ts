@@ -32,7 +32,7 @@ import { FIREBASE_API_KEY, PERSONAS } from './config';
  */
 
 const IDENTITY = 'https://identitytoolkit.googleapis.com/v1/accounts';
-const FIRESTORE = 'https://firestore.googleapis.com/v1/projects/modcon-hr/databases/(default)/documents';
+const FIRESTORE = 'https://firestore.googleapis.com/v1/projects/modconhr-b2789/databases/(default)/documents';
 
 /** Roles the form is allowed to offer. `admin` is deliberately not among them. */
 const INVITABLE_LABELS = ['Employee', 'Manager', 'HR Manager'];

@@ -92,8 +92,6 @@ const E2E_SUPER_ADMIN_EMAILS = e2eEmail(
 
 export const ADMIN_EMAILS = [
     'sumanthbolla97@gmail.com',
-    'saikrishnakoppaka@gmail.com',
-    'info@modconbuilders.com',
     ...E2E_ADMIN_EMAILS,
     ...E2E_SUPER_ADMIN_EMAILS,
 ].map((e) => e.toLowerCase());
@@ -107,7 +105,7 @@ export const MANAGER_EMAILS = [
 // marker flag. Super admins can see/create organizations (see
 // src/pages/organizations) and are not scoped to any single `orgId`.
 export const SUPER_ADMIN_EMAILS = [
-    'saikrishnakoppaka@gmail.com',
+    'sumanthbolla97@gmail.com',
     ...E2E_SUPER_ADMIN_EMAILS,
 ].map((e) => e.toLowerCase());
 

@@ -10,7 +10,7 @@
 // secret in this deployment. It lives in `supabase secrets` as
 // FIREBASE_SERVICE_ACCOUNT and must never be committed or shipped to a client.
 
-const PROJECT_ID = "modcon-hr";
+const PROJECT_ID = "modconhr-b2789";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/datastore";
 
