@@ -9,7 +9,14 @@
  * — this keeps the super admin's own session on the primary `auth` intact.
  */
 import { initializeApp, deleteApp } from 'firebase/app';
-import { connectAuthEmulator, getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
+import {
+    connectAuthEmulator,
+    getAuth,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
+    updateProfile,
+    signOut,
+} from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { ADMIN_EMAILS } from './auth';
@@ -306,4 +313,41 @@ export function friendlyOrgError(err: unknown): string {
         'auth/weak-password': 'Could not set a valid temporary password. Please try again.',
     };
     return map[code] ?? 'Something went wrong creating the organization. Please try again.';
+}
+
+/**
+ * Send an organisation's HR administrator a password-reset link.
+ *
+ * `createOrganization` shows a temporary password **once** and cannot show it
+ * again — it is never stored, which is right. What was missing is the way back
+ * when that one showing does not survive: the password is a fourteen-character
+ * string of mixed case and symbols, it is typically read off one screen and
+ * typed into another, often a phone, and re-creating the organisation is not a
+ * remedy because the address already has an account (`auth/email-already-in-use`)
+ * and the organisation already exists.
+ *
+ * So a super admin can re-issue instead. This sends Firebase's own reset email,
+ * which is better than minting a second temporary password: the link is
+ * single-use and time-limited, and the administrator ends up with a password
+ * nobody else has ever seen.
+ *
+ * Runs on a throwaway secondary app for the same reason the account creation
+ * does — not because a reset would sign anybody in, but so the emulator wiring
+ * and the live path stay identical and a sandbox run cannot mail a real person.
+ */
+export async function sendOrgAdminPasswordReset(email: string): Promise<void> {
+    const address = email.trim().toLowerCase();
+    if (!address) throw new Error('This organisation has no administrator address on record.');
+
+    const secondaryApp = initializeApp(firebaseConfig, `org-reset-${Date.now()}`);
+    const secondaryAuth = getAuth(secondaryApp);
+    const authEmulator = import.meta.env.VITE_AUTH_EMULATOR_HOST;
+    if (authEmulator) {
+        connectAuthEmulator(secondaryAuth, `http://${authEmulator}`, { disableWarnings: true });
+    }
+    try {
+        await sendPasswordResetEmail(secondaryAuth, address);
+    } finally {
+        await deleteApp(secondaryApp);
+    }
 }

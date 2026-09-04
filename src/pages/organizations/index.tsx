@@ -5,6 +5,7 @@ import { useOrganizations } from '@/lib/useFirestore';
 import {
     createOrganization,
     friendlyOrgError,
+    sendOrgAdminPasswordReset,
     findOrgAdminsToMigrate,
     migrateOrgAdminsToHr,
     setOrgHrAdministrator,
@@ -71,6 +72,9 @@ export function OrganizationsPage() {
     const [featuresOrg, setFeaturesOrg] = useState<Organization | null>(null);
     const [featureSaving, setFeatureSaving] = useState('');
     const [featureError, setFeatureError] = useState('');
+
+    const [resetting, setResetting] = useState<string | null>(null);
+    const [resetNotice, setResetNotice] = useState('');
 
     function openFeatures(org: Organization) {
         setFeaturesOrg(org);
@@ -216,6 +220,30 @@ export function OrganizationsPage() {
         }
     }
 
+    /**
+     * Re-issue an administrator's way in.
+     *
+     * The temporary password from `createOrganization` is shown once and never
+     * stored, so when it does not survive the handoff — misread, mistyped on a
+     * phone, or the dialog dismissed — there was nothing to do: re-creating the
+     * organisation fails because the address already has an account, and the
+     * organisation already exists. This sends Firebase's own reset link, which
+     * ends with a password nobody but its owner has seen.
+     */
+    async function resetAdminPassword(org: Organization) {
+        if (!org.adminEmail) return;
+        setResetting(org.adminEmail);
+        setResetNotice('');
+        try {
+            await sendOrgAdminPasswordReset(org.adminEmail);
+            setResetNotice(`Reset link sent to ${org.adminEmail}. It is single-use and expires.`);
+        } catch (err) {
+            setResetNotice(friendlyOrgError(err));
+        } finally {
+            setResetting(null);
+        }
+    }
+
     function copyCredentials() {
         if (!result) return;
         // The organisation's *name*, not the administrator's address. This line
@@ -284,6 +312,14 @@ export function OrganizationsPage() {
                         Set HR admin
                     </Button>
                     <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!o.adminEmail || resetting === o.adminEmail}
+                        onClick={() => void resetAdminPassword(o)}
+                    >
+                        {resetting === o.adminEmail ? 'Sending…' : 'Reset password'}
+                    </Button>
+                    <Button
                         variant={isActive ? 'secondary' : 'primary'}
                         size="sm"
                         disabled={isActive}
@@ -337,6 +373,11 @@ export function OrganizationsPage() {
 
             <Card>
                 <CardHeader title="All Organizations" subtitle="Every organization created on the platform" />
+                {resetNotice && (
+                    <p className="mb-3 border border-ink-300 bg-ink-100 px-3 py-2 text-sm text-ink-800">
+                        {resetNotice}
+                    </p>
+                )}
                 <SearchInput
                     value={search}
                     onChange={setSearch}
@@ -403,6 +444,15 @@ export function OrganizationsPage() {
                         </button>
                         <p className="text-xs text-ink-400">
                             They can sign in with these and start building out their organization's HR system. The account administers that organization only — it cannot grant the Admin role or reach any other organization.
+                        </p>
+                        {/* The password is never stored, so this dialog is the
+                            only time it exists anywhere. Saying so here — with
+                            the way out — is cheaper than the support message
+                            that follows a mistyped handoff. */}
+                        <p className="text-xs text-ink-500">
+                            This password is not stored anywhere and cannot be shown again. If it does
+                            not reach them, use <strong>Reset password</strong> on their row rather than
+                            creating the organization again — the address already has an account.
                         </p>
                     </div>
                 ) : (
