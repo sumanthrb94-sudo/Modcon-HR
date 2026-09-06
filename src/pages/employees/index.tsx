@@ -77,6 +77,7 @@ import {
 /** The picker value standing for hours belonging to this person alone. */
 const CUSTOM_SHIFT = '__custom__';
 import { linkAccountForEmployee } from '@/data/employeeLinks';
+import { CreateLoginButton } from './CreateLoginDialog';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -3315,6 +3316,13 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                 Edit Profile
               </Button>
             )}
+            {/* Hiring somebody and giving them a way in used to be two errands
+                on two pages, and nothing here said which of them had happened.
+                An employee with no account is invisible to themselves — no
+                attendance, no payslip, no leave — so the offer belongs on the
+                record, not on a dashboard HR has no reason to open. Renders
+                nothing for anyone who is not an administrator. */}
+            {!isSelfView && <CreateLoginButton employee={emp} />}
             {!isSelfView && !isEmployee && (
               <Button variant="secondary" size="sm" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={openDeleteProfile}>
                 Delete

@@ -31,15 +31,71 @@
  * organisation at all.
  */
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
-import { collection, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import {
+  connectAuthEmulator,
+  createUserWithEmailAndPassword,
+  getAuth,
+  sendPasswordResetEmail,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { assignRole } from '@/data/roleAssignments';
+import { getEmployeeDirectory } from '@/data/employees';
 import type { UserRole } from './auth';
 
 /** Roles an administrator may hand out here. `admin` is never one of them —
  *  same restriction as role_assignments and the /users rules. */
 export const INVITABLE_ROLES: UserRole[] = ['employee', 'manager', 'hr'];
+
+/**
+ * A throwaway FirebaseApp to create the account on.
+ *
+ * `createUserWithEmailAndPassword` signs the client in as whoever it just
+ * created, so it cannot run on the primary `auth` without dropping the
+ * inviter's own session.
+ *
+ * The emulator wiring is not optional. The primary app is pointed at the Auth
+ * emulator in lib/firebase.ts when `VITE_AUTH_EMULATOR_HOST` is set; an app
+ * created here knows nothing about that, so without these three lines an
+ * emulated run — the sandbox, the E2E suite — mints **real accounts on the
+ * production project**. `organizations.ts` had this exact bug and fixed it;
+ * this copy never got the fix.
+ */
+function secondaryAuth(label: string) {
+  const app = initializeApp(firebaseConfig, `${label}-${Date.now()}`);
+  const auth = getAuth(app);
+  const emulator = import.meta.env.VITE_AUTH_EMULATOR_HOST;
+  if (emulator) connectAuthEmulator(auth, `http://${emulator}`, { disableWarnings: true });
+  return { app, auth };
+}
+
+/**
+ * Ask Firebase to email this address a link for setting a password.
+ *
+ * This is the whole answer to "how does a new joiner get their login". It is
+ * Firebase's own password-reset mail, sent to an account that has just been
+ * created with a password nobody has ever seen — so there is no secret to hand
+ * over, nothing to read off one screen and type into another, and the employee
+ * ends up with a password their employer does not know. It needs no backend:
+ * the mail is sent by Firebase Auth, not by this app.
+ *
+ * The alternative it replaces is the temporary password below, which is still
+ * produced and still shown, because email is not reliable — an employee with a
+ * misspelled address, or a company whose filter eats the message, needs a way
+ * in that does not depend on the message arriving.
+ */
+export async function sendSetPasswordEmail(email: string): Promise<void> {
+  const address = email.trim().toLowerCase();
+  if (!address) throw new Error('An email address is required.');
+  const { app, auth } = secondaryAuth('invite-mail');
+  try {
+    await sendPasswordResetEmail(auth, address);
+  } finally {
+    await deleteApp(app);
+  }
+}
 
 function randomPassword(length = 14): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
@@ -54,6 +110,11 @@ export interface InviteAccountInput {
   role: UserRole;
   /** The inviter's own organisation. Never chosen in the form. */
   orgId: string;
+  /**
+   * Have Firebase email them a set-password link. Default true — it is the
+   * path that does not require the inviter to carry a password to somebody.
+   */
+  sendEmail?: boolean;
 }
 
 export interface InviteAccountResult {
@@ -64,14 +125,24 @@ export interface InviteAccountResult {
   linkedEmployeeId?: string;
   /** Why no link was made, when one was not. */
   linkNote?: string;
+  /** Whether Firebase accepted the set-password mail for delivery. */
+  emailSent: boolean;
+  /** Why it did not, when it did not — the temporary password is the way in. */
+  emailError?: string;
 }
 
 /**
- * Create an account in the caller's organisation and hand back its password.
+ * Create an account in the caller's organisation, and get the new joiner in.
  *
- * The password is shown once and never stored — there is no email delivery in
- * this app, so the inviter passes it on. That is worth stating plainly rather
- * than implying a mail flow that does not exist.
+ * By default Firebase emails them a link to set their own password, so nothing
+ * secret has to travel from the inviter to the employee — which is the step
+ * that kept failing, twice on the organisation-provisioning path alone,
+ * because fourteen random characters do not survive being read off a laptop
+ * and typed into a phone.
+ *
+ * A temporary password is still generated and still returned, because email is
+ * not reliable and a company whose filter eats the message needs a way in that
+ * does not depend on the message arriving. It is shown once and never stored.
  */
 export async function inviteAccount(
   input: InviteAccountInput,
@@ -93,11 +164,10 @@ export async function inviteAccount(
   }
 
   const tempPassword = randomPassword();
-  const secondaryApp = initializeApp(firebaseConfig, `invite-${Date.now()}`);
-  const secondaryAuth = getAuth(secondaryApp);
+  const { app: secondaryApp, auth: inviteAuth } = secondaryAuth('invite');
 
   try {
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+    const cred = await createUserWithEmailAndPassword(inviteAuth, email, tempPassword);
     if (name) await updateProfile(cred.user, { displayName: name });
     const uid = cred.user.uid;
 
@@ -123,8 +193,24 @@ export async function inviteAccount(
 
     const link = await linkToEmployeeRecord(uid, email, input.orgId, invitedByUid);
 
-    await signOut(secondaryAuth);
-    return { uid, email, tempPassword, ...link };
+    await signOut(inviteAuth);
+
+    // After the sign-out, so the mail is sent by an app that is not holding a
+    // session for the account it is about. Never fatal: the account exists
+    // either way, and the temporary password is what gets them in when this
+    // fails.
+    let emailSent = false;
+    let emailError: string | undefined;
+    if (input.sendEmail !== false) {
+      try {
+        await sendPasswordResetEmail(inviteAuth, email);
+        emailSent = true;
+      } catch (err) {
+        emailError = friendlyInviteError(err);
+      }
+    }
+
+    return { uid, email, tempPassword, emailSent, emailError, ...link };
   } finally {
     await deleteApp(secondaryApp);
   }
@@ -152,18 +238,29 @@ async function linkToEmployeeRecord(
   linkedBy: string,
 ): Promise<{ linkedEmployeeId?: string; linkNote?: string }> {
   try {
-    const snap = await getDocs(query(
-      collection(db, 'employees'),
-      where('orgId', '==', orgId),
-      where('email', '==', email),
-    ));
-    if (snap.empty) {
+    // The **directory**, not the Firestore `employees` collection this used to
+    // query. Employees added through Employees → Add Employee live in the
+    // localStorage overlay (data/employees.ts) and are never written to that
+    // collection, which holds the seeded demo dataset — so every person hired
+    // through the app failed this match and was reported as having no record.
+    // The order HR actually works in is "hire them, then give them a login",
+    // and that was the order this could not serve.
+    //
+    // Reading a client-side directory to choose an employeeId is the same
+    // trust the sibling `linkAccountForEmployee` already places in it: the
+    // administrator says who this is, and `firestore.rules` decides whether
+    // they may say it. The claim being checked here is the *administrator's*,
+    // not the new account's.
+    const matches = getEmployeeDirectory().filter(
+      (employee) => (employee.email ?? '').trim().toLowerCase() === email,
+    );
+    if (matches.length === 0) {
       return { linkNote: 'No employee record carries this address yet — link it once one does.' };
     }
-    if (snap.size > 1) {
-      return { linkNote: `${snap.size} employee records share this address, so it was not linked automatically.` };
+    if (matches.length > 1) {
+      return { linkNote: `${matches.length} employee records share this address, so it was not linked automatically.` };
     }
-    const employeeId = snap.docs[0].id;
+    const employeeId = matches[0].id;
     await setDoc(doc(db, 'employee_links', uid), {
       uid, employeeId, orgId, linkedBy, linkedAt: serverTimestamp(),
     });
