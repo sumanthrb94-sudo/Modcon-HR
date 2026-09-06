@@ -43,7 +43,7 @@ import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
 import { assignRole } from '@/data/roleAssignments';
 import { getEmployeeDirectory } from '@/data/employees';
-import { passwordActionSettings } from './authEmail';
+import { sendPasswordLink } from './authEmail';
 import type { UserRole } from './auth';
 
 /** Roles an administrator may hand out here. `admin` is never one of them —
@@ -92,7 +92,7 @@ export async function sendSetPasswordEmail(email: string): Promise<void> {
   if (!address) throw new Error('An email address is required.');
   const { app, auth } = secondaryAuth('invite-mail');
   try {
-    await sendPasswordResetEmail(auth, address, passwordActionSettings());
+    await sendPasswordLink((settings) => sendPasswordResetEmail(auth, address, settings));
   } finally {
     await deleteApp(app);
   }
@@ -204,7 +204,7 @@ export async function inviteAccount(
     let emailError: string | undefined;
     if (input.sendEmail !== false) {
       try {
-        await sendPasswordResetEmail(inviteAuth, email, passwordActionSettings());
+        await sendPasswordLink((settings) => sendPasswordResetEmail(inviteAuth, email, settings));
         emailSent = true;
       } catch (err) {
         emailError = friendlyInviteError(err);

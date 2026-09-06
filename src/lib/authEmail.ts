@@ -45,3 +45,32 @@ export function passwordActionSettings(): ActionCodeSettings | undefined {
     handleCodeInApp: false,
   };
 }
+
+/**
+ * Send a password link, and do not let the continue URL be why it fails.
+ *
+ * `passwordActionSettings()` names the domain the app is served from, and
+ * Firebase rejects one that is not on the project's authorized-domains list
+ * with `auth/unauthorized-continue-uri`. That list is a console setting nobody
+ * has necessarily touched — a new Vercel preview URL, a custom domain added
+ * last week — and the failure would land on the one path where it does real
+ * damage: the sign-in page's *forgot password*, which sent these mails
+ * perfectly well before the continue URL existed. An employee locked out of
+ * their own account because a redirect target was unregistered is a worse
+ * outcome than one who finishes on Firebase's own confirmation page.
+ *
+ * So the continue URL is an improvement that degrades: rejected, it is dropped
+ * and the mail is sent without it. Every other error propagates — a wrong
+ * address or a rate limit is the caller's to report.
+ */
+export async function sendPasswordLink(
+  send: (settings?: ActionCodeSettings) => Promise<void>,
+): Promise<void> {
+  try {
+    await send(passwordActionSettings());
+  } catch (err) {
+    const code = (err as { code?: string })?.code ?? '';
+    if (code !== 'auth/unauthorized-continue-uri' && code !== 'auth/invalid-continue-uri') throw err;
+    await send(undefined);
+  }
+}
