@@ -36,6 +36,7 @@ import {
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, authPersistenceReady } from './firebase';
 import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
+import { passwordActionSettings } from './authEmail';
 import {
     clearEmployeeLinkCache,
     getLinkedEmployeeId,
@@ -513,7 +514,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function sendPasswordReset(email: string) {
         setError('');
         try {
-            await sendPasswordResetEmail(auth, email.trim());
+            await sendPasswordResetEmail(auth, email.trim(), passwordActionSettings());
         } catch (err) {
             setError(friendlyAuthError(err));
             throw err;

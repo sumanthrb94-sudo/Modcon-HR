@@ -19,6 +19,7 @@ import {
 } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db, firebaseConfig } from './firebase';
+import { passwordActionSettings } from './authEmail';
 import { ADMIN_EMAILS } from './auth';
 import { Collections, addNew, remove } from './db';
 import { assignRole } from '@/data/roleAssignments';
@@ -346,7 +347,7 @@ export async function sendOrgAdminPasswordReset(email: string): Promise<void> {
         connectAuthEmulator(secondaryAuth, `http://${authEmulator}`, { disableWarnings: true });
     }
     try {
-        await sendPasswordResetEmail(secondaryAuth, address);
+        await sendPasswordResetEmail(secondaryAuth, address, passwordActionSettings());
     } finally {
         await deleteApp(secondaryApp);
     }
