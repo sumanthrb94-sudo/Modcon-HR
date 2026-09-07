@@ -119,6 +119,46 @@ export const HIRING_MANAGER_PERSONA = {
   roleLabel: 'Manager',
 };
 
+/**
+ * Three specs each hire somebody, give that record one of these addresses, and
+ * then assert that the account it belongs to was linked to it. They need an
+ * address each.
+ *
+ * They shared `PERSONAS.employee` until the employee directory moved onto the
+ * server. While it was per-browser they each created their own `emp-036` in
+ * their own context and the assertion passed on a coincidence of colliding
+ * ids; now the directory is the organisation's, the ids are unique across the
+ * run, and `linkAccountForEmployee` — which deliberately refuses to repoint an
+ * account that is already somebody — leaves the link on whichever spec hired
+ * first. The other two then assert against a record they did not create.
+ *
+ * `employee` is the default role for a new account, so unlike the personas
+ * above these need no seeded profile to be what they say they are.
+ */
+export const DOCUMENTS_PERSONA = {
+  role: 'employee' as const,
+  email: process.env.E2E_DOCUMENTS_EMAIL ?? 'playwright-e2e-documents@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Documents',
+  roleLabel: 'Employee',
+};
+
+export const PAYSLIP_PERSONA = {
+  role: 'employee' as const,
+  email: process.env.E2E_PAYSLIP_EMAIL ?? 'playwright-e2e-payslip@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Payslip',
+  roleLabel: 'Employee',
+};
+
+export const LEAVE_BALANCE_PERSONA = {
+  role: 'employee' as const,
+  email: process.env.E2E_LEAVE_BALANCE_EMAIL ?? 'playwright-e2e-balance@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Balance',
+  roleLabel: 'Employee',
+};
+
 export interface Persona {
   role: Role;
   email: string;

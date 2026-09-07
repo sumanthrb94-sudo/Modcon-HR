@@ -252,6 +252,21 @@ for (const day of DAY_FILTER_CASES) {
 const MONDAY = { instant: '2026-07-27T03:30:00Z', iso: '2026-07-27' };
 
 /** Someone seeded with a Monday week-off, and someone seeded without one. */
+/**
+ * Set (or clear) the personal week-off on the profile currently open.
+ *
+ * `''` is the "Follow organisation" option, and it is the state the edit form
+ * has to be able to return to — the row it produces reads `· organisation's`
+ * rather than naming a day this person owns.
+ */
+async function setWeekOff(page: Page, day: 'Tuesday' | '') {
+  await page.getByRole('button', { name: /Edit Profile/i }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Week Off').selectOption(day);
+  await dialog.getByRole('button', { name: /^Save/i }).click();
+  await expect(dialog).toBeHidden();
+}
+
 const MONDAY_OFF_EMPLOYEE = 'Sanjay Malhotra';
 const SUNDAY_OFF_EMPLOYEE = 'Diya Mehta';
 
@@ -349,15 +364,20 @@ test.describe('per-employee week offs', () => {
     await expect(page).toHaveURL(/\/employees\/emp-/);
     await expect(page.getByText('Week Off')).toBeVisible();
 
-    await page.getByRole('button', { name: /Edit Profile/i }).first().click();
-    const dialog = page.getByRole('dialog');
-    await dialog.locator('select').filter({ has: page.locator('option[value="Tuesday"]') }).first()
-      .selectOption('Tuesday');
-    await dialog.getByRole('button', { name: /^Save/i }).click();
-    await expect(dialog).toBeHidden();
+    await setWeekOff(page, 'Tuesday');
 
     // Reload: a roster that only survives until refresh is not a roster.
     await page.reload();
     await expect(page.getByText('Tuesday')).toBeVisible();
+
+    // Put it back, in the same act rather than in an `afterAll`: the employee
+    // directory is the organisation's now, not this browser's, so a personal
+    // week-off pinned here is pinned for every later spec in the run —
+    // `week-off-policy.spec.ts` asserts this exact person still *follows* the
+    // organisation, and read `Tuesday · their own` instead. A roster this spec
+    // changes to prove a point is one it has to hand back.
+    await setWeekOff(page, '');
+    await page.reload();
+    await expect(page.getByText(/·\s+organisation's$/)).toBeVisible();
   });
 });

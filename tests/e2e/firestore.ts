@@ -1,7 +1,10 @@
 import {
   FIREBASE_API_KEY,
+  DOCUMENTS_PERSONA,
   GEOFENCE_PERSONA,
   HIRING_MANAGER_PERSONA,
+  LEAVE_BALANCE_PERSONA,
+  PAYSLIP_PERSONA,
   HR_PERSONA,
   PERSONAS,
   ROLE_CHURN_PERSONA,
@@ -158,6 +161,9 @@ export async function seedPersonaProfiles(): Promise<void> {
     ROLE_CHURN_PERSONA,
     GEOFENCE_PERSONA,
     HIRING_MANAGER_PERSONA,
+    DOCUMENTS_PERSONA,
+    PAYSLIP_PERSONA,
+    LEAVE_BALANCE_PERSONA,
   ]) {
     const { uid } = await signInPersona(persona.email, persona.password);
     if (!uid) {

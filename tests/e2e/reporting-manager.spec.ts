@@ -90,17 +90,23 @@ async function login(page: Page) {
   await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
 }
 
+/** The three addresses this spec is allowed to create. */
+const OWN_ADDRESSES = new Set([HIRE.email, MANAGER.email, SECOND_MANAGER.email]);
+
 /**
- * Everyone this organisation has added — the seed directory is not in here.
+ * The people *this spec* has added.
  *
- * Read from `org_records` rather than from the browser. The directory moved
- * onto the server, and this spec's whole subject is whether one dialog quietly
- * creates two people or none: counting a cache that a hydration can overwrite
- * would make that answer depend on timing.
+ * Read from `org_records` rather than from the browser, because the directory
+ * is the organisation's now — and filtered to this spec's own addresses for
+ * the same reason. The overlay holds every deviation from the seed made by
+ * anybody: another spec editing a seed employee's work email puts that person
+ * in here too, so an unfiltered count answers "what has this whole run done",
+ * when the question is whether one dialog quietly created two people or none.
  */
 async function addedEmployees(page: Page): Promise<StoredEmployee[]> {
   void page;
-  return listOrgRecords<StoredEmployee>('employees');
+  const everyone = await listOrgRecords<StoredEmployee>('employees');
+  return everyone.filter((employee) => OWN_ADDRESSES.has(employee.email));
 }
 
 async function findAdded(page: Page, email: string): Promise<StoredEmployee | undefined> {

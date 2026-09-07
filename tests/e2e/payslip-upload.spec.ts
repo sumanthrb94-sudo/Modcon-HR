@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { PERSONAS } from './config';
+import { PAYSLIP_PERSONA, PERSONAS } from './config';
 import { employeeLinkFor, signInPersona } from './firestore';
 
 /**
@@ -18,7 +18,9 @@ import { employeeLinkFor, signInPersona } from './firestore';
  * wrong thing.
  */
 const ADMIN = PERSONAS.admin;
-const EMPLOYEE = PERSONAS.employee;
+// Its own address: this spec hires somebody with it and asserts the link.
+// See PAYSLIP_PERSONA in config.ts.
+const EMPLOYEE = PAYSLIP_PERSONA;
 const MONTH = '2026-05';
 
 /** A file Playwright can hand to an <input type="file">. Content is irrelevant — nothing parses it. */
@@ -57,6 +59,7 @@ test.describe.serial('an administrator uploads payslips', () => {
     await page.getByRole('button', { name: 'Add Employee' }).click();
 
     const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Employee code').fill('MC-9101');
     await dialog.getByLabel('Employee first name').fill('Payslip');
     await dialog.getByLabel('Employee last name').fill('Recipient');
     await dialog.getByLabel('Employee email').fill(EMPLOYEE.email);

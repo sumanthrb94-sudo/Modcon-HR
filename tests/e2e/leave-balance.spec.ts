@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { PERSONAS } from './config';
+import { LEAVE_BALANCE_PERSONA, PERSONAS } from './config';
 
 /**
  * The Dashboard and the Leave module must report the same leave balance.
@@ -21,7 +21,9 @@ import { PERSONAS } from './config';
  * work email).
  */
 const ADMIN = PERSONAS.admin;
-const EMPLOYEE = PERSONAS.employee;
+// Its own address: this spec hires somebody with it and asserts the link.
+// See LEAVE_BALANCE_PERSONA in config.ts.
+const EMPLOYEE = LEAVE_BALANCE_PERSONA;
 
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login');
@@ -74,6 +76,7 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
     await page.getByRole('button', { name: 'Add Employee' }).click();
 
     const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Employee code').fill('MC-9501');
     await dialog.getByLabel('Employee first name').fill('Playwright');
     await dialog.getByLabel('Employee last name').fill('Balance');
     await dialog.getByLabel('Employee email').fill(EMPLOYEE.email);

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { HR_PERSONA, PERSONAS } from './config';
+import { DOCUMENTS_PERSONA, HR_PERSONA, PERSONAS } from './config';
 import { employeeLinkFor, signInPersona } from './firestore';
 
 /**
@@ -32,7 +32,9 @@ import { employeeLinkFor, signInPersona } from './firestore';
  * ever prove what the client chose to do.
  */
 const ADMIN = PERSONAS.admin;
-const EMPLOYEE = PERSONAS.employee;
+// Its own address: this spec hires somebody with it and asserts the link.
+// See DOCUMENTS_PERSONA in config.ts.
+const EMPLOYEE = DOCUMENTS_PERSONA;
 
 const COMPULSORY = 'Upload Compulsory';
 const OPTIONAL = 'Upload Optional';
@@ -78,6 +80,7 @@ test.describe.serial('document uploads are offered by section and role', () => {
     await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
     await page.getByRole('button', { name: 'Add Employee' }).click();
     const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Employee code').fill('MC-9201');
     await dialog.getByLabel('Employee first name').fill('Document');
     await dialog.getByLabel('Employee last name').fill('Owner');
     await dialog.getByLabel('Employee email').fill(EMPLOYEE.email);

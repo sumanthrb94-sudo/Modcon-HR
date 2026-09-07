@@ -62,6 +62,7 @@ test.describe.serial('HR designations come from the HR department', () => {
     await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Add Employee' }).click();
     const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Employee code').fill('MC-9401');
     await dialog.getByLabel('Employee first name').fill('Designation');
     await dialog.getByLabel('Employee last name').fill('Collision');
     await dialog.getByLabel('Employee email').fill('designation.collision@modcon.io');

@@ -81,6 +81,7 @@ test.describe.serial('a work location belongs to the organisation', () => {
 
   test('HR adds one while hiring, and it reaches the organisation', async () => {
     const dialog = await openAddEmployee(page);
+    await dialog.getByLabel('Employee code').fill('MC-9301');
     await dialog.getByLabel('Employee first name').fill('Location');
     await dialog.getByLabel('Employee last name').fill('Pioneer');
     await dialog.getByLabel('Employee email').fill('location.pioneer@modcon.io');
