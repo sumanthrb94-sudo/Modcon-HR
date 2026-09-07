@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, Circle, KeyRound, Rocket } from 'lucide-react';
 import { Badge, Button, Modal } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -101,6 +101,7 @@ function TaskRow({ task, onGo }: { task: GettingStartedTask; onGo: (href: string
 export function GettingStarted() {
   const { profile, isAdmin, isHR, linkedEmployeeId } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const directoryRevision = useEmployeeDirectoryRevision();
   // The org's configuration is what every task reads, and it is hydrated from
   // Firestore after sign-in — so the list has to recompute when it lands, or
@@ -121,14 +122,27 @@ export function GettingStarted() {
 
   const remaining = outstandingCount(tasks);
 
-  // Opens itself once, and only when there is something to open it for.
+  /**
+   * Opens itself once, on the page somebody *arrives* at — and nowhere else.
+   *
+   * It used to open on whatever page the app happened to be showing, which
+   * made it a modal that interrupts a deliberate navigation: somebody following
+   * a link to Attendance got a checklist over the top of it, and their first
+   * click went into the backdrop instead of the button they were aiming at.
+   * The E2E suite found this the honest way, by having its first click
+   * swallowed.
+   *
+   * The home route is where a sign-in lands, so greeting people there is the
+   * whole of what this was for. Anywhere else it waits behind its launcher.
+   */
   useEffect(() => {
     const uid = profile?.uid;
     if (!uid || remaining === 0) return;
+    if (location.pathname !== '/') return;
     if (hasOpenedBefore(uid)) return;
     rememberOpened(uid);
     setOpen(true);
-  }, [profile?.uid, remaining]);
+  }, [profile?.uid, remaining, location.pathname]);
 
   function go(href: string) {
     setOpen(false);
