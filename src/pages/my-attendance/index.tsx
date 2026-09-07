@@ -489,11 +489,19 @@ export function MyAttendancePage() {
         }
       />
 
+      {/* Two different states wore one message. An account with no link at all
+          needs an administrator to make one; an account whose link names a
+          record this browser cannot see is already linked, and telling its
+          owner to go and link it sends them to fix something that is not
+          broken. `linkedEmployeeId` is what tells them apart. */}
       {isUnlinked && (
-        <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="attendance-unlinked-notice">
-          <Info size={16} className="shrink-0" />
-          Your account isn’t linked to an employee record yet, so there is no attendance to show. An
-          administrator can link it from Settings → Database.
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="attendance-unlinked-notice">
+          <Info size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {linkedEmployeeId
+              ? 'Your account is linked to an employee record, but that record has not reached this browser yet. Give it a moment and reload — if it persists, ask your HR administrator to check the directory.'
+              : 'Your account isn’t linked to an employee record yet, so there is no attendance to show. An administrator can link it from Settings → Database.'}
+          </span>
         </div>
       )}
 
@@ -503,7 +511,9 @@ export function MyAttendancePage() {
             title={isUnlinked ? 'No attendance to show' : 'No employee selected'}
             description={
               isUnlinked
-                ? 'This app has not been told which employee record your account belongs to.'
+                ? (linkedEmployeeId
+                    ? 'Your record has not reached this browser yet.'
+                    : 'This app has not been told which employee record your account belongs to.')
                 : 'Pick an employee to view their attendance.'
             }
           />

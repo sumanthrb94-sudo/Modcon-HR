@@ -4,6 +4,7 @@ import { getOrganisationWeekOff } from '@/data/weekOff';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
 import { mergeLocations, LOCATION_DIRECTORY_CHANGED_EVENT } from '@/data/locations';
+import { persistentCollection } from '@/data/persistence';
 
 // ---------------------------------------------------------------------------
 // Master employee directory — the single source of truth for people data.
@@ -210,45 +211,47 @@ export function isWeekOffFor(
 }
 
 const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';
-const DELETED_EMPLOYEE_STORAGE_KEY = 'modcon.hr.deletedEmployees';
 export const EMPLOYEE_DIRECTORY_CHANGED_EVENT = 'modcon-hr-directory-changed';
 
 export const employees: Employee[] = [];
 export const locations: string[] = [];
 
-function readCustomEmployees(): Employee[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Employee[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeCustomEmployees(items: Employee[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY), JSON.stringify(items));
-}
-
-function readDeletedEmployeeIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as string[];
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeDeletedEmployeeIds(ids: string[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY), JSON.stringify(ids));
-}
+/**
+ * The directory, as the organisation's rather than this browser's.
+ *
+ * It was the last of the mutable stores still living only in localStorage, and
+ * the consequence was not subtle: HR added somebody on their laptop, gave them
+ * a login, and that employee — signing in on their own machine — resolved to
+ * nobody. Their `employee_links` document was correct and pointed at a record
+ * that existed in exactly one browser in the world, so they were told their
+ * account was not linked and shown no attendance, no leave and no payslips. In
+ * a new organisation, where there is no seed to fall back on, that was every
+ * employee.
+ *
+ * `persistentCollection` already has the exact shape this needs — Firestore
+ * holds only what differs from the seed, plus a tombstone for a deleted seed
+ * record — which is precisely what `customEmployees` plus `deletedEmployees`
+ * were doing locally. See src/data/persistence.ts and
+ * docs/shared-records-spec.md.
+ *
+ * **Writing it is administrators only, enforced in `firestore.rules`**
+ * (`directoryWriteIsAuthorised`). This record carries `ctc`, so a generic
+ * org-member write would let anybody raise their own salary and have the whole
+ * company shown it as fact.
+ *
+ * The legacy key migration comes from `persistentCollection` itself and
+ * recovers everything this organisation added. Local-only *deletions* of seed
+ * employees are not recoverable — a merged array cannot tell "removed" from
+ * "never there" — so a seed employee deleted in one browser before this change
+ * reappears once, and is deleted again for everybody. That is the same
+ * trade-off, and the same one-time cost, the other nine stores already took.
+ */
+const directoryStore = persistentCollection<Employee>(
+  CUSTOM_EMPLOYEE_STORAGE_KEY,
+  EMPLOYEE_DIRECTORY_CHANGED_EVENT,
+  () => (isMockDataCleared() ? [] : buildEmployeeDirectory(seeds)),
+  'employees',
+);
 
 function notifyEmployeeDirectoryChanged() {
   if (typeof window === 'undefined') return;
@@ -256,24 +259,17 @@ function notifyEmployeeDirectoryChanged() {
 }
 
 export function getEmployeeDirectory(): Employee[] {
-  const deletedIds = new Set(readDeletedEmployeeIds());
-  const seedEmployees = isMockDataCleared() ? [] : buildEmployeeDirectory(seeds);
-  const combined = [...seedEmployees, ...readCustomEmployees()]
-    .filter((employee) => !deletedIds.has(employee.id));
-  const byEmployeeId = new Map<string, Employee>();
-  combined.forEach((employee) => {
-    byEmployeeId.set(employee.id, employee);
-  });
-
-  const directory = Array.from(byEmployeeId.values());
-  const byId = new Map(directory.map((employee) => [employee.id, employee]));
-  directory.forEach((employee) => {
+  // The merge — seed, plus this organisation's changes, minus its tombstones —
+  // is the collection's job now. What is left here is the derived field.
+  const people = directoryStore.get();
+  const byId = new Map(people.map((employee) => [employee.id, employee]));
+  people.forEach((employee) => {
     employee.reportingManagerName = employee.reportingManagerId
       ? byId.get(employee.reportingManagerId)?.fullName
       : undefined;
   });
 
-  return directory;
+  return people;
 }
 
 function syncDirectorySnapshots() {
@@ -346,10 +342,7 @@ export function isEmployeeCodeTaken(code: string, exceptEmployeeId?: string): bo
 }
 
 export function addEmployeeToDirectory(employee: Employee) {
-  const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
-  const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
-  writeCustomEmployees([employee, ...customEmployees]);
-  writeDeletedEmployeeIds(deletedEmployeeIds);
+  directoryStore.update((current) => [employee, ...current.filter((item) => item.id !== employee.id)]);
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
 }
@@ -362,19 +355,15 @@ export function updateEmployeeInDirectory(employee: Employee) {
     ? { ...employee, authUid: existing.authUid }
     : employee;
 
-  const customEmployees = readCustomEmployees().filter((item) => item.id !== employee.id);
-  const deletedEmployeeIds = readDeletedEmployeeIds().filter((id) => id !== employee.id);
-  writeCustomEmployees([record, ...customEmployees]);
-  writeDeletedEmployeeIds(deletedEmployeeIds);
+  directoryStore.update((current) => [record, ...current.filter((item) => item.id !== employee.id)]);
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
 }
 
 export function deleteEmployeeFromDirectory(employeeId: string) {
-  const customEmployees = readCustomEmployees().filter((item) => item.id !== employeeId);
-  const deletedEmployeeIds = Array.from(new Set([...readDeletedEmployeeIds(), employeeId]));
-  writeCustomEmployees(customEmployees);
-  writeDeletedEmployeeIds(deletedEmployeeIds);
+  // A removal, not an absence: the collection writes the tombstone that stops
+  // the seed supplying this person again on the next read.
+  directoryStore.update((current) => current.filter((item) => item.id !== employeeId));
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
 }
@@ -394,10 +383,9 @@ export function reassignEmployeeDepartment(fromDepartment: string, toDepartment:
   if (!affected.length) return 0;
 
   const movedIds = new Set(affected.map((employee) => employee.id));
-  const untouched = readCustomEmployees().filter((employee) => !movedIds.has(employee.id));
   const moved = affected.map((employee) => ({ ...employee, department: toDepartment }));
 
-  writeCustomEmployees([...moved, ...untouched]);
+  directoryStore.update((current) => [...moved, ...current.filter((employee) => !movedIds.has(employee.id))]);
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
   return moved.length;
@@ -416,10 +404,9 @@ export function reassignEmployeeLocation(fromLocation: string, toLocation: strin
   if (!affected.length) return 0;
 
   const movedIds = new Set(affected.map((employee) => employee.id));
-  const untouched = readCustomEmployees().filter((employee) => !movedIds.has(employee.id));
   const moved = affected.map((employee) => ({ ...employee, location: toLocation }));
 
-  writeCustomEmployees([...moved, ...untouched]);
+  directoryStore.update((current) => [...moved, ...current.filter((employee) => !movedIds.has(employee.id))]);
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
   return moved.length;
@@ -462,7 +449,7 @@ export function linkEmployeeToAuthAccount(employeeId: string, uid: string) {
   const touched = [...stale.map((employee) => ({ ...employee, authUid: undefined })), { ...target, authUid: uid }];
   const touchedIds = new Set(touched.map((employee) => employee.id));
 
-  writeCustomEmployees([...touched, ...readCustomEmployees().filter((item) => !touchedIds.has(item.id))]);
+  directoryStore.update((current) => [...touched, ...current.filter((item) => !touchedIds.has(item.id))]);
   syncDirectorySnapshots();
   notifyEmployeeDirectoryChanged();
 }
@@ -487,7 +474,9 @@ syncDirectorySnapshots();
 if (typeof window !== 'undefined') {
   window.addEventListener(EMPLOYEE_DIRECTORY_CHANGED_EVENT, syncDirectorySnapshots);
   window.addEventListener('storage', (event) => {
-    if (event.key === orgScopedKey(CUSTOM_EMPLOYEE_STORAGE_KEY) || event.key === orgScopedKey(DELETED_EMPLOYEE_STORAGE_KEY)) {
+    // The collection's key, not the two it replaced — a second tab writing
+    // the directory is still worth re-reading for.
+    if (event.key === orgScopedKey(`${CUSTOM_EMPLOYEE_STORAGE_KEY}.overlay`)) {
       syncDirectorySnapshots();
     }
   });

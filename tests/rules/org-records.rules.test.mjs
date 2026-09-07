@@ -296,3 +296,86 @@ describe('deletion', () => {
     );
   });
 });
+
+/**
+ * The employee directory — the second per-store authority clause.
+ *
+ * The directory moved into `org_records` so an organisation's people exist for
+ * everybody in it rather than in whichever browser typed them. That move is
+ * only safe with this rule, because the record carries `ctc`: under the generic
+ * block any signed-in member could raise their own salary, promote themselves
+ * out of a reporting line, or remove a colleague, and every other browser in
+ * the company would then be shown it as fact.
+ *
+ * While the directory lived in localStorage that lie reached one browser. This
+ * is what stops the server publishing it. See §5 of docs/shared-records-spec.md
+ * — name the store, do not widen the generic block.
+ */
+describe('only an administrator writes the employee directory', () => {
+  const person = (over = {}) =>
+    record({
+      store: 'employees',
+      id: 'emp-a1',
+      data: JSON.stringify({ id: 'emp-a1', fullName: 'Aarav Sharma', ctc: 900000 }),
+      ...over,
+    });
+  const personDoc = docId({ store: 'employees', id: 'emp-a1' });
+
+  it('HR can add somebody', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_records', personDoc), person()));
+  });
+
+  it('a platform admin can too', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.adminA), 'org_records', personDoc), person()));
+  });
+
+  it('an employee cannot — this is the salary they would be editing', async () => {
+    await assertFails(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', personDoc),
+        person({ data: JSON.stringify({ id: 'emp-a1', fullName: 'Aarav Sharma', ctc: 9000000 }) }),
+      ),
+    );
+  });
+
+  it('an employee cannot rewrite their own record either', async () => {
+    // `isSelf` would be satisfied — emp-a1 is who this account is — and it
+    // still fails. Being the subject of a directory record is not authority
+    // over it; that is the difference between this store and a leave request.
+    await assertFails(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', personDoc),
+        person({ data: JSON.stringify({ id: 'emp-a1', fullName: 'Aarav Sharma', designation: 'CEO' }) }),
+      ),
+    );
+  });
+
+  it('a manager is not an administrator here', async () => {
+    await assertFails(setDoc(doc(as(USERS.managerA), 'org_records', personDoc), person()));
+  });
+
+  it('an employee cannot tombstone a colleague out of the directory', async () => {
+    // A removal is written as an ordinary record with `deleted`, which the
+    // generic block allows for every other store — so it needs saying that
+    // this one is different.
+    await assertFails(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', personDoc),
+        person({ deleted: true, data: '' }),
+      ),
+    );
+  });
+
+  it("another organisation's administrator cannot write into this directory", async () => {
+    await assertFails(setDoc(doc(as(USERS.hrB), 'org_records', personDoc), person()));
+  });
+
+  it('everyone in the organisation may still read it', async () => {
+    // A directory nobody can read is not a directory. What each role is
+    // *shown* is narrowed in lib/dataScope.ts, not here.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'org_records', personDoc), person());
+    });
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_records', personDoc)));
+  });
+});

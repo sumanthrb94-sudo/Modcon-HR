@@ -1,5 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import type { Persona } from './config';
+import { seedOrgRecords } from './firestore';
 
 /**
  * An employee account sees itself, and no colleague — everywhere, not just on
@@ -70,45 +71,42 @@ async function login(page: Page, p: { email: string; password: string }) {
  * persona asserts the same absence for its own reason.
  */
 async function seedDirectory(page: Page, selfEmail: string) {
-  await page.evaluate(
-    ({ selfEmail, selfName, colleagueName }) => {
-      const person = (id: string, fullName: string, email: string) => {
-        const [firstName, ...rest] = fullName.split(' ');
-        return {
-          id,
-          employeeCode: id.toUpperCase(),
-          firstName,
-          lastName: rest.join(' '),
-          fullName,
-          email,
-          phone: '+91 90000 00000',
-          avatar: 'brand',
-          dateOfBirth: '1990-01-15',
-          designation: 'Engineer',
-          department: 'Engineering',
-          location: 'Bengaluru',
-          employmentType: 'Full-time',
-          status: 'Active',
-          // Recent on purpose. The activity stream is sorted newest-first and
-          // capped, so a joining date years back would sort below the demo
-          // organisation's own history and the assertion would fail for a
-          // reason that has nothing to do with scope.
-          dateOfJoining: '2026-08-20',
-          reportingManagerId: null,
-          ctc: 1200000,
-        };
-      };
+  const person = (id: string, fullName: string, email: string) => {
+    const [firstName, ...rest] = fullName.split(' ');
+    return {
+      id,
+      employeeCode: id.toUpperCase(),
+      firstName,
+      lastName: rest.join(' '),
+      fullName,
+      email,
+      phone: '+91 90000 00000',
+      avatar: 'brand',
+      dateOfBirth: '1990-01-15',
+      designation: 'Engineer',
+      department: 'Engineering',
+      location: 'Bengaluru',
+      employmentType: 'Full-time',
+      status: 'Active',
+      // Recent on purpose. The activity stream is sorted newest-first and
+      // capped, so a joining date years back would sort below the demo
+      // organisation's own history and the assertion would fail for a
+      // reason that has nothing to do with scope.
+      dateOfJoining: '2026-08-20',
+      reportingManagerId: null,
+      ctc: 1200000,
+    };
+  };
 
-      window.localStorage.setItem(
-        'modcon.hr.customEmployees',
-        JSON.stringify([
-          person('emp-e2e-scope-self', selfName, selfEmail),
-          person('emp-e2e-scope-colleague', colleagueName, 'e2e-scope-colleague@modcon-hr.test'),
-        ]),
-      );
-    },
-    { selfEmail, selfName: SELF_NAME, colleagueName: COLLEAGUE_NAME },
-  );
+  // On the server: the directory is `org_records` now, and sign-in hydrates
+  // this browser's copy from it — a locally-seeded pair is wiped by the first
+  // empty snapshot, and the spec then measures an empty directory rather than
+  // a scoped one.
+  await seedOrgRecords('employees', [
+    person('emp-e2e-scope-self', SELF_NAME, selfEmail),
+    person('emp-e2e-scope-colleague', COLLEAGUE_NAME, 'e2e-scope-colleague@modcon-hr.test'),
+  ]);
+
   await page.reload();
 }
 

@@ -1,5 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { HR_PERSONA, type Persona } from './config';
+import { seedOrgRecords } from './firestore';
 
 /**
  * Two routes to deciding leave, and the queue shows exactly the one this
@@ -68,75 +69,71 @@ async function login(page: Page, p: { email: string; password: string }) {
  * it could not be decided by anybody.
  */
 async function seedReportingLine(page: Page, managerEmail: string) {
-  await page.evaluate(
-    ({ managerEmail, managerId, reportName, outsiderName }) => {
-      const person = (id: string, fullName: string, email: string, reportsTo: string | null) => {
-        const [firstName, ...rest] = fullName.split(' ');
-        return {
-          id,
-          employeeCode: id.toUpperCase(),
-          firstName,
-          lastName: rest.join(' '),
-          fullName,
-          email,
-          phone: '+91 90000 00000',
-          avatar: 'brand',
-          dateOfBirth: '1990-01-01',
-          designation: 'Engineer',
-          department: 'Engineering',
-          location: 'Bengaluru',
-          employmentType: 'Full-time',
-          status: 'Active',
-          dateOfJoining: '2024-01-01',
-          reportingManagerId: reportsTo,
-          ctc: 1200000,
-        };
-      };
+  const person = (id: string, fullName: string, email: string, reportsTo: string | null) => {
+    const [firstName, ...rest] = fullName.split(' ');
+    return {
+      id,
+      employeeCode: id.toUpperCase(),
+      firstName,
+      lastName: rest.join(' '),
+      fullName,
+      email,
+      phone: '+91 90000 00000',
+      avatar: 'brand',
+      dateOfBirth: '1990-01-01',
+      designation: 'Engineer',
+      department: 'Engineering',
+      location: 'Bengaluru',
+      employmentType: 'Full-time',
+      status: 'Active',
+      dateOfJoining: '2024-01-01',
+      reportingManagerId: reportsTo,
+      ctc: 1200000,
+    };
+  };
 
-      window.localStorage.setItem(
-        'modcon.hr.customEmployees',
-        JSON.stringify([
-          person(managerId, 'E2E Reporting Lead', managerEmail, null),
-          person('emp-e2e-report', reportName, 'e2e-report@modcon-hr.test', managerId),
-          person('emp-e2e-outsider', outsiderName, 'e2e-outsider@modcon-hr.test', null),
-        ]),
-      );
+  // Seeded on the server, not into this browser's localStorage. The directory
+  // and the leave requests are both `org_records` now, and the app hydrates
+  // that cache from Firestore at sign-in — so a locally-seeded reporting line
+  // is erased by the first empty snapshot, and the queue this spec is about
+  // would be empty for a reason that has nothing to do with scope.
+  await seedOrgRecords('employees', [
+    person(MANAGER_ID, 'E2E Reporting Lead', managerEmail, null),
+    person('emp-e2e-report', REPORT_NAME, 'e2e-report@modcon-hr.test', MANAGER_ID),
+    person('emp-e2e-outsider', OUTSIDER_NAME, 'e2e-outsider@modcon-hr.test', null),
+  ]);
 
-      // Writing this store replaces the demo seed outright, so the queue holds
-      // exactly these two requests and "one of them is missing" cannot be an
-      // accident of which seeded rows happened to be pending.
-      window.localStorage.setItem(
-        'modcon.hr.leaveRequests',
-        JSON.stringify([
-          {
-            id: 'lr-e2e-report',
-            employeeId: 'emp-e2e-report',
-            type: 'Casual',
-            startDate: '2026-09-01',
-            endDate: '2026-09-02',
-            days: 2,
-            reason: 'E2E - request from somebody below this manager.',
-            status: 'Pending',
-            appliedOn: '2026-08-20',
-            approverId: null,
-          },
-          {
-            id: 'lr-e2e-outsider',
-            employeeId: 'emp-e2e-outsider',
-            type: 'Casual',
-            startDate: '2026-09-01',
-            endDate: '2026-09-02',
-            days: 2,
-            reason: 'E2E - request from outside this manager reporting line.',
-            status: 'Pending',
-            appliedOn: '2026-08-20',
-            approverId: null,
-          },
-        ]),
-      );
-    },
-    { managerEmail, managerId: MANAGER_ID, reportName: REPORT_NAME, outsiderName: OUTSIDER_NAME },
+  await seedOrgRecords(
+    'leaveRequests',
+    [
+      {
+        id: 'lr-e2e-report',
+        employeeId: 'emp-e2e-report',
+        type: 'Casual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-02',
+        days: 2,
+        reason: 'E2E - request from somebody below this manager.',
+        status: 'Pending',
+        appliedOn: '2026-08-20',
+        approverId: null,
+      },
+      {
+        id: 'lr-e2e-outsider',
+        employeeId: 'emp-e2e-outsider',
+        type: 'Casual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-02',
+        days: 2,
+        reason: 'E2E - request from outside this manager reporting line.',
+        status: 'Pending',
+        appliedOn: '2026-08-20',
+        approverId: null,
+      },
+    ],
+    { employeeId: (request) => request.employeeId },
   );
+
   await page.reload();
 }
 

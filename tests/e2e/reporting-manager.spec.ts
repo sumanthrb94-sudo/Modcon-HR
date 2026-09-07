@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
+import { listOrgRecords } from './firestore';
 
 // Hiring is not self-service: the Employee role gets its own record and no
 // Add Employee button, and the job fields on a profile are read-only to it.
@@ -89,12 +90,17 @@ async function login(page: Page) {
   await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
 }
 
-/** Everyone this browser has added — the seed directory is not in here. */
+/**
+ * Everyone this organisation has added — the seed directory is not in here.
+ *
+ * Read from `org_records` rather than from the browser. The directory moved
+ * onto the server, and this spec's whole subject is whether one dialog quietly
+ * creates two people or none: counting a cache that a hydration can overwrite
+ * would make that answer depend on timing.
+ */
 async function addedEmployees(page: Page): Promise<StoredEmployee[]> {
-  return page.evaluate(() => {
-    const raw = window.localStorage.getItem('modcon.hr.customEmployees');
-    return raw ? (JSON.parse(raw) as StoredEmployee[]) : [];
-  });
+  void page;
+  return listOrgRecords<StoredEmployee>('employees');
 }
 
 async function findAdded(page: Page, email: string): Promise<StoredEmployee | undefined> {

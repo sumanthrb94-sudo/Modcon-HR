@@ -417,3 +417,52 @@ export async function waitForOrgRecordsQuiet(
   // Falling through is deliberate: a store that genuinely never settles is a
   // failure the assertions after this will state far better than a throw here.
 }
+
+/**
+ * Write records straight into `org_records`, the way an organisation's data
+ * actually lives.
+ *
+ * Seeding a store by writing its localStorage key stopped working when the
+ * employee directory moved onto the server: the app subscribes at sign-in and
+ * `hydrate` writes the server's copy over the cache, so a locally-seeded
+ * directory is erased by the first empty snapshot — and the spec then fails
+ * somewhere far from the seeding, with people who were definitely there simply
+ * absent.
+ *
+ * Uses the emulator's owner bypass, like `clearOrgRecords`: this is setup, not
+ * something the app does, and the directory is administrators-only on the
+ * server (`directoryWriteIsAuthorised` in firestore.rules), so seeding it as a
+ * persona would be testing the rule rather than using it.
+ */
+export async function seedOrgRecords<T extends { id: string }>(
+  store: string,
+  records: T[],
+  options: { orgKey?: string; employeeId?: (record: T) => string } = {},
+): Promise<void> {
+  const { orgKey = 'default', employeeId } = options;
+  const token = await adminToken();
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'Content-Type': 'application/json',
+  };
+
+  for (const item of records) {
+    const res = await fetch(`${FIRESTORE_BASE}/org_records/${orgKey}__${store}__${item.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        fields: {
+          orgId: { stringValue: orgKey },
+          store: { stringValue: store },
+          recordId: { stringValue: item.id },
+          deleted: { booleanValue: false },
+          data: { stringValue: JSON.stringify(item) },
+          ...(employeeId ? { employeeId: { stringValue: employeeId(item) } } : {}),
+        },
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`[e2e] seeding org_records/${orgKey}__${store}__${item.id} failed: ${res.status}`);
+    }
+  }
+}

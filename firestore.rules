@@ -1096,7 +1096,8 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && inMyOrg();
       allow create, update: if isSignedIn() && writingToMyOrg() &&
         validOrgRecord(docId) &&
-        leaveDecisionIsAuthorised();
+        leaveDecisionIsAuthorised() &&
+        directoryWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
       // administrator clearing data, which is what this allows.
@@ -1135,6 +1136,31 @@ service cloud.firestore {
      * Raising a request, cancelling your own, and every other store's writes
      * are untouched by this.
      */
+    /**
+     * The employee directory is the organisation's, and only an administrator
+     * writes it.
+     *
+     * The second per-store clause, added for the same reason as the first and
+     * following §5 of docs/shared-records-spec.md: name the store, do not
+     * widen the generic block.
+     *
+     * It matters more here than anywhere else in this collection. An employee
+     * record carries `ctc`, `designation`, `department` and
+     * `reportingManagerId` — so under the generic rule any signed-in member of
+     * the organisation could raise their own salary, promote themselves out of
+     * a reporting line, or delete a colleague, and every other browser in the
+     * company would then be shown it as fact. While the directory lived in
+     * localStorage that lie reached only the browser that told it; putting it
+     * on the server without this clause would publish it.
+     *
+     * Reads stay open to the organisation: a directory nobody may read is not
+     * a directory, and `lib/dataScope.ts` narrows what each role is *shown*
+     * from it.
+     */
+    function directoryWriteIsAuthorised() {
+      return request.resource.data.store != 'employees' || isOrgAdmin();
+    }
+
     function leaveDecisionIsAuthorised() {
       return request.resource.data.store != 'leaveRequests' ||
         !('status' in request.resource.data) ||

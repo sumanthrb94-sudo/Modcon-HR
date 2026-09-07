@@ -1,5 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { type Persona } from './config';
+import { readOrgRecord, seedOrgRecords } from './firestore';
 
 /**
  * Correcting somebody's joining date, and who may.
@@ -69,81 +70,81 @@ async function login(page: Page, p: Persona) {
  * reload is what makes the data modules re-read them as a fresh visit would.
  */
 async function seedSubject(page: Page, leadEmail: string) {
-  await page.evaluate(
-    ({ id, doj, leaveStart, leadEmail, leadId }) => {
-      window.localStorage.setItem(
-        'modcon.hr.customEmployees',
-        JSON.stringify([
-          {
-            id: leadId,
-            employeeCode: 'MC-E2E-LEAD',
-            firstName: 'E2E',
-            lastName: 'Profile Lead',
-            fullName: 'E2E Profile Lead',
-            email: leadEmail,
-            phone: '+91 90000 00000',
-            avatar: 'brand',
-            dateOfBirth: '1985-01-01',
-            designation: 'Engineering Manager',
-            department: 'Engineering',
-            location: 'Bengaluru',
-            employmentType: 'Full-time',
-            status: 'Active',
-            dateOfJoining: '2020-01-01',
-            reportingManagerId: null,
-            ctc: 2400000,
-          },
-          {
-            id,
-            employeeCode: 'MC-E2E-DOJ',
-            firstName: 'E2E',
-            lastName: 'Joining Date',
-            fullName: 'E2E Joining Date',
-            email: 'e2e-joining-date@modcon-hr.test',
-            phone: '+91 90000 00000',
-            avatar: 'brand',
-            dateOfBirth: '1990-01-01',
-            designation: 'Engineer',
-            department: 'Engineering',
-            location: 'Bengaluru',
-            employmentType: 'Full-time',
-            status: 'Active',
-            dateOfJoining: doj,
-            reportingManagerId: leadId,
-            ctc: 1200000,
-          },
-        ]),
-      );
-      window.localStorage.setItem(
-        'modcon.hr.leaveRequests',
-        JSON.stringify([
-          {
-            id: 'lr-e2e-doj',
-            employeeId: id,
-            type: 'Casual',
-            startDate: leaveStart,
-            endDate: leaveStart,
-            days: 1,
-            reason: 'E2E - an absence already on file.',
-            status: 'Approved',
-            appliedOn: leaveStart,
-            approverId: null,
-          },
-        ]),
-      );
+  // On the server rather than in this browser: the directory and leave
+  // requests are both `org_records`, and sign-in hydrates the local cache from
+  // Firestore — a locally-seeded subject is erased by the first empty snapshot.
+  await seedOrgRecords('employees', [
+    {
+      id: LEAD_ID,
+      employeeCode: 'MC-E2E-LEAD',
+      firstName: 'E2E',
+      lastName: 'Profile Lead',
+      fullName: 'E2E Profile Lead',
+      email: leadEmail,
+      phone: '+91 90000 00000',
+      avatar: 'brand',
+      dateOfBirth: '1985-01-01',
+      designation: 'Engineering Manager',
+      department: 'Engineering',
+      location: 'Bengaluru',
+      employmentType: 'Full-time',
+      status: 'Active',
+      dateOfJoining: '2020-01-01',
+      reportingManagerId: null,
+      ctc: 2400000,
     },
-    { id: SUBJECT_ID, doj: ORIGINAL_DOJ, leaveStart: LEAVE_START, leadEmail, leadId: LEAD_ID },
+    {
+      id: SUBJECT_ID,
+      employeeCode: 'MC-E2E-DOJ',
+      firstName: 'E2E',
+      lastName: 'Joining Date',
+      fullName: 'E2E Joining Date',
+      email: 'e2e-joining-date@modcon-hr.test',
+      phone: '+91 90000 00000',
+      avatar: 'brand',
+      dateOfBirth: '1990-01-01',
+      designation: 'Engineer',
+      department: 'Engineering',
+      location: 'Bengaluru',
+      employmentType: 'Full-time',
+      status: 'Active',
+      dateOfJoining: ORIGINAL_DOJ,
+      reportingManagerId: LEAD_ID,
+      ctc: 1200000,
+    },
+  ]);
+
+  await seedOrgRecords(
+    'leaveRequests',
+    [
+      {
+        id: 'lr-e2e-doj',
+        employeeId: SUBJECT_ID,
+        type: 'Casual',
+        startDate: LEAVE_START,
+        endDate: LEAVE_START,
+        days: 1,
+        reason: 'E2E - an absence already on file.',
+        status: 'Approved',
+        appliedOn: LEAVE_START,
+        approverId: null,
+      },
+    ],
+    { employeeId: (request) => request.employeeId },
   );
+
   await page.reload();
 }
 
 /** The stored joining date, read from the store the app writes. */
 async function storedJoiningDate(page: Page): Promise<string | undefined> {
-  return page.evaluate((id) => {
-    const raw = window.localStorage.getItem('modcon.hr.customEmployees');
-    const list = raw ? (JSON.parse(raw) as { id: string; dateOfJoining: string }[]) : [];
-    return list.find((e) => e.id === id)?.dateOfJoining;
-  }, SUBJECT_ID);
+  // The organisation's copy, which is where the app writes it now. Reading the
+  // browser's cache would pass on a write that never left the tab — exactly
+  // the failure that made an employee invisible to themselves on their own
+  // device.
+  void page;
+  const stored = await readOrgRecord<{ dateOfJoining?: string }>('employees', SUBJECT_ID);
+  return stored?.dateOfJoining;
 }
 
 test.describe.serial('joining date', () => {
