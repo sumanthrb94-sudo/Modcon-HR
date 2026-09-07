@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Search, Building2 } from 'lucide-react';
 import { Avatar, BrandMark, Button, NotificationsMenu, QuickAddMenu, Select } from '@/components/ui';
 import { getVisibleNavItems } from '@/lib/nav';
+import { GettingStarted } from '@/components/GettingStarted';
 import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees } from '@/lib/dataScope';
@@ -197,6 +198,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             Dashboard
           </Button>
         ) : null}
+        {/* Before the quick-add and the notifications, because it is the
+            control somebody needs on the day they cannot find anything —
+            and it disappears into a plain button once the count reaches
+            zero. Hidden from a super admin outside every organisation:
+            there is no organisation for them to set up. */}
+        {insideOrg ? <GettingStarted /> : null}
         {role !== 'Employee' ? <QuickAddMenu className="hidden md:inline-flex" /> : null}
         <NotificationsMenu compact />
         <div className="flex items-center gap-2.5 pl-2 ml-1 border-l border-ink-200">
