@@ -43,6 +43,10 @@ export interface CreateOrganizationResult {
     adminUid: string;
     adminEmail: string;
     tempPassword: string;
+    /** Whether Firebase accepted the set-password link for delivery. */
+    emailSent: boolean;
+    /** Why it did not, when it did not — shown so the fallback is a choice. */
+    emailError?: string;
 }
 
 export async function createOrganization(
@@ -119,7 +123,38 @@ export async function createOrganization(
         await updateDoc(doc(db, 'organizations', orgId), { adminUid });
 
         await signOut(secondaryAuth);
-        return { orgId, adminUid, adminEmail: email, tempPassword };
+
+        // Mail the administrator a link to set their own password, the same
+        // way Create login does for an employee — and for the same reason.
+        //
+        // This path was the one that produced the failure the whole handoff
+        // dialog is written around: fourteen characters including `!@#$%`, read
+        // off one screen and typed into another, usually a phone. It has failed
+        // twice, and Firebase reports the result as `auth/invalid-credential`,
+        // which is the message a nonexistent account gets — so it reads as a
+        // provisioning bug and is a transcription one.
+        //
+        // `sendOrgAdminPasswordReset` already existed for exactly this, behind
+        // a button somebody had to know to press *after* the handoff had
+        // already gone wrong. Sending it here makes the link the ordinary
+        // route and the temporary password the fallback, which is the order
+        // the employee invite has always used.
+        //
+        // After the sign-out, so the mail is not sent by an app holding a
+        // session for the account it is about. Never fatal: the organisation
+        // and the account exist either way, and the temporary password is what
+        // gets somebody in when this fails — which is precisely why the result
+        // carries whether it worked rather than assuming it did.
+        let emailSent = false;
+        let emailError: string | undefined;
+        try {
+            await sendPasswordLink((settings) => sendPasswordResetEmail(secondaryAuth, email, settings));
+            emailSent = true;
+        } catch (err) {
+            emailError = (err as { message?: string })?.message ?? 'unknown error';
+        }
+
+        return { orgId, adminUid, adminEmail: email, tempPassword, emailSent, emailError };
     } catch (err) {
         await remove(Collections.organizations, orgId).catch(() => {});
         throw err;

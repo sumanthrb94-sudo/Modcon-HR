@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Building2, Loader2, Plus, ShieldCheck, Copy, Check } from 'lucide-react';
+import { Building2, Loader2, Mail, Plus, ShieldCheck, Copy, Check, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useOrganizations } from '@/lib/useFirestore';
 import {
@@ -283,13 +283,26 @@ export function OrganizationsPage() {
         // and `CreateOrganizationResult` carries no name, which is why the form
         // field is the source. `orgName` is still in state here because the
         // dialog stays open to show the credentials.
+        // What the message says depends on whether the link went out. When it
+        // did, the password is a fallback and saying so is the difference
+        // between "use this" and "use this only if the mail never arrives" —
+        // pasting a live password into a chat window nobody needed is how a
+        // credential outlives the handoff it was for.
         const text = [
             `Organization: ${orgName.trim()}`,
             `Sign in at: ${window.location.origin}/login`,
             `Email: ${result.adminEmail}`,
-            `Temporary password: ${result.tempPassword}`,
-            '',
-            'Change this password after the first sign-in.',
+            ...(result.emailSent
+                ? [
+                    '',
+                    'Check your inbox for a link to set your password — it may be in spam.',
+                    `If it never arrives, this temporary password works instead: ${result.tempPassword}`,
+                ]
+                : [
+                    `Temporary password: ${result.tempPassword}`,
+                    '',
+                    'Change this password after the first sign-in.',
+                ]),
         ].join('\n');
         void navigator.clipboard.writeText(text);
         setCopied('all');
@@ -461,7 +474,9 @@ export function OrganizationsPage() {
                 title={result ? 'Organization created' : 'Create Organization'}
                 subtitle={
                     result
-                        ? 'Share these credentials with the new HR administrator securely. The temporary password will not be shown again.'
+                        ? result.emailSent
+                            ? 'They set their own password from the link — nothing here needs to be passed on by hand.'
+                            : 'Share these credentials with the new HR administrator securely. The temporary password will not be shown again.'
                         : 'This provisions a new organization and its first HR administrator account.'
                 }
                 size="sm"
@@ -482,6 +497,34 @@ export function OrganizationsPage() {
             >
                 {result ? (
                     <div className="space-y-3 text-sm">
+                        {/* Said first, because it decides what the rest of this
+                            dialog is for: a link that arrived makes the password
+                            below a fallback nobody needs to touch, and one that
+                            did not makes it the only way in. Presenting both
+                            identically is how somebody carries a password by
+                            hand that was already in their inbox. */}
+                        <p className="flex items-start gap-2 border border-ink-300 bg-ink-100 px-3 py-2.5">
+                            {result.emailSent ? (
+                                <Mail size={15} className="mt-0.5 shrink-0 text-emerald-600" />
+                            ) : (
+                                <TriangleAlert size={15} className="mt-0.5 shrink-0 text-amber-600" />
+                            )}
+                            <span>
+                                {result.emailSent ? (
+                                    <>
+                                        <strong>{result.adminEmail}</strong> has been emailed a link to set
+                                        their password. It comes from Firebase, so it may land in spam the
+                                        first time.
+                                    </>
+                                ) : (
+                                    <>
+                                        The organisation and the account exist, but the email could not be
+                                        sent{result.emailError ? ` (${result.emailError})` : ''}. Give them
+                                        the temporary password below instead.
+                                    </>
+                                )}
+                            </span>
+                        </p>
                         <div className="bg-ink-50 p-3 space-y-2">
                             <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
