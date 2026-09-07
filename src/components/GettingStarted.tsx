@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, Circle, KeyRound, Rocket } from 'lucide-react';
 import { Badge, Button, Modal } from '@/components/ui';
@@ -109,6 +109,8 @@ export function GettingStarted() {
   // did last week.
   const settingsRevision = useAccessControlRevision();
   const [open, setOpen] = useState(false);
+  /** Which route it was opened over, so navigating away can close it. */
+  const openedAt = useRef<string | null>(null);
 
   const isOrgAdmin = isAdmin || isHR;
   const role = resolveAppRole(profile);
@@ -141,8 +143,24 @@ export function GettingStarted() {
     if (location.pathname !== '/') return;
     if (hasOpenedBefore(uid)) return;
     rememberOpened(uid);
+    openedAt.current = location.pathname;
     setOpen(true);
   }, [profile?.uid, remaining, location.pathname]);
+
+  /**
+   * Navigating away closes it.
+   *
+   * Route-gating where it *opens* was not enough: this app routes without
+   * reloading, so an overlay opened on the dashboard rode along to whatever
+   * the person clicked next and swallowed their first click there instead —
+   * which is how the suite found it a second time. Somebody who clicks
+   * Employees while a checklist is up has told you which they wanted.
+   */
+  useEffect(() => {
+    if (open && openedAt.current !== null && openedAt.current !== location.pathname) {
+      setOpen(false);
+    }
+  }, [location.pathname, open]);
 
   function go(href: string) {
     setOpen(false);
@@ -155,7 +173,10 @@ export function GettingStarted() {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          openedAt.current = location.pathname;
+          setOpen(true);
+        }}
         title="Getting started"
         className="relative inline-flex items-center gap-1.5 border border-ink-300 px-2 py-1 text-xs font-semibold text-ink-800 hover:bg-ink-100"
       >
