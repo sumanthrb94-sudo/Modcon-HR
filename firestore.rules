@@ -1097,7 +1097,8 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && writingToMyOrg() &&
         validOrgRecord(docId) &&
         leaveDecisionIsAuthorised() &&
-        directoryWriteIsAuthorised();
+        directoryWriteIsAuthorised() &&
+        attendanceWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
       // administrator clearing data, which is what this allows.
@@ -1161,12 +1162,85 @@ service cloud.firestore {
       return request.resource.data.store != 'employees' || isOrgAdmin();
     }
 
+    /**
+     * Attendance is written by the person it is about, or by somebody whose
+     * job is marking it for others.
+     *
+     * The third per-store clause. Until it existed the generic block let any
+     * signed-in member of an organisation write *anybody's* attendance, with
+     * any times — so an employee could mark a colleague absent, or themselves
+     * present on a day they did not work, and payroll deducts unpaid absence
+     * from what it pays.
+     *
+     * `isManager()` is the set that may write somebody else's, and it is not
+     * an invention: `defaultPermissions` in src/lib/accessControl.ts gives the
+     * Attendance module `full` to Admin, HR Manager **and Manager**, and
+     * `none` to Employee. A manager marking their team's attendance is the
+     * ordinary path, so narrowing this to `isOrgAdmin()` would refuse a role
+     * the product grants. `isManager()` in these rules is manager|hr|admin,
+     * which is exactly that set.
+     *
+     * The employee half is `isSelf` rather than "anyone" because
+     * `My Attendance` is `full` for Employee — checking yourself in is
+     * self-service, and it is the only attendance an employee may write.
+     *
+     * `.get('employeeId', '')` rather than `.employeeId`: a missing field
+     * errors and an error denies the whole rule, including the clauses beside
+     * it. An attendance record without one falls to `isManager()`, which is
+     * the safe direction — the field is lifted to the top level by
+     * `persistentCollection` precisely so this rule can read it.
+     *
+     * An account with no `employee_links` document is exempt, and that is
+     * deliberate rather than an oversight. `resolveEmployeeForAccount` falls
+     * back to matching the directory by authUid, work email and display name
+     * when no link exists, so an unlinked employee resolves to a record in the
+     * app and checks in perfectly well — while `myEmployeeId()` here answers
+     * null. Refusing them would recreate exactly the divergence the
+     * "Who an account *is*" section of CLAUDE.md is about: the UI acting as
+     * one person while the server judges another, arriving as a console error
+     * with nothing on screen. Unlinked accounts are ordinary — they predate
+     * the collection, and Settings → Database is how they get one — so this
+     * rule is as strong as the linking is complete, and it gets stronger as
+     * the backfill runs rather than locking people out today.
+     *
+     * That exemption is not something an employee can arrange for themselves:
+     * `employee_links` is `isOrgAdmin()` for create, update *and* delete, so
+     * nobody can unlink themselves to escape the check.
+     *
+     * What this still does not do is check *whose* manager. Rules cannot walk
+     * the org chart, so a manager may write attendance outside their own
+     * reporting line; `src/lib/dataScope.ts` is where that narrowing lives.
+     * Same limit, and the same reason, as the leave rule below.
+     */
+    function attendanceWriteIsAuthorised() {
+      return request.resource.data.store != 'attendanceRecords' ||
+        isManager() ||
+        myEmployeeId() == null ||
+        isSelf(request.resource.data.get('employeeId', ''));
+    }
+
     function leaveDecisionIsAuthorised() {
       return request.resource.data.store != 'leaveRequests' ||
         !('status' in request.resource.data) ||
         request.resource.data.status == 'Pending' ||
         request.resource.data.status == 'Cancelled' ||
-        isManager();
+        // Nobody decides their own leave, at any level. `isManager()` alone
+        // let a manager — or HR, or an admin — approve the request they
+        // raised themselves, which is the one case where authority and
+        // interest are the same person. The app already refuses it
+        // (`self` is removed from whichever set the role produces in
+        // src/lib/dataScope.ts); this is the server agreeing rather than a
+        // new product rule.
+        //
+        // Cancelling stays exempt above: withdrawing your own request is not
+        // deciding it.
+        //
+        // An account with no `employee_links` document resolves to no
+        // employee, so `isSelf` is false and such a manager decides exactly
+        // as before. That is the honest limit — self-approval can only be
+        // recognised for accounts an administrator has linked — and it fails
+        // in the direction that refuses nobody who could act yesterday.
+        (isManager() && !isSelf(request.resource.data.get('employeeId', '')));
     }
 
     // -------------------------------------------------------------------
