@@ -452,7 +452,11 @@ const payslipStore = persistentCollection<Payslip>(
   'modcon.hr.payslips',
   'modcon-hr-payslips-changed',
   seedPayslips,
+  // A payslip is the most private record in the app — it was readable by
+  // every signed-in member of the organisation. Narrowed to its subject and
+  // their reporting line, the same as expense claims.
   'payslips',
+  'self',
 );
 
 export const PAYSLIPS_CHANGED_EVENT = payslipStore.changedEvent;

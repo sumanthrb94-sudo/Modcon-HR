@@ -56,6 +56,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -104,13 +105,17 @@ const anon = () => testEnv.unauthenticatedContext().firestore();
 const recordId = (org, store, id) => `${org}__${store}__${id}`;
 
 /** The stored shape of an org_records document. */
-function record(org, store, id, fields) {
+function record(org, store, id, fields, readableBy) {
   return {
     orgId: org,
     store,
     recordId: id,
     data: JSON.stringify(fields),
     ...fields,
+    // Who may read it: the subject, then everyone above them. Stamped at
+    // write time by src/data/persistence.ts, because rules cannot walk the
+    // reporting tree.
+    ...(readableBy ? { readableBy } : fields.employeeId ? { readableBy: [fields.employeeId] } : {}),
   };
 }
 
@@ -210,11 +215,9 @@ describe('G1 — employee can access only their own records', () => {
     await assertSucceeds(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp1'))));
   });
 
-  // KNOWN GAP (G1). `employeeId` is lifted to the top level so a rule CAN
-  // test it, but the narrowing cannot land on the rules alone: see the note
-  // on the org_records get/list rule in firestore.rules, and the sibling
-  // list test below.
-  it.skip("empA1 CANNOT read another employee's expense claim", async () => {
+  // CLOSED. `recordIsMineToRead()` narrows expenseClaims and payslips to
+  // their subject, whoever is above them, and the administrators.
+  it("empA1 CANNOT read another employee's expense claim", async () => {
     await assertFails(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp2'))));
   });
 
@@ -222,14 +225,15 @@ describe('G1 — employee can access only their own records', () => {
     await assertSucceeds(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'payslips', 'ps1'))));
   });
 
-  // KNOWN GAP (G1), and the one that shows why the rule cannot move first:
-  // this query IS what src/data/persistence.ts:130 subscribes with. A list is
-  // evaluated against every document it returns, so narrowing the read rule
-  // denies the whole subscription — and the error handler there only warns,
-  // leaving the page rendering the stale localStorage cache. That is the
-  // UI-disagrees-with-the-database failure the QA report files as R4-M1.
-  // The client query has to narrow to the employee first.
-  it.skip('empA1 CANNOT list all expense claims in the org', async () => {
+  // CLOSED, and this is the one that shows why the rule could not move
+  // first: this query IS what src/data/persistence.ts subscribed with. A
+  // list is evaluated against every document it returns, so narrowing the
+  // rule alone denies the WHOLE subscription — and the error handler there
+  // only warns, leaving the page rendering a stale cache, which is the
+  // UI-disagrees-with-the-database failure filed as R4-M1. The client now
+  // adds `where('readableBy','array-contains', me)`; this unnarrowed query
+  // is what an employee must still be refused for asking.
+  it('empA1 CANNOT list all expense claims in the org', async () => {
     // The original lists a subcollection, which has no equivalent here: an
     // unfiltered read of `org_records` returns org B's claim too and is denied
     // on the TENANT boundary, which would pass this assertion without ever
@@ -242,6 +246,122 @@ describe('G1 — employee can access only their own records', () => {
         where('orgId', '==', ORG_A),
         where('store', '==', 'expenseClaims'),
       )),
+    );
+  });
+});
+
+describe('G1 — a manager reads their reports, and narrowing loses nobody', () => {
+  // The half the QA suite did not ask for, and without which the narrowing
+  // would be a regression rather than a fix: an approval queue an approver
+  // cannot read is an empty queue, and the expense scoping in
+  // src/lib/dataScope.ts filters what the store already holds.
+  it('a manager reads a report’s claim', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp-report')),
+        record(ORG_A, 'expenseClaims', 'exp-report',
+          { employeeId: 'emp-a2', amount: 400, status: 'Submitted' },
+          // emp-a2 reports to the HR persona's employee record.
+          ['emp-a2', 'emp-a-hr']),
+      );
+    });
+    await assertSucceeds(
+      getDoc(doc(hrA(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp-report'))),
+    );
+  });
+
+  it('but somebody outside that line does not', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp-elsewhere')),
+        record(ORG_A, 'expenseClaims', 'exp-elsewhere',
+          { employeeId: 'emp-a2', amount: 400, status: 'Submitted' },
+          ['emp-a2', 'emp-somebody-else']),
+      );
+    });
+    await assertFails(
+      getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp-elsewhere'))),
+    );
+  });
+
+  it('a narrowed list is allowed, and returns only what it may', async () => {
+    // What src/data/persistence.ts now subscribes with. The unnarrowed
+    // version of this query is refused above; this one is the reason
+    // narrowing the rule did not simply break the page.
+    await assertSucceeds(
+      getDocs(query(
+        collection(empA1(), 'org_records'),
+        where('orgId', '==', ORG_A),
+        where('store', '==', 'expenseClaims'),
+        where('readableBy', 'array-contains', 'emp-a1'),
+      )),
+    );
+  });
+
+  it('a payslip is the same rule', async () => {
+    await assertSucceeds(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'payslips', 'ps1'))));
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'org_records', recordId(ORG_A, 'payslips', 'ps2')),
+        record(ORG_A, 'payslips', 'ps2', { employeeId: 'emp-a2', net: 61000 }),
+      );
+    });
+    await assertFails(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'payslips', 'ps2'))));
+  });
+});
+
+describe('G1 — a narrowed reader cannot delete what it can no longer see', () => {
+  // QA asked for this one by name, and it is the hazard worth naming: a
+  // reader whose subscription now returns only its own records hydrates a
+  // SMALLER overlay than before, and `push` computes "reverted" records by
+  // diffing against what it last saw. Get that wrong and an employee editing
+  // their own claim issues tombstones for every colleague's — data loss
+  // dressed up as a sync.
+  //
+  // The client side of that is arithmetic (persistence.ts diffs against
+  // `lastPushed`, which is itself hydrated from the narrowed snapshot, so the
+  // two agree). This is the server side: even if the client got it wrong, the
+  // rules must refuse it.
+  it('an employee writing their own claim cannot tombstone a colleague’s', async () => {
+    await assertFails(
+      setDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp2')), {
+        orgId: ORG_A,
+        store: 'expenseClaims',
+        recordId: 'exp2',
+        deleted: true,
+        data: '',
+      }),
+    );
+  });
+
+  it('nor hard-delete one', async () => {
+    await assertFails(
+      deleteDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp2'))),
+    );
+  });
+
+  it('and the colleague’s claim is still there afterwards', async () => {
+    // The assertion that makes the two above mean something: proving a write
+    // was refused proves nothing if the record went anyway.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(
+        doc(ctx.firestore(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp2')),
+      );
+      if (!snap.exists()) throw new Error('emp-a2’s claim was removed');
+      if (snap.data().deleted === true) throw new Error('emp-a2’s claim was tombstoned');
+    });
+  });
+
+  it('while its own subject still may remove it', async () => {
+    // The narrowing must not cost an employee control of their own record.
+    await assertSucceeds(
+      setDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp1')), {
+        orgId: ORG_A,
+        store: 'expenseClaims',
+        recordId: 'exp1',
+        deleted: true,
+        data: '',
+      }),
     );
   });
 });

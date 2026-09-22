@@ -1205,6 +1205,7 @@ service cloud.firestore {
         validOrgRecord(docId) &&
         leaveDecisionIsAuthorised() &&
         expenseDecisionIsAuthorised() &&
+        narrowedRecordWriteIsAuthorised() &&
         directoryWriteIsAuthorised() &&
         attendanceWriteIsAuthorised() &&
         payrollWriteIsAuthorised();
@@ -1500,7 +1501,84 @@ service cloud.firestore {
      * rule above.
      */
     function orgRecordReadIsAuthorised() {
-      return resource.data.get('store', '') != 'payrollRuns' || isOrgAdmin();
+      let store = resource.data.get('store', '');
+      return store == 'payrollRuns'
+        ? isOrgAdmin()
+        : (!(store in ['expenseClaims', 'payslips']) || recordIsMineToRead());
+    }
+
+    /**
+     * A claim and a payslip are read by their subject and by whoever is above
+     * them, not by the company.
+     *
+     * These two stores were readable by every signed-in member of the
+     * organisation, which for a payslip is the most private record in the app.
+     * `employeeId` was already lifted to the top level so a rule could test
+     * it; what was missing was the other half of the question — a manager has
+     * to read their reports' claims or the approval queue is empty, and rules
+     * cannot walk `reportingManagerId` because the directory it lives in is
+     * localStorage-backed and so is a claim the client makes about itself.
+     *
+     * `readableBy` is that answer, denormalised at write time: the subject,
+     * then everyone above them. Same shape and same reasoning as
+     * `managerChainIds` on leave documents.
+     *
+     * Being a write-time snapshot it goes stale when somebody changes manager,
+     * in both directions — a new manager cannot read until the next write, and
+     * a former one still can. That is the known cost of the pattern already
+     * documented for `managerChainIds`; Settings → Database repairs it, and
+     * `managerChainFor` is recomputed on every write so ordinary use converges.
+     *
+     * `.get('readableBy', [])` so a document written before this field existed
+     * does not error the whole rule — it simply matches nobody but its own
+     * subject and the administrators, which is the safe direction.
+     */
+    /**
+     * A record only its subject may read is not one anybody may delete.
+     *
+     * Found by the tombstone test QA asked for, and it is the hazard that
+     * makes narrowing the READ worth nothing on its own: ordinary removal in
+     * this collection is a tombstone written through the create/update path
+     * (`data: ''`, `deleted: true`), not a `delete`. So while the generic
+     * block was the only write rule, any signed-in member of the organisation
+     * could erase any colleague's expense claim or payslip — and after the
+     * read narrowing, could erase records they cannot even see. Data loss
+     * dressed up as a sync.
+     *
+     * Authority is taken from the STORED record on an update and from the
+     * incoming one on a create, because a tombstone carries no payload to
+     * judge: `resource.data` is what the record actually is, and
+     * `request.resource.data` is the only thing there is when it does not
+     * exist yet.
+     *
+     * The reset path (`reverted: true`, also `data: ''`) is covered by the
+     * same clause and for the same reason — putting a colleague's record back
+     * to its seed value is no more theirs to do than removing it.
+     *
+     * An account with no `employee_links` document is refused rather than
+     * exempted, which is the one place this differs from
+     * attendanceWriteIsAuthorised(). The exemption there exists so an unlinked
+     * employee can still check themselves in; here an unlinked account already
+     * reads none of these records, so exempting it from the write would hand
+     * every unlinked account exactly the power this closes.
+     */
+    function narrowedRecordWriteIsAuthorised() {
+      return !(request.resource.data.store in ['expenseClaims', 'payslips']) ||
+        isOrgAdmin() ||
+        (resource != null
+          ? (isSelf(resource.data.get('employeeId', null)) ||
+             (myEmployeeId() != null &&
+               myEmployeeId() in resource.data.get('readableBy', [])))
+          : (isSelf(request.resource.data.get('employeeId', null)) ||
+             (myEmployeeId() != null &&
+               myEmployeeId() in request.resource.data.get('readableBy', []))));
+    }
+
+    function recordIsMineToRead() {
+      return isOrgAdmin() ||
+        isSelf(resource.data.get('employeeId', null)) ||
+        (myEmployeeId() != null &&
+          myEmployeeId() in resource.data.get('readableBy', []));
     }
 
     // -------------------------------------------------------------------

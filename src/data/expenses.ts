@@ -257,6 +257,12 @@ const expenseStore = persistentCollection<ExpenseClaim>(
   'modcon-hr-expenses-changed',
   () => expenseClaims,
   'expenseClaims',
+  // Read by the claimant and by whoever is above them, not by the company.
+  // A claim names what somebody spent and where they were; it was readable
+  // by every signed-in member because `org_records` reads were
+  // organisation-wide. See the note on `activeReader` in data/persistence.ts
+  // for why the client narrowing and the rule are both needed.
+  'self',
 );
 
 export const EXPENSES_CHANGED_EVENT = expenseStore.changedEvent;

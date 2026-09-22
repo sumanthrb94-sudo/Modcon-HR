@@ -354,8 +354,18 @@ describe('expense decisions need authority', () => {
   // worth more than a hidden button. Raised by the QA hand-off's G1 suite
   // (tests/rules/qa-gates.rules.test.mjs).
   const expenseDoc = docId({ store: 'expenseClaims', id: 'exp-1' });
+  // `readableBy` is the subject plus everyone above them, stamped at write
+  // time by src/data/persistence.ts — and since narrowedRecordWriteIsAuthorised
+  // takes authority from it, a fixture without one is a claim nobody but an
+  // administrator may decide. emp-a2 is managerLinkedA's employee record.
   const claim = (status, employeeId = 'emp-a1') =>
-    record({ store: 'expenseClaims', id: 'exp-1', status, employeeId });
+    record({
+      store: 'expenseClaims',
+      id: 'exp-1',
+      status,
+      employeeId,
+      readableBy: [employeeId, 'emp-a2'],
+    });
 
   it('an employee raises and edits their own claim', async () => {
     // The states a claimant owns. Refusing these would make the module
@@ -476,6 +486,16 @@ describe('a decision status must be declared where the rules can read it', () =>
     // no record to take a status from, which is why the exemption is keyed on
     // the empty payload rather than on the absent field — keying it on the
     // field is what made the old hatch exploitable.
+    // Seeded first: a tombstone carries no payload to judge, so authority
+    // comes from the STORED record — and a tombstone for a record that never
+    // existed has neither, which narrowedRecordWriteIsAuthorised rightly
+    // refuses.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'org_records', docId({ store: 'expenseClaims', id: 'exp-1' })),
+        record({ store: 'expenseClaims', id: 'exp-1', status: 'Submitted', employeeId: 'emp-a1' }),
+      );
+    });
     await assertSucceeds(
       setDoc(doc(as(USERS.employeeA), 'org_records', docId({ store: 'expenseClaims', id: 'exp-1' })), {
         orgId: 'org-a',

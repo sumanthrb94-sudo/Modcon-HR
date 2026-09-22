@@ -63,3 +63,34 @@ export async function syncManagerChains(): Promise<void> {
     console.warn('[reporting-chains] could not refresh managerChainIds:', err);
   }
 }
+
+/**
+ * Everyone above one employee in the reporting tree, from the live directory.
+ *
+ * Used at write time to stamp `readableBy` onto an `org_records` document, so
+ * `firestore.rules` can answer "may this account read this person's expense
+ * claim" without walking `reportingManagerId` — it cannot, because the
+ * directory that field lives in is localStorage-backed and therefore a claim
+ * the client makes about itself.
+ *
+ * Deliberately a separate, smaller thing from `backfillManagerChains`: that
+ * one sweeps the organisation's leave documents in Firestore after the tree
+ * moves, this one answers about a single employee, synchronously, for the
+ * record being written right now.
+ *
+ * Carries the same cycle guard, for the same reason: reporting lines are
+ * editable, so A→B→A is reachable, and an unguarded walk would not return.
+ */
+export function managerChainFor(employeeId: string): string[] {
+  const directory = getEmployeeDirectory();
+  const managerOf = new Map(directory.map((e) => [e.id, e.reportingManagerId ?? null]));
+  const chain: string[] = [];
+  const seen = new Set<string>([employeeId]);
+  let current = managerOf.get(employeeId) ?? null;
+  while (current && !seen.has(current)) {
+    chain.push(current);
+    seen.add(current);
+    current = managerOf.get(current) ?? null;
+  }
+  return chain;
+}

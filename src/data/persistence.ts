@@ -106,7 +106,7 @@ type Overlay<T> = OverlayEntry<T>[];
  * organisation. `orgAdmin` is for a store whose documents are about the
  * company rather than about a person — see the note on `activeReader`.
  */
-type StoreReadScope = 'org' | 'orgAdmin';
+type StoreReadScope = 'org' | 'orgAdmin' | 'self';
 
 interface RegisteredStore {
   storeKey: string;
@@ -152,7 +152,26 @@ const listeners = new Map<string, () => void>();
  * Null until sign-in resolves, which is also the safe reading: a store that is
  * `orgAdmin` is not subscribed for an unknown reader.
  */
-let activeReader: { isOrgAdmin: boolean } | null = null;
+let activeReader: OrgRecordsReader | null = null;
+
+/**
+ * Who is reading, and who they are above in the reporting tree.
+ *
+ * `chainFor` answers "which employee ids may read this person's records" —
+ * themselves plus everyone above them. It is injected rather than imported
+ * because the tree lives in `@/data/employees`, which imports this module:
+ * reading it from here would be a cycle. `src/lib/auth.tsx` supplies it at
+ * sign-in, where both are already in scope.
+ *
+ * Absent, `readableBy` falls back to the subject alone. That is the
+ * fail-closed direction — a manager loses sight of a report's claim until the
+ * next write, rather than a colleague gaining sight of one.
+ */
+export interface OrgRecordsReader {
+  isOrgAdmin: boolean;
+  employeeId?: string | null;
+  chainFor?: (employeeId: string) => string[];
+}
 
 /**
  * The lifted fields win over the copies inside `data`, and that is what makes
@@ -206,14 +225,34 @@ function subscribeStore(store: RegisteredStore, orgKey: string) {
   // without the server, which for `payrollRuns` is the demo data and for a
   // real organisation is nothing.
   if (store.readScope === 'orgAdmin' && !activeReader?.isOrgAdmin) return;
+  // A `self` store is narrowed to the records this account may read, which is
+  // the other half of the rule that refuses the rest. An administrator reads
+  // the organisation's, so their query is unnarrowed and matches what it
+  // always did.
+  //
+  // An account with no employee record reads none of a `self` store, and that
+  // is deliberate: `myEmployeeId()` answers null on the server too, so asking
+  // for everything would be asking for a denial. Better to send no query than
+  // one the rules will refuse for every member of the company, every session.
+  const narrowTo =
+    store.readScope === 'self' && !activeReader?.isOrgAdmin
+      ? activeReader?.employeeId ?? '~nobody~'
+      : null;
   listeners.set(
     store.storeKey,
     onSnapshot(
-      query(
-        fsCollection(db, ORG_RECORDS_COLLECTION),
-        where('orgId', '==', orgKey),
-        where('store', '==', store.storeKey),
-      ),
+      narrowTo
+        ? query(
+            fsCollection(db, ORG_RECORDS_COLLECTION),
+            where('orgId', '==', orgKey),
+            where('store', '==', store.storeKey),
+            where('readableBy', 'array-contains', narrowTo),
+          )
+        : query(
+            fsCollection(db, ORG_RECORDS_COLLECTION),
+            where('orgId', '==', orgKey),
+            where('store', '==', store.storeKey),
+          ),
       (snap) => {
         store.hydrate(
           snap.docs.map((d) => {
@@ -275,6 +314,16 @@ function messageFor(err: unknown): string {
     return 'That change could not reach the server, so it has been undone. Check your connection and try again.';
   }
   return 'That change could not be saved, so it has been undone.';
+}
+
+/**
+ * The subject, then everyone above them. Deduplicated, because a chain that
+ * names the subject would make `array-contains` ambiguous about why a record
+ * matched.
+ */
+function readableByFor(employeeId: string): string[] {
+  const chain = activeReader?.chainFor?.(employeeId) ?? [];
+  return Array.from(new Set([employeeId, ...chain]));
 }
 
 function stableJson(value: unknown): string {
@@ -420,6 +469,17 @@ export function persistentCollection<T extends Identified>(
           // rules can test presence.
           ...(record?.employeeId ? { employeeId: record.employeeId } : {}),
           ...(record?.status ? { status: record.status } : {}),
+          // Who may read this record: its subject, plus everyone above them in
+          // the reporting tree. Denormalised because rules cannot walk
+          // `reportingManagerId` — the directory it lives in is
+          // localStorage-backed, so it is a claim the client makes about
+          // itself. Same reasoning and the same shape as `managerChainIds` on
+          // leave documents (src/lib/accessBackfill.ts).
+          //
+          // Stamped for every store, not only the narrowed ones. It costs an
+          // array of two or three ids and it means narrowing a further store
+          // later is a rules change rather than a backfill.
+          ...(record?.employeeId ? { readableBy: readableByFor(record.employeeId) } : {}),
         });
       }
       for (const id of reverted) {
@@ -562,7 +622,7 @@ export function persistentCollection<T extends Identified>(
  */
 export function startSharedCollectionsSync(
   orgKey: string,
-  reader: { isOrgAdmin: boolean } = { isOrgAdmin: false },
+  reader: OrgRecordsReader = { isOrgAdmin: false },
 ): () => void {
   stopSharedCollectionsSync();
   if (!orgKey) return () => {};

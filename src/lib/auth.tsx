@@ -45,6 +45,7 @@ import {
 } from '@/data/employeeLinks';
 import { startOrgSettingsSync } from './orgSettings';
 import { startSharedCollectionsSync } from '@/data/persistence';
+import { managerChainFor } from '@/lib/reportingChains';
 import { startOrgFeatureSync } from './features';
 import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
 
@@ -507,6 +508,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // server — admin or hr.
         const stopRecords = startSharedCollectionsSync(resolveOrgKeyForProfile(profile), {
           isOrgAdmin: profile.role === 'admin' || profile.role === 'hr',
+          // Who this account is, for the stores narrowed to their subject.
+          // The link is the administrator-authored answer the rules read; the
+          // directory fallback in resolveEmployeeForAccount is not consulted
+          // here, because a subscription that asks for records the server
+          // will refuse is a denial per member per session.
+          employeeId: getLinkedEmployeeId(profile.uid),
+          // And who is above a given employee, read from the directory at
+          // write time. Passed in rather than imported: the directory module
+          // imports persistence, so reading it from there would be a cycle.
+          chainFor: (employeeId: string) => managerChainFor(employeeId),
         });
         // And which employee record this account *is*, as the administrator
         // who wrote `employee_links/{uid}` said and as firestore.rules reads
