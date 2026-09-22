@@ -108,6 +108,13 @@ export function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   const diff = Date.now() - then;
   const day = 24 * 60 * 60 * 1000;
+  // A timestamp ahead of now floors to -1 and then falls through `days < 30`,
+  // rendering the literal "-1 days ago". Anything not yet in the past reads as
+  // Today: this formatter answers "how long ago", and a future instant has no
+  // answer to that question worth inventing. Reachable without a clock skew —
+  // the helpdesk thread stamps its first agent reply at createdOn + 15 minutes,
+  // so every ticket raised today carried one.
+  if (diff < 0) return 'Today';
   const days = Math.floor(diff / day);
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';

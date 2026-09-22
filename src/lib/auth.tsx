@@ -422,7 +422,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // their email cannot cut them off from their own profile.
                     // Runs after the org key is settled, so it writes into the
                     // right org's overlay.
-                    const record = getEmployeeByEmail(p.email);
+                    //
+                    // Only for an account that may actually write the
+                    // directory. The stamp lands in the `employees` store,
+                    // which `directoryWriteIsAuthorised()` in firestore.rules
+                    // gates behind `isOrgAdmin()` — so for a manager or an
+                    // employee this was a write the server refused on every
+                    // single sign-in, logging `[org-records] could not publish
+                    // "employees": Missing or insufficient permissions` and
+                    // achieving nothing: the local half was overwritten by the
+                    // next `hydrate` from the server anyway. Their durable
+                    // answer is `employee_links/{uid}`, which an administrator
+                    // writes and which `myEmployeeId()` in the rules resolves
+                    // in preference to this stamp regardless.
+                    const canWriteDirectory = p.role === 'admin' || p.role === 'hr';
+                    const record = canWriteDirectory ? getEmployeeByEmail(p.email) : undefined;
                     if (record) linkEmployeeToAuthAccount(record.id, p.uid);
 
                     // Started only once the upsert has settled the stored
