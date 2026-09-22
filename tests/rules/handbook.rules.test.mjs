@@ -195,9 +195,14 @@ describe('handbook — reads do not cross organisations', () => {
     );
   });
 
-  it('a super admin reads across organisations', async () => {
-    await assertSucceeds(getDoc(doc(as(USERS.superA), 'handbook_versions', 'v1-doc')));
-    await assertSucceeds(getDoc(doc(as(USERS.superA), 'handbook', 'org-a')));
+  // Inverted deliberately. This asserted that a super admin reads across
+  // organisations, which was true and is no longer: the platform account is
+  // not a member of any tenant, and a handbook is one organisation's own
+  // document written for its own people. See the docblock on `inMyOrg()` and
+  // tests/rules/super-admin-boundary.rules.test.mjs for the whole boundary.
+  it('a super admin cannot read another organisation’s handbook', async () => {
+    await assertFails(getDoc(doc(as(USERS.superA), 'handbook_versions', 'v1-doc')));
+    await assertFails(getDoc(doc(as(USERS.superA), 'handbook', 'org-a')));
   });
 
   it('a null orgId reads as the default org, not as everyone', async () => {

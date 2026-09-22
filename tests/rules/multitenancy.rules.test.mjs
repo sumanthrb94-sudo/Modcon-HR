@@ -296,13 +296,20 @@ describe('multi-tenancy — legacy documents and super admins', () => {
     }
   });
 
-  it('a super admin reads across organisations', async () => {
-    await assertSucceeds(getDoc(doc(as(USERS.superA), 'employees', 'doc-a')));
-    await assertSucceeds(getDoc(doc(as(USERS.superA), 'employees', 'doc-b')));
+  // Both inverted deliberately. They asserted that a super admin reads every
+  // organisation and may list unfiltered, which was true until the platform
+  // account stopped being exempt from `inMyOrg()`. It administers
+  // organisations — creating them, provisioning their first HR login, billing
+  // them — and belongs to none, so tenant data is no more readable to it than
+  // to a stranger. tests/rules/super-admin-boundary.rules.test.mjs carries the
+  // full boundary, including the platform capabilities that must still work.
+  it('a super admin cannot read any organisation’s records', async () => {
+    await assertFails(getDoc(doc(as(USERS.superA), 'employees', 'doc-a')));
+    await assertFails(getDoc(doc(as(USERS.superA), 'employees', 'doc-b')));
   });
 
-  it('a super admin can list unfiltered', async () => {
-    await assertSucceeds(getDocs(collection(as(USERS.superA), 'employees')));
+  it('a super admin cannot list unfiltered either', async () => {
+    await assertFails(getDocs(collection(as(USERS.superA), 'employees')));
   });
 });
 

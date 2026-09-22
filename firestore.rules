@@ -148,19 +148,28 @@ service cloud.firestore {
      * deploys or those accounts lose access. See G7 in
      * docs/tenant-isolation-spec.md.
      *
-     * Super admins keep 'default'. They deliberately carry no orgId — they
-     * administer every organisation rather than belonging to one — and
-     * isSuperAdmin() short-circuits the checks that matter, but a handful of
-     * rules compare this value directly, and changing it for them would revoke
-     * capabilities that have nothing to do with this.
+     * A super admin gets the same sentinel as anybody else without an orgId,
+     * and that is the whole point rather than an oversight.
+     *
+     * They used to resolve to 'default', on the reasoning that isSuperAdmin()
+     * short-circuited every check that mattered so the value was academic.
+     * Once it stops short-circuiting them — see inMyOrg below — that value is
+     * no longer academic: it would quietly enrol the platform account as a
+     * *member of the default organisation*, which holds 17 org_records
+     * documents on the live project today, and hand it exactly the tenant
+     * access this change exists to remove. The sentinel is what makes the
+     * boundary real instead of relocated.
+     *
+     * The platform capabilities that genuinely need to cross organisations —
+     * creating an org, provisioning its first HR account, reading billing —
+     * do not go through this function at all. They are granted explicitly,
+     * per collection, and are listed in the super-admin boundary test.
      *
      * The sentinel contains no '__': the org_settings rule splits a document id
      * on that separator, and a sentinel containing it would compare as ''.
      */
     function myOrgKey() {
-      return myOrgId() != null
-        ? myOrgId()
-        : (isSuperAdmin() ? 'default' : '~unassigned~');
+      return myOrgId() != null ? myOrgId() : '~unassigned~';
     }
 
     /**
@@ -184,14 +193,38 @@ service cloud.firestore {
      * Documents missing `orgId` are read as 'default' so legacy data stays
      * readable by the legacy org while the backfill runs, rather than every
      * existing record vanishing the moment these rules deploy.
+     *
+     * **A super admin is not exempt, and that is the tenant boundary.**
+     *
+     * These two helpers gate 29 collections between them — every payslip,
+     * PAN, bank account, attendance stamp, leave decision and candidate
+     * résumé on the platform. `isSuperAdmin() ||` in front of each meant one
+     * account could read *and write* all of it, in every organisation, with
+     * nothing recording that it had. For a product whose customers are the
+     * data fiduciaries and whose operator is their processor, that is the
+     * first question on any serious security review and the clause a
+     * competent DPA forbids.
+     *
+     * What the platform account legitimately does — onboard an organisation,
+     * create its first HR login, read the org list, manage subscriptions —
+     * never needed this. Those collections (`organizations`, `users`,
+     * `role_assignments`, `employee_links`) carry their own explicit grants
+     * and are untouched by the removal; `tests/rules/super-admin-boundary`
+     * asserts both halves, so "still provisions" and "cannot read tenants"
+     * are proven together rather than traded off.
+     *
+     * Support is deliberately left with nothing here. Answering "why is PF
+     * missing from our payslips" needs the organisation's *configuration* and
+     * *counts*, not its people, and that surface is built separately rather
+     * than by leaving a door open that happens to also fit.
      */
     function inMyOrg() {
-      return isSuperAdmin() || orgKeyOf(resource.data) == myOrgKey();
+      return orgKeyOf(resource.data) == myOrgKey();
     }
 
     /** True when the document being written is stamped with the caller's org. */
     function writingToMyOrg() {
-      return isSuperAdmin() || orgKeyOf(request.resource.data) == myOrgKey();
+      return orgKeyOf(request.resource.data) == myOrgKey();
     }
 
     // Managers, HR and admins can act on approval workflows.
@@ -1323,7 +1356,9 @@ service cloud.firestore {
       // Readable by the org so an employee's client can verify it is looking at
       // the same fence the server will judge it against. It carries no personal
       // data — coordinates of the company's own offices.
-      allow get: if isSignedIn() && (isSuperAdmin() || orgKey == myOrgKey());
+      // No super-admin clause: the fence is one organisation's own site
+      // geometry, and the platform account is not in that organisation.
+      allow get: if isSignedIn() && orgKey == myOrgKey();
       allow list: if isSignedIn() && inMyOrg();
       allow create, update: if isOrgAdmin() && writingToMyOrg() &&
         orgKey == orgKeyOf(request.resource.data) &&
@@ -1476,7 +1511,14 @@ service cloud.firestore {
       // not work. The id carries the tenant (`<orgKey>__<setting>`), which is
       // why it can answer the question without the document being there —
       // the same trick `handbook/{orgKey}` uses.
-      allow get: if isSignedIn() && (isSuperAdmin() || docId.split('__')[0] == myOrgKey());
+      // No super-admin clause. Fourteen of these keys are configuration and
+      // six (employeeSalaryStructures, employeeLeavePolicies,
+      // employeeTaxElections, employeeShifts, employeeShiftOverrides,
+      // geofenceExemptions) are keyed by employee and carry individual pay and
+      // entitlement. A read grant cannot tell them apart, so the platform
+      // account gets neither; a diagnostics surface that exposes only the
+      // first fourteen is a separate, narrower grant.
+      allow get: if isSignedIn() && docId.split('__')[0] == myOrgKey();
       // `list` keeps the field test: a query only ever returns documents that
       // exist, and the `where('orgId','==',...)` filter is what makes it legal.
       allow list: if isSignedIn() && inMyOrg();
@@ -1720,7 +1762,9 @@ service cloud.firestore {
     match /handbook/{orgKey} {
       // The document id *is* the organisation key, so the tenant test is on the
       // id and needs no field lookup.
-      allow read: if isSignedIn() && (isSuperAdmin() || orgKey == myOrgKey());
+      // No super-admin clause: the handbook is the organisation's own
+      // document, written for its own people.
+      allow read: if isSignedIn() && orgKey == myOrgKey();
       allow create, update: if isOrgAdmin() &&
         orgKey == myOrgKey() &&
         request.resource.data.updatedByUid == request.auth.uid &&
