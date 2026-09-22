@@ -13,9 +13,9 @@ import {
   getActiveOrgKey,
   isSuperAdminInsideOrg,
   leaveSuperAdminOrg,
-  switchSuperAdminOrg,
   DEFAULT_ORG_KEY,
 } from '@/lib/orgScope';
+import { ConfirmEnterOrgModal, type EnterOrgTarget } from '@/components/ConfirmEnterOrgModal';
 
 /** The selector's value for "not inside any organisation". Not an org key, and
  * deliberately not `''` — an organisation whose id was empty would collide. */
@@ -33,6 +33,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [directoryRevision, setDirectoryRevision] = useState(0);
+  // Which organization the selector's dropdown is asking to confirm entering
+  // — see ConfirmEnterOrgModal. Selecting a value used to switch immediately;
+  // now it opens the confirmation and the Select's own value (read straight
+  // from `isSuperAdminInsideOrg()`/`getActiveOrgKey()` below, not from this
+  // state) simply stays put until the switch actually happens.
+  const [enterTarget, setEnterTarget] = useState<EnterOrgTarget | null>(null);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const role = resolveAppRole(profile);
   // A super admin outside every organisation gets the platform console only —
@@ -109,6 +115,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   }
 
   return (
+    <>
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b-2 border-ink-900/40 bg-white px-4 lg:px-6">
       <button onClick={onMenuClick} className="lg:hidden p-2 text-ink-600 hover:bg-ink-100 hover:text-ink-900">
         <Menu size={20} />
@@ -175,7 +182,20 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             <Select
               ariaLabel="Organisation context"
               value={isSuperAdminInsideOrg() ? getActiveOrgKey() : PLATFORM_CONTEXT}
-              onChange={(value) => (value === PLATFORM_CONTEXT ? leaveSuperAdminOrg() : switchSuperAdminOrg(value))}
+              onChange={(value) => {
+                if (value === PLATFORM_CONTEXT) {
+                  leaveSuperAdminOrg();
+                  return;
+                }
+                // Stepping out needs no confirmation — it only narrows what
+                // the account can see. Stepping in does: see
+                // ConfirmEnterOrgModal.
+                const org = organizations.find((o) => o.id === value);
+                setEnterTarget({
+                  id: value,
+                  name: org?.name ?? (value === DEFAULT_ORG_KEY ? 'ModCon Builders (Default)' : value),
+                });
+              }}
               options={[
                 { label: 'Platform — no organisation', value: PLATFORM_CONTEXT },
                 // The default organisation is listed by hand because it
@@ -223,5 +243,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         </div>
       </div>
     </header>
+    <ConfirmEnterOrgModal target={enterTarget} onClose={() => setEnterTarget(null)} />
+    </>
   );
 }

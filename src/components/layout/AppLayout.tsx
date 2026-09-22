@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { SubscriptionBanner } from './SubscriptionBanner';
+import { SuperAdminScopeBanner } from './SuperAdminScopeBanner';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -16,6 +17,9 @@ export function AppLayout() {
             trial ending is the one piece of state whose cost of going unnoticed
             lands on the customer. It renders nothing for most of a trial. */}
         <SubscriptionBanner />
+        {/* Above every page for the same reason: state whose cost of going
+            unnoticed lands on the tenant, not on the person looking at it. */}
+        <SuperAdminScopeBanner />
         <main className="p-4 lg:p-6 max-w-[1600px] mx-auto animate-fade-in">
           <Outlet />
         </main>

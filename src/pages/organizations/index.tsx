@@ -18,9 +18,9 @@ import {
     getActiveOrgKey,
     isSuperAdminInsideOrg,
     leaveSuperAdminOrg,
-    switchSuperAdminOrg,
     DEFAULT_ORG_KEY,
 } from '@/lib/orgScope';
+import { ConfirmEnterOrgModal, type EnterOrgTarget } from '@/components/ConfirmEnterOrgModal';
 import {
     PageHeader,
     StatCard,
@@ -84,6 +84,11 @@ export function OrganizationsPage() {
 
     const [resetting, setResetting] = useState<string | null>(null);
     const [resetNotice, setResetNotice] = useState('');
+
+    // Which organization is awaiting confirmation before a super admin enters
+    // it — see ConfirmEnterOrgModal. Entering used to be one unconfirmed click
+    // straight off this button (and off the default-org quick link below).
+    const [enterTarget, setEnterTarget] = useState<EnterOrgTarget | null>(null);
 
     function openFeatures(org: Organization) {
         setFeaturesOrg(org);
@@ -367,7 +372,7 @@ export function OrganizationsPage() {
                         variant={isActive ? 'secondary' : 'primary'}
                         size="sm"
                         disabled={isActive}
-                        onClick={() => o.id && switchSuperAdminOrg(o.id)}
+                        onClick={() => o.id && setEnterTarget({ id: o.id, name: o.name })}
                     >
                         {isActive ? 'Currently managing' : 'Manage this org'}
                     </Button>
@@ -416,7 +421,9 @@ export function OrganizationsPage() {
                             {activeOrgKey !== DEFAULT_ORG_KEY || !insideOrg ? (
                                 <button
                                     type="button"
-                                    onClick={() => switchSuperAdminOrg(DEFAULT_ORG_KEY)}
+                                    onClick={() =>
+                                        setEnterTarget({ id: DEFAULT_ORG_KEY, name: 'ModCon Builders (Default)' })
+                                    }
                                     className="text-xs font-semibold text-brand-700 hover:underline"
                                 >
                                     Manage ModCon Builders (Default)
@@ -811,6 +818,8 @@ export function OrganizationsPage() {
                     </div>
                 </div>
             </Modal>
+
+            <ConfirmEnterOrgModal target={enterTarget} onClose={() => setEnterTarget(null)} />
         </div>
     );
 }

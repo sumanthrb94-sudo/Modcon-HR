@@ -35,7 +35,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, authPersistenceReady } from './firebase';
-import { setActiveOrgKey, resolveOrgKeyForProfile } from './orgScope';
+import { setActiveOrgKey, resolveOrgKeyForProfile, clearSuperAdminOrgSelection } from './orgScope';
 import { sendPasswordLink } from './authEmail';
 import {
     clearEmployeeLinkCache,
@@ -569,6 +569,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // but leaving one employee's identity in the next person's browser is
         // not a thing to rely on a key check for.
         clearEmployeeLinkCache();
+        // Forget which organisation a super admin was inside, too — a scope
+        // flag that survives sign-out is a scope flag that survives audit: the
+        // next sign-in on this browser must not silently re-enter the tenant
+        // the last session left open. `leaveSuperAdminOrg` cannot be reused
+        // here because it ends in `window.location.reload()`, which would race
+        // the sign-out and navigation this function is already doing.
+        clearSuperAdminOrgSelection();
         await signOut(auth);
     }
 
