@@ -127,12 +127,43 @@ export async function fetchOne<T>(
 }
 
 /** Set a doc with a known ID (creates or overwrites). */
+/**
+ * Drop keys whose value is `undefined`, recursively.
+ *
+ * Firestore rejects `undefined` outright — `setDoc` throws
+ * "Unsupported field value: undefined (found in field X)" rather than storing
+ * a null or omitting the key. TypeScript cannot save you here: an optional
+ * field (`receiptImage?: string`) is typed exactly the same whether it is
+ * absent or explicitly `undefined`, and object spread produces the second.
+ *
+ * So the whole family of optional fields on every collection is one dropped
+ * value away from a write that always fails. It surfaced as an expense claim
+ * with no receipt retrying a doomed `setDoc` and logging on every attempt,
+ * which reads as a permissions or network problem and is neither.
+ *
+ * Stripped here rather than at each call site because there is no call site
+ * where sending `undefined` is what the caller meant. A deliberate erasure is
+ * `deleteField()` through `patch`, which is a different thing and still works.
+ */
+function withoutUndefined<T>(value: T): T {
+    if (Array.isArray(value)) return value.map(withoutUndefined) as unknown as T;
+    // Dates, Timestamps, FieldValues and the rest are values, not shapes to walk.
+    if (value === null || typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) {
+        return value;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (v !== undefined) out[k] = withoutUndefined(v);
+    }
+    return out as T;
+}
+
 export async function upsert<T extends object>(
     colRef: CollectionReference<T>,
     id: string,
     data: T,
 ): Promise<void> {
-    await setDoc(doc(colRef, id), data);
+    await setDoc(doc(colRef, id), withoutUndefined(data));
 }
 
 /** Add a new doc (auto-generated ID). Returns the new ID. */
@@ -140,7 +171,7 @@ export async function addNew<T extends object>(
     colRef: CollectionReference<T>,
     data: T,
 ): Promise<string> {
-    const ref = await addDoc(colRef, data);
+    const ref = await addDoc(colRef, withoutUndefined(data));
     return ref.id;
 }
 
@@ -150,7 +181,7 @@ export async function patch<T extends object>(
     id: string,
     data: Partial<T>,
 ): Promise<void> {
-    await updateDoc(doc(colRef, id), data as DocumentData);
+    await updateDoc(doc(colRef, id), withoutUndefined(data) as DocumentData);
 }
 
 /** Delete a doc by ID. */
