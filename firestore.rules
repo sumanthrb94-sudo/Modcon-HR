@@ -1171,12 +1171,43 @@ service cloud.firestore {
     // all and every check was a hidden button.
     // -------------------------------------------------------------------
     match /org_records/{docId} {
+      // Reads stay organisation-wide, and the three narrowings the QA gate
+      // suite asks for are NOT applied here. Each one is blocked on a client
+      // change, not on a decision, and a rule that lands before its client is
+      // a feature that silently stops working:
+      //
+      //   * `payrollRuns` carries the company's `grossTotal` and `netTotal`,
+      //     which an employee has no business reading — but it is also what
+      //     builds their OWN payslip history (src/pages/finance/index.tsx:61
+      //     maps every run to `buildPayslip`). The employee needs the run's
+      //     `month` and `status`, never its totals, so the fix is to derive
+      //     that list from the employee's own payslips rather than to deny
+      //     the read and empty their history.
+      //
+      //   * `expenseClaims` and `payslips` per-record: `employeeId` is lifted
+      //     to the top level so a rule CAN test it, but `subscribeStore`
+      //     (src/data/persistence.ts:130) queries `orgId` + `store` with no
+      //     employee filter, and a list is evaluated against every document it
+      //     returns. Narrowing the rule alone denies the subscription whole,
+      //     and the error handler there only warns — so the page goes on
+      //     rendering the stale localStorage cache, which is exactly the
+      //     UI-disagrees-with-the-database failure the QA report files as
+      //     R4-M1. The companion "a manager may read their reports'" clause
+      //     additionally needs `managerChainIds` denormalised onto these
+      //     documents; today it is stamped only on `leave_requests`
+      //     (src/lib/seed.ts:244, src/lib/accessBackfill.ts:260).
+      //
+      // Until those land, `src/lib/dataScope.ts` is what narrows who is SHOWN
+      // what, and this block remains a tenant boundary plus the per-store
+      // write clauses below. docs/shared-records-spec.md §5.
       allow get, list: if isSignedIn() && inMyOrg();
       allow create, update: if isSignedIn() && writingToMyOrg() &&
         validOrgRecord(docId) &&
         leaveDecisionIsAuthorised() &&
+        expenseDecisionIsAuthorised() &&
         directoryWriteIsAuthorised() &&
-        attendanceWriteIsAuthorised();
+        attendanceWriteIsAuthorised() &&
+        payrollWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
       // administrator clearing data, which is what this allows.
@@ -1319,6 +1350,74 @@ service cloud.firestore {
         // recognised for accounts an administrator has linked — and it fails
         // in the direction that refuses nobody who could act yesterday.
         (isManager() && !isSelf(request.resource.data.get('employeeId', '')));
+    }
+
+    /**
+     * Nobody decides their own expense claim, and an employee decides none.
+     *
+     * The fourth per-store clause, mirroring leaveDecisionIsAuthorised()
+     * above in shape and for the same reason: an approved claim is money
+     * paid, so the transition that releases it is the one worth a server
+     * rule. Named per store rather than widened into the generic block,
+     * which is what docs/shared-records-spec.md §5 asks for.
+     *
+     * `Draft` and `Submitted` are the states a claimant owns — raising a
+     * claim, editing it, and sending it for approval are all self-service,
+     * exactly as `Pending` and `Cancelled` are on a leave request.
+     * `Approved`, `Rejected` and `Reimbursed` are decisions about somebody
+     * else's money and need `isManager()` (manager|hr|admin), never the
+     * claimant. Reimbursed is included deliberately: marking a claim paid
+     * is a finance action, and leaving it employee-writable would let a
+     * claimant walk their own claim to the end of the workflow one state at
+     * a time.
+     *
+     * Until this existed the generic block let any signed-in member of an
+     * organisation set any claim to Approved — their own included, which is
+     * the single case where authority and interest are the same person. The
+     * QA suite's "empA1 CANNOT set their own claim to Approved" is the test
+     * for it (tests/rules/qa-gates.rules.test.mjs).
+     *
+     * What it still does not do is check *whose* manager, which the bug
+     * report's Round-3-Part-4 finding is about: rules cannot walk the org
+     * chart, so a manager may decide a claim outside their own reporting
+     * line. `src/lib/dataScope.ts` is where that narrowing lives, and this
+     * rule is the coarse half the server can state on its own.
+     *
+     * An account with no `employee_links` document resolves to no employee,
+     * so `isSelf` is false and such a manager decides exactly as before —
+     * the same honest limit leaveDecisionIsAuthorised() carries, failing in
+     * the direction that refuses nobody who could act yesterday.
+     */
+    function expenseDecisionIsAuthorised() {
+      return request.resource.data.store != 'expenseClaims' ||
+        !('status' in request.resource.data) ||
+        request.resource.data.status == 'Draft' ||
+        request.resource.data.status == 'Submitted' ||
+        (isManager() && !isSelf(request.resource.data.get('employeeId', '')));
+    }
+
+    /**
+     * A payroll run is the organisation's, and only an administrator makes one.
+     *
+     * The fifth per-store clause. Until it existed any signed-in member of an
+     * organisation could CREATE a payroll run — a document carrying
+     * `grossTotal`, `netTotal` and `employeeCount` for the whole company,
+     * which the dashboards and the employee's own payslip history read as
+     * fact. An employee inventing a run is not a defaced record, it is a
+     * month of payroll that appears to have happened.
+     *
+     * Same shape and same reasoning as directoryWriteIsAuthorised(): name the
+     * store, do not widen the generic block. `isOrgAdmin()` rather than
+     * `isManager()` because `defaultPermissions` in src/lib/accessControl.ts
+     * gives the Payroll module to Admin and HR Manager and withholds it from
+     * Manager, so admitting managers here would grant a role the product does
+     * not.
+     *
+     * The READ side is deliberately NOT narrowed here, and that is not an
+     * oversight — see the note on the get/list rule above.
+     */
+    function payrollWriteIsAuthorised() {
+      return request.resource.data.store != 'payrollRuns' || isOrgAdmin();
     }
 
     // -------------------------------------------------------------------

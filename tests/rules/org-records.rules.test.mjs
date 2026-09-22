@@ -19,9 +19,16 @@
  *   3. A hard delete is an administrator's. Ordinary removal is a tombstone
  *      written through the same create/update path.
  *
- * What they do NOT claim: that a ticket is edited only by its owner, or an
- * expense approved only by a manager. Those are still client-side, and
- * docs/shared-records-spec.md §5 says so.
+ *   4. Expense decisions need authority, and payroll runs are an
+ *      administrator's. Both are per-store clauses added after the QA
+ *      hand-off's G1 suite found the generic block let any signed-in member
+ *      approve a claim — their own included — and invent a payroll run.
+ *
+ * What they do NOT claim: that a ticket is edited only by its owner, or that
+ * a manager decides only their OWN reports' claims. Those are still
+ * client-side, and docs/shared-records-spec.md §5 says so. Nor is this a
+ * per-record READ boundary: reads stay organisation-wide, for the reasons
+ * set out on the get/list rule in firestore.rules.
  *
  * Run with `npm run test:rules`.
  */
@@ -321,15 +328,109 @@ describe('leave decisions need authority', () => {
   });
 
   it('the status rule does not leak onto other stores', async () => {
-    // An expense claim carries a `status` too. Approving one is client-side
-    // for now (see §5 of the spec) and must not be accidentally governed by a
-    // rule written about leave.
+    // A helpdesk ticket carries a `status` too, and nothing decides one but
+    // the client. A rule written about leave must not reach it.
+    //
+    // This test used to make the same point with an expense claim, back when
+    // approving one was client-side as well. It is no longer — see the
+    // describe block below — so the claim would now be refused for a reason
+    // that has nothing to do with leak-through, and the test would pass while
+    // proving nothing. Moved to a store that is still genuinely ungoverned.
     await assertSucceeds(
       setDoc(
-        doc(as(USERS.employeeA), 'org_records', docId({ store: 'expenseClaims', id: 'exp-1' })),
-        record({ store: 'expenseClaims', id: 'exp-1', status: 'Approved' }),
+        doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-9' })),
+        record({ id: 'tkt-9', status: 'Resolved' }),
       ),
     );
+  });
+});
+
+describe('expense decisions need authority', () => {
+  // The contract this block asserts CHANGED, and deliberately: approving an
+  // expense claim used to be client-side, which the header above and §5 of
+  // docs/shared-records-spec.md both said. `expenseDecisionIsAuthorised()`
+  // now states the coarse half on the server, mirroring the leave rule —
+  // an approved claim is money paid, so the transition that releases it is
+  // worth more than a hidden button. Raised by the QA hand-off's G1 suite
+  // (tests/rules/qa-gates.rules.test.mjs).
+  const expenseDoc = docId({ store: 'expenseClaims', id: 'exp-1' });
+  const claim = (status, employeeId = 'emp-a1') =>
+    record({ store: 'expenseClaims', id: 'exp-1', status, employeeId });
+
+  it('an employee raises and edits their own claim', async () => {
+    // The states a claimant owns. Refusing these would make the module
+    // unusable for the role the permission matrix gives it `full`.
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', expenseDoc), claim('Draft')),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', expenseDoc), claim('Submitted')),
+    );
+  });
+
+  it('an employee cannot approve a claim — not even their own', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', expenseDoc), claim('Approved')),
+    );
+  });
+
+  it('nor walk it to Reimbursed', async () => {
+    // Marking a claim paid is a finance action. Left employee-writable, a
+    // claimant could step their own claim to the end of the workflow.
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', expenseDoc), claim('Reimbursed')),
+    );
+  });
+
+  it('a manager decides somebody else’s', async () => {
+    // The ordinary path, and the one the QA pass confirmed working
+    // (a Manager approving a report's claim). `isManager()` rather than
+    // `isOrgAdmin()` for exactly that reason.
+    await assertSucceeds(
+      setDoc(doc(as(USERS.managerLinkedA), 'org_records', expenseDoc), claim('Approved')),
+    );
+  });
+
+  it('but not their own', async () => {
+    await assertFails(
+      setDoc(
+        doc(as(USERS.managerLinkedA), 'org_records', expenseDoc),
+        claim('Approved', 'emp-a2'),
+      ),
+    );
+  });
+
+  it('another organisation’s manager cannot', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.hrB), 'org_records', expenseDoc), claim('Approved')),
+    );
+  });
+});
+
+describe('payroll runs are an administrator’s', () => {
+  // A payroll run carries `grossTotal`, `netTotal` and `employeeCount` for
+  // the whole company, and the dashboards read it as fact. Until
+  // `payrollWriteIsAuthorised()` existed any signed-in member could create
+  // one — a month of payroll that appears to have happened.
+  const runDoc = docId({ store: 'payrollRuns', id: 'run-1' });
+  const run = () => record({ store: 'payrollRuns', id: 'run-1', total: 96000 });
+
+  it('an ordinary employee cannot write one', async () => {
+    await assertFails(setDoc(doc(as(USERS.employeeA), 'org_records', runDoc), run()));
+  });
+
+  it('nor can a manager — Payroll is `none` for that role', async () => {
+    // src/lib/accessControl.ts: Payroll is Admin/HR Manager only, so this is
+    // `isOrgAdmin()` and not the `isManager()` the two clauses above use.
+    await assertFails(setDoc(doc(as(USERS.managerA), 'org_records', runDoc), run()));
+  });
+
+  it('an administrator can', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_records', runDoc), run()));
+  });
+
+  it('but not in another organisation', async () => {
+    await assertFails(setDoc(doc(as(USERS.hrB), 'org_records', runDoc), run()));
   });
 });
 
