@@ -41,8 +41,30 @@ async function login(page: Page) {
 }
 
 /** Which organisation this browser has stepped into, as the app stores it. */
-function selectedOrg(page: Page): Promise<string | null> {
-  return page.evaluate(() => localStorage.getItem('modcon.hr.superAdminSelectedOrg'));
+async function selectedOrg(page: Page): Promise<string | null> {
+  // Entering and leaving an organisation both reload the page — the data
+  // modules read their namespace at module-load time, so there is no
+  // re-render that would do. An evaluate() issued while that reload is in
+  // flight dies with "Execution context was destroyed", which says nothing
+  // about what the app stored.
+  // Retried rather than waited for. Entering and leaving an organisation both
+  // reload — the data modules read their namespace at module-load time, so
+  // there is no re-render that would do — and a reload the app triggers can
+  // land between waitForLoadState resolving and evaluate running. The error
+  // that produces says nothing about what the app stored, so it is worth one
+  // more look rather than a failure.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await page.waitForLoadState('domcontentloaded');
+      return await page.evaluate(() =>
+        localStorage.getItem('modcon.hr.superAdminSelectedOrg'),
+      );
+    } catch (err) {
+      if (!String(err).includes('Execution context was destroyed')) throw err;
+      await page.waitForTimeout(400);
+    }
+  }
+  throw new Error('[e2e] the page kept navigating while reading the selected org');
 }
 
 const ACTION = 'super_admin.enter_org';

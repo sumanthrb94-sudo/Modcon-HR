@@ -62,17 +62,51 @@ const EARNED_ONLY_POLICY = [
   },
 ];
 
-/** Whatever the organisation's leave policy held before this suite ran. */
-let beforeSuite: string | null = null;
+/**
+ * Whatever the organisation's leave policy held before this suite ran, and
+ * whether it held anything at all.
+ *
+ * The distinction is the whole of it. An earlier version of this file kept
+ * one nullable string and restored `beforeSuite ?? '[]'`, which is not a
+ * restore: an organisation with no policy document and an organisation whose
+ * policy list is explicitly empty are different states, and the app reads the
+ * second as "configured, with nothing in it". A run against an emulator that
+ * had no document therefore ENDED by writing one that said the organisation
+ * grants no leave, and every spec that ran afterwards — leave-policy,
+ * employee-leave-policy, leave-approval-scope, org-settings' own type-deletion
+ * test — failed against it. Seven failures from one line, and none of them in
+ * this file.
+ *
+ * So: `existed` decides whether restoring means writing or deleting, and a
+ * read that FAILS is not allowed to look like a document that was not there.
+ */
+let beforeSuite: { existed: boolean; valueJson: string | null } | null = null;
 
-async function readPolicies(): Promise<string | null> {
+async function readPolicies(): Promise<{ existed: boolean; valueJson: string | null }> {
   const token = await adminToken();
-  if (!token) return null;
   const res = await fetch(`${FIRESTORE_BASE}/${POLICIES_DOC}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (res.status !== 200) return null;
-  return (await res.json()).fields?.valueJson?.stringValue ?? null;
+  if (res.status === 404) return { existed: false, valueJson: null };
+  if (res.status !== 200) {
+    // Never mutate shared configuration you could not snapshot. Failing here
+    // costs one spec; proceeding costs every spec that reads this document
+    // afterwards, which is exactly what happened.
+    throw new Error(
+      `[e2e] could not read ${POLICIES_DOC} (${res.status}) — refusing to rewrite ` +
+        'the organisation\'s leave policies without a snapshot to put back.',
+    );
+  }
+  return { existed: true, valueJson: (await res.json()).fields?.valueJson?.stringValue ?? null };
+}
+
+/** Remove the document, for an organisation that had none before this ran. */
+async function deletePolicies() {
+  const token = await adminToken();
+  await fetch(`${FIRESTORE_BASE}/${POLICIES_DOC}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
 }
 
 /** Write the organisation's leave policy list, all three required fields at once. */
@@ -95,11 +129,12 @@ async function writePolicies(valueJson: string) {
 
 /** Put the organisation's real policy list back, whatever this run did to it. */
 async function restorePolicies() {
-  // '[]' rather than deleting the document on a deployment that never had one:
-  // deleting would leave the sync's cached copy in every browser that already
-  // read it, the same reasoning employee-leave-policy.spec.ts's
-  // restoreOverrides applies to its own document.
-  await writePolicies(beforeSuite ?? '[]');
+  if (!beforeSuite) return; // beforeAll threw before it changed anything.
+  if (beforeSuite.existed) {
+    await writePolicies(beforeSuite.valueJson ?? '[]');
+    return;
+  }
+  await deletePolicies();
 }
 
 async function login(page: Page, email: string, password: string) {
@@ -167,7 +202,9 @@ test.describe.serial('leave stays usable when the organisation has configured al
     expect(optionTexts.some((t) => t === 'Unpaid — no accrued balance')).toBe(true);
 
     await typeSelect.selectOption('Unpaid');
-    await expect(dialog.getByText('No accrued balance')).toBeVisible();
+    // `.first()`: the phrase appears both in the option label and in the
+    // balance line beneath it, and either one proves the point.
+    await expect(dialog.getByText('No accrued balance').first()).toBeVisible();
 
     // A working day far enough out to be free of holidays, week-offs and any
     // existing request — this employee has none, so the first candidate that

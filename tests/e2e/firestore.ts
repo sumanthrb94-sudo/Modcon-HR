@@ -411,6 +411,35 @@ export async function listOrgRecords<T = Record<string, unknown>>(
  * single read a moment after a click sees the state *before* it just as
  * convincingly as the state after.
  */
+/**
+ * Wait until a store holds a record the predicate accepts.
+ *
+ * `waitForOrgRecordsQuiet` answers "has this store stopped changing", which is
+ * the right question when a spec cannot state what it expects — and the wrong
+ * one when it can. Quiet is satisfied by a store that has not changed YET, so
+ * a spec that clicks and then waits for quiet can be told "settled" before its
+ * own write has left the browser. That is exactly how a helpdesk ticket came
+ * to pass its pre-reload assertion and vanish after the reload: the wait
+ * returned on a store that was quiet because nothing had happened to it.
+ *
+ * So where a spec knows what it is waiting for, it should wait for THAT.
+ */
+export async function waitForOrgRecordMatching<T = Record<string, unknown>>(
+  store: string,
+  predicate: (record: T) => boolean,
+  options: { orgKey?: string; timeoutMs?: number } = {},
+): Promise<T> {
+  const { orgKey = 'default', timeoutMs = 15_000 } = options;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const record of await listOrgRecords<T>(store, { orgKey })) {
+      if (predicate(record)) return record;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`[e2e] no record in "${store}" matched within ${timeoutMs}ms`);
+}
+
 export async function waitForOrgRecordsQuiet(
   store: string,
   options: { employeeId?: string; orgKey?: string; settleMs?: number; timeoutMs?: number } = {},

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
-import { waitForOrgRecordsQuiet } from './firestore';
+import { waitForOrgRecordMatching, waitForOrgRecordsQuiet } from './firestore';
 
 /**
  * Data written through the UI must still be there after a refresh.
@@ -67,7 +67,16 @@ test.describe.serial('data survives a refresh', () => {
     // un-acked write is discarded and the subscription hydrates the cache from
     // the server's older copy. Wait for the server, then reload. This is what
     // the assertion is about, so racing it proves nothing either way.
-    await waitForOrgRecordsQuiet('tickets');
+    //
+    // Waiting for THIS ticket rather than for the store to fall quiet. Quiet
+    // is satisfied by a store that has not changed yet, so the wait could
+    // return before this write had left the browser — which is how this test
+    // passed its pre-reload assertion and failed the one after it, but only
+    // once another spec started writing a ticket of its own just beforehand.
+    await waitForOrgRecordMatching<{ subject?: string }>(
+      'tickets',
+      (ticket) => ticket.subject === subject,
+    );
     await page.reload();
     await expect(page.getByRole('table').getByText(subject)).toBeVisible();
   });

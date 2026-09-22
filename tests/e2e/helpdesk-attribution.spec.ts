@@ -43,7 +43,10 @@ test('an unassigned ticket says so, and its auto-reply speaks as Support, not an
   await page.getByRole('link', { name: 'Helpdesk', exact: true }).first().click();
   await page.getByRole('button', { name: 'Raise Ticket' }).first().click();
 
-  const raiseDialog = page.getByRole('dialog');
+  // By NAME, not by role alone. Submitting closes this dialog and opens the
+  // new ticket's detail dialog, so a bare getByRole('dialog') resolves to
+  // whichever one is open and "the raise dialog is hidden" is never true.
+  const raiseDialog = page.getByRole('dialog', { name: /Raise a Ticket/ });
   const selects = raiseDialog.locator('select');
   // Name (who this ticket is on behalf of) — required, and deliberately
   // chosen here so the assignee default below is the only thing under test.
@@ -60,7 +63,7 @@ test('an unassigned ticket says so, and its auto-reply speaks as Support, not an
 
   // Submitting opens the new ticket's own detail dialog.
   const detailDialog = page.getByRole('dialog');
-  await expect(detailDialog.getByText(subject)).toBeVisible();
+  await expect(detailDialog.getByText(subject).first()).toBeVisible();
 
   // Routing: Unassigned, not a colleague who never picked this up.
   await expect(detailDialog.getByText('Unassigned', { exact: true })).toBeVisible();
