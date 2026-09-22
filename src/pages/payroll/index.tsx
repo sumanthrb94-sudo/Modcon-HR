@@ -16,6 +16,7 @@ import {
   Play,
   Upload,
   Download,
+  AlertCircle,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -34,7 +35,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { buildPayslip, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
+import { buildPayslip, buildPayslipComponents, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';
@@ -106,6 +107,29 @@ function hasComponentBreakdown(payslip: Payslip): boolean {
 function payDateFor(month: string): string {
   const [yr, mo] = month.split('-').map(Number);
   return new Date(Date.UTC(yr, mo, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * A payroll run staged for confirmation but not yet committed.
+ *
+ * Computed once, when the dialog opens, and reused verbatim on Confirm — not
+ * recomputed at commit time — so the totals the administrator approved are
+ * exactly the totals that get written, whatever else moves on the page while
+ * the dialog is open.
+ */
+interface PendingPayrollRun {
+  month: string;
+  employeeCount: number;
+  grossTotal: number;
+  netTotal: number;
+  /**
+   * Employees this run pays without a component breakdown, because the
+   * organisation has not set a salary structure. Gross and net never depend
+   * on the split (see data/salaryStructure.ts), so this never zeroes or
+   * crashes the preview — it is purely informational.
+   */
+  unconfiguredCount: number;
+  payslips: Payslip[];
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +300,13 @@ export function PayrollPage() {
   const uploadOrgId = payslipOrgId(profile);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
+  // The confirmation dialog's own state: a run staged for review, and the
+  // refusal shown in its place when the cycle has already been committed.
+  // Two separate pieces of state rather than one, because "nothing to
+  // confirm" and "here is what would be confirmed" are different screens —
+  // conflating them is how the old one-click Run Payroll never got a preview.
+  const [pendingRun, setPendingRun] = useState<PendingPayrollRun | null>(null);
+  const [runNotice, setRunNotice] = useState<string | null>(null);
   // Seeded from the store and written through, so a processed run does not
   // revert to Draft on the next refresh.
   const [payrollRunList, setPayrollRunListRaw] = useState(() => getPayrollRuns());
@@ -357,29 +388,82 @@ export function PayrollPage() {
     });
   }, [payslipList, search, deptFilter, directoryRevision]);
 
-  function handleRunPayroll() {
-    const alreadyExists = payrollRunList.some((run) => run.month === currentMonthIso());
-    if (alreadyExists) {
-      setActiveTab('runs');
+  /**
+   * The per-cycle idempotency guard.
+   *
+   * `month` identifies a cycle (see PayrollRun in src/types/index.ts), so a
+   * run already on the list for this month means this cycle has already been
+   * paid — running it again would add a second gross/net total for the same
+   * month rather than replacing the first, which is exactly the ₹0 → ₹96.0K
+   * double-count QA watched happen on one click. Checked against the live
+   * `payrollRunList`, not a snapshot taken when the dialog opened, so a run
+   * that lands (another tab, a colleague) while this dialog is still open is
+   * still caught at commit time.
+   */
+  function alreadyRunFor(month: string): PayrollRun | undefined {
+    return payrollRunList.find((run) => run.month === month);
+  }
+
+  /** Open the Run Payroll confirmation, or refuse with a reason if refused. */
+  function openRunPayrollConfirm() {
+    const month = currentMonthIso();
+    const existing = alreadyRunFor(month);
+    if (existing) {
+      setPendingRun(null);
+      // Not silent, and not a generic error: names the month, when it ran,
+      // and what running it again would do — the refusal QA asked for.
+      setRunNotice(
+        `Payroll for ${monthLabel(month)} has already been run` +
+          (existing.processedOn ? ` (processed ${formatDate(existing.processedOn)})` : '') +
+          ` for ${existing.employeeCount} employee${existing.employeeCount === 1 ? '' : 's'}, net ${formatINR(existing.netTotal, { compact: true })}. ` +
+          `Running it again would pay this cycle twice, so it is refused. To correct a figure, edit the existing run rather than running the cycle again.`,
+      );
+      return;
+    }
+    setRunNotice(null);
+    const payslips = employees.map((employee) => buildPayslip(employee, month, 'Paid'));
+    const grossTotal = payslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
+    const netTotal = payslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
+    // Informational only — see PendingPayrollRun. Read through
+    // buildPayslipComponents (not stored on Payslip) purely to count who has
+    // no structure; it does not change what gets paid or saved.
+    const unconfiguredCount = employees.filter(
+      (employee) => !buildPayslipComponents(employee, month).splitConfigured,
+    ).length;
+    setPendingRun({ month, employeeCount: employees.length, grossTotal, netTotal, unconfiguredCount, payslips });
+  }
+
+  function closeRunPayrollConfirm() {
+    setPendingRun(null);
+  }
+
+  /** Commits the run staged by `openRunPayrollConfirm`, guarded once more. */
+  function commitPayrollRun() {
+    if (!pendingRun) return;
+    const existing = alreadyRunFor(pendingRun.month);
+    if (existing) {
+      // The guard fired between opening the dialog and clicking Confirm.
+      // Re-run the open path so the refusal (and its up-to-date figures)
+      // replaces the now-stale preview, rather than committing a duplicate.
+      setPendingRun(null);
+      openRunPayrollConfirm();
       return;
     }
 
-    const monthPayslips = employees.map((employee) => buildPayslip(employee, currentMonthIso(), 'Paid'));
-    const grossTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
-    const netTotal = monthPayslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
-
     const newRun: PayrollRun = {
-      id: `pr-${currentMonthIso()}`,
-      month: currentMonthIso(),
+      id: `pr-${pendingRun.month}`,
+      month: pendingRun.month,
       status: 'Paid',
-      employeeCount: employees.length,
-      grossTotal,
-      netTotal,
-      processedOn: `${currentMonthIso()}-30`,
+      employeeCount: pendingRun.employeeCount,
+      grossTotal: pendingRun.grossTotal,
+      netTotal: pendingRun.netTotal,
+      processedOn: `${pendingRun.month}-30`,
     };
 
     setPayrollRunList((prev) => [newRun, ...prev]);
-    setPayslipList((prev) => [...monthPayslips, ...prev]);
+    setPayslipList((prev) => [...pendingRun.payslips, ...prev]);
+    setPendingRun(null);
+    setRunNotice(null);
     setActiveTab('runs');
   }
 
@@ -531,7 +615,7 @@ export function PayrollPage() {
             <Button
               icon={<Play size={16} />}
               variant="primary"
-              onClick={handleRunPayroll}
+              onClick={openRunPayrollConfirm}
               disabled={workspaceLocked}
               title={workspaceLocked ? 'Paused until billing is arranged — Settings → Billing' : undefined}
             >
@@ -540,6 +624,20 @@ export function PayrollPage() {
           </div>
         }
       />
+
+      {/* A refused Run Payroll (the idempotency guard) or nothing at all —
+          the button stays enabled either way, so silence here would look
+          exactly like a click that did nothing. See openRunPayrollConfirm. */}
+      {runNotice && (
+        <div
+          role="status"
+          data-testid="run-payroll-notice"
+          className="mb-6 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{runNotice}</span>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -668,6 +766,67 @@ export function PayrollPage() {
       <PayslipModal payslip={selectedPayslip} onClose={() => setSelectedPayslip(null)} />
 
       <PayslipUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
+
+      {/* Run Payroll confirmation — previews headcount and cost before this
+          commits. The old behaviour wrote payrollRunList and payslipList on
+          one click with nothing shown first, which is how QA watched
+          ₹0 → ₹96.0K land with no chance to catch a mistake beforehand. */}
+      <Modal
+        open={!!pendingRun}
+        onClose={closeRunPayrollConfirm}
+        title="Confirm payroll run"
+        subtitle={pendingRun ? monthLabel(pendingRun.month) : undefined}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeRunPayrollConfirm}>
+              Cancel
+            </Button>
+            <Button variant="primary" icon={<Play size={16} />} onClick={commitPayrollRun}>
+              Confirm & Run Payroll
+            </Button>
+          </>
+        }
+      >
+        {pendingRun && (
+          <div className="space-y-4" data-testid="run-payroll-preview">
+            <p className="text-sm text-ink-600">
+              This pays every employee on roll for {monthLabel(pendingRun.month)} and records the run. Once
+              confirmed, this cycle cannot be run again — a second attempt will be refused.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-ink-200 p-3">
+                <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Headcount</p>
+                <p
+                  className="text-lg font-semibold text-ink-900 mt-1"
+                  data-testid="run-payroll-headcount"
+                >
+                  {pendingRun.employeeCount}
+                </p>
+              </div>
+              <div className="rounded-lg border border-ink-200 p-3">
+                <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Gross payout</p>
+                <p className="text-lg font-semibold text-ink-900 mt-1" data-testid="run-payroll-gross">
+                  {formatINR(pendingRun.grossTotal)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-ink-200 p-3">
+                <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Net payout</p>
+                <p className="text-lg font-semibold text-emerald-700 mt-1" data-testid="run-payroll-net">
+                  {formatINR(pendingRun.netTotal)}
+                </p>
+              </div>
+            </div>
+            {pendingRun.unconfiguredCount > 0 && (
+              <p className="text-xs text-amber-700">
+                {pendingRun.unconfiguredCount} of {pendingRun.employeeCount} employee
+                {pendingRun.employeeCount === 1 ? '' : 's'} have no salary structure configured — their payslip
+                will show gross and net pay only, no component breakdown. Set one in Settings → Salary Structure.
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

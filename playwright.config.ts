@@ -105,7 +105,15 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * account (ROLE_CHURN_PERSONA) so that changing a role cannot revoke access
  * underneath a persona the role projects are signed in as, in parallel.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll)\.spec\.ts$/;
+/*
+ * `payroll-run-guard` is here for the same reason as `shared-records`: it
+ * writes a record (a payroll run for the current month) every member of the
+ * organisation can see, and the cycle it writes has no reset — unlike the
+ * specs above, which restore the configuration document they change. Running
+ * it on more than one engine would let two engines race to run the same
+ * month, settling the idempotency guard by luck rather than by the code.
+ */
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.
