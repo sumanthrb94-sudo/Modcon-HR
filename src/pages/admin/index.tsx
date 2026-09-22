@@ -27,7 +27,7 @@ import {
 import { useAuth, ADMIN_EMAILS, type UserProfile, type UserRole } from '@/lib/auth';
 import { setEmployeeDocumentStatus, useEmployeeDocuments } from '@/lib/employeeDocuments';
 import type { EmployeeDocument, DocumentStatus } from '@/types';
-import { getEmployeeName } from '@/data/employees';
+import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import {
     PageHeader,
     StatCard,
@@ -43,7 +43,7 @@ import {
     Button,
     Modal,
 } from '@/components/ui';
-import { useEmployees, useJobOpenings, usePayrollRuns, useExpenses } from '@/lib/useFirestore';
+import { useJobOpenings, usePayrollRuns, useExpenses } from '@/lib/useFirestore';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -178,7 +178,6 @@ export function AdminDashboardPage() {
             setInviting(false);
         }
     }
-    const { data: allEmployees, loading: empLoading } = useEmployees();
     const { data: allJobs } = useJobOpenings();
     const { data: allPayrollRuns } = usePayrollRuns();
     const { data: allExpenses } = useExpenses();
@@ -189,7 +188,16 @@ export function AdminDashboardPage() {
     // than showing the default org's real numbers. Super admins and the
     // default org's own admins see everything, unchanged.
     const isDefaultOrgViewer = isSuperAdmin || !profile?.orgId;
-    const employees = isDefaultOrgViewer ? allEmployees : [];
+    // The employee count is the roster everyone else on this dashboard sees —
+    // `getEmployeeDirectory()`, the org_records-backed directory the main
+    // Dashboard's headcount and every Employee Directory page already read
+    // (see "Four data sources" in CLAUDE.md). The Firestore `employees`
+    // collection this used to read from (`useEmployees()`) is written to
+    // only by the one-off demo seed (`src/lib/seed.ts`); nothing in the
+    // ordinary hire flow ever writes it, so it reported 0 against a roster
+    // of 5. The directory is already org-scoped by `activeOrgKey`, so unlike
+    // the collections above it needs no `isDefaultOrgViewer` gating.
+    const employees = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
     const jobs = isDefaultOrgViewer ? allJobs : [];
     const payrollRuns = isDefaultOrgViewer ? allPayrollRuns : [];
     const expenses = isDefaultOrgViewer ? allExpenses : [];
