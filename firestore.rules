@@ -1330,7 +1330,8 @@ service cloud.firestore {
 
     function leaveDecisionIsAuthorised() {
       return request.resource.data.store != 'leaveRequests' ||
-        !('status' in request.resource.data) ||
+        isTombstone() ||
+        (declaresItsStatus() && (
         request.resource.data.status == 'Pending' ||
         request.resource.data.status == 'Cancelled' ||
         // Nobody decides their own leave, at any level. `isManager()` alone
@@ -1349,7 +1350,49 @@ service cloud.firestore {
         // as before. That is the honest limit — self-approval can only be
         // recognised for accounts an administrator has linked — and it fails
         // in the direction that refuses nobody who could act yesterday.
-        (isManager() && !isSelf(request.resource.data.get('employeeId', '')));
+        (isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
+    }
+
+    /**
+     * A write that carries a record must declare that record's status.
+     *
+     * The escape hatch this closes was `!('status' in request.resource.data)`,
+     * which both decision rules used to open with — so a write that simply
+     * omitted the top-level field skipped the whole guard. That is not a
+     * theoretical gap: the app never reads the lifted field. `hydrate` in
+     * src/data/persistence.ts:136 takes `recordId`, `data` and `deleted` and
+     * nothing else, so the status every client renders is the one inside the
+     * `data` JSON. A claimant could therefore post
+     * `data: '{"status":"Approved"}'` with no top-level status, be allowed by
+     * these rules, and have the organisation shown an approval nobody made.
+     * Found by QA against the first version of expenseDecisionIsAuthorised();
+     * leaveDecisionIsAuthorised() had carried it since it was written.
+     *
+     * Requiring the field is NECESSARY and not sufficient, because rules
+     * cannot read into `data` and so cannot check the two copies agree. A
+     * regex over `data` is not the answer either — the string is written by
+     * the party being constrained, so an escaped `\"status\":\"Submitted\"`
+     * inside any other field would satisfy it. What makes the declared status
+     * binding is that the client now takes it in preference to the JSON copy
+     * (subscribeStore in src/data/persistence.ts), so the value these rules
+     * judged is the value every browser renders.
+     */
+    function declaresItsStatus() {
+      return 'status' in request.resource.data;
+    }
+
+    /**
+     * A removal or a revert, which carries no record and therefore no status.
+     *
+     * Ordinary removal is a tombstone written through this same create/update
+     * path (`data: ''`, `deleted: true`), and a reset writes `data: ''` with
+     * `reverted: true` — see the two batch.set calls in
+     * src/data/persistence.ts:285-306. Neither has a record to take a status
+     * from, so neither can declare one. Keyed on the empty payload rather than
+     * on the absent field, which is what made the old hatch exploitable.
+     */
+    function isTombstone() {
+      return request.resource.data.data == '';
     }
 
     /**
@@ -1390,10 +1433,11 @@ service cloud.firestore {
      */
     function expenseDecisionIsAuthorised() {
       return request.resource.data.store != 'expenseClaims' ||
-        !('status' in request.resource.data) ||
-        request.resource.data.status == 'Draft' ||
-        request.resource.data.status == 'Submitted' ||
-        (isManager() && !isSelf(request.resource.data.get('employeeId', '')));
+        isTombstone() ||
+        (declaresItsStatus() && (
+          request.resource.data.status == 'Draft' ||
+          request.resource.data.status == 'Submitted' ||
+          (isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
     }
 
     /**

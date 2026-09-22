@@ -122,6 +122,49 @@ const registry: RegisteredStore[] = [];
 let activeOrgKey: string | null = null;
 const listeners = new Map<string, () => void>();
 
+/**
+ * The lifted fields win over the copies inside `data`, and that is what makes
+ * the authority rules in `firestore.rules` mean anything.
+ *
+ * `employeeId` and `status` are written twice: once inside the `data` JSON,
+ * which is the record, and once at the top level, which is the only copy the
+ * rules can read. This function used to take the JSON verbatim, so the two
+ * copies were judged and rendered independently — the server checked one and
+ * every browser displayed the other.
+ *
+ * That gap was a complete bypass of `leaveDecisionIsAuthorised` and
+ * `expenseDecisionIsAuthorised`. A claimant could post a record whose JSON
+ * said `"status":"Approved"` while the top-level field said `Submitted` (or
+ * was absent entirely, which the rules then read as "no status to judge"),
+ * and the organisation would be shown an approval nobody made. The rules now
+ * require the field; this is the other half, and neither works alone —
+ * requiring a declaration is pointless if the declaration is not what gets
+ * rendered.
+ *
+ * A tombstone or a revert carries no record, so there is nothing to reconcile
+ * and `null` is returned exactly as before. A malformed `data` string is left
+ * untouched rather than thrown away: `hydrate` already treats unparseable
+ * JSON as a record it cannot use, and swallowing the error here would turn a
+ * visible fault into a silently missing row.
+ */
+function authoritativeJson(data: {
+  data?: string;
+  employeeId?: string;
+  status?: string;
+}): string | null {
+  if (!data.data) return null;
+  if (data.employeeId === undefined && data.status === undefined) return data.data;
+  try {
+    const record = JSON.parse(data.data) as Record<string, unknown>;
+    if (typeof record !== 'object' || record === null || Array.isArray(record)) return data.data;
+    if (data.employeeId !== undefined) record.employeeId = data.employeeId;
+    if (data.status !== undefined) record.status = data.status;
+    return JSON.stringify(record);
+  } catch {
+    return data.data;
+  }
+}
+
 function subscribeStore(store: RegisteredStore, orgKey: string) {
   listeners.get(store.storeKey)?.();
   listeners.set(
@@ -135,10 +178,16 @@ function subscribeStore(store: RegisteredStore, orgKey: string) {
       (snap) => {
         store.hydrate(
           snap.docs.map((d) => {
-            const data = d.data() as { recordId?: string; data?: string; deleted?: boolean };
+            const data = d.data() as {
+              recordId?: string;
+              data?: string;
+              deleted?: boolean;
+              employeeId?: string;
+              status?: string;
+            };
             return {
               id: data.recordId ?? '',
-              json: data.data || null,
+              json: authoritativeJson(data),
               deleted: Boolean(data.deleted),
             };
           }),

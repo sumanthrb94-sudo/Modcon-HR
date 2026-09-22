@@ -407,6 +407,100 @@ describe('expense decisions need authority', () => {
   });
 });
 
+describe('a decision status must be declared where the rules can read it', () => {
+  // Found by QA against the first version of expenseDecisionIsAuthorised(),
+  // and true of leaveDecisionIsAuthorised() since it was written: both used
+  // to open with `!('status' in request.resource.data)`, so a write that
+  // simply left the top-level field off skipped the guard entirely.
+  //
+  // It is not a theoretical hole. The app never reads the lifted field —
+  // `hydrate` (src/data/persistence.ts) takes recordId, data and deleted and
+  // nothing else — so the status every browser renders is the one inside the
+  // `data` JSON. Omit the top-level copy and the server judges nothing while
+  // the organisation is shown an approval nobody made.
+  const smuggled = (store, status) => ({
+    orgId: 'org-a',
+    store,
+    recordId: 'smuggled',
+    deleted: false,
+    employeeId: 'emp-a1',
+    // The status lives ONLY where the rules cannot look.
+    data: JSON.stringify({ id: 'smuggled', status }),
+  });
+  const smuggledDoc = (store) => docId({ store, id: 'smuggled' });
+
+  it('an employee cannot approve their own claim by hiding the status in `data`', async () => {
+    await assertFails(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', smuggledDoc('expenseClaims')),
+        smuggled('expenseClaims', 'Approved'),
+      ),
+    );
+  });
+
+  it('nor their own leave request', async () => {
+    await assertFails(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', smuggledDoc('leaveRequests')),
+        smuggled('leaveRequests', 'Approved'),
+      ),
+    );
+  });
+
+  it('and a manager cannot either — the declaration is required of everyone', async () => {
+    // Not because a manager may not approve, but because a write the rules
+    // cannot read is not a write they can authorise. Declaring it is the
+    // whole contract.
+    await assertFails(
+      setDoc(
+        doc(as(USERS.managerLinkedA), 'org_records', smuggledDoc('expenseClaims')),
+        smuggled('expenseClaims', 'Approved'),
+      ),
+    );
+  });
+
+  it('a store with no decision rule is unaffected', async () => {
+    // Only leaveRequests and expenseClaims are governed. A ticket carries a
+    // status too and nothing decides one, so requiring a declaration of it
+    // would be a rule about a store nobody asked for.
+    await assertSucceeds(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', smuggledDoc('tickets')),
+        smuggled('tickets', 'Resolved'),
+      ),
+    );
+  });
+
+  it('a tombstone carries no record and so declares no status', async () => {
+    // Ordinary removal is a tombstone written through this same path. It has
+    // no record to take a status from, which is why the exemption is keyed on
+    // the empty payload rather than on the absent field — keying it on the
+    // field is what made the old hatch exploitable.
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ store: 'expenseClaims', id: 'exp-1' })), {
+        orgId: 'org-a',
+        store: 'expenseClaims',
+        recordId: 'exp-1',
+        deleted: true,
+        data: '',
+      }),
+    );
+  });
+
+  it('nor does a revert', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ store: 'leaveRequests', id: 'lv-1' })), {
+        orgId: 'org-a',
+        store: 'leaveRequests',
+        recordId: 'lv-1',
+        deleted: false,
+        data: '',
+        reverted: true,
+      }),
+    );
+  });
+});
+
 describe('payroll runs are an administrator’s', () => {
   // A payroll run carries `grossTotal`, `netTotal` and `employeeCount` for
   // the whole company, and the dashboards read it as fact. Until
