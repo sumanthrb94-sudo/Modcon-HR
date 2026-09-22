@@ -123,8 +123,13 @@ beforeEach(async () => {
     });
 
     // Platform-side fixtures.
+    // `adminUid` is what marks an organisation as already provisioned, and
+    // every organisation on the live project carries one. A record without it
+    // is an organisation mid-provisioning — `createOrganization` stamps it
+    // last — and is deliberately still seedable; see the final test below.
     await setDoc(doc(db, 'organizations', 'org-a'), {
       name: 'Org A', adminEmail: 'hr-a@example.com', createdBy: 'super-a',
+      adminUid: 'hr-a',
     });
     await setDoc(doc(db, 'subscription_requests', 'req-1'), {
       orgId: 'org-a', status: 'open', createdAt: new Date().toISOString(),
@@ -269,6 +274,101 @@ describe('super admin — still does the job it exists for', () => {
 });
 
 // ---------------------------------------------------------------------------
+
+describe('super admin — cannot walk in the front door', () => {
+  // Closing `inMyOrg()` alone left the boundary standing and the identity
+  // movable. Both of these were confirmed open before the fix: the platform
+  // account could not *read* another organisation, but it could make itself a
+  // member of one and then read it legitimately. A boundary that can be
+  // stepped around is a boundary in name only, so both are asserted here
+  // rather than left to the rule's comment.
+
+  it('cannot move its own profile into an organisation', async () => {
+    await assertFails(setDoc(doc(as(SUPER), 'users', SUPER.uid), {
+      uid: SUPER.uid, email: SUPER.email, displayName: SUPER.email,
+      role: 'hr', orgId: 'org-a', superAdmin: true,
+    }));
+  });
+
+  it('cannot mint a fresh HR account inside an organisation that has one', async () => {
+    await assertFails(setDoc(doc(as(SUPER), 'users', 'planted'), {
+      uid: 'planted', email: 'planted@example.com', displayName: 'Planted',
+      role: 'hr', orgId: 'org-a',
+    }));
+  });
+
+  it('cannot mint an employee account there either', async () => {
+    await assertFails(setDoc(doc(as(SUPER), 'users', 'planted-2'), {
+      uid: 'planted-2', email: 'planted-2@example.com', displayName: 'Planted',
+      role: 'employee', orgId: 'org-a',
+    }));
+  });
+
+  it('its own sign-in upsert still works — orgId simply stays absent', async () => {
+    await assertSucceeds(setDoc(doc(as(SUPER), 'users', SUPER.uid), {
+      uid: SUPER.uid, email: SUPER.email, displayName: SUPER.email,
+      role: 'admin', superAdmin: true,
+    }));
+  });
+
+  it('still seeds the first account for an organisation awaiting one', async () => {
+    // Exactly the provisioning order in lib/organizations.ts: the org record
+    // exists without an adminUid, and the admin's profile is written next.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'org-fresh'), {
+        name: 'Freshly onboarded', adminEmail: 'hr-fresh@example.com', createdBy: SUPER.uid,
+      });
+    });
+    await assertSucceeds(setDoc(doc(as(SUPER), 'users', 'hr-fresh'), {
+      uid: 'hr-fresh', email: 'hr-fresh@example.com', displayName: 'Fresh HR',
+      role: 'hr', orgId: 'org-fresh',
+    }));
+  });
+
+  it('and is refused a second one once that organisation has its admin', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'org-fresh'), {
+        name: 'Freshly onboarded', adminEmail: 'hr-fresh@example.com',
+        createdBy: SUPER.uid, adminUid: 'hr-fresh',
+      });
+    });
+    await assertFails(setDoc(doc(as(SUPER), 'users', 'second-hr'), {
+      uid: 'second-hr', email: 'second@example.com', displayName: 'Second',
+      role: 'hr', orgId: 'org-fresh',
+    }));
+  });
+
+  it("an organisation's own HR still creates accounts in it", async () => {
+    // The capability moves to where it belongs rather than disappearing.
+    await assertSucceeds(setDoc(doc(as(HR_A), 'users', 'new-joiner'), {
+      uid: 'new-joiner', email: 'joiner@example.com', displayName: 'Joiner',
+      role: 'employee', orgId: 'org-a',
+    }));
+  });
+
+  it('KNOWN GAP: an organisation with no adminUid recorded stays seedable', async () => {
+    // Stated as a test rather than left to be discovered. The gate asks
+    // `organizations/{orgId}.adminUid` because rules cannot query for "does
+    // any user hold hr in this org", so an organisation that never got its
+    // adminUid stamped — provisioning interrupted between the profile write
+    // and the final updateDoc, or a record predating the field — remains open
+    // to a super admin seeding an account into it.
+    //
+    // All four organisations on the live project carry one, so nothing is
+    // currently exposed. The durable fix is to stamp adminUid in the same
+    // write as the profile rather than after it; until then this asserts the
+    // shape of the hole so it cannot widen unnoticed.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'organizations', 'org-unstamped'), {
+        name: 'Never finished provisioning', adminEmail: 'x@example.com', createdBy: SUPER.uid,
+      });
+    });
+    await assertSucceeds(setDoc(doc(as(SUPER), 'users', 'seeded-late'), {
+      uid: 'seeded-late', email: 'seeded@example.com', displayName: 'Seeded',
+      role: 'hr', orgId: 'org-unstamped',
+    }));
+  });
+});
 
 describe('super admin — the tenant is unaffected by all of this', () => {
   it('HR still reads their own organisation', async () => {

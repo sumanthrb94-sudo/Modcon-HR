@@ -227,6 +227,19 @@ service cloud.firestore {
       return orgKeyOf(request.resource.data) == myOrgKey();
     }
 
+    /**
+     * True while an organisation has not yet recorded an administrator.
+     *
+     * The window in which a super admin may seed its first account. A missing
+     * organisation record counts as awaiting one so that provisioning is not
+     * ordering-dependent, and an empty `adminUid` counts because that is the
+     * state `addNew` leaves the record in before the admin exists.
+     */
+    function orgAwaitsFirstAdmin(orgId) {
+      return !exists(/databases/$(database)/documents/organizations/$(orgId)) ||
+        get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminUid', '') == '';
+    }
+
     // Managers, HR and admins can act on approval workflows.
     function isManager() {
       return isSignedIn() &&
@@ -388,7 +401,22 @@ service cloud.firestore {
         (isAdmin() &&
           (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()) &&
           request.resource.data.orgId is string &&
-          request.resource.data.orgId.size() > 0) ||
+          request.resource.data.orgId.size() > 0 &&
+          // A super admin seeds an organisation's *first* account and nothing
+          // after it. Without this, closing the tenant boundary achieved very
+          // little: the platform account could mint a fresh profile with
+          // `role: 'hr'` and any `orgId`, sign in as it, and read everything
+          // through the front door instead of around the side.
+          //
+          // "First" is asked of `organizations/{orgId}.adminUid`, because
+          // rules cannot query a collection — there is no way to ask whether
+          // any user already holds `hr` in that org. The provisioning order in
+          // lib/organizations.ts makes that field the right proxy: the org
+          // record is written first without it, the admin's profile second,
+          // and only then is `adminUid` stamped. So this passes exactly once
+          // per organisation, at the moment it is being provisioned, and never
+          // again.
+          (!isSuperAdmin() || orgAwaitsFirstAdmin(request.resource.data.orgId))) ||
         (isHR() &&
           request.resource.data.role != 'admin' &&
           request.resource.data.get('superAdmin', false) == false &&
@@ -402,7 +430,24 @@ service cloud.firestore {
         (isAdmin() && (
           request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
           isSuperAdmin()
-        )) ||
+        ) &&
+          // An administrator acting on *their own* profile through this branch
+          // may not move themselves between organisations.
+          //
+          // This is how the tenant boundary was walked around. A super admin
+          // holds role 'admin', so this branch applied to their own document,
+          // and it carried no orgId constraint — one write of
+          // `{ orgId: 'someone-elses-org', role: 'hr' }` onto their own profile
+          // made them a member of that tenant, and every rule that asks
+          // `inMyOrg()` then answered yes. The boundary held; the identity
+          // moved. Proven, and now asserted in super-admin-boundary.
+          //
+          // Self-updates still work — the sign-in upsert rewrites this document
+          // on every login — they simply cannot carry a different orgId. A
+          // genuine org move is somebody else's write (Organizations → Set HR
+          // admin), which is untouched.
+          (request.auth.uid != uid ||
+            request.resource.data.get('orgId', null) == resource.data.get('orgId', null))) ||
         (isHR() &&
           // Cannot grant the admin role, nor edit anyone who already holds it —
           // so no self-promotion, and no demoting the admin who could undo it.
