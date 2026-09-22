@@ -499,7 +499,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // that copy the organisation's rather than one browser's. Without it
         // every module falls back to exactly the per-browser behaviour it had
         // before. See src/data/persistence.ts.
-        const stopRecords = startSharedCollectionsSync(resolveOrgKeyForProfile(profile));
+        // The reader is passed in because one store is not everybody's:
+        // `payrollRuns` carries the organisation's own totals, so an ordinary
+        // employee does not subscribe to it and `firestore.rules` refuses the
+        // read besides. `role` and not a capability check, because this runs
+        // at sign-in and matches what `isOrgAdmin()` resolves to on the
+        // server — admin or hr.
+        const stopRecords = startSharedCollectionsSync(resolveOrgKeyForProfile(profile), {
+          isOrgAdmin: profile.role === 'admin' || profile.role === 'hr',
+        });
         // And which employee record this account *is*, as the administrator
         // who wrote `employee_links/{uid}` said and as firestore.rules reads
         // it. Same arrangement again — Firestore is the answer, a localStorage

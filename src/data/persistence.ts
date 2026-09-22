@@ -99,8 +99,18 @@ interface OverlayEntry<T> {
 
 type Overlay<T> = OverlayEntry<T>[];
 
+/**
+ * Who may read a store, which decides whether this browser subscribes at all.
+ *
+ * `org` is the default and what every store was: any signed-in member of the
+ * organisation. `orgAdmin` is for a store whose documents are about the
+ * company rather than about a person — see the note on `activeReader`.
+ */
+type StoreReadScope = 'org' | 'orgAdmin';
+
 interface RegisteredStore {
   storeKey: string;
+  readScope: StoreReadScope;
   hydrate(entries: Array<{ id: string; json: string | null; deleted: boolean }>): void;
 }
 
@@ -121,6 +131,28 @@ const registry: RegisteredStore[] = [];
  */
 let activeOrgKey: string | null = null;
 const listeners = new Map<string, () => void>();
+
+/**
+ * Who is reading, so a store that is not everybody's can say so.
+ *
+ * `org_records` is one collection with one rules block, and its reads were
+ * organisation-wide for every signed-in member. That is right for most stores
+ * — a ticket queue, an asset register, the directory — and wrong for the ones
+ * that carry money. `payrollRuns` is the clearest case: a run document holds
+ * `grossTotal`, `netTotal` and `employeeCount` for the WHOLE COMPANY, and
+ * every employee's browser subscribed to it.
+ *
+ * The narrowing has to happen in both places or it breaks. A rule alone denies
+ * the subscription whole — a list is evaluated against every document it
+ * returns — and `subscribeStore`'s error handler only warns, so the page would
+ * go on rendering a stale cache with nothing said. A client filter alone is no
+ * boundary at all, since the query is the client's to change. So: the rules
+ * refuse, and the client does not ask.
+ *
+ * Null until sign-in resolves, which is also the safe reading: a store that is
+ * `orgAdmin` is not subscribed for an unknown reader.
+ */
+let activeReader: { isOrgAdmin: boolean } | null = null;
 
 /**
  * The lifted fields win over the copies inside `data`, and that is what makes
@@ -167,6 +199,13 @@ function authoritativeJson(data: {
 
 function subscribeStore(store: RegisteredStore, orgKey: string) {
   listeners.get(store.storeKey)?.();
+  // Not this reader's to read. Deliberately "do not subscribe" rather than
+  // "subscribe and handle the denial": a denied listener is a console warning
+  // and a permission-denied on the server for every member of the company,
+  // every session, forever. The seed still supplies whatever this store shows
+  // without the server, which for `payrollRuns` is the demo data and for a
+  // real organisation is nothing.
+  if (store.readScope === 'orgAdmin' && !activeReader?.isOrgAdmin) return;
   listeners.set(
     store.storeKey,
     onSnapshot(
@@ -288,6 +327,9 @@ export function persistentCollection<T extends Identified>(
    * records.
    */
   storeKey: string,
+  /** Who may read it. Defaults to the organisation, which is what every
+   * store was before `payrollRuns` needed narrowing. */
+  readScope: StoreReadScope = 'org',
 ): PersistentCollection<T> {
   // A new key on purpose. The old one holds the *merged* array, and reading
   // that back as an overlay would resurrect every record this organisation had
@@ -463,6 +505,7 @@ export function persistentCollection<T extends Identified>(
 
   const registration: RegisteredStore = {
     storeKey,
+    readScope,
     hydrate(entries) {
       const overlay: Overlay<T> = [];
       const state = new Map<string, string>();
@@ -517,10 +560,14 @@ export function persistentCollection<T extends Identified>(
  * Stores that register later — every lazy-loaded page — subscribe themselves,
  * because `activeOrgKey` outlives this call.
  */
-export function startSharedCollectionsSync(orgKey: string): () => void {
+export function startSharedCollectionsSync(
+  orgKey: string,
+  reader: { isOrgAdmin: boolean } = { isOrgAdmin: false },
+): () => void {
   stopSharedCollectionsSync();
   if (!orgKey) return () => {};
 
+  activeReader = reader;
   activeOrgKey = orgKey;
   registry.forEach((store) => subscribeStore(store, orgKey));
   return stopSharedCollectionsSync;
@@ -528,6 +575,7 @@ export function startSharedCollectionsSync(orgKey: string): () => void {
 
 export function stopSharedCollectionsSync(): void {
   activeOrgKey = null;
+  activeReader = null;
   listeners.forEach((unsub) => unsub());
   listeners.clear();
 }

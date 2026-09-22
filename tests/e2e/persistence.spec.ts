@@ -46,6 +46,14 @@ test.describe.serial('data survives a refresh', () => {
 
     await page.getByRole('link', { name: 'Helpdesk', exact: true }).first().click();
     await page.getByRole('button', { name: 'Raise Ticket' }).first().click();
+    // Name is required and has no default for this account, which is the
+    // point of it: the raiser used to fall back to whoever sorted first in
+    // the directory, so a ticket credited a colleague who had never seen it.
+    // An account the app cannot match to an employee record gets no default
+    // rather than an arbitrary one, so the spec has to say who is raising it
+    // — as a person would. Submit stays disabled until it does.
+    const raiser = page.getByRole('dialog').getByRole('combobox').first();
+    await raiser.selectOption({ index: 1 });
     await page.getByPlaceholder('Briefly describe your issue…').fill(subject);
     // The modal's own submit, not the page-level button that opened it.
     await page.getByRole('dialog').getByRole('button', { name: 'Submit Ticket' }).click();

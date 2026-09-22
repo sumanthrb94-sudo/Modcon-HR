@@ -1200,7 +1200,7 @@ service cloud.firestore {
       // Until those land, `src/lib/dataScope.ts` is what narrows who is SHOWN
       // what, and this block remains a tenant boundary plus the per-store
       // write clauses below. docs/shared-records-spec.md §5.
-      allow get, list: if isSignedIn() && inMyOrg();
+      allow get, list: if isSignedIn() && inMyOrg() && orgRecordReadIsAuthorised();
       allow create, update: if isSignedIn() && writingToMyOrg() &&
         validOrgRecord(docId) &&
         leaveDecisionIsAuthorised() &&
@@ -1462,6 +1462,45 @@ service cloud.firestore {
      */
     function payrollWriteIsAuthorised() {
       return request.resource.data.store != 'payrollRuns' || isOrgAdmin();
+    }
+
+    /**
+     * The organisation's own figures are the administrators', not the company's.
+     *
+     * The first READ narrowing in this block, and the argument for it is the
+     * document rather than the store: a `payrollRuns` record carries
+     * `grossTotal`, `netTotal` and `employeeCount` for the WHOLE organisation.
+     * It is not about an employee, so no employee has a claim on it — yet
+     * every one of them subscribed to it, because `org_records` reads were
+     * organisation-wide for every signed-in member.
+     *
+     * `isOrgAdmin()` and not `isManager()`: `defaultPermissions` in
+     * src/lib/accessControl.ts gives the Payroll module to Admin and HR
+     * Manager and withholds it from Manager, so the read matches the write
+     * clause above rather than being one tier wider.
+     *
+     * This could not be closed on its own. An employee's Finance page built
+     * their OWN payslip history by mapping every payroll run through
+     * `buildPayslip`, so denying the read emptied a page about them. That
+     * history now comes from their own payslips
+     * (src/pages/finance/index.tsx), and `src/data/persistence.ts` no longer
+     * subscribes a non-administrator to the store at all — a rule that
+     * refuses a subscription the client still makes is a console warning and
+     * a denied read per member per session, forever.
+     *
+     * `.get('store','')` rather than `.store`: a `list` is evaluated against
+     * every document it returns, and a missing field errors, which would deny
+     * the whole query including the documents that are fine.
+     *
+     * The other two read gaps the QA gate suite names — per-record reads on
+     * `expenseClaims` and `payslips` — are NOT closed here. Those are about
+     * whose record it is rather than what kind of record it is, so they need
+     * the subscription narrowed per employee and `managerChainIds`
+     * denormalised onto these documents first. See the note on the get/list
+     * rule above.
+     */
+    function orgRecordReadIsAuthorised() {
+      return resource.data.get('store', '') != 'payrollRuns' || isOrgAdmin();
     }
 
     // -------------------------------------------------------------------

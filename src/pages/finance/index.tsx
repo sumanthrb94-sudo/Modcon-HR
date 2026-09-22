@@ -25,8 +25,10 @@ import {
   buildPayslipComponents,
   deductionRows,
   employerContributionRows,
-  getPayrollRuns,
+  getPayslips,
+  PAYSLIPS_CHANGED_EVENT,
 } from '@/data/payroll';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { formatINR, formatDate } from '@/lib/utils';
 import type { Payslip } from '@/types';
 import { PayrollPage } from '@/pages/payroll';
@@ -40,6 +42,9 @@ function monthLabel(month: string): string {
 
 function EmployeeFinancePage() {
   const { profile } = useAuth();
+  // A payslip written by a payroll run that lands while this page is open —
+  // the same reason every other mounted surface subscribes to its store.
+  const payslipsRevision = useCollectionRevision(PAYSLIPS_CHANGED_EVENT);
   // The organisation's salary split can change under a mounted page — and is
   // hydrated from Firestore shortly after this one first renders.
   useSalaryStructureRevision();
@@ -58,14 +63,34 @@ function EmployeeFinancePage() {
 
   // Declared above the `!employee` guard below: hooks must run in the same
   // order on every render, and an unmatched profile must not change the count.
+  // This employee's own payslips, and not one mapped out of every payroll run.
+  //
+  // It used to be `getPayrollRuns().map(...)`, which meant an employee's own
+  // Finance page could not render unless their browser had read the
+  // organisation's payroll-run documents — and those carry `grossTotal`,
+  // `netTotal` and `employeeCount` for the whole company. So every employee
+  // read what the company pays in total, to be shown the months they were paid
+  // in. QA's G1 suite found the read; this is what made it impossible to close
+  // until now.
+  //
+  // A payslip history is the months this person was actually paid, which is
+  // exactly what their own payslips say. The previous version computed one for
+  // every month the company ran payroll, whether or not this employee was
+  // there for it — so somebody who joined in March was shown a January
+  // payslip. Reading their own records is both narrower and more truthful.
+  //
+  // The visible consequence, worth knowing before it is reported as a bug:
+  // the demo organisation seeds one payslip month against six payroll runs, so
+  // its history is shorter than it was. A real organisation's payslips are
+  // written by each payroll run, so its history is unchanged.
   const payslipHistory = useMemo(
     () =>
       employee
-        ? getPayrollRuns()
-            .map((run) => buildPayslip(employee, run.month, run.status))
+        ? getPayslips()
+            .filter((payslip) => payslip.employeeId === employee.id)
             .sort((a, b) => b.month.localeCompare(a.month))
         : [],
-    [employee],
+    [employee, payslipsRevision],
   );
 
   // The payslips HR uploaded for this employee. `null` rather than `undefined`

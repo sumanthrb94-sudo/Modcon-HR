@@ -278,18 +278,33 @@ describe('G1 — payroll/salary/statutory are HR-admin only', () => {
     await assertSucceeds(getDoc(doc(empA1(), 'org_settings', `${ORG_A}__salaryStructure`)));
   });
 
-  // KNOWN GAP (G1) — skipped so CI states the gap rather than hiding it
-  // behind an assertion inverted to today's behaviour.
+  // CLOSED. `orgRecordReadIsAuthorised()` narrows this one store to
+  // `isOrgAdmin()`, because a payroll run carries grossTotal, netTotal and
+  // employeeCount for the whole organisation — it is not about an employee,
+  // so no employee has a claim on it.
   //
-  // The leak is real: a payroll run carries `grossTotal`, `netTotal` and
-  // `employeeCount` for the whole company. It is not closed by denying the
-  // read, because the same documents build the employee's OWN payslip
-  // history — src/pages/finance/index.tsx:61 maps every run through
-  // buildPayslip. The employee needs `month` and `status`; the totals are
-  // what they must not see. Closing it means deriving that history from the
-  // employee's own payslips first, then narrowing this rule.
-  it.skip('empA1 CANNOT read payrollRuns', async () => {
+  // It could not be closed on its own: the employee's own Finance page built
+  // their payslip history by mapping every payroll run, so denying the read
+  // emptied a page about them. That history comes from their own payslips
+  // now, and persistence.ts no longer subscribes a non-administrator to the
+  // store at all.
+  it('empA1 CANNOT read payrollRuns', async () => {
     await assertFails(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'payrollRuns', 'run1'))));
+  });
+
+  it('hrA CAN read payrollRuns', async () => {
+    // The other direction, which the QA suite did not ask for and which the
+    // narrowing would be worthless without: an administrator still reads the
+    // organisation's own figures.
+    await assertSucceeds(getDoc(doc(hrA(), 'org_records', recordId(ORG_A, 'payrollRuns', 'run1'))));
+  });
+
+  it('and narrowing one store does not narrow the others', async () => {
+    // The read guard is keyed on the store name, so an expense claim, a
+    // ticket or an attendance record stays organisation-wide. Keyed on
+    // `.get('store','')` because a list is evaluated per document and a
+    // missing field would error, denying the whole query.
+    await assertSucceeds(getDoc(doc(empA1(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp1'))));
   });
 
   it('empA1 CANNOT write payrollRuns', async () => {

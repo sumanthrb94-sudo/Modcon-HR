@@ -418,11 +418,27 @@ export function salaryByDepartment(): Array<{ department: string; total: number 
 // Processing a payroll run changed React state only, so the run went back to
 // Draft on the next refresh — the app appearing to forget that payroll had
 // been run is about the worst version of this bug.
+/**
+ * Read by administrators, not by the company.
+ *
+ * A payroll run carries `grossTotal`, `netTotal` and `employeeCount` for the
+ * whole organisation, and every employee's browser used to subscribe to it —
+ * so anyone could read what the company pays in total. `firestore.rules`
+ * refuses that now, and this is the other half: an ordinary employee does not
+ * ask for it. See the note on `activeReader` in src/data/persistence.ts for
+ * why both halves are needed.
+ *
+ * The employee's own payslip history used to be derived from these documents
+ * (every run mapped through `buildPayslip`), which is why the read could not
+ * simply be closed. It comes from their own payslips now — see
+ * src/pages/finance/index.tsx.
+ */
 const payrollRunStore = persistentCollection<PayrollRun>(
   'modcon.hr.payrollRuns',
   'modcon-hr-payroll-runs-changed',
   () => payrollRuns,
   'payrollRuns',
+  'orgAdmin',
 );
 
 export const PAYROLL_RUNS_CHANGED_EVENT = payrollRunStore.changedEvent;
