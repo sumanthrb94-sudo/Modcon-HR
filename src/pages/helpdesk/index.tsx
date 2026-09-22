@@ -56,6 +56,30 @@ interface ConvoMessage {
   time: string;
 }
 
+/**
+ * Who an auto-generated reply speaks as — never `ticket.assignedTo`.
+ *
+ * The two messages below are canned boilerplate that appears the instant a
+ * ticket is filed or marked resolved, not something the assignee sat down and
+ * typed. Attributing them to whoever the ticket happens to be assigned to —
+ * a real colleague, or nobody at all once `UNASSIGNED_TICKET_OWNER` is a
+ * possible value — put words in a real person's mouth they never wrote, the
+ * same misattribution `a7929d8` fixed for the raiser default. A neutral
+ * identity is who actually sent them: the system, on the organisation's
+ * behalf, before any human has necessarily looked at the ticket.
+ */
+const SUPPORT_IDENTITY = 'Support';
+
+/**
+ * The routing state of a ticket nobody has picked up yet.
+ *
+ * Not a person, and deliberately never chosen for a submitter — see
+ * `resolvedAssignee` in `RaiseTicketModal`. A real name here is a claim that
+ * somebody agreed to own this ticket; absent that, the honest answer is that
+ * nobody has, not a guess at who probably will.
+ */
+const UNASSIGNED_TICKET_OWNER = 'Unassigned';
+
 function mockConvo(ticket: Ticket): ConvoMessage[] {
   const raiser = getEmployeeName(ticket.raisedById);
   return [
@@ -66,7 +90,7 @@ function mockConvo(ticket: Ticket): ConvoMessage[] {
       time: ticket.createdOn,
     },
     {
-      author: ticket.assignedTo,
+      author: SUPPORT_IDENTITY,
       isAgent: true,
       text: `Hi ${raiser.split(' ')[0]}, I've received your ticket and am looking into it now.`,
       time: new Date(new Date(ticket.createdOn).getTime() + 15 * 60 * 1000).toISOString(),
@@ -74,7 +98,7 @@ function mockConvo(ticket: Ticket): ConvoMessage[] {
     ...(ticket.status === 'Resolved' || ticket.status === 'Closed'
       ? [
           {
-            author: ticket.assignedTo,
+            author: SUPPORT_IDENTITY,
             isAgent: true,
             text: 'This has been resolved. Please let us know if you face any further issues.',
             time: new Date(new Date(ticket.createdOn).getTime() + 2 * 60 * 60 * 1000).toISOString(),
@@ -231,8 +255,12 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
   // organisation that was the only employee, and in a large one it is whoever
   // happens to sort first. Empty means empty: the form asks.
   const [raisedById, setRaisedById] = useState(defaultRaisedById ?? '');
-  // Default assignee comes from the available options rather than a fixed
-  // name — a fresh org has no 'Rahul Deshpande' to assign tickets to.
+  // Same reasoning as `raisedById` just above, and the same bug shape:
+  // `resolvedAssignee` below used to fall back to `assigneeOptions[0]`,
+  // silently routing every new ticket to whoever happened to sort first in
+  // the merged list of support names and directory employees — a real
+  // colleague credited with picking up work nobody handed them. Unassigned
+  // is a real state a ticket can be in, not a gap to paper over with a guess.
   const [assignedTo, setAssignedTo] = useState('');
   const [category, setCategory] = useState('IT');
   const [priority, setPriority] = useState('Medium');
@@ -250,15 +278,25 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
     }))),
   ];
 
-  const assigneeOptions = Array.from(new Set([
-    ...initialTickets.map((ticket) => ticket.assignedTo),
-    ...directory.map((employee) => employee.fullName),
-  ])).map((name) => ({
-    label: name,
-    value: name,
-  }));
+  // A leading `Unassigned`, same reasoning as the employee picker's leading
+  // blank: the control should say nobody has been routed this ticket yet,
+  // rather than pre-selecting whichever support name or colleague happens to
+  // come first in the merged list.
+  const assigneeOptions = [
+    { label: UNASSIGNED_TICKET_OWNER, value: UNASSIGNED_TICKET_OWNER },
+    ...Array.from(new Set([
+      ...initialTickets.map((ticket) => ticket.assignedTo),
+      ...directory.map((employee) => employee.fullName),
+    ])).map((name) => ({
+      label: name,
+      value: name,
+    })),
+  ];
 
-  const resolvedAssignee = assignedTo || assigneeOptions[0]?.value || '';
+  // No fallback to `assigneeOptions[0]`: an unrouted ticket says so rather
+  // than crediting whoever sorts first, the exact shape of bug `a7929d8`
+  // fixed for `raisedById`.
+  const resolvedAssignee = assignedTo || UNASSIGNED_TICKET_OWNER;
 
   const handleSubmit = () => {
     if (!subject.trim() || !raisedById) return;
