@@ -23,7 +23,7 @@ import {
   Select,
 } from '@/components/ui';
 import { tickets as initialTickets, ticketCategories, getTickets, saveTickets, TICKETS_CHANGED_EVENT } from '@/data/helpdesk';
-import { employees, getEmployeeName } from '@/data/employees';
+import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
@@ -222,21 +222,37 @@ const PRIORITY_OPTIONS_LIST: { label: string; value: string }[] = [
 
 function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedById }: RaiseTicketProps) {
   const [subject, setSubject] = useState('');
-  const [raisedById, setRaisedById] = useState(defaultRaisedById ?? employees[0]?.id ?? '');
+  // Never `employees[0]`. An HR admin has no employee record of their own —
+  // `getCurrentEmployee` answers only for the Employee role — so the caller
+  // passes no default, and falling back to the first person in the directory
+  // filed the ticket against somebody who did nothing. The exported
+  // `employees` array is kept in sync with the live directory
+  // (data/employees.ts splices it on every change), so in a one-person
+  // organisation that was the only employee, and in a large one it is whoever
+  // happens to sort first. Empty means empty: the form asks.
+  const [raisedById, setRaisedById] = useState(defaultRaisedById ?? '');
   // Default assignee comes from the available options rather than a fixed
   // name — a fresh org has no 'Rahul Deshpande' to assign tickets to.
   const [assignedTo, setAssignedTo] = useState('');
   const [category, setCategory] = useState('IT');
   const [priority, setPriority] = useState('Medium');
 
-  const employeeSelectOptions = employeeOptions ?? employees.map((employee) => ({
-    label: employee.fullName,
-    value: employee.id,
-  }));
+  // Through the getter, never the exported seed array — the directory is the
+  // organisation's now, and a colleague added on another laptop has to appear
+  // here. A leading blank so the control opens unanswered rather than
+  // volunteering a name nobody chose.
+  const directory = getEmployeeDirectory();
+  const employeeSelectOptions = [
+    { label: 'Select an employee…', value: '' },
+    ...(employeeOptions ?? directory.map((employee) => ({
+      label: employee.fullName,
+      value: employee.id,
+    }))),
+  ];
 
   const assigneeOptions = Array.from(new Set([
     ...initialTickets.map((ticket) => ticket.assignedTo),
-    ...employees.map((employee) => employee.fullName),
+    ...directory.map((employee) => employee.fullName),
   ])).map((name) => ({
     label: name,
     value: name,
@@ -245,7 +261,7 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
   const resolvedAssignee = assignedTo || assigneeOptions[0]?.value || '';
 
   const handleSubmit = () => {
-    if (!subject.trim()) return;
+    if (!subject.trim() || !raisedById) return;
     onSubmit({
       subject: subject.trim(),
       category,
@@ -270,7 +286,7 @@ function RaiseTicketModal({ onClose, onSubmit, employeeOptions, defaultRaisedByI
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!subject.trim()}>
+          <Button onClick={handleSubmit} disabled={!subject.trim() || !raisedById}>
             <Send size={14} className="mr-1" />
             Submit Ticket
           </Button>
