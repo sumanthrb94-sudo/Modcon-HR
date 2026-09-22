@@ -159,6 +159,21 @@ export const LEAVE_BALANCE_PERSONA = {
   roleLabel: 'Employee',
 };
 
+/**
+ * auth-control-label.spec.ts hires somebody with this address and then, from
+ * a second account, creates a login for that record — the same
+ * employee_links write the three personas above exist to isolate. A shared
+ * persona would leave a stray login behind for whichever spec's employee got
+ * to it first, and the next run's "no login yet" case would already be true.
+ */
+export const AUTH_LABEL_PERSONA = {
+  role: 'employee' as const,
+  email: process.env.E2E_AUTH_LABEL_EMAIL ?? 'playwright-e2e-auth-label@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Auth Label',
+  roleLabel: 'Employee',
+};
+
 export interface Persona {
   role: Role;
   email: string;

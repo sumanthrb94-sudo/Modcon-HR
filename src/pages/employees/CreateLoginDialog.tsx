@@ -9,7 +9,7 @@ import {
   sendSetPasswordEmail,
   type InviteAccountResult,
 } from '@/lib/accountInvites';
-import { linkAccountForEmployee } from '@/data/employeeLinks';
+import { linkAccountForEmployee, useEmployeeHasLogin } from '@/data/employeeLinks';
 import type { Employee } from '@/types';
 import type { UserRole } from '@/lib/auth';
 
@@ -39,15 +39,33 @@ import type { UserRole } from '@/lib/auth';
  * The temporary password is still shown, because email is not reliable and a
  * misspelled address or an aggressive spam filter must not leave somebody with
  * no way in at all. It is shown once and never stored.
+ *
+ * ## Create, or reset — the button says which
+ *
+ * Whether this employee already has a login is answered exactly one way in
+ * this codebase: `employee_links` (see "Who an account *is* has one answer"
+ * in CLAUDE.md). `useEmployeeHasLogin` reads it, never `Employee.authUid` —
+ * that field is the directory's own claim about itself, the same
+ * second, disagreeing source of identity the rest of the app has already
+ * retired. `hasLogin` is `undefined` while that read is still resolving, and
+ * is treated as "no" here: showing "Create login" when the answer is
+ * genuinely unknown is the safe direction to fail in, and the create flow
+ * already covers the account turning out to exist (the
+ * `auth/email-already-in-use` branch in `create()` below) — nothing is lost
+ * by waiting rather than guessing "Reset password" for an account that may
+ * not be there.
  */
 export function CreateLoginDialog({
   employee,
   open,
   onClose,
+  hasLogin,
 }: {
   employee: Employee;
   open: boolean;
   onClose: () => void;
+  /** See "Create, or reset" above. Missing/undefined renders as "no". */
+  hasLogin?: boolean;
 }) {
   const { profile } = useAuth();
   const [role, setRole] = useState<UserRole>('employee');
@@ -119,31 +137,51 @@ export function CreateLoginDialog({
   }
 
   async function resend() {
+    setWorking(true);
     setError('');
     try {
       await sendSetPasswordEmail(employee.email ?? '');
       setLinkedExisting(`A set-password link has been emailed to ${employee.email}.`);
     } catch (err) {
       setError(friendlyInviteError(err));
+    } finally {
+      setWorking(false);
     }
   }
 
   const noAddress = !employee.email?.trim();
+  // See the "Create, or reset" note above — undefined reads as "no".
+  const resetting = hasLogin === true;
 
   return (
     <Modal
       open={open}
       onClose={close}
-      title={result ? 'Login created' : `Create a login for ${employee.firstName}`}
+      title={
+        result
+          ? 'Login created'
+          : resetting
+            ? `Reset ${employee.firstName}'s password`
+            : `Create a login for ${employee.firstName}`
+      }
       subtitle={
         result
           ? 'They set their own password from the link — nothing here needs to be passed on by hand.'
-          : 'An account for this employee, in this organisation, with the role you choose.'
+          : resetting
+            ? 'Firebase emails them a link to set a new password — it does not reveal or change the one they have.'
+            : 'An account for this employee, in this organisation, with the role you choose.'
       }
       size="sm"
       footer={
         result || linkedExisting ? (
           <Button variant="primary" onClick={close}>Done</Button>
+        ) : resetting ? (
+          <>
+            <Button variant="secondary" onClick={close} disabled={working}>Cancel</Button>
+            <Button variant="primary" onClick={resend} disabled={working || noAddress}>
+              {working ? 'Sending…' : 'Send reset link'}
+            </Button>
+          </>
         ) : (
           <>
             <Button variant="secondary" onClick={close} disabled={working}>Cancel</Button>
@@ -225,6 +263,29 @@ export function CreateLoginDialog({
         </div>
       ) : linkedExisting ? (
         <p className="text-sm text-ink-700">{linkedExisting}</p>
+      ) : resetting ? (
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-ink-400">Sign-in address</p>
+            <p className="font-mono text-sm text-ink-900 break-all">
+              {employee.email || <span className="text-brand-700">No work email on this record</span>}
+            </p>
+          </div>
+
+          <p className="text-sm text-ink-700">
+            This employee already has a login. Sending a link lets them set a new password — it
+            does not change or reveal the one they have now.
+          </p>
+
+          {noAddress && (
+            <p className="text-xs text-brand-700">
+              Add a work email to this employee&rsquo;s profile first — it is the address they sign
+              in with.
+            </p>
+          )}
+
+          {error && <p className="text-sm text-brand-700">{error}</p>}
+        </div>
       ) : (
         <div className="space-y-3">
           <div>
@@ -272,16 +333,27 @@ export function CreateLoginDialog({
 
 /** The control that opens the dialog. Renders nothing for a non-administrator. */
 export function CreateLoginButton({ employee, className }: { employee: Employee; className?: string }) {
-  const { isAdmin, isHR } = useAuth();
+  const { isAdmin, isHR, profile } = useAuth();
   const [open, setOpen] = useState(false);
+  // Called unconditionally — the early return below must come after every
+  // hook, or the non-administrator case skips it on some renders and not
+  // others. undefined (still resolving, or the read failed) renders as "no
+  // login", the fail-closed direction — see the "Create, or reset" note on
+  // CreateLoginDialog above.
+  const hasLogin = useEmployeeHasLogin(employee.id, profile?.orgId);
   if (!isAdmin && !isHR) return null;
 
   return (
     <>
       <Button variant="secondary" size="sm" className={className} onClick={() => setOpen(true)}>
-        <KeyRound size={14} className="mr-1.5" /> Create login
+        <KeyRound size={14} className="mr-1.5" /> {hasLogin ? 'Reset password' : 'Create login'}
       </Button>
-      <CreateLoginDialog employee={employee} open={open} onClose={() => setOpen(false)} />
+      <CreateLoginDialog
+        employee={employee}
+        open={open}
+        onClose={() => setOpen(false)}
+        hasLogin={hasLogin}
+      />
     </>
   );
 }

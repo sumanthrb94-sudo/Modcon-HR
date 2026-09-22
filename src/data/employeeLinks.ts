@@ -17,6 +17,7 @@
  * about `request.auth.uid`, and because an employee's email is editable while
  * their uid is not.
  */
+import { useEffect, useState } from 'react';
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
@@ -306,4 +307,80 @@ export function clearEmployeeLinkCache(): void {
     // that answers.
   }
   window.dispatchEvent(new Event(EMPLOYEE_LINK_CHANGED_EVENT));
+}
+
+// ---------------------------------------------------------------------------
+// The other direction: does *this* employee record already have a login?
+// ---------------------------------------------------------------------------
+//
+// Everything above answers "which employee is this account" for the
+// signed-in account itself. An administrator on an employee's profile is
+// asking the mirror question — "does this employee already have one" — and it
+// has to go through the same collection: `Employee.authUid` looks like an
+// answer, but it is the directory's own claim about itself (localStorage,
+// client-controlled, and exactly the second, disagreeing source of identity
+// the rest of this file exists to retire — see the block comment above). The
+// server's answer is still `employee_links`, just read from the other side.
+
+/**
+ * Whether any account already resolves to `employeeId`, kept live.
+ *
+ * `employeeId` alone cannot key the query: ids are per-org sequences
+ * (`emp-002` exists in every tenant — see the careers-page note in
+ * CLAUDE.md), so without an `orgId` filter a same-numbered employee in
+ * another organisation would read as a login for this one. `orgId` follows
+ * the same sentinel `linkAccountForEmployee` stamps a link with.
+ */
+function watchEmployeeHasLogin(
+  employeeId: string,
+  orgId: string | undefined,
+  onChange: (hasLogin: boolean) => void,
+): () => void {
+  const id = employeeId.trim();
+  if (!id) {
+    onChange(false);
+    return () => {};
+  }
+  const orgKey = orgId || DEFAULT_ORG_KEY;
+  return onSnapshot(
+    query(
+      collection(db, 'employee_links'),
+      where('employeeId', '==', id),
+      where('orgId', '==', orgKey),
+    ),
+    (snap) => onChange(!snap.empty),
+    () => {
+      // A read failure leaves the caller's "unknown" state alone rather than
+      // asserting an answer either way — see useEmployeeHasLogin below, which
+      // is what turns "unknown" into "Create login" rather than a guessed
+      // "Reset password" for an account that may not exist.
+    },
+  );
+}
+
+/**
+ * Whether this employee record already has a login, for the life of the
+ * component.
+ *
+ * `undefined` covers "still resolving" and "the read failed" alike, on
+ * purpose: a caller offering a control on the strength of this answer must
+ * treat `undefined` the same as `false` — showing "Create login" when the
+ * answer is genuinely unknown is the safe direction to fail in. Offering a
+ * password reset for an account that may not exist is the wrong one; the
+ * create flow already covers the account existing after all (the
+ * `auth/email-already-in-use` branch in `CreateLoginDialog.create()`), so
+ * nothing is lost by waiting for a real answer here.
+ */
+export function useEmployeeHasLogin(
+  employeeId: string,
+  orgId: string | undefined,
+): boolean | undefined {
+  const [hasLogin, setHasLogin] = useState<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    setHasLogin(undefined);
+    return watchEmployeeHasLogin(employeeId, orgId, setHasLogin);
+  }, [employeeId, orgId]);
+
+  return hasLogin;
 }

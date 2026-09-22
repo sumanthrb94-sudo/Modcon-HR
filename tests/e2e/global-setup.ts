@@ -1,5 +1,6 @@
 import {
   FIREBASE_API_KEY,
+  AUTH_LABEL_PERSONA,
   DOCUMENTS_PERSONA,
   GEOFENCE_PERSONA,
   HIRING_MANAGER_PERSONA,
@@ -65,6 +66,7 @@ async function globalSetup() {
     DOCUMENTS_PERSONA,
     PAYSLIP_PERSONA,
     LEAVE_BALANCE_PERSONA,
+    AUTH_LABEL_PERSONA,
   ]) {
     await provision(persona.email, persona.password);
   }
