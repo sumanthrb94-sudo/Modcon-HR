@@ -118,7 +118,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * after itself. Emulator-gated like the rest of this project, so a run never
  * leaves a real tenant behind.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|leave-unpaid-fallback|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.

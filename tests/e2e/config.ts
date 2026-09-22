@@ -159,6 +159,20 @@ export const LEAVE_BALANCE_PERSONA = {
   roleLabel: 'Employee',
 };
 
+/**
+ * Hired fresh in leave-unpaid-fallback.spec.ts, which rewrites the
+ * organisation's whole leave policy list for the run — sharing
+ * LEAVE_BALANCE_PERSONA would mean two specs mutating shared config through
+ * one signed-in identity, in different projects, on no guaranteed order.
+ */
+export const UNPAID_FALLBACK_PERSONA = {
+  role: 'employee' as const,
+  email: process.env.E2E_UNPAID_FALLBACK_EMAIL ?? 'playwright-e2e-unpaid-fallback@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Fallback',
+  roleLabel: 'Employee',
+};
+
 export interface Persona {
   role: Role;
   email: string;
