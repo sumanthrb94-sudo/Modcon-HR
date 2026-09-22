@@ -182,6 +182,7 @@ export async function inviteAccount(
       role,
       orgId: input.orgId,
       superAdmin: false,
+      createdVia: 'admin-invite',
       createdAt: serverTimestamp(),
       lastLoginAt: null,
       invitedBy: invitedByUid,

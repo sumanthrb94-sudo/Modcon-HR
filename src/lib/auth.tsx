@@ -134,9 +134,26 @@ export interface UserProfile {
     /** Organization this profile belongs to. Unset for super admins and for
      * legacy/hard-coded accounts that predate multi-org support. */
     orgId?: string;
+    /**
+     * How this account came to exist.
+     *
+     * Stamped by whichever flow created the Auth account, and never by the
+     * sign-in upsert — that write says who is signing in, not where the
+     * account came from. Absent on accounts created before this was recorded,
+     * which is a real state and is shown as such rather than guessed at.
+     */
+    createdVia?: AccountSource;
     createdAt?: unknown;
     lastLoginAt?: unknown;
 }
+
+/**
+ * The ways an account is created. There is no self-service option and there
+ * never has been — every account is made by an administrator, which is why
+ * the Source column asserting "Self-registered" was describing a path this
+ * product does not have.
+ */
+export type AccountSource = 'org-provisioning' | 'admin-invite';
 
 export const USER_ROLES: UserRole[] = ['admin', 'hr', 'manager', 'employee'];
 

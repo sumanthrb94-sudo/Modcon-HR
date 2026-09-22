@@ -105,6 +105,9 @@ export async function createOrganization(
             role: 'hr',
             orgId,
             superAdmin: false,
+            // Where this account came from, recorded at the one moment it is
+            // known for certain.
+            createdVia: 'org-provisioning',
             createdAt: serverTimestamp(),
             lastLoginAt: null,
         });

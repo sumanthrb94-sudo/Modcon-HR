@@ -328,14 +328,36 @@ export function AdminDashboardPage() {
         {
             key: 'protected',
             header: 'Source',
-            render: (u) =>
-                ADMIN_EMAILS.includes(u.email.toLowerCase()) ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-700">
-                        <ShieldCheck size={13} /> Fixed admin
+            // "Self-registered" was a hardcoded literal on every row that was
+            // not a fixed admin, and it described a path this product does not
+            // have: there is no public sign-up, as the login page itself says.
+            // Provenance is now stamped by whichever flow created the account;
+            // an account that predates the stamp says so rather than having a
+            // creation story invented for it.
+            render: (u) => {
+                if (ADMIN_EMAILS.includes(u.email.toLowerCase())) {
+                    return (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-700">
+                            <ShieldCheck size={13} /> Fixed admin
+                        </span>
+                    );
+                }
+                const source = u.createdVia
+                    // Accounts invited before `createdVia` existed still carry
+                    // `invitedBy`, which says the same thing.
+                    ?? ((u as { invitedBy?: string }).invitedBy ? 'admin-invite' : undefined);
+                if (source === 'org-provisioning') {
+                    return <span className="text-xs text-ink-500">Organisation provisioning</span>;
+                }
+                if (source === 'admin-invite') {
+                    return <span className="text-xs text-ink-500">Created by an administrator</span>;
+                }
+                return (
+                    <span className="text-xs text-ink-400" title="Created before the platform recorded how accounts were made.">
+                        Not recorded
                     </span>
-                ) : (
-                    <span className="text-xs text-ink-400">Self-registered</span>
-                ),
+                );
+            },
         },
         {
             key: 'actions',
