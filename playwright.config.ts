@@ -73,7 +73,7 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|document-upload-access|reporting-manager|form-capture)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|document-upload-access|reporting-manager|form-capture|helpdesk-attribution)\.spec\.ts$/;
 
 /**
  * Specs that write the organisation's *shared* configuration document.
@@ -122,7 +122,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * read — so it is emulator-only for the same reason the others here are, and
  * there is no live-reachable equivalent to fall back to.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|leave-unpaid-fallback|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.

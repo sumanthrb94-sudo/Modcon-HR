@@ -167,6 +167,41 @@ function daysAtStatus(
 }
 
 /**
+ * The unpaid door that stays open whatever the organisation has configured.
+ *
+ * Every other entry in `getApplicableEntitlements` comes from the
+ * organisation's own policy list — Settings decides what exists, and an
+ * organisation that has configured nothing shows nothing, the same
+ * no-plausible-default rule the holiday calendar and the salary structure
+ * follow. This is deliberately not that. It grants zero days, is never
+ * written to `org_settings`, is never offered in Settings as something HR
+ * chose, and exists purely so the Apply Leave dropdown always has a way to
+ * record an absence without pay — an employee who has exhausted every paid
+ * entitlement, or whose organisation has declared no leave policy at all,
+ * still has one option rather than none.
+ *
+ * `carriesNoBalance` (leaveApplication.ts) already treats a zero-grant type
+ * as "record it, don't deduct it", and payroll's loss-of-pay figure
+ * (`lossOfPayDays` in data/payroll.ts) is read from the attendance record's
+ * own status, never from a leave request's type — so this changes nothing
+ * about what anybody is paid; it only guarantees the type exists to apply
+ * under.
+ */
+const UNPAID_FALLBACK_POLICY: LeavePolicy = {
+  id: 'fallback-unpaid',
+  type: 'Unpaid Leave',
+  annual: 0,
+  accrual: 'annual',
+  monthlyAccrual: 0,
+  carryForward: false,
+  carryForwardBeyondYear: false,
+  encashment: false,
+  halfDay: false,
+  minTenureMonths: 0,
+  applicable: 'All employees',
+};
+
+/**
  * Every leave type this employee may apply for, including the ones that
  * currently grant nothing.
  *
@@ -184,7 +219,7 @@ export function getApplicableEntitlements(
   // than once for the page, because two people on the same screen — the Leave
   // module's team view, a manager's queue — can legitimately be on different
   // entitlements for the same type.
-  return getLeavePoliciesFor(employee.id)
+  const configured = getLeavePoliciesFor(employee.id)
     .filter((policy) => appliesToEmployee(policy, employee.gender))
     .map((policy) => {
       const type = normalizeLeaveTypeValue(policy.type);
@@ -205,6 +240,29 @@ export function getApplicableEntitlements(
         withheldReason,
       };
     });
+
+  // Already has one — an organisation that names its own "Unpaid Leave" is
+  // on its own type, not the fallback, and gets no second one beside it.
+  if (configured.some((entitlement) => entitlement.type === 'Unpaid')) {
+    return configured;
+  }
+
+  const used = daysAtStatus(employee.id, 'Unpaid', 'Approved', requests, asOf);
+  const pending = daysAtStatus(employee.id, 'Unpaid', 'Pending', requests, asOf);
+  return [
+    ...configured,
+    {
+      type: 'Unpaid',
+      policy: UNPAID_FALLBACK_POLICY,
+      granted: 0,
+      fullYear: 0,
+      used,
+      pending,
+      available: 0,
+      remaining: 0,
+      monthly: false,
+    },
+  ];
 }
 
 /** The employee's entitlement for one leave type, or undefined if it does not apply to them. */
