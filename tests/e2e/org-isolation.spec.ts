@@ -77,6 +77,17 @@ function selectedOrg(page: Page): Promise<string | null> {
 }
 
 /**
+ * Confirms the "Enter this organization?" dialog that now sits between a
+ * click on "Manage this org" / "Manage ModCon Builders (Default)" and the
+ * actual switch — see ConfirmEnterOrgModal. Every helper here that used to
+ * expect an immediate switch now has to clear this dialog first, or the
+ * click lands on a modal instead of reloading the app.
+ */
+async function confirmEnterOrg(page: Page) {
+  await page.getByRole('dialog', { name: 'Enter this organization?' }).getByRole('button', { name: 'Enter organization' }).click();
+}
+
+/**
  * Step into the demo organisation.
  *
  * Its row may not exist — `organizations/default` predates the collection —
@@ -100,6 +111,7 @@ async function manageDefaultOrg(page: Page) {
   // `click()` waits for the control to attach, which is the wait the count
   // above could not express.
   await page.getByRole('button', { name: 'Manage ModCon Builders (Default)' }).first().click();
+  await confirmEnterOrg(page);
   // Switching reloads, so the storage read has to be polled rather than taken
   // once — the first one can land on the page being torn down.
   await expect.poll(() => selectedOrg(page), { timeout: 20_000 }).toBe('default');
@@ -200,6 +212,7 @@ test.describe.serial('a second organisation shares no salary structure with the 
     // Basic 50% / HRA 25% would be showing it ModCon Builders' compensation
     // policy as its own.
     await orgRow(page, NEW_ORG).getByRole('button', { name: 'Manage this org' }).click();
+    await confirmEnterOrg(page);
     // Switching reloads the app so every org-scoped module re-evaluates. The
     // new organisation's own row is what says it is the one being managed —
     // the stat card carries the same words, hence the row scope.

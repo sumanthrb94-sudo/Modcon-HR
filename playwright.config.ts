@@ -117,8 +117,12 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * an organisation is the one thing in this app that no spec can clean up
  * after itself. Emulator-gated like the rest of this project, so a run never
  * leaves a real tenant behind.
+ *
+ * `superadmin-governance` reads `audit_logs`, which only `isSuperAdmin()` may
+ * read — so it is emulator-only for the same reason the others here are, and
+ * there is no live-reachable equivalent to fall back to.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.

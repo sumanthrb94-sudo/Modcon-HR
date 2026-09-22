@@ -146,6 +146,28 @@ export function switchSuperAdminOrg(orgKey: string) {
     window.location.reload();
 }
 
+/**
+ * Clears the super-admin org selection without reloading the page.
+ *
+ * `leaveSuperAdminOrg` below is the reloading version, used while the app is
+ * still up and every `src/data/*` module needs to re-evaluate under the
+ * platform namespace. Signing out is a different moment: `signOutUser` is
+ * about to call `signOut(auth)` and navigate away on its own, so a reload
+ * fired from here would race that navigation rather than help it. Without
+ * this, the selection survived `signOut` entirely — the next person to sign
+ * in on this browser (or the same super admin, a minute later) landed back
+ * inside whichever organisation was last entered, with nothing on screen
+ * saying so.
+ */
+export function clearSuperAdminOrgSelection() {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.removeItem(SUPER_ADMIN_SELECTED_ORG_STORAGE);
+    } catch {
+        // ignore
+    }
+}
+
 /** Steps a super admin back out to the platform console, and reloads for the
  * same reason switching in does: the `src/data/*` modules read their namespace
  * at module-load time, so leaving one in place would show the org they just
@@ -153,11 +175,7 @@ export function switchSuperAdminOrg(orgKey: string) {
 export function leaveSuperAdminOrg() {
     if (typeof window === 'undefined') return;
     if (!isSuperAdminInsideOrg()) return;
-    try {
-        window.localStorage.removeItem(SUPER_ADMIN_SELECTED_ORG_STORAGE);
-    } catch {
-        // ignore
-    }
+    clearSuperAdminOrgSelection();
     setActiveOrgKey(DEFAULT_ORG_KEY);
     window.location.reload();
 }
