@@ -52,3 +52,6 @@ coverage
 # Editor and tooling backups
 *.bak
 .sandbox-data/
+
+# Subagent git worktrees — scratch checkouts, never part of the repo.
+.claude/worktrees/

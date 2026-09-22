@@ -202,6 +202,42 @@ function subscribeStore(store: RegisteredStore, orgKey: string) {
   );
 }
 
+/**
+ * Fired when a write the cache was already showing was refused by the server.
+ *
+ * A window event rather than a callback or a store field, for the same reason
+ * the change notification is one: this module is read at plain module-load
+ * time by code that cannot await and must not import React. The listener is
+ * `SaveFailureBanner` in the layout, so a refusal is visible on whatever page
+ * the person is standing on.
+ */
+export const ORG_RECORDS_WRITE_FAILED_EVENT = 'modcon-hr-org-records-write-failed';
+
+export interface OrgRecordsWriteFailedDetail {
+  store: string;
+  message: string;
+}
+
+/**
+ * What to tell somebody whose change was refused.
+ *
+ * `permission-denied` is singled out because it is now the ORDINARY refusal
+ * rather than an infrastructure fault: `firestore.rules` refuses an employee
+ * who approves their own expense claim or moves their own leave out of
+ * Pending. Reporting that as "could not reach the server" would send them to
+ * check their wifi over a decision the server made on purpose.
+ */
+function messageFor(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code ?? '';
+  if (code === 'permission-denied') {
+    return 'That change was not allowed, so it has been undone. You may not have permission to make it.';
+  }
+  if (code === 'unavailable' || code === 'deadline-exceeded') {
+    return 'That change could not reach the server, so it has been undone. Check your connection and try again.';
+  }
+  return 'That change could not be saved, so it has been undone.';
+}
+
 function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
@@ -309,7 +345,7 @@ export function persistentCollection<T extends Identified>(
    * user just did. A failure is warned about rather than thrown — the same
    * choice `publishOrgSetting` makes, and for the same reason.
    */
-  async function push(overlay: Overlay<T>) {
+  async function push(overlay: Overlay<T>, before: Overlay<T> = overlay) {
     const orgKey = getActiveOrgKey();
     if (!orgKey) return;
 
@@ -358,7 +394,48 @@ export function persistentCollection<T extends Identified>(
       lastPushed = nextState;
     } catch (err) {
       console.warn(`[org-records] could not publish "${storeKey}":`, err);
+      rollback(before, overlay, err);
     }
+  }
+
+  /**
+   * Put the cache back when the server refused the write it was showing.
+   *
+   * `save()` is optimistic: it writes the cache, fires the change event and
+   * returns, and the commit follows without being awaited. That is deliberate
+   * and worth keeping — a decision should not wait on a round trip. What was
+   * not deliberate is what happened when the commit FAILED: the catch above
+   * warned to a console nobody has open, and the cache went on showing the
+   * change. The row stayed Approved, survived reloads, and looked exactly like
+   * a decision that had landed. QA filed it as R4-M1 and the PRD as gate G7:
+   * "the UI can never show saved/approved for data the database rejected".
+   *
+   * It matters more since the authority rules arrived. A refusal used to mean
+   * the network was down; now an employee approving their own expense claim is
+   * refused BY DESIGN, and that refusal has to reach them.
+   *
+   * Two things this deliberately does not do:
+   *
+   * It does not roll back if something newer has been saved since. The commit
+   * is not awaited, so a second edit can land while the first is in flight;
+   * restoring a snapshot from before it would silently undo work the user
+   * watched succeed. The newer save has its own push and its own rollback, so
+   * the right thing here is to leave it alone.
+   *
+   * And it does not touch `lastPushed`, which still says what the server last
+   * confirmed. Advancing it on a failure would make the next save think this
+   * change had landed and skip re-sending it.
+   */
+  function rollback(before: Overlay<T>, attempted: Overlay<T>, err: unknown) {
+    if (typeof window === 'undefined') return;
+    if (stableJson(readOverlay()) !== stableJson(attempted)) return;
+    writeOverlay(before);
+    notify();
+    window.dispatchEvent(
+      new CustomEvent(ORG_RECORDS_WRITE_FAILED_EVENT, {
+        detail: { store: storeKey, message: messageFor(err) },
+      }),
+    );
   }
 
   const collection: PersistentCollection<T> = {
@@ -369,10 +446,13 @@ export function persistentCollection<T extends Identified>(
     },
 
     save(next) {
+      // Read BEFORE the optimistic write, because it is what the rollback
+      // below puts back if the server refuses this one.
+      const before = readOverlay();
       const overlay = deriveOverlay(seed(), next);
       writeOverlay(overlay);
       notify();
-      void push(overlay);
+      void push(overlay, before);
       return next;
     },
 

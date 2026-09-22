@@ -194,7 +194,10 @@ const ORG_SETTINGS_ENABLED =
 // expense-approval-scope.spec.ts is the same question about the other
 // workflow, and its answer comes from the same two functions in
 // lib/dataScope.ts — a per-persona rule, not engine behaviour.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|joining-date|employee-self-scope)\.spec\.ts$/;
+// write-failure-rollback.spec.ts needs a signed-in persona and a seeded
+// record to act on, so it lives here — but it asserts persistence behaviour
+// rather than role behaviour, and skips itself in all but one project.
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|write-failure-rollback|joining-date|employee-self-scope)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
