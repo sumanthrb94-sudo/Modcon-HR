@@ -268,6 +268,23 @@ const emptyForm: PostJobForm = {
   publish: true,
 };
 
+interface PostJobFormErrors {
+  title?: string;
+  department?: string;
+  location?: string;
+}
+
+/** One message per required field. `handleSubmit` used to return silently
+ *  when a required field was blank — nothing on screen said why the click
+ *  did nothing, which is indistinguishable from the button being broken. */
+function validatePostJobForm(form: PostJobForm): PostJobFormErrors {
+  const errors: PostJobFormErrors = {};
+  if (!form.title.trim()) errors.title = 'Job title is required.';
+  if (!form.department) errors.department = 'Department is required.';
+  if (!form.location) errors.location = 'Location is required.';
+  return errors;
+}
+
 interface PostJobModalProps {
   open: boolean;
   canPublish: boolean;
@@ -277,15 +294,25 @@ interface PostJobModalProps {
 
 function PostJobModal({ open, canPublish, onClose, onSubmit }: PostJobModalProps) {
   const [form, setForm] = useState<PostJobForm>(emptyForm);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const errors = validatePostJobForm(form);
 
   function handleChange(field: keyof PostJobForm, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function fieldError(key: keyof PostJobFormErrors) {
+    return submitAttempted && errors[key] ? (
+      <p className="mt-1 text-xs text-rose-600">{errors[key]}</p>
+    ) : null;
+  }
+
   function handleSubmit() {
-    if (!form.title.trim() || !form.department || !form.location) return;
+    setSubmitAttempted(true);
+    if (Object.keys(errors).length > 0) return;
     onSubmit(form);
     setForm(emptyForm);
+    setSubmitAttempted(false);
     onClose();
   }
 
@@ -323,6 +350,7 @@ function PostJobModal({ open, canPublish, onClose, onSubmit }: PostJobModalProps
             value={form.title}
             onChange={(e) => handleChange('title', e.target.value)}
           />
+          {fieldError('title')}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -334,6 +362,7 @@ function PostJobModal({ open, canPublish, onClose, onSubmit }: PostJobModalProps
               options={deptOptions}
               placeholder="Select dept."
             />
+            {fieldError('department')}
           </div>
           <div>
             <label className="label">Location <span className="text-rose-500">*</span></label>
@@ -344,6 +373,7 @@ function PostJobModal({ open, canPublish, onClose, onSubmit }: PostJobModalProps
               options={locationOptions}
               placeholder="Select location"
             />
+            {fieldError('location')}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">

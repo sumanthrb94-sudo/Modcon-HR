@@ -59,6 +59,32 @@ function formatCreatedAt(value: unknown): string {
  */
 const FLAG_LIST = Object.values(FEATURE_FLAGS);
 
+interface CreateOrgFormErrors {
+    orgName?: string;
+    adminEmail?: string;
+}
+
+/**
+ * Field-level checks for the fields `createOrganization` itself requires
+ * (organisation name, admin email). Run before the network call so a blank
+ * or malformed field is named on the field itself, instead of the one
+ * generic message `friendlyOrgError` produces once the server has already
+ * been asked and refused — mirrors `validateDetailsDraft` in
+ * src/pages/employees/index.tsx, the pattern this form was missing.
+ */
+function validateCreateOrgForm(orgName: string, adminEmail: string): CreateOrgFormErrors {
+    const errors: CreateOrgFormErrors = {};
+    const name = orgName.trim();
+    const email = adminEmail.trim();
+    if (!name) errors.orgName = 'Organization name is required.';
+    if (!email) {
+        errors.adminEmail = 'HR administrator email is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.adminEmail = 'Enter a valid email address.';
+    }
+    return errors;
+}
+
 export function OrganizationsPage() {
     const { profile } = useAuth();
     const { data: organizations, loading } = useOrganizations();
@@ -66,6 +92,7 @@ export function OrganizationsPage() {
     const [createOpen, setCreateOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState('');
+    const [createSubmitAttempted, setCreateSubmitAttempted] = useState(false);
     const [orgName, setOrgName] = useState('');
     const [adminName, setAdminName] = useState('');
     const [adminEmail, setAdminEmail] = useState('');
@@ -208,6 +235,7 @@ export function OrganizationsPage() {
         setAdminName('');
         setAdminEmail('');
         setFormError('');
+        setCreateSubmitAttempted(false);
     }
 
     function openCreate() {
@@ -216,9 +244,13 @@ export function OrganizationsPage() {
         setCreateOpen(true);
     }
 
+    const createFormErrors = validateCreateOrgForm(orgName, adminEmail);
+
     async function handleCreate() {
         if (!profile) return;
+        setCreateSubmitAttempted(true);
         setFormError('');
+        if (Object.keys(createFormErrors).length > 0) return;
         setSubmitting(true);
         try {
             const created = await createOrganization(
@@ -596,6 +628,9 @@ export function OrganizationsPage() {
                                 onChange={(e) => setOrgName(e.target.value)}
                                 placeholder="Acme Builders"
                             />
+                            {createSubmitAttempted && createFormErrors.orgName && (
+                                <p className="mt-1 text-xs text-rose-600">{createFormErrors.orgName}</p>
+                            )}
                         </div>
                         <div>
                             <label className="text-xs font-semibold text-ink-500">HR administrator name</label>
@@ -615,7 +650,14 @@ export function OrganizationsPage() {
                                 onChange={(e) => setAdminEmail(e.target.value)}
                                 placeholder="hr@acme.com"
                             />
+                            {createSubmitAttempted && createFormErrors.adminEmail && (
+                                <p className="mt-1 text-xs text-rose-600">{createFormErrors.adminEmail}</p>
+                            )}
                         </div>
+                        {/* Server-side failures (e.g. the email is already
+                            registered) surface here — they cannot be known
+                            before the request is made, so this stays a single
+                            message rather than being forced onto one field. */}
                         {formError && <p className="text-xs text-rose-600">{formError}</p>}
                     </div>
                 )}

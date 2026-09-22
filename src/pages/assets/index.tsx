@@ -170,17 +170,45 @@ const EMPTY_ASSET_FORM = {
   value: '',
 };
 
+interface AssetFormErrors {
+  name?: string;
+  category?: string;
+  serialNumber?: string;
+  value?: string;
+}
+
+/** Every required field gets its own message, so a rejected submit points at
+ *  what to fix rather than a single "fill all required fields" that leaves
+ *  the person re-checking fields that were already correct. */
+function validateAssetForm(form: typeof EMPTY_ASSET_FORM): AssetFormErrors {
+  const errors: AssetFormErrors = {};
+  if (!form.name.trim()) errors.name = 'Asset name is required.';
+  if (!form.category) errors.category = 'Category is required.';
+  if (!form.serialNumber.trim()) errors.serialNumber = 'Serial number is required.';
+  if (!form.value.trim()) {
+    errors.value = 'Value is required.';
+  } else if (Number.isNaN(Number(form.value)) || Number(form.value) <= 0) {
+    errors.value = 'Value must be greater than 0.';
+  }
+  return errors;
+}
+
 function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
   const [form, setForm] = useState(EMPTY_ASSET_FORM);
-  const [error, setError] = useState('');
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Derived from the form on every render rather than tracked separately, so
+  // an error clears itself the moment the field it names is fixed instead of
+  // needing every onChange handler to clear it by hand.
+  const errors = validateAssetForm(form);
 
   if (!open) return null;
 
+  const fieldError = (key: keyof AssetFormErrors) =>
+    submitAttempted && errors[key] ? <p className="mt-1 text-xs text-rose-600">{errors[key]}</p> : null;
+
   const handleSave = () => {
-    if (!form.name.trim() || !form.category || !form.serialNumber.trim() || !form.value) {
-      setError('Please fill all required fields.');
-      return;
-    }
+    setSubmitAttempted(true);
+    if (Object.keys(errors).length > 0) return;
     const assetCode = `AST-${Math.floor(1000 + Math.random() * 9000)}`;
     onAdd({
       assetCode,
@@ -194,7 +222,7 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
       serialNumber: form.serialNumber.trim(),
     });
     setForm(EMPTY_ASSET_FORM);
-    setError('');
+    setSubmitAttempted(false);
     onClose();
   };
 
@@ -221,17 +249,25 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
             className="input w-full"
             placeholder="e.g. MacBook Pro 14"
             value={form.name}
-            onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); setError(''); }}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           />
+          {fieldError('name')}
         </div>
         <div>
           <label className="text-sm font-medium text-ink-700 block mb-1">Category *</label>
+          {/* A blank placeholder option is required here: without one, the
+              browser shows the first real category as selected (nothing in
+              the option list matches the initial empty state) while `form.category`
+              stays '' underneath — the form reads as filled and the first
+              submit is rejected with nothing to explain why. */}
           <Select
             value={form.category}
-            onChange={(v) => { setForm((f) => ({ ...f, category: v as AssetCategory })); setError(''); }}
+            onChange={(v) => setForm((f) => ({ ...f, category: v as AssetCategory }))}
             options={CATEGORY_OPTIONS.filter((c) => c.value)}
+            placeholder="Select category"
             className="w-full"
           />
+          {fieldError('category')}
         </div>
         <div>
           <label className="text-sm font-medium text-ink-700 block mb-1">Serial Number *</label>
@@ -239,8 +275,9 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
             className="input w-full"
             placeholder="e.g. SN-2026-0001"
             value={form.serialNumber}
-            onChange={(e) => { setForm((f) => ({ ...f, serialNumber: e.target.value })); setError(''); }}
+            onChange={(e) => setForm((f) => ({ ...f, serialNumber: e.target.value }))}
           />
+          {fieldError('serialNumber')}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -259,11 +296,11 @@ function AddAssetModal({ open, onClose, onAdd }: AddAssetModalProps) {
               className="input w-full"
               placeholder="e.g. 85000"
               value={form.value}
-              onChange={(e) => { setForm((f) => ({ ...f, value: e.target.value })); setError(''); }}
+              onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
             />
+            {fieldError('value')}
           </div>
         </div>
-        {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
       </div>
     </Modal>
   );

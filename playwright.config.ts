@@ -73,7 +73,7 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|document-upload-access|reporting-manager)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|document-upload-access|reporting-manager|form-capture)\.spec\.ts$/;
 
 /**
  * Specs that write the organisation's *shared* configuration document.
@@ -112,8 +112,13 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * specs above, which restore the configuration document they change. Running
  * it on more than one engine would let two engines race to run the same
  * month, settling the idempotency guard by luck rather than by the code.
+ *
+ * `org-create-validation` is here because it drives Create Organization, and
+ * an organisation is the one thing in this app that no spec can clean up
+ * after itself. Emulator-gated like the rest of this project, so a run never
+ * leaves a real tenant behind.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.
