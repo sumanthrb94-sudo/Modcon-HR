@@ -1967,6 +1967,63 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Platform audit log.
+    //
+    // A super admin belongs to no organisation, and stepping into one is the
+    // single most consequential act on this platform: from that moment the
+    // whole tenant app renders for them against somebody else's company. The
+    // tenant boundary in `inMyOrg()` is what stops them reading a company they
+    // have not opened; this is what makes opening one leave a mark.
+    //
+    // Named `audit_logs` rather than the `auditLogs` the hand-off asked for,
+    // to match every other collection here (`org_records`, `org_settings`,
+    // `employee_links`, `attendance_stamps`, `role_assignments`).
+    //
+    // Three properties, and the third is the one that makes it an audit log:
+    //
+    //   1. Only a super admin writes one, and only about THEMSELVES.
+    //      `actorUid` is pinned to the caller's own uid, so an entry cannot
+    //      be filed in somebody else's name — which is the first thing an
+    //      audit trail has to refuse, or it is a place to plant evidence
+    //      rather than a record of what happened.
+    //   2. The moment is the SERVER'S (`request.time`). A device clock does
+    //      not get a vote on when an organisation was opened, for the same
+    //      reason `attendance_stamps.recordedAt` does not.
+    //   3. It is APPEND-ONLY. `update` and `delete` are `false` for everyone,
+    //      super admins included. An actor who can edit the record of what
+    //      they did has not been audited. The same rule and the same sentence
+    //      as `handbook_versions` above.
+    //
+    // The key set is closed (`hasOnly`) so an entry cannot carry a payload
+    // nobody will read — an audit row is not a place to smuggle data across
+    // the tenant boundary.
+    //
+    // Reads are super-admin-only for now. Whether a TENANT should be able to
+    // see who administered them is a real question and deliberately not
+    // answered here: it is a product decision about what this platform
+    // promises its customers, not something to settle in a rules file.
+    // Widening a read later is safe; narrowing one after customers have seen
+    // it is not.
+    // -------------------------------------------------------------------
+    match /audit_logs/{entryId} {
+      allow get, list: if isSuperAdmin();
+
+      allow create: if isSuperAdmin() &&
+        request.resource.data.actorUid == request.auth.uid &&
+        request.resource.data.at == request.time &&
+        request.resource.data.action is string &&
+        request.resource.data.action.size() > 0 &&
+        request.resource.data.action.size() <= 60 &&
+        request.resource.data.orgId is string &&
+        request.resource.data.orgId.size() <= 200 &&
+        request.resource.data.keys().hasAll(['actorUid', 'at', 'action', 'orgId']) &&
+        request.resource.data.keys().hasOnly(
+          ['actorUid', 'actorEmail', 'at', 'action', 'orgId', 'orgName']);
+
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------
     // Deny everything else by default.
     // -------------------------------------------------------------------
     match /{document=**} {
