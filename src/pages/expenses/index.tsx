@@ -52,6 +52,8 @@ import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
+import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { Collections, patch, upsert } from '@/lib/db';
 import { useExpenses } from '@/lib/useFirestore';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
@@ -710,10 +712,11 @@ const VIEW_TABS = [
 ];
 
 export function ExpensesPage() {
-  const { profile } = useAuth();
+  const { profile, linkedEmployeeId } = useAuth();
   const role = resolveAppRole(profile);
   const isEmployee = role === 'Employee';
   const currentEmployee = getCurrentEmployee(profile);
+  const directoryRevision = useEmployeeDirectoryRevision();
   const { data: liveExpenses, loading: liveLoading } = useExpenses();
   // Seeded from the store and written through on every change, so an edit
   // is still there after a refresh.
@@ -730,10 +733,39 @@ export function ExpensesPage() {
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<ExpenseClaim | null>(null);
 
-  const visibleClaims = useMemo(
-    () => (isEmployee && currentEmployee ? claims.filter((claim) => claim.employeeId === currentEmployee.id) : claims),
-    [claims, isEmployee, currentEmployee],
+  // Whose claims this account may SEE, and whose it may DECIDE — two
+  // different questions, resolved through the same two functions the Leave
+  // module uses. This page used to narrow for `isEmployee` and nothing else,
+  // so a Manager was shown every claim in the organisation with a working
+  // Approve button on each: other departments', their own manager's, and
+  // their own. Leave had already been scoped this way; expenses had not, and
+  // QA found the gap (R4-H2 / Round-3-Part-4).
+  //
+  // The sets differ by role, deliberately. A manager's visible set includes
+  // themselves and the HR Managers — neither is beneath them — so their
+  // buttons follow a narrower set than their rows, and a row without buttons
+  // says why rather than leaving an unexplained gap. See lib/dataScope.ts.
+  const visibleEmployeeIds = useMemo(
+    () => getVisibleEmployeeIds(profile),
+    [profile, directoryRevision, linkedEmployeeId],
   );
+  const approvableEmployeeIds = useMemo(
+    () => getApprovableEmployeeIds(profile),
+    [profile, directoryRevision, linkedEmployeeId],
+  );
+
+  const visibleClaims = useMemo(() => {
+    // An Employee sees their own and nothing else, which is what the module
+    // is at that permission level. Resolved against the linked record rather
+    // than the visible set because an unlinked employee resolves to nobody,
+    // and showing them the whole organisation would be the wrong direction
+    // to fail in.
+    if (isEmployee) return currentEmployee ? claims.filter((claim) => claim.employeeId === currentEmployee.id) : [];
+    return claims.filter((claim) => visibleEmployeeIds.has(claim.employeeId));
+  }, [claims, isEmployee, currentEmployee, visibleEmployeeIds]);
+
+  /** True when this account may approve, reject or reimburse this claim. */
+  const canDecide = (claim: ExpenseClaim) => approvableEmployeeIds.has(claim.employeeId);
 
   // Keep local state in sync with Firestore and preserve static demo data if the DB is partial.
   useEffect(() => {
@@ -971,8 +1003,11 @@ export function ExpensesPage() {
     {
       key: 'actions',
       header: '',
+      // `canDecide` and not `!isEmployee`: a Manager is shown their own claim
+      // and the HR Managers' as rows, and must not be offered a button on
+      // either. Nobody decides their own, at any level.
       render: (c) =>
-        !isEmployee && c.status === 'Submitted' ? (
+        canDecide(c) && c.status === 'Submitted' ? (
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -1314,7 +1349,7 @@ export function ExpensesPage() {
         onApprove={handleApprove}
         onReject={handleReject}
         onReimburse={handleReimburse}
-        canManage={!isEmployee}
+        canManage={selectedClaim ? canDecide(selectedClaim) : false}
       />
     </div>
   );

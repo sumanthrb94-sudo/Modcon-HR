@@ -191,7 +191,10 @@ const ORG_SETTINGS_ENABLED =
 // employee-self-scope.spec.ts is here for the same reason: whether a surface
 // shows a colleague is a per-persona question, and the answer is app logic
 // rather than engine behaviour, so one browser settles it.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|joining-date|employee-self-scope)\.spec\.ts$/;
+// expense-approval-scope.spec.ts is the same question about the other
+// workflow, and its answer comes from the same two functions in
+// lib/dataScope.ts — a per-persona rule, not engine behaviour.
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|joining-date|employee-self-scope)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',

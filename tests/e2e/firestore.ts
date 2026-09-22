@@ -464,6 +464,15 @@ export async function seedOrgRecords<T extends { id: string }>(
           deleted: { booleanValue: false },
           data: { stringValue: JSON.stringify(item) },
           ...(employeeId ? { employeeId: { stringValue: employeeId(item) } } : {}),
+          // Lifted exactly as src/data/persistence.ts lifts it, so a seeded
+          // record looks like one the app wrote. It matters twice over now:
+          // `firestore.rules` requires a governed record to declare its
+          // status, and the client takes the lifted copy in preference to the
+          // one inside `data` — so a seed without it is a record the rules
+          // could not have authorised and the app reads through a fallback.
+          ...(typeof (item as { status?: unknown }).status === 'string'
+            ? { status: { stringValue: (item as { status: string }).status } }
+            : {}),
         },
       }),
     });
