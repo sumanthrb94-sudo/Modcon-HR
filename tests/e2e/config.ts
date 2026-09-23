@@ -129,6 +129,20 @@ export const APPROVALS_MANAGER_PERSONA = {
   roleLabel: 'Manager',
 };
 
+/**
+ * A manager whose role is taken away underneath an open page, for
+ * write-failure-rollback.spec.ts. Its own persona because the spec rewrites
+ * `users/{uid}.role`, which every project in a run shares — see
+ * ROLE_CHURN_PERSONA.
+ */
+export const ROLLBACK_PERSONA = {
+  role: 'manager' as const,
+  email: process.env.E2E_ROLLBACK_EMAIL ?? 'playwright-e2e-rollback@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Rollback Manager',
+  roleLabel: 'Manager',
+};
+
 /** The hiring manager in careers.spec.ts — see the note above. */
 export const HIRING_MANAGER_PERSONA = {
   role: 'manager' as const,

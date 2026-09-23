@@ -87,44 +87,67 @@ async function adminCounters(page: Page): Promise<{ statCard: number; snapshotRo
   return { statCard, snapshotRow };
 }
 
-// FIXME (QA verifying by hand). New in the counters lane and red only in a
-// full run, so it is reading a directory another spec has already changed —
-// the counters it compares are relative to each other, but the hire it makes
-// is not the only one in the org by then.
-test.fixme('the Dashboard and Admin dashboard employee counts agree, before and after a hire', async ({ page }) => {
-  await login(page);
+/**
+ * The three counters, read as one consistent moment.
+ *
+ * This ran red only in a full run, and never because the counters disagreed:
+ * the app specs run on three engines at once against one organisation, each
+ * hiring its own people, so the roster moved between one read and the next
+ * and "before + 1" was never true of anybody's hire alone. The hire also used
+ * one fixed employee code, which the second engine to reach it was refused.
+ * So a reading here is Dashboard, Admin, then Dashboard again, and it counts
+ * only if the roster did not move underneath it.
+ */
+async function agreeingCounts(page: Page) {
+  const first = await dashboardTotal(page);
+  const admin = await adminCounters(page);
+  const again = await dashboardTotal(page);
+  return { first, statCard: admin.statCard, snapshotRow: admin.snapshotRow, again };
+}
 
-  const before = await dashboardTotal(page);
-  const beforeAdmin = await adminCounters(page);
-  expect(beforeAdmin.statCard, '"Employees on record" disagreed with the Dashboard').toBe(before);
-  expect(beforeAdmin.snapshotRow, 'System Snapshot → Employees disagreed with the Dashboard').toBe(before);
+async function expectCountersAgree(page: Page, message: string): Promise<number> {
+  let settled = 0;
+  await expect
+    .poll(async () => {
+      const r = await agreeingCounts(page);
+      settled = r.again;
+      return r.first === r.again && r.statCard === r.again && r.snapshotRow === r.again;
+    }, { message, timeout: 30_000 })
+    .toBe(true);
+  return settled;
+}
+
+test('the Dashboard and Admin dashboard employee counts agree, before and after a hire', async ({ page }) => {
+  await login(page);
+  const before = await expectCountersAgree(page, 'the Admin dashboard disagreed with the Dashboard before the hire');
+
+  // One code per engine and run: the organisation's directory is shared.
+  const suffix = `${test.info().project.name}-${Date.now().toString(36)}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const hire = { ...HIRE, code: `E2E-C-${suffix}`.slice(0, 24), email: `e2e-counters-${suffix.toLowerCase()}@modcon-hr.test` };
 
   await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
   await page.getByRole('button', { name: 'Add Employee' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Employee code').fill(HIRE.code);
-  await dialog.getByLabel('Employee first name').fill(HIRE.first);
-  await dialog.getByLabel('Employee last name').fill(HIRE.last);
-  await dialog.getByLabel('Employee email').fill(HIRE.email);
-  await dialog.getByLabel('Employee designation').fill(HIRE.designation);
-  await dialog.getByLabel('Employee date of birth').fill(HIRE.dob);
-  await dialog.getByLabel('Employee date of joining').fill(HIRE.doj);
-  await dialog.getByLabel('Employee ctc').fill(HIRE.ctc);
+  await dialog.getByLabel('Employee code').fill(hire.code);
+  await dialog.getByLabel('Employee first name').fill(hire.first);
+  await dialog.getByLabel('Employee last name').fill(hire.last);
+  await dialog.getByLabel('Employee email').fill(hire.email);
+  await dialog.getByLabel('Employee designation').fill(hire.designation);
+  await dialog.getByLabel('Employee date of birth').fill(hire.dob);
+  await dialog.getByLabel('Employee date of joining').fill(hire.doj);
+  await dialog.getByLabel('Employee ctc').fill(hire.ctc);
   await dialog.getByRole('button', { name: 'Save Employee' }).click();
   await expect(dialog).toBeHidden();
 
-  // Optimistic writes are not free — see "Writes are optimistic" in
-  // CLAUDE.md — so the roster is polled rather than read once: a read a
-  // moment after the click could see the state from just before it.
+  // Under the original bug the Dashboard moved and the Admin dashboard did
+  // not, so agreement after a hire that raised the count is the guard.
+  // "At least one more", not "exactly one more": other engines hire too.
   await expect
     .poll(async () => dashboardTotal(page), {
-      message: 'the new hire never reached the Dashboard\'s Total Employees count',
+      message: "the new hire never reached the Dashboard's Total Employees count",
       timeout: 15_000,
     })
-    .toBe(before + 1);
-
-  const after = await dashboardTotal(page);
-  const afterAdmin = await adminCounters(page);
-  expect(afterAdmin.statCard, '"Employees on record" did not move with the new hire').toBe(after);
-  expect(afterAdmin.snapshotRow, 'System Snapshot → Employees did not move with the new hire').toBe(after);
+    .toBeGreaterThanOrEqual(before + 1);
+  const after = await expectCountersAgree(page, 'the Admin dashboard did not move with the new hire');
+  expect(after).toBeGreaterThanOrEqual(before + 1);
 });

@@ -122,7 +122,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * read — so it is emulator-only for the same reason the others here are, and
  * there is no live-reachable equivalent to fall back to.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|leave-unpaid-fallback|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance|approvals-queue-scope)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|leave-unpaid-fallback|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance|approvals-queue-scope|write-failure-rollback)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.
@@ -211,10 +211,9 @@ const ORG_SETTINGS_ENABLED =
 // expense-approval-scope.spec.ts is the same question about the other
 // workflow, and its answer comes from the same two functions in
 // lib/dataScope.ts — a per-persona rule, not engine behaviour.
-// write-failure-rollback.spec.ts needs a signed-in persona and a seeded
-// record to act on, so it lives here — but it asserts persistence behaviour
-// rather than role behaviour, and skips itself in all but one project.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|write-failure-rollback|joining-date|employee-self-scope|accessibility)\.spec\.ts$/;
+// accessibility.spec.ts and mobile-layout.spec.ts walk the pages each role
+// actually sees (G11, G12), so they run once per persona.
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|joining-date|employee-self-scope|accessibility|mobile-layout)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
