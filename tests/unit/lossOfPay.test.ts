@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { combineLossOfPay, overQuotaDays, unpaidLeaveByDate } from '../../src/data/lossOfPay.ts';
+import { combineLossOfPay, lossOfPayArrears, overQuotaDays, unpaidLeaveByDate } from '../../src/data/lossOfPay.ts';
 
 const MONTH = '2026-09';
 // 2026-09-06 and 2026-09-13 are Sundays; 2026-09-10 is declared a holiday below.
@@ -108,4 +108,44 @@ test('over-quota days across a month end are charged in the month they fall in',
   const noWeekOff = () => false;
   assert.deepEqual([...unpaidLeaveByDate([request], '2026-09', noWeekOff).keys()], ['2026-09-30']);
   assert.deepEqual([...unpaidLeaveByDate([request], '2026-10', noWeekOff).keys()].sort(), ['2026-10-01', '2026-10-02']);
+});
+
+// ---- Arrears: loss of pay that changed after its month was paid ------------
+
+const AUGUST = { month: '2026-08', lopDays: 1, grossEarnings: 62_000, payableDays: 31 };
+
+test('leave approved after payroll ran is deducted on the next payslip, at its own month’s rate', () => {
+  // August paid with 1 day deducted; a late approval makes it 3.
+  const arrears = lossOfPayArrears('2026-09', [AUGUST], () => 3);
+  // ₹62,000 ÷ 31 × 2 = ₹4,000.
+  assert.deepEqual(arrears, [{ month: '2026-08', days: 2, amount: 4000 }]);
+});
+
+test('an absence corrected after payroll is refunded, not ignored', () => {
+  const arrears = lossOfPayArrears('2026-09', [AUGUST], () => 0);
+  assert.deepEqual(arrears, [{ month: '2026-08', days: -1, amount: -2000 }]);
+});
+
+test('nothing changed, nothing carried', () => {
+  assert.deepEqual(lossOfPayArrears('2026-09', [AUGUST], () => 1), []);
+});
+
+test('arrears already recovered on a later payslip are not charged twice', () => {
+  const september = { month: '2026-09', lopDays: 0, grossEarnings: 60_000, payableDays: 30, lopArrears: [{ month: '2026-08', days: 2 }] };
+  const now = (m: string) => (m === '2026-08' ? 3 : 0);
+  // October sees August already settled: 1 on its own payslip + 2 recovered in September.
+  assert.deepEqual(lossOfPayArrears('2026-10', [AUGUST, september], now), []);
+});
+
+test('recomputing a month that was itself paid gives the answer it was paid with', () => {
+  // September's own recovery must not count as already recovered when
+  // September is recomputed, or the live view and the paid payslip disagree.
+  const september = { month: '2026-09', lopDays: 0, grossEarnings: 60_000, payableDays: 30, lopArrears: [{ month: '2026-08', days: 2 }] };
+  const arrears = lossOfPayArrears('2026-09', [AUGUST, september], () => 3);
+  assert.deepEqual(arrears, [{ month: '2026-08', days: 2, amount: 4000 }]);
+});
+
+test('only earlier months are considered', () => {
+  const october = { month: '2026-10', lopDays: 0, grossEarnings: 62_000, payableDays: 31 };
+  assert.deepEqual(lossOfPayArrears('2026-09', [october], () => 5), []);
 });
