@@ -267,7 +267,7 @@ function OnboardingCard({ onboarding, onToggleTask }: OnboardingCardProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="font-semibold text-ink-900">{onboarding.employeeName}</h3>
+                  <h2 className="font-semibold text-ink-900">{onboarding.employeeName}</h2>
                   <p className="text-sm text-ink-500 mt-0.5">{onboarding.designation}</p>
                 </div>
                 <Badge tone={deptBadgeTone(onboarding.department)}>{onboarding.department}</Badge>

@@ -92,7 +92,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-ink-500 leading-none">People Platform</p>
             </div>
           </div>
-          <button onClick={onClose} className="lg:hidden p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900">
+          <button type="button" onClick={onClose} aria-label="Close navigation menu" className="lg:hidden p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900">
             <X size={20} />
           </button>
         </div>

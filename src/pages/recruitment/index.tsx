@@ -160,9 +160,9 @@ function JobCard({ job, onClick, onDelete }: JobCardProps) {
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-ink-900 text-base truncate group-hover:text-brand-600 transition-colors">
+          <h2 className="font-semibold text-ink-900 text-base truncate group-hover:text-brand-600 transition-colors">
             {job.title}
-          </h3>
+          </h2>
           <p className="text-sm text-ink-500 mt-0.5">{job.department}</p>
         </div>
         <Badge tone={statusTone(job.status)} dot>

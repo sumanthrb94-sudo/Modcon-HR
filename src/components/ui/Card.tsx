@@ -27,7 +27,10 @@ export function CardHeader({ title, subtitle, action, className }: CardHeaderPro
   return (
     <div className={cn('flex items-start justify-between gap-4 mb-4', className)}>
       <div>
-        <h3 className="text-base font-semibold text-ink-900">{title}</h3>
+        {/* h2, not h3: a card sits directly under the page's h1, and skipping a
+            level leaves screen-reader users unable to tell whether they missed
+            a section in between (G11). */}
+        <h2 className="text-base font-semibold text-ink-900">{title}</h2>
         {subtitle && <p className="text-sm text-ink-500 mt-0.5">{subtitle}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}

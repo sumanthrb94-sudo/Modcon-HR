@@ -117,7 +117,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   return (
     <>
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b-2 border-ink-900/40 bg-white px-4 lg:px-6">
-      <button onClick={onMenuClick} className="lg:hidden p-2 text-ink-600 hover:bg-ink-100 hover:text-ink-900">
+      <button type="button" onClick={onMenuClick} aria-label="Open navigation menu" className="lg:hidden p-2 text-ink-600 hover:bg-ink-100 hover:text-ink-900">
         <Menu size={20} />
       </button>
       {/* The sidebar carries the lockup on desktop; on mobile it is closed, so
@@ -132,6 +132,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             type="text"
             value={query}
             placeholder="Search employees, requests, documents…"
+            aria-label="Search employees, requests and documents"
             className="input pl-9 bg-ink-100 border-ink-200 focus:bg-white"
             onFocus={() => setOpen(true)}
             onChange={(event) => {
@@ -237,6 +238,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             onClick={() => signOutUser()}
             className="ml-1 p-1.5 text-ink-500 hover:bg-ink-100 hover:text-brand-700"
             title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut size={16} />
           </button>

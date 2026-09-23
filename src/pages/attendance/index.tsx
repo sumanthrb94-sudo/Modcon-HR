@@ -595,7 +595,7 @@ export function AttendancePage() {
       <Card padding={false}>
         <div className="p-5 border-b border-ink-100 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-ink-900">Regularization Requests</h3>
+            <h2 className="text-base font-semibold text-ink-900">Regularization Requests</h2>
             <p className="text-sm text-ink-500 mt-0.5">
               {visibleRegRequests.filter((r) => r.status === 'Pending').length} pending approval
             </p>

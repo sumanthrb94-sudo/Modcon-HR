@@ -526,7 +526,7 @@ export function MyAttendancePage() {
               <div className="flex items-center gap-4">
                 <Avatar name={targetEmployee.fullName} size="lg" />
                 <div>
-                  <h3 className="text-lg font-semibold text-ink-900">{targetEmployee.fullName}</h3>
+                  <h2 className="text-lg font-semibold text-ink-900">{targetEmployee.fullName}</h2>
                   <p className="text-sm text-ink-500">
                     {targetEmployee.designation} · {targetEmployee.department}
                   </p>
@@ -553,11 +553,11 @@ export function MyAttendancePage() {
           <Card>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-semibold text-ink-900">
+                <h2 className="text-base font-semibold text-ink-900">
                   {openFromEarlierDay && todayRecord
                     ? `Open shift · ${formatDate(todayRecord.date)}`
                     : `Today · ${formatDate(todayIso())}`}
-                </h3>
+                </h2>
                 {todayRecord?.checkIn ? (
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge tone={statusTone(todayRecord.status)} dot>

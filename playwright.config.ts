@@ -214,7 +214,7 @@ const ORG_SETTINGS_ENABLED =
 // write-failure-rollback.spec.ts needs a signed-in persona and a seeded
 // record to act on, so it lives here — but it asserts persistence behaviour
 // rather than role behaviour, and skips itself in all but one project.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|write-failure-rollback|joining-date|employee-self-scope)\.spec\.ts$/;
+const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|write-failure-rollback|joining-date|employee-self-scope|accessibility)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',
