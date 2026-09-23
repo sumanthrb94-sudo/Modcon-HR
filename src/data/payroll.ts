@@ -171,12 +171,18 @@ export function lossOfPayDays(
 ): number {
   const attendance = getAttendanceRecords().filter((r) => r.employeeId === employeeId);
   const holidays = new Set(getHolidayDirectory().map((h) => h.date));
-  const unpaid = getLeaveRequests().filter(
-    (r) =>
-      r.employeeId === employeeId &&
-      r.status === 'Approved' &&
-      normalizeLeaveTypeValue(r.type) === 'Unpaid',
-  );
+  // Unpaid leave costs every working day it covers; any other type costs only
+  // the days it was approved beyond the balance (`lossOfPayDays`).
+  const unpaid = getLeaveRequests()
+    .filter((r) => r.employeeId === employeeId && r.status === 'Approved')
+    .flatMap((r) => {
+      if (normalizeLeaveTypeValue(r.type) === 'Unpaid') {
+        return [{ startDate: r.startDate, endDate: r.endDate, days: r.days }];
+      }
+      return (r.lossOfPayDays ?? 0) > 0
+        ? [{ startDate: r.startDate, endDate: r.endDate, days: r.days, lossOfPayDays: r.lossOfPayDays }]
+        : [];
+    });
   const unpaidDates = unpaidLeaveByDate(unpaid, month, (date) => holidays.has(date) || isWeekOffFor(employee, date));
   return combineLossOfPay(attendance, unpaidDates, month);
 }

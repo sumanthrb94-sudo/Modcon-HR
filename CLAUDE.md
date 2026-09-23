@@ -232,6 +232,16 @@ Settings → Leave Policies says what the company grants; it could not say what 
 - **`pendingApprovalsSummary(profile)` scopes the Leave Requests count to the same set**, or the card promises twelve approvals and the queue behind it holds two. For HR and Admin that scoped figure *is* the organisation's — the scoping is not being skipped, it is what organisation-wide adds up to. The other three rows are still organisation-wide for everyone — the same gap in a different workflow, left alone rather than changed on the way past.
 - `tests/e2e/leave-approval-scope.spec.ts` is the guard, in the role projects (Chromium, once per persona — this is app logic, not engine behaviour). It seeds a reporting line into `modcon.hr.customEmployees` and `modcon.hr.leaveRequests` directly, because the personas match no employee record and a Manager has `view` on Employee Directory, so no persona can hire its own reports through the UI. **Its seeded outsider carries `reportingManagerId: null` on purpose** — that one record is both "outside the manager's line" and "has no line at all", so the same row proves the manager is scoped out and the administrator is not. **One of its tests signs in as `HR_PERSONA` and runs only from the manager project** — HR is nobody's role project, and it decides in its own browser context so its approval cannot empty the queue the manager's test needs.
 
+### Leave beyond the quota is loss of pay, not a refusal
+
+The organisation's leave policy is the quota of **paid** leave — a day or two a month, so many a year. Leave within it costs nothing; days applied for beyond it are still leave, but unpaid. `overQuotaDays` in [src/data/lossOfPay.ts](src/data/lossOfPay.ts) is the one definition.
+
+- **The Apply Leave dialog used to refuse** a request larger than the balance, leaving somebody who had used their quota no way to record the days under the type they were taking. It now states the split ("2 paid, 3 loss of pay") and submits, with the excess stored as `lossOfPayDays` on the request.
+- **The figure is settled at approval** (`updateLeaveRequestStatus`), against approved usage as it stands then — an earlier request rejected frees days, another approved first uses them. First approved is first paid.
+- **The unpaid days are the request's last working days**, so a request spanning a month end is deducted in the month those days fall in; a fractional balance leaves half a day unpaid. Balances count only the paid part as `used`.
+- **Unpaid Leave is loss of pay whole, by its type**, and does not set `lossOfPayDays`. A paid type granting zero days (Comp Off before any is earned) is no longer "recorded, not deducted" — a zero quota is a quota of nothing.
+- Payroll combines this with the attendance sheet per date, the larger of the two, so a day both over quota and marked Absent is deducted once. `tests/unit/lossOfPay.test.ts` is the arithmetic.
+
 ### Employee documents
 
 The documents filed against an employee live in the Firestore collection `employee_documents` (`src/lib/employeeDocuments.ts`), one document per name per person, id `<orgKey>__<employeeId>__<slug>` so re-filing replaces rather than duplicates. Metadata only — a name, a type, a status — never the file.

@@ -4,6 +4,10 @@ import { leaveApprovalRefusal } from '@/lib/dataScope';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
+import { getEmployeeDirectory } from '@/data/employees';
+import { getEntitlement } from '@/data/leaveEntitlements';
+import { normalizeLeaveTypeValue } from '@/data/leavePolicies';
+import { overQuotaDays } from '@/data/lossOfPay';
 
 const LEAVE_REQUESTS_STORAGE_KEY = 'modcon.hr.leaveRequests';
 export const LEAVE_REQUESTS_CHANGED_EVENT = 'modcon-hr-leave-requests-changed';
@@ -260,6 +264,30 @@ export type LeaveDecision =
   | { ok: false; reason: string; requests: LeaveRequest[] };
 
 /**
+ * The over-quota days of a request, settled against the balance as it stands
+ * at the moment of approval.
+ *
+ * The figure on a pending request is what the applicant was told when they
+ * applied, and the balance can move before anyone decides it: an earlier
+ * request rejected frees days, another approved first uses them. Approval is
+ * where pay is committed, so it is recomputed here — against approved leave
+ * only, since this request is itself still pending, and first approved is
+ * first paid. Unpaid Leave keeps no figure: it is loss of pay whole.
+ *
+ * Where the employee or their entitlement cannot be resolved the applicant's
+ * figure stands rather than being zeroed — a missing record must not quietly
+ * turn loss of pay into paid leave.
+ */
+function settledLossOfPayDays(request: LeaveRequest, requests: LeaveRequest[]): number | undefined {
+  if (normalizeLeaveTypeValue(request.type) === 'Unpaid') return undefined;
+  const employee = getEmployeeDirectory().find((e) => e.id === request.employeeId);
+  const entitlement = employee ? getEntitlement(employee, request.type, requests) : undefined;
+  if (!entitlement || entitlement.withheldReason) return request.lossOfPayDays;
+  const days = overQuotaDays(request.days, entitlement.available);
+  return days > 0 ? days : undefined;
+}
+
+/**
  * Approve or decline a request — the one place a leave status is written, and
  * therefore the one place authority is checked.
  *
@@ -290,11 +318,15 @@ export function updateLeaveRequestStatus(
   const refusal = leaveApprovalRefusal(decider.profile, request.employeeId);
   if (refusal) return { ok: false, reason: refusal, requests: current };
 
+  const lossOfPayDays =
+    nextStatus === 'Approved' ? settledLossOfPayDays(request, current) : request.lossOfPayDays;
+
   const updated = current.map((r) =>
     r.id === requestId
       ? {
           ...r,
           status: nextStatus,
+          lossOfPayDays,
           approverId: nextStatus === 'Approved' ? (decider.approverId ?? r.approverId) : null,
           approverName: nextStatus === 'Approved' ? (decider.approverName ?? r.approverName) : undefined,
         }

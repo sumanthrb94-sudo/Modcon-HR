@@ -190,6 +190,13 @@ export interface LeaveRequest {
   startDate: string;
   endDate: string;
   days: number;
+  /**
+   * How many of `days` fall beyond the balance and are loss of pay rather
+   * than paid leave. Absent means none — every request before this existed.
+   * An Unpaid-type request is loss of pay whole and does not set it.
+   * Settled when approved (`updateLeaveRequestStatus`); see data/lossOfPay.ts.
+   */
+  lossOfPayDays?: number;
   reason: string;
   status: LeaveStatus;
   appliedOn: string;

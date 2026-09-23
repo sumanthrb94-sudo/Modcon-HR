@@ -269,7 +269,11 @@ test.describe.serial('leave policy', () => {
     await expect(dialog().getByRole('button', { name: 'Submit Request' })).toBeDisabled();
   });
 
-  test('more days than the balance holds is refused before submit', async () => {
+  // Leave within the policy's quota is paid; leave applied for beyond it is
+  // still leave, but the excess is loss of pay. It used to be refused outright,
+  // which left an employee who had used their quota no way to say "I am taking
+  // these days" under the type they were actually taking.
+  test('more days than the balance holds is loss of pay, not a refusal', async () => {
     test.skip(persona().role !== 'admin', 'needs the whole directory in scope');
     await openApply();
     await employeeSelect().selectOption({ label: 'Rohan Iyer (MC-003)' });
@@ -279,8 +283,9 @@ test.describe.serial('leave policy', () => {
     await startDate().fill(isoInDays(40));
     await endDate().fill(isoInDays(70));
 
-    await expect(dialog().getByText(/day\(s\) of Casual Leave remain/)).toBeVisible();
-    await expect(dialog().getByRole('button', { name: 'Submit Request' })).toBeDisabled();
+    await expect(dialog().getByText(/deducted from pay as loss of pay once approved/)).toBeVisible();
+    await expect(dialog().getByText(/day\(s\) loss of pay/)).toBeVisible();
+    await expect(dialog().getByRole('button', { name: 'Submit Request' })).toBeEnabled();
   });
 
   test('half a day is offered where the policy allows it, and charged as half', async () => {

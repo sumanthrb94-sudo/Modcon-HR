@@ -9,6 +9,11 @@
  * entitlement, and nothing stopped ten days being taken out of a balance of
  * four — the request only failed later, in someone's head, at approval time.
  *
+ * Ten days against a balance of four is no longer refused, though: it is four
+ * days of paid leave and six of loss of pay (`overQuotaDays`), which is how
+ * the organisation's quota is meant to work — the policy says how much leave
+ * is paid, not how much may be taken. The applicant is told the split first.
+ *
  * This module answers the whole question in one place so the dialog and the
  * submit handler cannot disagree: the same call renders the live summary the
  * applicant reads and decides whether Submit is allowed. Every rule here comes
@@ -26,6 +31,7 @@ import { getEntitlement, type Entitlement } from './leaveEntitlements';
 import { getPolicyForType } from './leavePolicies';
 import { getHolidayDirectory } from './holidays';
 import { isWeekOffFor } from './employees';
+import { overQuotaDays } from './lossOfPay';
 import { todayIso } from '@/lib/today';
 import { financialYearLabel, financialYearStart } from '@/lib/financialYear';
 
@@ -56,6 +62,12 @@ export interface LeaveApplicationCheck {
   pendingDays: number;
   /** Days left after this request, or null when the type carries no balance. */
   balanceAfter: number | null;
+  /**
+   * Chargeable days beyond what the balance still holds. They are not refused:
+   * leave within the quota is paid, and anything applied for past it is loss
+   * of pay. 0 for Unpaid Leave, which is loss of pay whole by its type.
+   */
+  lossOfPayDays: number;
   /** True when the policy allows half a day and the range is a single day. */
   halfDayAllowed: boolean;
   /** Blocking reasons. Empty means the application may be submitted. */
@@ -105,12 +117,17 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): b
 }
 
 /**
- * A type with no accrued days and no tenure gate — Unpaid Leave, and Comp Off
- * before any has been earned. There is no balance to overdraw, so the balance
- * rule does not apply to it; the applicant is told what it costs instead.
+ * Unpaid Leave has no balance to overdraw: every day of it is loss of pay by
+ * its type (`lossOfPayDays` in data/payroll.ts), so the over-quota split below
+ * does not apply to it.
+ *
+ * This used to cover any type granting zero days, Comp Off before any was
+ * earned included — "record it, don't deduct it" — which made a zero-day
+ * paid type unlimited paid leave. Under the over-quota rule a zero grant is a
+ * quota of nothing, and every day applied for is beyond it.
  */
 function carriesNoBalance(entitlement: Entitlement): boolean {
-  return entitlement.granted === 0 && !entitlement.withheldReason;
+  return entitlement.type === 'Unpaid';
 }
 
 export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplicationCheck {
@@ -129,6 +146,7 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
     excludedWeekOffs: [],
     pendingDays: 0,
     balanceAfter: entitlement ? entitlement.available : null,
+    lossOfPayDays: 0,
     halfDayAllowed: false,
     errors,
     notes,
@@ -237,22 +255,26 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
 
   const noBalance = carriesNoBalance(entitlement);
   const remaining = entitlement.remaining;
-  const balanceAfter = noBalance ? null : remaining - chargeableDays;
-
-  if (!noBalance && !entitlement.withheldReason && chargeableDays > remaining) {
-    errors.push(
-      pendingDays > 0
-        ? `Only ${remaining} day(s) of ${type} Leave remain — ${entitlement.available} available less ${pendingDays} already pending.`
-        : `Only ${entitlement.available} day(s) of ${type} Leave remain.`,
-    );
-  }
+  const balanceAfter = noBalance ? null : Math.max(0, remaining - chargeableDays);
+  // A tenure-gated type is refused above, so it never reaches the split.
+  const lossOfPayDays =
+    noBalance || entitlement.withheldReason ? 0 : overQuotaDays(chargeableDays, remaining);
 
   // Holidays and week-offs are not repeated as notes: the dialog lists each
   // excluded date from `excludedHolidays` / `excludedWeekOffs` already, and a
   // count saying the same thing underneath it is just something else to read.
   if (noBalance && workingDays > 0) {
     notes.push(
-      `${type} Leave carries no accrued balance — these ${chargeableDays} day(s) are recorded against the policy, not deducted.`,
+      `${type} Leave is not paid — these ${chargeableDays} day(s) will be deducted from pay as loss of pay once approved.`,
+    );
+  }
+  if (lossOfPayDays > 0 && workingDays > 0) {
+    const paid = chargeableDays - lossOfPayDays;
+    const reserved = pendingDays > 0 ? ` (${pendingDays} day(s) are already held by pending requests)` : '';
+    notes.push(
+      paid > 0
+        ? `Only ${remaining} day(s) of ${type} Leave remain${reserved}: ${paid} day(s) are paid leave and the other ${lossOfPayDays} day(s) will be deducted from pay as loss of pay once approved.`
+        : `No ${type} Leave remains${reserved}: all ${lossOfPayDays} day(s) will be deducted from pay as loss of pay once approved.`,
     );
   }
   if (pendingDays > 0 && !noBalance) {
@@ -276,6 +298,7 @@ export function checkLeaveApplication(input: LeaveApplicationInput): LeaveApplic
     excludedWeekOffs,
     pendingDays,
     balanceAfter,
+    lossOfPayDays,
     halfDayAllowed,
     errors,
     notes,

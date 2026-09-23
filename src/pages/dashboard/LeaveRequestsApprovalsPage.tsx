@@ -151,6 +151,11 @@ export function LeaveRequestsApprovalsPage() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <p className="text-sm font-semibold text-ink-900">{employee?.fullName ?? request.employeeId}</p>
                                                 <Badge tone="violet">{request.type}</Badge>
+                                                {(request.lossOfPayDays ?? 0) > 0 && (
+                                                    <Badge tone="red">
+                                                        {request.lossOfPayDays} day{request.lossOfPayDays === 1 ? '' : 's'} loss of pay
+                                                    </Badge>
+                                                )}
                                                 {backdated > 0 && (
                                                     <Badge tone="amber">
                                                         Backdated {backdated} day{backdated === 1 ? '' : 's'}

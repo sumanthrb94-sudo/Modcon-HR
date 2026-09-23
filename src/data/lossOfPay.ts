@@ -8,7 +8,11 @@
  * Two registers can say a day was unpaid, and they are combined **per date**:
  *
  *  - the attendance sheet — `Absent` is a whole day, `Half Day` half; and
- *  - an **approved Unpaid leave request** — every working day it covers.
+ *  - an **approved Unpaid leave request** — every working day it covers; and
+ *  - the **over-quota part of any other approved request** — leave within the
+ *    policy's quota is paid, and days applied for beyond it are loss of pay
+ *    (`lossOfPayDays` on the request). They are its *last* working days: the
+ *    balance pays for the leave in the order it is taken.
  *
  * The second is new. Attendance used to be the only source, and approved
  * leave of any type is stamped `On Leave` there, which payroll reads as paid —
@@ -27,6 +31,19 @@
  * only a decision someone made moves pay.
  */
 
+/**
+ * How many of `chargeable` days fall beyond what the balance holds.
+ *
+ * The organisation's policy is the quota of paid leave — a day or two a month,
+ * so many a year. Leave within it costs nothing; leave applied for past it is
+ * still leave, but unpaid, so the excess is loss of pay rather than a refusal.
+ * One definition, used when the applicant is told and again when the request
+ * is approved (`updateLeaveRequestStatus`), where the balance may have moved.
+ */
+export function overQuotaDays(chargeable: number, balance: number): number {
+  return Math.max(0, chargeable - Math.max(0, balance));
+}
+
 export interface AttendanceDay {
   readonly date: string;
   readonly status: string;
@@ -37,6 +54,11 @@ export interface UnpaidLeaveRequest {
   readonly endDate: string;
   /** What the request was charged at when approved; 0.5 marks a half day. */
   readonly days: number;
+  /**
+   * How many of `days` are unpaid. Absent means all of them — an Unpaid-type
+   * request. A paid type sets it to its over-quota days, 0 when within quota.
+   */
+  readonly lossOfPayDays?: number;
 }
 
 /** Every ISO date from `start` to `end` inclusive, in UTC so no DST edge moves a day. */
@@ -63,14 +85,30 @@ export function unpaidLeaveByDate(
   isNonWorking: (date: string) => boolean,
 ): Map<string, number> {
   const byDate = new Map<string, number>();
+  const charge = (date: string, weight: number) => {
+    if (weight <= 0 || !date.startsWith(month)) return;
+    byDate.set(date, Math.max(byDate.get(date) ?? 0, weight));
+  };
   for (const request of requests) {
     const dates = datesBetween(request.startDate, request.endDate);
     // A half day exists only as a single-day request charged at half — the
     // same condition the application form enforces before it offers one.
-    const weight = dates.length === 1 && request.days > 0 && request.days < 1 ? 0.5 : 1;
-    for (const date of dates) {
-      if (!date.startsWith(month) || isNonWorking(date)) continue;
-      byDate.set(date, Math.max(byDate.get(date) ?? 0, weight));
+    const perDay = dates.length === 1 && request.days > 0 && request.days < 1 ? 0.5 : 1;
+    const working = dates.filter((date) => !isNonWorking(date));
+
+    if (request.lossOfPayDays === undefined) {
+      for (const date of working) charge(date, perDay);
+      continue;
+    }
+    // Over quota: the unpaid days are the request's last working days, walked
+    // across the whole request (not just this month) so a request spanning a
+    // month end puts its unpaid days in the month they fall in. A fractional
+    // excess — a balance of 1.5 against three days — leaves half a day unpaid.
+    let unpaid = Math.min(request.lossOfPayDays, request.days);
+    for (let i = working.length - 1; i >= 0 && unpaid > 0; i -= 1) {
+      const weight = Math.min(perDay, unpaid);
+      charge(working[i], weight);
+      unpaid -= weight;
     }
   }
   return byDate;

@@ -257,6 +257,9 @@ export function LeavePage() {
       // What the leave actually costs the balance: working days only, with
       // holidays and this employee's week-offs left out, half-day applied.
       days: policyCheck.chargeableDays,
+      // Past the balance is still leave, but unpaid; approval settles the
+      // final figure against the balance as it stands then.
+      ...(policyCheck.lossOfPayDays > 0 ? { lossOfPayDays: policyCheck.lossOfPayDays } : {}),
       reason: formReason.trim(),
       status: 'Pending',
       appliedOn: todayIso(),
@@ -315,6 +318,9 @@ export function LeavePage() {
               {row.startDate !== row.endDate ? ` – ${formatDateShort(row.endDate)}` : ''}
             </p>
             <p className="text-xs text-ink-400">{row.days} day{row.days !== 1 ? 's' : ''}</p>
+            {(row.lossOfPayDays ?? 0) > 0 && (
+              <Badge tone="red">{row.lossOfPayDays} day{row.lossOfPayDays === 1 ? '' : 's'} loss of pay</Badge>
+            )}
             {backdated > 0 && (
               <Badge tone="amber">Backdated {backdated} day{backdated === 1 ? '' : 's'}</Badge>
             )}
@@ -938,6 +944,11 @@ export function LeavePage() {
                 {policyCheck.balanceAfter !== null && policyCheck.errors.length === 0 && (
                   <span className="text-ink-600">
                     {' '}· {policyCheck.balanceAfter} day(s) would remain
+                  </span>
+                )}
+                {policyCheck.lossOfPayDays > 0 && policyCheck.errors.length === 0 && (
+                  <span className="text-ink-600">
+                    {' '}· <strong>{policyCheck.lossOfPayDays} day(s) loss of pay</strong>
                   </span>
                 )}
               </div>

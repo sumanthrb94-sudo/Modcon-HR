@@ -163,7 +163,8 @@ function daysAtStatus(
         // would need day-level apportioning the model does not carry.
         financialYearOf(r.startDate) === fy,
     )
-    .reduce((sum, r) => sum + r.days, 0);
+    // Days taken beyond the balance are loss of pay, not leave drawn from it.
+    .reduce((sum, r) => sum + r.days - Math.min(r.days, r.lossOfPayDays ?? 0), 0);
 }
 
 /**
