@@ -75,7 +75,7 @@ export function HolidayCalendarPage() {
                     )}
                     {byMonth.map(([month, monthHolidays]) => (
                         <section key={month}>
-                            <h3 className="text-sm font-semibold text-ink-700 mb-2">{month}</h3>
+                            <h2 className="text-sm font-semibold text-ink-700 mb-2">{month}</h2>
                             <div className="space-y-2">
                                 {monthHolidays.map((holiday) => (
                                     <div

@@ -1035,6 +1035,7 @@ export function EmployeesPage() {
     ) : (
       <EmptyState
         icon={<User size={26} />}
+        headingLevel="h1"
         title="Employee not found"
         description="Your employee profile is not available yet."
       />
@@ -3160,6 +3161,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     return (
       <EmptyState
         icon={<User size={26} />}
+        headingLevel="h1"
         title="Employee not found"
         description="The employee you are looking for does not exist."
         action={

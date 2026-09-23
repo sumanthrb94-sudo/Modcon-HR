@@ -41,7 +41,7 @@ export function AnnouncementsPage() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                                        <h3 className="text-base font-semibold text-ink-900">{ann.title}</h3>
+                                        <h2 className="text-base font-semibold text-ink-900">{ann.title}</h2>
                                         <Badge tone={annTone(ann.category)}>{ann.category}</Badge>
                                     </div>
                                     <p className="text-xs text-ink-500 mb-2">

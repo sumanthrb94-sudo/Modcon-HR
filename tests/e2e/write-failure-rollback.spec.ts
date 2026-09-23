@@ -1,89 +1,90 @@
 import { test, expect } from '@playwright/test';
-import { type Persona } from './config';
-import { seedOrgRecords } from './firestore';
+import { ROLLBACK_PERSONA } from './config';
+import { FIRESTORE_BASE, adminToken, seedOrgRecords, setStoredRole, signInPersona } from './firestore';
 
 /**
- * A change the server refused does not stay on screen.
+ * A change the server refused does not stay on screen (G7, R4-M1).
  *
- * Writes to `org_records` are optimistic by design: `save()` writes the
- * localStorage cache, fires its change event and returns, and the commit
- * follows without being awaited. A decision should not wait on a round trip.
+ * Writes to `org_records` are optimistic by design: `save()` writes the cache,
+ * fires its change event and returns, and the commit follows without being
+ * awaited. What was not by design is what used to happen when that commit
+ * FAILED: a warning to a console nobody has open, while the cache went on
+ * showing the change — a refused approval that looked exactly like one that
+ * had landed, and survived a reload.
  *
- * What was not by design is what used to happen when that commit FAILED. The
- * catch in src/data/persistence.ts warned to a console nobody has open, and
- * the cache went on showing the change — so a rejected approval sat there
- * looking exactly like one that had landed, and survived a reload. QA filed it
- * as R4-M1; the PRD made it gate G7: "the UI can never show saved/approved for
- * data the database rejected".
+ * ## How the refusal is produced
  *
- * ## Why this is `fixme` and not running
+ * An earlier version aborted the write channel. That never reaches the
+ * rollback: an aborted request is UNAVAILABLE, which the Web SDK retries
+ * forever, so `batch.commit()` never rejects. The case that matters is a
+ * definitive `permission-denied`, and the honest way to get one is a page
+ * that believes it may do something the server has since stopped allowing.
  *
- * The first attempt induced the failure by aborting the Firestore write
- * channel. It does not work, and the reason is worth writing down because it
- * is a property of the SDK rather than a mistake in the test: an aborted
- * request is reported as UNAVAILABLE, which the Web SDK treats as retryable.
- * `batch.commit()` therefore never rejects — it stays pending and retries —
- * so the catch in persistence.ts is never reached. Measured, not assumed: the
- * banner assertion timed out after 15s while the page stayed healthy.
+ * So: a manager opens their approvals queue, and their role is then changed
+ * to `employee` on the server through the emulator's owner bypass. That write
+ * never reaches the app's Watch stream (CLAUDE.md records this trap), so the
+ * page still shows Approve — while `expenseDecisionIsAuthorised` now refuses
+ * the decision. It is the same shape as a real revocation racing a click.
  *
- * So a network fault is the wrong fault to test with. The case that matters
- * is a DEFINITIVE refusal — `permission-denied` — which is now the ordinary
- * one: firestore.rules refuses an employee who approves their own expense
- * claim or moves their own leave out of Pending. Reaching that through the UI
- * needs an account whose `employee_links` record makes the claim its own, and
- * CLAUDE.md is explicit that a spec writing `employee_links` needs a persona
- * of its own — the document is shared by every project and worker in a run,
- * so linking a shared persona repoints who that account is underneath specs
- * that never mention links. GEOFENCE_PERSONA and HIRING_MANAGER_PERSONA exist
- * for exactly this.
- *
- * The remaining work is therefore: add a dedicated persona to
- * tests/e2e/config.ts, move this spec to the emulator-gated org-settings
- * project (where the other `employee_links` writers live), seed the link, and
- * drop the routing entirely. The rollback and the banner are implemented and
- * typecheck; this is the guard that is missing, and it is queued rather than
- * quietly dropped.
+ * In the org-settings project, with a persona of its own: it writes an
+ * `employee_links` document and rewrites the persona's role, both shared by
+ * every project in a run.
  */
 
-function persona(): Persona {
-  const p = test.info().project.metadata?.persona as Persona | undefined;
-  if (!p) throw new Error('No persona configured for this project');
-  return p;
-}
-
-const CLAIMANT = 'E2E Rollback Claimant';
+const ORG = 'default';
+const LEAD = 'emp-e2e-rb-lead';
+const REPORT = 'emp-e2e-rb-report';
 const CLAIM_ID = 'exp-e2e-rollback';
 
-test.fixme('a refused change is undone and said out loud', async ({ page }) => {
-  test.skip(persona().role !== 'admin', 'Persistence behaviour, not role behaviour — asked once.');
+function person(id: string, fullName: string, email: string, reportsTo: string | null) {
+  const [firstName, ...rest] = fullName.split(' ');
+  return {
+    id,
+    employeeCode: id.toUpperCase(),
+    firstName,
+    lastName: rest.join(' '),
+    fullName,
+    email,
+    phone: '+91 90000 00000',
+    avatar: 'brand',
+    dateOfBirth: '1990-01-01',
+    designation: 'Engineer',
+    department: 'Engineering',
+    location: 'Bengaluru',
+    employmentType: 'Full-time',
+    status: 'Active',
+    dateOfJoining: '2024-01-01',
+    reportingManagerId: reportsTo,
+    ctc: 1200000,
+  };
+}
 
-  await seedOrgRecords('employees', [
-    {
-      id: 'emp-e2e-rollback',
-      employeeCode: 'EMP-E2E-ROLLBACK',
-      firstName: 'E2E',
-      lastName: 'Rollback Claimant',
-      fullName: CLAIMANT,
-      email: 'e2e-rollback@modcon-hr.test',
-      phone: '+91 90000 00000',
-      avatar: 'brand',
-      dateOfBirth: '1990-01-01',
-      designation: 'Engineer',
-      department: 'Engineering',
-      location: 'Bengaluru',
-      employmentType: 'Full-time',
-      status: 'Active',
-      dateOfJoining: '2024-01-01',
-      reportingManagerId: null,
-      ctc: 1200000,
-    },
-  ]);
-  await seedOrgRecords(
-    'expenseClaims',
-    [
-      {
+async function firestore(path: string, init: RequestInit = {}) {
+  const token = await adminToken();
+  return fetch(`${FIRESTORE_BASE}/${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+  });
+}
+
+test.describe.serial('a refused write', () => {
+  let uid = '';
+
+  test.beforeAll(async () => {
+    const signedIn = await signInPersona(ROLLBACK_PERSONA.email, ROLLBACK_PERSONA.password);
+    expect(signedIn.uid, 'could not resolve the rollback persona uid').toBeTruthy();
+    uid = signedIn.uid as string;
+    await setStoredRole(uid, 'manager');
+
+    await seedOrgRecords('employees', [
+      person(LEAD, 'E2E Rollback Lead', ROLLBACK_PERSONA.email, null),
+      person(REPORT, 'E2E Rollback Report', 'e2e-rb-report@modcon-hr.test', LEAD),
+    ]);
+    await seedOrgRecords(
+      'expenseClaims',
+      [{
         id: CLAIM_ID,
-        employeeId: 'emp-e2e-rollback',
+        employeeId: REPORT,
         title: 'E2E rollback claim',
         category: 'Travel',
         amount: 850,
@@ -91,42 +92,57 @@ test.fixme('a refused change is undone and said out loud', async ({ page }) => {
         status: 'Submitted',
         submittedOn: '2026-09-01',
         description: 'E2E write-failure rollback.',
-      },
-    ],
-    { employeeId: (record) => record.employeeId },
-  );
-
-  await page.goto('/login');
-  await page.locator('#username').fill(persona().email);
-  await page.locator('#password').fill(persona().password);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
-
-  await page.goto('/expenses');
-  await expect(page.getByRole('heading', { name: 'Expenses', exact: true })).toBeVisible({
-    timeout: 20_000,
+      }],
+      { employeeId: (r) => r.employeeId, readableBy: () => [REPORT, LEAD] },
+    );
+    const res = await firestore(`employee_links/${uid}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          uid: { stringValue: uid },
+          employeeId: { stringValue: LEAD },
+          orgId: { stringValue: ORG },
+          linkedBy: { stringValue: 'e2e' },
+        },
+      }),
+    });
+    expect(res.ok, 'seeding employee_links').toBeTruthy();
   });
 
-  const row = page.getByRole('row').filter({ hasText: CLAIMANT });
-  await expect(row).toHaveCount(1);
-  await expect(row.getByRole('button', { name: 'Approve' })).toHaveCount(1);
+  test.afterAll(async () => {
+    if (uid) {
+      await setStoredRole(uid, 'manager');
+      await firestore(`employee_links/${uid}`, { method: 'DELETE' });
+    }
+    for (const [store, id] of [['employees', LEAD], ['employees', REPORT], ['expenseClaims', CLAIM_ID]]) {
+      await firestore(`org_records/${ORG}__${store}__${id}`, { method: 'DELETE' });
+    }
+  });
 
-  // Only the write channel. Listens and document reads are left alone so the
-  // page keeps working and the commit is the single thing that fails.
-  await page.route(
-    (url) => url.href.includes('/Write') || url.href.includes('/Commit'),
-    (route) => route.abort(),
-  );
+  test('is undone on screen and said out loud', async ({ page }) => {
+    await page.goto('/login');
+    await page.locator('#username').fill(ROLLBACK_PERSONA.email);
+    await page.locator('#password').fill(ROLLBACK_PERSONA.password);
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible({ timeout: 20_000 });
 
-  await row.getByRole('button', { name: 'Approve' }).click();
+    await page.goto('/dashboard/pending-approvals/expense-claims');
+    const row = page.locator(`[data-testid="expense-approval-claim"][data-employee-id="${REPORT}"]`);
+    await expect(row).toHaveCount(1, { timeout: 20_000 });
 
-  // The banner is the half a silent rollback cannot supply. Without it the row
-  // simply flips back a moment after the click, which reads as the app losing
-  // the change rather than the server refusing it — and leaves somebody
-  // clicking Approve over and over.
-  await expect(page.getByTestId('save-failure-banner')).toBeVisible({ timeout: 15_000 });
+    // Revoked on the server, unseen by the page: it still offers Approve.
+    await setStoredRole(uid, 'employee');
+    await row.getByRole('button', { name: 'Approve' }).click();
 
-  // And the claim is back to what the database actually holds.
-  await expect(row.getByRole('button', { name: 'Approve' })).toHaveCount(1, { timeout: 15_000 });
-  await expect(row).toContainText('Submitted');
+    // The banner is the half a silent rollback cannot supply: without it the
+    // row simply comes back, which reads as the app losing the change rather
+    // than the server refusing it.
+    await expect(page.getByTestId('save-failure-banner')).toBeVisible({ timeout: 15_000 });
+    // And the claim is back to what the database holds: still undecided.
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+
+    const stored = await firestore(`org_records/${ORG}__expenseClaims__${CLAIM_ID}`);
+    const body = (await stored.json()) as { fields?: { status?: { stringValue?: string } } };
+    expect(body.fields?.status?.stringValue).toBe('Submitted');
+  });
 });
