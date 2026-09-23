@@ -87,8 +87,11 @@ export function SupportPage() {
 
             {loadError && <div role="alert" className="border-2 border-brand-600 bg-brand-50 px-4 py-3 text-sm text-ink-900">{loadError}</div>}
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-                <Card padding={false}>
+            {/* grid-cols-1 below lg: a bare grid track sizes to its widest
+                content, and an unwrapped subject or date pushed the inbox to
+                475px on a 390px phone. */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+                <Card padding={false} className="min-w-0">
                     <h2 className="px-4 pt-4 pb-2 text-base font-semibold text-ink-900">Conversations</h2>
                     {threads === null ? (
                         <p className="px-4 pb-4 text-sm text-ink-500">Loading…</p>
@@ -107,10 +110,10 @@ export function SupportPage() {
                                         aria-current={selectedId === t.id ? 'true' : undefined}
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="text-sm font-medium text-ink-900 truncate">{t.subject}</span>
-                                            <Badge tone={t.status === 'open' ? 'amber' : 'green'}>{t.status === 'open' ? 'Open' : 'Resolved'}</Badge>
+                                            <span className="min-w-0 text-sm font-medium text-ink-900 truncate">{t.subject}</span>
+                                            <Badge className="shrink-0" tone={t.status === 'open' ? 'amber' : 'green'}>{t.status === 'open' ? 'Open' : 'Resolved'}</Badge>
                                         </div>
-                                        <p className="mt-0.5 text-xs text-ink-500 truncate">
+                                        <p className="mt-0.5 text-xs text-ink-500 break-words">
                                             {isSuperAdmin ? `${t.orgName ?? t.orgId} · ` : ''}
                                             {t.lastMessageBy === 'platform' ? 'Platform replied' : 'Waiting on the platform'} · {when(t.lastMessageAt)}
                                         </p>
@@ -124,7 +127,7 @@ export function SupportPage() {
                 {selected ? (
                     <Conversation key={selected.id} thread={selected} side={side} showOrg={isSuperAdmin} />
                 ) : (
-                    <Card><p className="text-sm text-ink-500">Choose a conversation to read it.</p></Card>
+                    <Card className="min-w-0"><p className="text-sm text-ink-500">Choose a conversation to read it.</p></Card>
                 )}
             </div>
 
@@ -171,11 +174,11 @@ function Conversation({ thread, side, showOrg }: { thread: SupportThread; side: 
     }
 
     return (
-        <Card>
+        <Card className="min-w-0">
             <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="min-w-0">
                     <h2 className="text-base font-semibold text-ink-900">{thread.subject}</h2>
-                    <p className="text-xs text-ink-500">
+                    <p className="text-xs text-ink-500 break-words">
                         {showOrg ? `${thread.orgName ?? thread.orgId} · ` : ''}Opened by {thread.createdByEmail ?? 'the organisation'} · {when(thread.createdAt)}
                     </p>
                 </div>

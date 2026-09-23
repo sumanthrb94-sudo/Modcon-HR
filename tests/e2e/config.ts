@@ -45,7 +45,11 @@ export const HR_PERSONA = {
  */
 export const SUPER_ADMIN = {
   role: 'admin' as const,
-  email: process.env.E2E_SUPER_ADMIN_EMAIL ?? 'playwright-e2e-super@modcon-hr.test',
+  // No hyphen anywhere, on purpose: a browser wraps an address at a hyphen,
+  // so the old playwright-e2e-super@modcon-hr.test wrapped where a real one
+  // (sumanthbolla97@gmail.com) cannot, and the phone-width spec passed a
+  // /organizations page QA found 613px wide. This is the worst case.
+  email: process.env.E2E_SUPER_ADMIN_EMAIL ?? 'playwrightsuperadmin@modconhr.test',
   password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
   name: 'Playwright Super Admin',
   roleLabel: 'Administrator',

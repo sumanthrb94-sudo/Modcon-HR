@@ -35,16 +35,19 @@ export function StatCard({
       )}
       onClick={onClick}
     >
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        {/* min-w-0 and break-words: a value can be an email address, one word
+            with nowhere to wrap, and at this size it pushed the Super Admin's
+            Organizations page to 613px on a 390px phone. */}
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-600">{label}</p>
-          <p className="font-display text-2xl font-extrabold text-ink-900 mt-1">{value}</p>
+          <p className="font-display text-2xl font-extrabold text-ink-900 mt-1 break-words">{value}</p>
         </div>
         {/* One ink tile for every stat card. The icon is a label, not a
             status — sixty-two of these carried six unrelated hues, which is
             what "never recolour outside the palette" rules out. */}
         {icon && (
-          <div className="flex h-11 w-11 items-center justify-center bg-ink-100 text-ink-900">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center bg-ink-100 text-ink-900">
             {icon}
           </div>
         )}

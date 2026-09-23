@@ -95,7 +95,7 @@ const E2E_MANAGER_EMAILS = e2eEmail(
 // of the app can promote itself into one.
 const E2E_SUPER_ADMIN_EMAILS = e2eEmail(
     import.meta.env.VITE_E2E_SUPER_ADMIN_EMAIL,
-    'playwright-e2e-super@modcon-hr.test',
+    'playwrightsuperadmin@modconhr.test',
 );
 
 export const ADMIN_EMAILS = [

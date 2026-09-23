@@ -71,7 +71,38 @@ async function overflow(page: Page) {
         if (!contained) offenders.push(`${el.tagName.toLowerCase()}.${(el as HTMLElement).className}`.slice(0, 120));
       }
     }
-    return { pageScrolls, scrollWidth: document.documentElement.scrollWidth, width, offenders: offenders.slice(0, 5) };
+    // Text that runs past the right edge of the screen, whether or not the
+    // page scrolls because of it: an email in a large stat card overflowed
+    // its card while the page width stayed put, so "does the page scroll?"
+    // alone passed it. Text inside something that scrolls sideways on its own
+    // (a wide table) is allowed, as above.
+    const cutOff: string[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.textContent?.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const box = range.getBoundingClientRect();
+      if (box.width === 0 || box.right <= width + 1) continue;
+      let parent = node.parentElement;
+      let scrolls = false;
+      while (parent && parent !== document.body) {
+        const style = getComputedStyle(parent);
+        if (style.display === 'none' || style.visibility === 'hidden') { scrolls = true; break; }
+        if (/(auto|scroll)/.test(style.overflowX)) { scrolls = true; break; }
+        // Shortened on purpose with an ellipsis ("truncate"): a decision,
+        // not an overflow. The reader sees "…", not a word cut in half.
+        if (style.textOverflow === 'ellipsis' && style.overflowX !== 'visible') { scrolls = true; break; }
+        parent = parent.parentElement;
+      }
+      if (!scrolls) cutOff.push(`"${node.textContent.trim().slice(0, 40)}" ends at ${Math.round(box.right)}px`);
+    }
+    return {
+      pageScrolls: pageScrolls || cutOff.length > 0,
+      scrollWidth: document.documentElement.scrollWidth,
+      width,
+      offenders: [...offenders.slice(0, 5), ...cutOff.slice(0, 5)],
+    };
   });
 }
 
