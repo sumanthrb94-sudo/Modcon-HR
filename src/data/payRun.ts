@@ -19,3 +19,34 @@ export function payeesFor<T extends Pick<Employee, 'status' | 'dateOfJoining'>>(
     (employee) => employee.status !== 'Resigned' && (!employee.dateOfJoining || employee.dateOfJoining <= end),
   );
 }
+
+export interface CarriedOverLossOfPay {
+  readonly employeeId: string;
+  /** The earlier, already-paid month the days belong to. */
+  readonly fromMonth: string;
+  /** Positive: days deducted now. Negative: days refunded. */
+  readonly days: number;
+  /** Positive is deducted from this run's pay; negative is paid back. */
+  readonly amount: number;
+}
+
+/**
+ * Every correction to an earlier month's loss of pay that a run is about to
+ * make, one row per employee per month.
+ *
+ * `lossOfPayArrears` computes these onto each payslip, and they change what
+ * somebody is paid — a leave approved after its month was paid, or an absence
+ * regularised afterwards — for a reason that is not on this month's own
+ * attendance. So a run lists them before it is confirmed, rather than leaving
+ * HR to find them one payslip at a time. The first month they can appear is
+ * the first run after a paid month whose payslip recorded `lopDays`.
+ */
+export function carriedOverLossOfPay(
+  payslips: readonly { employeeId: string; lopArrears?: readonly { month: string; days: number; amount: number }[] }[],
+): CarriedOverLossOfPay[] {
+  return payslips
+    .flatMap((p) => (p.lopArrears ?? [])
+      .filter((a) => a.days !== 0)
+      .map((a) => ({ employeeId: p.employeeId, fromMonth: a.month, days: a.days, amount: a.amount })))
+    .sort((a, b) => a.fromMonth.localeCompare(b.fromMonth) || a.employeeId.localeCompare(b.employeeId));
+}

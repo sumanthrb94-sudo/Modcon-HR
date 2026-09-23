@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { lastDayOf, payeesFor } from '../../src/data/payRun.ts';
+import { carriedOverLossOfPay, lastDayOf, payeesFor } from '../../src/data/payRun.ts';
 
 const people = [
   { id: 'joined-april', status: 'Active', dateOfJoining: '2026-04-01' },
@@ -33,4 +33,21 @@ test('somebody who joined on the 22nd is not on roll for the month before', () =
 
 test('a joining date on the last day of the month counts', () => {
   assert.equal(payeesFor([{ status: 'Active', dateOfJoining: '2026-08-31' }], '2026-08').length, 1);
+});
+
+test('a run lists every earlier month it corrects, deductions and refunds alike', () => {
+  const rows = carriedOverLossOfPay([
+    { employeeId: 'emp-2', lopArrears: [{ month: '2026-09', days: 2, amount: 3333 }] },
+    { employeeId: 'emp-1', lopArrears: [{ month: '2026-09', days: -1, amount: -1667 }, { month: '2026-08', days: 1, amount: 1613 }] },
+    { employeeId: 'emp-3' },
+  ]);
+  assert.deepEqual(rows, [
+    { employeeId: 'emp-1', fromMonth: '2026-08', days: 1, amount: 1613 },
+    { employeeId: 'emp-1', fromMonth: '2026-09', days: -1, amount: -1667 },
+    { employeeId: 'emp-2', fromMonth: '2026-09', days: 2, amount: 3333 },
+  ]);
+});
+
+test('a run with no corrections lists nothing', () => {
+  assert.deepEqual(carriedOverLossOfPay([{ employeeId: 'emp-1', lopArrears: [] }, { employeeId: 'emp-2' }]), []);
 });

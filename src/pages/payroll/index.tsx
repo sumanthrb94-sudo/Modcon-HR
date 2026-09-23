@@ -40,7 +40,7 @@ import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
 import { downloadPayslipPdf } from '@/lib/payslipPdf';
-import { payeesFor } from '@/data/payRun';
+import { carriedOverLossOfPay, payeesFor } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -964,6 +964,7 @@ export function PayrollPage() {
                 confirmed. If someone&rsquo;s joining date is wrong, correct it on their profile first.
               </p>
             )}
+            <CarriedOverLossOfPaySection payslips={pendingRun.payslips} />
             {pendingRun.unconfiguredCount > 0 && (
               <p className="text-xs text-amber-700">
                 {pendingRun.unconfiguredCount} of {pendingRun.employeeCount} employee
@@ -975,5 +976,52 @@ export function PayrollPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+/**
+ * Loss of pay this run charges (or refunds) for months that were already
+ * paid. It changes somebody's pay for a reason that is not on this month's
+ * attendance, so it is listed before Confirm rather than found afterwards on
+ * individual payslips. Renders nothing when the run carries none.
+ */
+function CarriedOverLossOfPaySection({ payslips }: { payslips: Payslip[] }) {
+  const rows = carriedOverLossOfPay(payslips);
+  if (rows.length === 0) return null;
+  const net = rows.reduce((sum, row) => sum + row.amount, 0);
+  const people = new Set(rows.map((row) => row.employeeId)).size;
+  return (
+    <section className="border-2 border-amber-300 bg-amber-50 p-3 space-y-2" data-testid="run-payroll-arrears">
+      <h3 className="text-sm font-semibold text-ink-900">Loss of pay carried over from earlier months</h3>
+      <p className="text-xs text-ink-700">
+        {people} employee{people === 1 ? '' : 's'} had leave or attendance change after a month was already paid.
+        This run corrects it: {net >= 0 ? 'a net deduction' : 'a net refund'} of {formatINR(Math.abs(net))}.
+        Check each against the leave or attendance record that caused it before confirming.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-ink-600">
+              <th className="py-1 pr-3 font-semibold">Employee</th>
+              <th className="py-1 pr-3 font-semibold">For</th>
+              <th className="py-1 pr-3 font-semibold text-right">Days</th>
+              <th className="py-1 font-semibold text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-amber-200">
+            {rows.map((row) => (
+              <tr key={`${row.employeeId}-${row.fromMonth}`}>
+                <td className="py-1 pr-3 text-ink-900">{getEmployee(row.employeeId)?.fullName ?? row.employeeId}</td>
+                <td className="py-1 pr-3 text-ink-700">{monthLabel(row.fromMonth)}</td>
+                <td className="py-1 pr-3 text-right tabular-nums">{row.days}</td>
+                <td className="py-1 text-right tabular-nums">
+                  {row.amount >= 0 ? `Deduct ${formatINR(row.amount)}` : `Refund ${formatINR(-row.amount)}`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

@@ -212,4 +212,74 @@ test.describe.serial('payroll run guardrails', () => {
       method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
   });
+
+  // The October case. Somebody was paid for last month; an unpaid day in that
+  // month was approved afterwards. This month's run has to charge it, and HR
+  // has to see that before confirming — it changes a payslip for a reason
+  // that is not on this month's own attendance.
+  test('loss of pay found after a month was paid is listed before the next run is confirmed', async () => {
+    const previous = (() => {
+      const [y, m] = month.split('-').map(Number);
+      const d = new Date(Date.UTC(y, m - 2, 1));
+      return d.toISOString().slice(0, 7);
+    })();
+    // A Thursday in the previous month: never a seeded week-off (Sunday,
+    // Monday or Tuesday), so the unpaid day is a working day.
+    const thursday = (() => {
+      const [y, m] = previous.split('-').map(Number);
+      const d = new Date(Date.UTC(y, m - 1, 8));
+      while (d.getUTCDay() !== 4) d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    })();
+    const id = 'emp-e2e-arrears';
+    const person = {
+      id, employeeCode: 'E2E-ARREARS', firstName: 'Carried', lastName: 'Over',
+      fullName: 'Carried Over E2E', email: 'e2e-arrears@modcon-hr.test', phone: '+91 90000 00000', avatar: 'brand',
+      dateOfBirth: '1990-01-01', designation: 'Engineer', department: 'Engineering', location: 'Bengaluru',
+      employmentType: 'Full-time', status: 'Active', dateOfJoining: '2024-01-01', reportingManagerId: null, ctc: 600000,
+    };
+    // Last month's payslip, as a run records it: paid, and no loss of pay.
+    const paid = {
+      id: `ps-${id}-${previous}`, employeeId: id, month: previous,
+      basic: 0, hra: 0, specialAllowance: 0, bonus: 0, pf: 0, tax: 0, otherDeductions: 0,
+      lopDays: 0, grossEarnings: 50000, totalDeductions: 0, netPay: 50000, status: 'Paid',
+    };
+    // Then an unpaid day in that month, approved after it was paid.
+    const leave = {
+      id: 'lr-e2e-arrears', employeeId: id, type: 'Unpaid', startDate: thursday, endDate: thursday, days: 1,
+      reason: 'E2E carried-over loss of pay.', status: 'Approved', appliedOn: thursday, approverId: null,
+    };
+    await seedOrgRecords('employees', [person]);
+    await seedOrgRecords('payslips', [paid], { employeeId: (r) => r.employeeId });
+    await seedOrgRecords('leaveRequests', [leave], { employeeId: (r) => r.employeeId });
+
+    try {
+      await page.reload();
+      await expect(page.getByRole('button', { name: 'Run Payroll' })).toBeVisible({ timeout: 20_000 });
+      await page.getByRole('combobox', { name: 'Payroll month' }).selectOption(month);
+      await page.getByRole('button', { name: 'Run Payroll' }).click();
+
+      // A catch-up if this month already ran (the tests above ran it), a
+      // first run otherwise: either way this person is in it.
+      const dialog = page.getByRole('dialog');
+      const arrears = dialog.getByTestId('run-payroll-arrears');
+      await expect(arrears).toBeVisible({ timeout: 15_000 });
+      const row = arrears.getByRole('row').filter({ hasText: 'Carried Over E2E' });
+      await expect(row).toContainText(monthLabel(previous));
+      // One day of a ₹50,000 month, at that month's own rate.
+      const [py, pm] = previous.split('-').map(Number);
+      const perDay = Math.round(50000 / new Date(Date.UTC(py, pm, 0)).getUTCDate());
+      await expect(row).toContainText(`Deduct ₹${perDay.toLocaleString('en-IN')}`);
+
+      // Not confirmed: this spec pays nobody it made up.
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).not.toBeVisible();
+    } finally {
+      const token = await adminToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      for (const doc of [`employees__${id}`, `payslips__${paid.id}`, `leaveRequests__${leave.id}`]) {
+        await fetch(`${FIRESTORE_BASE}/org_records/default__${doc}`, { method: 'DELETE', headers });
+      }
+    }
+  });
 });
