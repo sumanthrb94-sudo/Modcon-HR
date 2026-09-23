@@ -295,3 +295,49 @@ export function getCurrentEmployeeRecord(
 ): Employee | undefined {
   return resolveEmployeeForAccount(profile, directory);
 }
+
+/**
+ * Why a regularization decision is refused, phrased for the person who cannot
+ * make it.
+ *
+ * The same set as leave and expenses — whoever an employee reports to, anyone
+ * further up that line, HR and Admin organisation-wide, and never yourself —
+ * because approving a regularization rewrites the day on the attendance
+ * sheet, and an Absent day is what payroll deducts. Deciding one is deciding
+ * somebody's pay, so it is the same question and gets the same answer.
+ *
+ * This had no answer at all: the Approvals page listed every pending
+ * regularization in the organisation and both queues decided whatever they
+ * were handed. QA found it live — Priya, whose one report is Karthik, was
+ * offered Meera's and Sanjay's with working buttons.
+ */
+export function regularizationApprovalRefusal(
+  profile: UserProfile | null,
+  employeeId: string,
+  directory: Employee[] = getEmployeeDirectory(),
+): string | null {
+  if (getApprovableEmployeeIds(profile, directory).has(employeeId)) return null;
+
+  const role = resolveAppRole(profile);
+  if (role === 'Employee') {
+    return 'Regularizations are decided by the reporting manager of the person whose day it is, or by HR.';
+  }
+
+  const self = getCurrentEmployeeRecord(profile, directory);
+  if (self && self.id === employeeId) {
+    return 'You cannot decide your own regularization — it goes to whoever you report to, or to another administrator.';
+  }
+
+  if (role === 'Admin' || role === 'HR Manager') {
+    return 'That regularization names an employee who is not in the directory, so there is nobody to decide it for.';
+  }
+
+  if (!self) {
+    return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database, and HR can decide the regularization in the meantime.';
+  }
+
+  const subject = directory.find((employee) => employee.id === employeeId);
+  return subject
+    ? `${subject.fullName} does not report to you. Their reporting manager, somebody further up that line, or HR can decide this.`
+    : 'You can only decide regularizations for the people who report to you. HR can decide anybody’s.';
+}

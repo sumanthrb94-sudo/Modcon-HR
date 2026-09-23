@@ -5,6 +5,8 @@ import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@
 import { persistentCollection } from '@/data/persistence';
 import { clockMinutes } from '@/data/shiftRules';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
+import type { UserProfile } from '@/lib/auth';
+import { regularizationApprovalRefusal } from '@/lib/dataScope';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -426,15 +428,37 @@ function writeOverride(request: RegularizationRequest) {
  * Entries the app flagged carry no requested status, so approving one records
  * the decision and changes no data — there is nothing it asked to become.
  */
-export function decideRegularization(id: string, status: 'Approved' | 'Rejected') {
+export function decideRegularization(
+  id: string,
+  status: 'Approved' | 'Rejected',
+  decider: { profile: UserProfile | null },
+): RegularizationDecision {
   const current = getRegularizationRequests().find((request) => request.id === id);
-  if (!current) return;
+  if (!current) return { ok: false, reason: 'That regularization no longer exists.' };
+
+  // The one place a regularization is decided, so the one place authority is
+  // checked — the same arrangement as `updateLeaveRequestStatus` and
+  // `updateExpenseClaimStatus`, and for the same reason: two pages decide
+  // these, and a check in each page is a check the third one forgets.
+  // `firestore.rules` (regularizationDecisionIsAuthorised) states the coarse
+  // half server-side; the reporting line is this.
+  const refusal = regularizationApprovalRefusal(decider.profile, current.employeeId);
+  if (refusal) return { ok: false, reason: refusal };
 
   if (status === 'Approved' && current.requestedStatus) {
     applyRequestedStatus(current.employeeId, current.date, current.requestedStatus);
   }
   writeOverride({ ...current, status });
+  return { ok: true };
 }
+
+/**
+ * The outcome of a regularization decision. A refusal is reported rather than
+ * swallowed: the buttons are hidden where authority is absent, so reaching one
+ * means the page and the rule disagree, and silence would look exactly like a
+ * decision that landed.
+ */
+export type RegularizationDecision = { ok: true } | { ok: false; reason: string };
 
 function applyRequestedStatus(employeeId: string, date: string, status: AttendanceStatus) {
   const records = getAttendanceRecords();

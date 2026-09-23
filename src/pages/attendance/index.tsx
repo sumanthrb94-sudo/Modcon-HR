@@ -50,7 +50,7 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useAuth } from '@/lib/auth';
 import { LocationReviewQueue } from './LocationReviewQueue';
-import { getVisibleEmployeeIds } from '@/lib/dataScope';
+import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
@@ -112,8 +112,17 @@ export function AttendancePage() {
     [regularizationRevision, attendanceRevision],
   );
 
-  // Requests raised by people outside this viewer's scope aren't theirs to see
-  // or approve.
+  // Seeing a regularization and deciding it are different permissions: a
+  // manager sees their own and HR's rows, and decides neither. The buttons
+  // follow this narrower set, and `decideRegularization` refuses outside it
+  // whatever a page offers.
+  const approvableEmployeeIds = useMemo(
+    () => getApprovableEmployeeIds(profile),
+    [profile, directoryRevision, linkedEmployeeId],
+  );
+  const [regDecisionNotice, setRegDecisionNotice] = useState<string | null>(null);
+
+  // Requests raised by people outside this viewer's scope aren't theirs to see.
   const visibleRegRequests = useMemo(
     () => regRequests.filter((request) => visibleEmployeeIds.has(request.employeeId)),
     [regRequests, visibleEmployeeIds],
@@ -293,7 +302,8 @@ export function AttendancePage() {
   // Approving applies the requested status to the day itself, so this must go
   // through the data layer rather than rewriting the list in place.
   function decideReg(id: string, status: 'Approved' | 'Rejected') {
-    decideRegularization(id, status);
+    const result = decideRegularization(id, status, { profile });
+    setRegDecisionNotice(result.ok ? null : result.reason);
   }
   const approveReg = (id: string) => decideReg(id, 'Approved');
   const rejectReg = (id: string) => decideReg(id, 'Rejected');
@@ -428,7 +438,7 @@ export function AttendancePage() {
       key: 'actions',
       header: 'Actions',
       render: (row) =>
-        row.status === 'Pending' ? (
+        row.status === 'Pending' && approvableEmployeeIds.has(row.employeeId) ? (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -451,6 +461,10 @@ export function AttendancePage() {
               Reject
             </Button>
           </div>
+        ) : row.status === 'Pending' ? (
+          // Said, not left blank: an empty cell beside a pending request reads
+          // as a page that failed to draw its buttons.
+          <span className="text-xs text-ink-400">Decided by their manager or HR</span>
         ) : (
           <span className="text-xs text-ink-400">—</span>
         ),
@@ -590,6 +604,11 @@ export function AttendancePage() {
             {visibleRegRequests.filter((r) => r.status === 'Pending').length} Pending
           </Badge>
         </div>
+        {regDecisionNotice ? (
+          <div role="status" className="border-b-2 border-brand-600 bg-brand-50 px-5 py-3 text-sm text-ink-900">
+            {regDecisionNotice}
+          </div>
+        ) : null}
         <Table
           columns={regColumns}
           data={visibleRegRequests}

@@ -249,10 +249,9 @@ export function avgTenureYears(): number {
  * *is* the organisation's, minus their own request — that is not the scoping
  * being skipped, it is what deciding organisation-wide adds up to.
  *
- * The other three rows stay organisation-wide for everybody. That is the same
- * gap in a different workflow, left as it was rather than changed on the way
- * past: expenses, regularizations and onboarding each have their own approval
- * route and their own answer to who decides.
+ * Expenses and regularizations are scoped to the same set, since both are
+ * decided by the same people. Onboarding stays organisation-wide: its tasks
+ * belong to whoever the checklist assigns, not to a reporting line.
  */
 export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalItem[] {
   const decidable = profile === undefined ? null : getApprovableEmployeeIds(profile);
@@ -266,7 +265,12 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
   const expenses = getExpenseClaims().filter(
     (claim) => claim.status === 'Submitted' && (!decidable || decidable.has(claim.employeeId)),
   );
-  const regularizations = getRegularizationRequests().filter((request) => request.status === 'Pending');
+  // Scoped to the same set again: the Regularizations queue now lists only
+  // what this account may decide, and a card counting the organisation's would
+  // promise a manager requests the page will not show them.
+  const regularizations = getRegularizationRequests().filter(
+    (request) => request.status === 'Pending' && (!decidable || decidable.has(request.employeeId)),
+  );
   const onboardingTasks = getOnboardings()
     .flatMap((onboarding) => onboarding.tasks)
     .filter((task) => task.status !== 'Completed');

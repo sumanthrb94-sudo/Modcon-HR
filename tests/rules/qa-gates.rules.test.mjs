@@ -85,6 +85,7 @@ const USERS = {
   empA1: { uid: 'empA1', email: 'emp-a1@example.com', role: 'employee', orgId: ORG_A, employeeId: 'emp-a1' },
   empA2: { uid: 'empA2', email: 'emp-a2@example.com', role: 'employee', orgId: ORG_A, employeeId: 'emp-a2' },
   hrA: { uid: 'hrA', email: 'hr-a@example.com', role: 'hr', orgId: ORG_A, employeeId: 'emp-a-hr' },
+  mgrA: { uid: 'mgrA', email: 'mgr-a@example.com', role: 'manager', orgId: ORG_A, employeeId: 'emp-a-mgr' },
   empB1: { uid: 'empB1', email: 'emp-b1@example.com', role: 'employee', orgId: ORG_B, employeeId: 'emp-b1' },
   superAdmin: { uid: 'root', email: 'root@example.com', role: 'admin', superAdmin: true },
 };
@@ -97,6 +98,7 @@ function as(user) {
 }
 const empA1 = () => as(USERS.empA1);
 const hrA = () => as(USERS.hrA);
+const mgrA = () => as(USERS.mgrA);
 const empB1 = () => as(USERS.empB1);
 const superAdmin = () => as(USERS.superAdmin);
 const anon = () => testEnv.unauthenticatedContext().firestore();
@@ -464,5 +466,59 @@ describe('G1 — approval is a privileged transition', () => {
       setDoc(doc(hrA(), 'org_records', recordId(ORG_A, 'expenseClaims', 'exp1')),
         record(ORG_A, 'expenseClaims', 'exp1', { employeeId: 'emp-a1', amount: 1200, status: 'Approved' })),
     );
+  });
+});
+
+// --- Regularizations: raised by the subject, decided by somebody else ------
+//
+// QA found a manager offered, live, regularizations outside her reporting line
+// with working buttons — and nothing on the server stopped any member of the
+// organisation writing a decision. Approving one rewrites the attendance day,
+// which is what payroll deducts, so it is gated like leave and expenses.
+describe('regularizations — deciding one is a privileged transition', () => {
+  const REG = 'reg-emp-a1-2026-09-01';
+  const reg = (employeeId, status) =>
+    record(ORG_A, 'regularizationOverrides', REG, {
+      id: REG, employeeId, date: '2026-09-01', reason: 'Forgot to check in',
+      requestedStatus: 'Present', status,
+    });
+  const at = (db) => doc(db, 'org_records', recordId(ORG_A, 'regularizationOverrides', REG));
+
+  it('empA1 CAN raise a regularization for their own day', async () => {
+    await assertSucceeds(setDoc(at(empA1()), reg('emp-a1', 'Pending')));
+  });
+
+  it("empA1 CANNOT raise one against a colleague's day", async () => {
+    await assertFails(setDoc(at(empA1()), reg('emp-a2', 'Pending')));
+  });
+
+  it('empA1 CANNOT approve their own regularization', async () => {
+    await assertFails(setDoc(at(empA1()), reg('emp-a1', 'Approved')));
+  });
+
+  it("empA1 CANNOT approve a colleague's regularization", async () => {
+    await assertFails(setDoc(at(empA1()), reg('emp-a2', 'Approved')));
+  });
+
+  it('a write that omits the top-level status is refused', async () => {
+    const smuggled = reg('emp-a1', 'Approved');
+    delete smuggled.status;
+    await assertFails(setDoc(at(empA1()), smuggled));
+  });
+
+  it("a manager CAN approve somebody else's regularization", async () => {
+    await assertSucceeds(setDoc(at(mgrA()), reg('emp-a1', 'Approved')));
+  });
+
+  it('a manager CANNOT approve their own', async () => {
+    await assertFails(setDoc(at(mgrA()), reg('emp-a-mgr', 'Approved')));
+  });
+
+  it('HR CAN decline a regularization', async () => {
+    await assertSucceeds(setDoc(at(hrA()), reg('emp-a1', 'Rejected')));
+  });
+
+  it('another organisation cannot decide one', async () => {
+    await assertFails(setDoc(at(empB1()), reg('emp-a1', 'Approved')));
   });
 });

@@ -1208,6 +1208,7 @@ service cloud.firestore {
         narrowedRecordWriteIsAuthorised() &&
         directoryWriteIsAuthorised() &&
         attendanceWriteIsAuthorised() &&
+        regularizationDecisionIsAuthorised() &&
         payrollWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
@@ -1438,6 +1439,42 @@ service cloud.firestore {
         (declaresItsStatus() && (
           request.resource.data.status == 'Draft' ||
           request.resource.data.status == 'Submitted' ||
+          (isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
+    }
+
+    /**
+     * A regularization is raised by the person whose day it is, and decided
+     * by somebody else with the authority to.
+     *
+     * The sixth per-store clause, in the shape of expenseDecisionIsAuthorised()
+     * and for the same reason: approving a regularization rewrites that day on
+     * the attendance sheet, an Absent day is what payroll deducts, so the
+     * transition is a decision about somebody's pay. Until this existed the
+     * generic block let any signed-in member of the organisation write any
+     * decision — an employee approving their own, or anybody's. QA found the
+     * client half live (a manager offered regularizations outside her line);
+     * this is the half the server can state on its own.
+     *
+     * `Pending` is raising or re-raising, which is the subject's own act or
+     * somebody who marks attendance for others — the same set
+     * attendanceWriteIsAuthorised() allows to write the day itself, including
+     * its exemption for an account with no `employee_links` document, for the
+     * reasons written there. `Approved` and `Rejected` need `isManager()` and
+     * never the subject.
+     *
+     * Rules cannot walk the org chart, so a manager may still decide a
+     * regularization outside their own reporting line here; `decideRegularization`
+     * (src/data/attendance.ts) through `src/lib/dataScope.ts` is where that
+     * narrowing lives. The same honest limit as the leave and expense rules.
+     */
+    function regularizationDecisionIsAuthorised() {
+      return request.resource.data.store != 'regularizationOverrides' ||
+        isTombstone() ||
+        (declaresItsStatus() && (
+          (request.resource.data.status == 'Pending' && (
+            isManager() ||
+            myEmployeeId() == null ||
+            isSelf(request.resource.data.get('employeeId', '')))) ||
           (isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
     }
 
