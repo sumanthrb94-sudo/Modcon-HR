@@ -4,11 +4,26 @@
  * and so a brand new organization starts empty instead of inheriting the
  * default org's demo dataset.
  *
- * The active org key is cached in localStorage (not React state) because the
- * data modules read it at plain module-load time, before React/Firebase auth
- * has resolved. `setActiveOrgKey` is called once auth resolves; if it finds
- * the org actually changed since last visit, the caller reloads the page so
- * every module re-evaluates under the new namespace.
+ * The data modules read the active org key at plain module-load time, before
+ * React/Firebase auth has resolved, so it lives in Web Storage rather than
+ * React state. `setActiveOrgKey` is called once auth resolves; if it finds the
+ * org actually changed, the caller reloads the page so every module
+ * re-evaluates under the new namespace.
+ *
+ * **It is per tab (sessionStorage), and it used to be per browser.** Auth is
+ * already per tab — `browserSessionPersistence` in lib/firebase.ts — so six
+ * tabs can hold six different accounts. The org key was one localStorage entry
+ * shared by all of them, so the last tab to sign in re-namespaced every other
+ * tab underneath it: a QA Zero Org employee's tab, clobbered to `default` by a
+ * super admin signing in next door, rendered ModCon Builders' demo payroll as
+ * though it were theirs. The key now lives with the session it belongs to.
+ *
+ * A browser-wide copy is still written, as a *hint* and nothing more: it seeds
+ * a brand-new tab's first guess (so the common case — the same org as last
+ * time — does not cost a reload after sign-in), and it is what the sign-in
+ * page's careers link follows, since nobody is signed in there to ask. The hint
+ * is copied into the tab once, at first read, and never consulted again by
+ * that tab, so another tab rewriting it cannot move this one.
  */
 const ACTIVE_ORG_KEY_STORAGE = 'modcon.hr.activeOrgKey';
 
@@ -17,7 +32,10 @@ const ACTIVE_ORG_KEY_STORAGE = 'modcon.hr.activeOrgKey';
  * storage keys exactly as they were before this feature existed. */
 export const DEFAULT_ORG_KEY = 'default';
 
-export function getActiveOrgKey(): string {
+/** The organisation this browser last signed into — a hint, never this
+ * tab's answer. Used where nobody is signed in (the careers link on the
+ * sign-in page) and to seed a new tab's first guess. */
+export function getLastSignedInOrgKey(): string {
     if (typeof window === 'undefined') return DEFAULT_ORG_KEY;
     try {
         return window.localStorage.getItem(ACTIVE_ORG_KEY_STORAGE) || DEFAULT_ORG_KEY;
@@ -26,15 +44,53 @@ export function getActiveOrgKey(): string {
     }
 }
 
+/** This tab's in-memory copy, for a browser that refuses sessionStorage. */
+let tabOrgKey: string | null = null;
+
+export function getActiveOrgKey(): string {
+    if (typeof window === 'undefined') return DEFAULT_ORG_KEY;
+    if (tabOrgKey) return tabOrgKey;
+    try {
+        const pinned = window.sessionStorage.getItem(ACTIVE_ORG_KEY_STORAGE);
+        if (pinned) {
+            tabOrgKey = pinned;
+            return pinned;
+        }
+    } catch {
+        // fall through to the hint
+    }
+    // First read in this tab: pin the hint so the namespace every module
+    // loaded under cannot drift if another tab rewrites it mid-session.
+    const seeded = getLastSignedInOrgKey();
+    tabOrgKey = seeded;
+    try {
+        window.sessionStorage.setItem(ACTIVE_ORG_KEY_STORAGE, seeded);
+    } catch {
+        // the in-memory copy stands for this page
+    }
+    return seeded;
+}
+
 /** Returns true if the active org context changed (caller should reload). */
 export function setActiveOrgKey(orgKey: string | null | undefined): boolean {
     if (typeof window === 'undefined') return false;
     const next = orgKey || DEFAULT_ORG_KEY;
     const prev = getActiveOrgKey();
     try {
+        window.sessionStorage.setItem(ACTIVE_ORG_KEY_STORAGE, next);
+    } catch {
+        // A browser refusing sessionStorage cannot carry the key across the
+        // reload the caller would do, so reloading would loop. The tab keeps
+        // the key its modules loaded under, and the render guard
+        // (`OrgContextGuard`) refuses to show org data under a mismatch —
+        // failing closed rather than rendering one org as another.
+        return false;
+    }
+    tabOrgKey = next;
+    try {
         window.localStorage.setItem(ACTIVE_ORG_KEY_STORAGE, next);
     } catch {
-        return false;
+        // the hint is a convenience; this tab's own key is already set
     }
     return prev !== next;
 }
@@ -68,14 +124,18 @@ export function belongsToActiveOrg(key: string): boolean {
 // ---------------------------------------------------------------------------
 // A super admin isn't a member of any single org — they manage every
 // organization from one account, so which org's data they're currently
-// working in is a per-browser choice (persisted here), not derived from
+// working in is a per-session choice (persisted here), not derived from
 // their own profile like it is for a regular org-scoped admin/employee.
+//
+// Per tab, like the active org key above and for the same reason: it was
+// localStorage, so a super admin entering one company in one tab moved every
+// other tab of theirs into it on its next reload.
 const SUPER_ADMIN_SELECTED_ORG_STORAGE = 'modcon.hr.superAdminSelectedOrg';
 
 export function getSuperAdminSelectedOrg(): string {
     if (typeof window === 'undefined') return DEFAULT_ORG_KEY;
     try {
-        return window.localStorage.getItem(SUPER_ADMIN_SELECTED_ORG_STORAGE) || DEFAULT_ORG_KEY;
+        return window.sessionStorage.getItem(SUPER_ADMIN_SELECTED_ORG_STORAGE) || DEFAULT_ORG_KEY;
     } catch {
         return DEFAULT_ORG_KEY;
     }
@@ -101,7 +161,7 @@ export function getSuperAdminSelectedOrg(): string {
 export function isSuperAdminInsideOrg(): boolean {
     if (typeof window === 'undefined') return false;
     try {
-        return Boolean(window.localStorage.getItem(SUPER_ADMIN_SELECTED_ORG_STORAGE));
+        return Boolean(window.sessionStorage.getItem(SUPER_ADMIN_SELECTED_ORG_STORAGE));
     } catch {
         return false;
     }
@@ -110,7 +170,7 @@ export function isSuperAdminInsideOrg(): boolean {
 function setSuperAdminSelectedOrg(orgKey: string) {
     if (typeof window === 'undefined') return;
     try {
-        window.localStorage.setItem(SUPER_ADMIN_SELECTED_ORG_STORAGE, orgKey || DEFAULT_ORG_KEY);
+        window.sessionStorage.setItem(SUPER_ADMIN_SELECTED_ORG_STORAGE, orgKey || DEFAULT_ORG_KEY);
     } catch {
         // ignore
     }
@@ -162,6 +222,9 @@ export function switchSuperAdminOrg(orgKey: string) {
 export function clearSuperAdminOrgSelection() {
     if (typeof window === 'undefined') return;
     try {
+        window.sessionStorage.removeItem(SUPER_ADMIN_SELECTED_ORG_STORAGE);
+        // The per-browser copy this used to be, so an older build's selection
+        // cannot outlive the sign-out that was meant to end it.
         window.localStorage.removeItem(SUPER_ADMIN_SELECTED_ORG_STORAGE);
     } catch {
         // ignore

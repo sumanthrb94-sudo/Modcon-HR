@@ -73,7 +73,7 @@ function orgRow(page: Page, name: string) {
 
 /** Which organisation this browser has stepped into, as the app stores it. */
 function selectedOrg(page: Page): Promise<string | null> {
-  return page.evaluate(() => localStorage.getItem('modcon.hr.superAdminSelectedOrg'));
+  return page.evaluate(() => sessionStorage.getItem('modcon.hr.superAdminSelectedOrg'));
 }
 
 /**
@@ -219,7 +219,7 @@ test.describe.serial('a second organisation shares no salary structure with the 
     await expect(
       orgRow(page, NEW_ORG).getByRole('button', { name: 'Currently managing' }),
     ).toBeVisible({ timeout: 20_000 });
-    newOrgId = await page.evaluate(() => localStorage.getItem('modcon.hr.superAdminSelectedOrg') ?? '');
+    newOrgId = await page.evaluate(() => sessionStorage.getItem('modcon.hr.superAdminSelectedOrg') ?? '');
     expect(newOrgId, 'the browser did not switch organisation').not.toBe('');
     expect(newOrgId).not.toBe('default');
 

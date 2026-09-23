@@ -73,7 +73,7 @@ function useFor(engine: Engine) {
   };
 }
 
-const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|document-upload-access|reporting-manager|form-capture|helpdesk-attribution|employee-counters|auth-control-label|back-to-back-writes)\.spec\.ts$/;
+const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|check-in-out|provisioning|password-reset|no-auto-signin|leave-balance|payslip-upload|document-upload-access|reporting-manager|form-capture|helpdesk-attribution|employee-counters|auth-control-label|back-to-back-writes|tab-isolation)\.spec\.ts$/;
 
 /**
  * Specs that write the organisation's *shared* configuration document.

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { OrgContextGuard } from '@/components/layout/OrgContextGuard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
@@ -246,7 +247,7 @@ function AppRoutes() {
       <Route path="careers" element={<CareersPage />} />
       <Route path="careers/:orgKey" element={<CareersPage />} />
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />
-      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+      <Route element={<RequireAuth><OrgContextGuard><AppLayout /></OrgContextGuard></RequireAuth>}>
         <Route index element={<HomeRoute />} />
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />

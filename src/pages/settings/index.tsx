@@ -3503,6 +3503,12 @@ function DatabaseSection() {
         (key) => key.startsWith('modcon.hr.') && belongsToActiveOrg(key),
       );
       keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+      // The narrowed stores (payslips, payroll runs, expense claims) cache per
+      // tab — see createPersistentCollection. Only their overlays: this tab's
+      // org key lives in sessionStorage too, and must survive the reload.
+      Object.keys(window.sessionStorage)
+        .filter((key) => key.startsWith('modcon.hr.') && key.includes('.overlay') && belongsToActiveOrg(key))
+        .forEach((key) => window.sessionStorage.removeItem(key));
       // Set after the sweep above so it isn't immediately deleted by it —
       // this is what makes the static seed layer (Employees, Attendance,
       // Leave, etc.) actually render empty after reload, not just Firestore.

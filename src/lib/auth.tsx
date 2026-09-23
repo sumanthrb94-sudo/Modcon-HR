@@ -419,7 +419,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (firebaseUser) {
                 try {
                     const p = await upsertUserProfile(firebaseUser);
-                    setProfile(p);
+                    // The org key is settled BEFORE the profile is published.
+                    // The other order rendered this account's identity over
+                    // whichever org the page loaded under for one frame —
+                    // enough for a route to mount and read another tenant's
+                    // local overlay before the reload landed.
+                    //
                     // The src/data/*.ts local-overlay layer reads its org
                     // namespace at plain module-load time (see orgScope.ts),
                     // so if this sign-in belongs to a different org than
@@ -433,6 +438,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         window.location.reload();
                         return;
                     }
+                    setProfile(p);
                     // Bind this account to its directory record now, while the
                     // sign-in address still matches the work email on it. The
                     // work email is editable from the profile; the uid is not,

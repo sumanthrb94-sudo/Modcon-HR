@@ -388,6 +388,37 @@ export function persistentCollection<T extends Identified>(
   /** What the server last told us, so a save only writes what actually moved. */
   let lastPushed: Map<string, string> | null = null;
 
+  /**
+   * Where this store's cache lives: the browser for an organisation-wide
+   * store, the tab for a narrowed one.
+   *
+   * A narrowed store's cache is exactly what the rules exist to keep from the
+   * wrong reader. In localStorage it was one entry per organisation, shared by
+   * every account signed in on the browser — an administrator's tab hydrated
+   * every payslip and expense claim into it, and an employee's tab next door
+   * read that copy back (and was told to re-read it by the `storage` event).
+   * The server refused the employee the records; the browser handed them over
+   * anyway. sessionStorage is per tab, and so is the session (auth uses
+   * `browserSessionPersistence`), so the cache now lives exactly as long as
+   * the reader it was fetched for. Nothing is lost: these stores are
+   * Firestore-backed, and a new tab is a new sign-in that hydrates afresh.
+   */
+  const narrowed = readScope !== 'org';
+  function cache(): Storage {
+    return narrowed ? window.sessionStorage : window.localStorage;
+  }
+  if (narrowed && typeof window !== 'undefined') {
+    // What an older build left behind: the last reader's copy, whoever that
+    // was. Removed rather than migrated — the server holds the records, and
+    // migrating it would hand this tab somebody else's.
+    try {
+      window.localStorage.removeItem(orgScopedKey(overlayKey));
+      window.localStorage.removeItem(orgScopedKey(baseKey));
+    } catch {
+      // storage refused: nothing there to leak either
+    }
+  }
+
   function notify() {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new Event(changedEvent));
@@ -396,11 +427,12 @@ export function persistentCollection<T extends Identified>(
   function readOverlay(): Overlay<T> {
     if (typeof window === 'undefined') return [];
     try {
-      const raw = window.localStorage.getItem(orgScopedKey(overlayKey));
+      const raw = cache().getItem(orgScopedKey(overlayKey));
       if (raw) {
         const parsed = JSON.parse(raw) as unknown;
         return Array.isArray(parsed) ? (parsed as Overlay<T>) : [];
       }
+      if (narrowed) return [];
       // One-time migration off the pre-Firestore key, which held the merged
       // array. Everything an organisation added or edited is recoverable from
       // it; deletions are not, because a merged array cannot distinguish
@@ -420,7 +452,7 @@ export function persistentCollection<T extends Identified>(
   function writeOverlay(overlay: Overlay<T>) {
     if (typeof window === 'undefined') return;
     try {
-      window.localStorage.setItem(orgScopedKey(overlayKey), JSON.stringify(overlay));
+      cache().setItem(orgScopedKey(overlayKey), JSON.stringify(overlay));
     } catch {
       // Quota or private-mode failure: the in-memory value the caller already
       // holds still stands for this session, and the server write below is
@@ -586,7 +618,7 @@ export function persistentCollection<T extends Identified>(
       }
       const incoming = JSON.stringify(overlay);
       if (typeof window !== 'undefined') {
-        if (window.localStorage.getItem(orgScopedKey(overlayKey)) === incoming) {
+        if (cache().getItem(orgScopedKey(overlayKey)) === incoming) {
           lastPushed = state;
           return;
         }

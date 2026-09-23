@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { BrandLockup, Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { getActiveOrgKey } from '@/lib/orgScope';
+import { getLastSignedInOrgKey } from '@/lib/orgScope';
 import { careersPath } from '@/lib/publishedJobs';
 
 export function LoginPage() {
@@ -30,13 +30,13 @@ export function LoginPage() {
      * nobody is signed in yet, and `firestore.rules` allows a tenant's record
      * to be read only by that tenant, with nothing public mapping an email or
      * a domain to one. So it is the organisation this browser last signed into
-     * — `getActiveOrgKey()`, which sign-out deliberately leaves in place —
+     * — `getLastSignedInOrgKey()`, which sign-out deliberately leaves in place —
      * falling back to the default for a browser that has never signed in here.
      *
      * Read once on mount rather than per render: the value changes on a
      * sign-in, which navigates away from this page.
      */
-    const [careersHref] = useState(() => careersPath(getActiveOrgKey()));
+    const [careersHref] = useState(() => careersPath(getLastSignedInOrgKey()));
 
     useEffect(() => {
         if (!loading && user) {

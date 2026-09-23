@@ -57,7 +57,7 @@ async function selectedOrg(page: Page): Promise<string | null> {
     try {
       await page.waitForLoadState('domcontentloaded');
       return await page.evaluate(() =>
-        localStorage.getItem('modcon.hr.superAdminSelectedOrg'),
+        sessionStorage.getItem('modcon.hr.superAdminSelectedOrg'),
       );
     } catch (err) {
       if (!String(err).includes('Execution context was destroyed')) throw err;
