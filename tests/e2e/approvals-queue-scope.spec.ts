@@ -251,4 +251,13 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
     await expect(page.getByRole('status')).toHaveCount(0);
     await waitForOrgRecord<{ status?: string }>('leaveRequests', 'lr-e2e-aq-report', (r) => r?.status === 'Approved');
   });
+
+  // Finance used to label a computed payslip "Paid" whether or not payroll
+  // had ever run. This manager has no payslip, so the page says so.
+  test('Finance says "not yet paid" when no payslip has been issued', async ({ page }) => {
+    await login(page);
+    await page.goto('/finance');
+    await expect(page.getByTestId('finance-payout-status')).toContainText('not yet paid', { timeout: 20_000 });
+    await expect(page.getByText('Not yet run')).toBeVisible();
+  });
 });

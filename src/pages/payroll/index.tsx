@@ -40,6 +40,7 @@ import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
 import { downloadPayslipPdf } from '@/lib/payslipPdf';
+import { payeesFor } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -132,24 +133,29 @@ interface PendingPayrollRun {
    */
   unconfiguredCount: number;
   payslips: Payslip[];
+  /**
+   * Set when this month has already been run and these are the people on
+   * roll it did not pay — a catch-up, added to that run, never a second run
+   * for anybody already paid.
+   */
+  topUpOf?: PayrollRun;
 }
 
 // ---------------------------------------------------------------------------
 // Payslip Modal
 // ---------------------------------------------------------------------------
 
-/** The last calendar day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
-function lastDayOf(month: string): string {
-  const [year, mon] = month.split('-').map(Number);
-  return new Date(Date.UTC(year, mon, 0)).toISOString().slice(0, 10);
-}
-
-/** Employees on roll for a month: joined by its last day, and not resigned. */
-function payeesFor(month: string): Employee[] {
-  const end = lastDayOf(month);
-  return employees.filter(
-    (employee) => employee.status !== 'Resigned' && (!employee.dateOfJoining || employee.dateOfJoining <= end),
-  );
+/**
+ * Add a run's payslips to the list, replacing any with the same id.
+ *
+ * A payslip's id is `ps-<employee>-<month>`, one per person per month, and the
+ * stored collection is keyed by it. Prepending without this showed the same
+ * payslip twice on the page whenever the list already held it — which reads
+ * as somebody paid twice.
+ */
+function withPayslips(existing: Payslip[], added: Payslip[]): Payslip[] {
+  const ids = new Set(added.map((p) => p.id));
+  return [...added, ...existing.filter((p) => !ids.has(p.id))];
 }
 
 /**
@@ -447,8 +453,33 @@ export function PayrollPage() {
   }
 
   /** Open the Run Payroll confirmation, or refuse with a reason if refused. */
+  /** On roll for the month, and holding no payslip for it yet. */
+  function unpaidFor(month: string): Employee[] {
+    const paid = new Set(payslipList.filter((p) => p.month === month).map((p) => p.employeeId));
+    return payeesFor(employees, month).filter((employee) => !paid.has(employee.id));
+  }
+
   function openRunPayrollConfirm(month: string = currentMonthIso()) {
     const existing = alreadyRunFor(month);
+    // Already run, but not for everybody on roll: somebody added after the run,
+    // or a run made while the directory was still loading. The month is locked
+    // against paying anyone twice, and that must not also mean these people
+    // can never be paid for it — so they are offered as a catch-up.
+    const unpaid = existing ? unpaidFor(month) : [];
+    if (existing && unpaid.length > 0) {
+      setRunNotice(null);
+      const payslips = unpaid.map((employee) => buildPayslip(employee, month, 'Paid'));
+      setPendingRun({
+        month,
+        employeeCount: unpaid.length,
+        grossTotal: payslips.reduce((sum, p) => sum + p.grossEarnings, 0),
+        netTotal: payslips.reduce((sum, p) => sum + p.netPay, 0),
+        unconfiguredCount: unpaid.filter((employee) => !buildPayslipComponents(employee, month).splitConfigured).length,
+        payslips,
+        topUpOf: existing,
+      });
+      return;
+    }
     if (existing) {
       setPendingRun(null);
       // Not silent, and not a generic error: names the month, when it ran,
@@ -465,7 +496,7 @@ export function PayrollPage() {
     // Who is on roll for THIS month: joined by its last day and not resigned.
     // Every directory entry used to be paid, so a resigned employee kept
     // receiving payslips, and a month run late paid people who joined after it.
-    const onRoll = payeesFor(month);
+    const onRoll = payeesFor(employees, month);
     const payslips = onRoll.map((employee) => buildPayslip(employee, month, 'Paid'));
     const grossTotal = payslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
     const netTotal = payslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
@@ -484,8 +515,29 @@ export function PayrollPage() {
 
   /** Commits the run staged by `openRunPayrollConfirm`, guarded once more. */
   function commitPayrollRun() {
-    if (!pendingRun) return;
+    if (!pendingRun || pendingRun.employeeCount === 0) return;
     const existing = alreadyRunFor(pendingRun.month);
+    if (pendingRun.topUpOf && existing) {
+      // Re-checked at commit: only people still without a payslip for the
+      // month, so a colleague's catch-up that landed meanwhile pays nobody twice.
+      const stillUnpaid = new Set(unpaidFor(pendingRun.month).map((employee) => employee.id));
+      const payslips = pendingRun.payslips.filter((p) => stillUnpaid.has(p.employeeId));
+      if (payslips.length > 0) {
+        setPayslipList((prev) => withPayslips(prev, payslips));
+        setPayrollRunList((prev) => prev.map((run) => (run.id === existing.id
+          ? {
+            ...run,
+            employeeCount: run.employeeCount + payslips.length,
+            grossTotal: run.grossTotal + payslips.reduce((sum, p) => sum + p.grossEarnings, 0),
+            netTotal: run.netTotal + payslips.reduce((sum, p) => sum + p.netPay, 0),
+          }
+          : run)));
+      }
+      setPendingRun(null);
+      setRunNotice(null);
+      setActiveTab('runs');
+      return;
+    }
     if (existing) {
       // The guard fired between opening the dialog and clicking Confirm.
       // Re-run the open path so the refusal (and its up-to-date figures)
@@ -509,7 +561,7 @@ export function PayrollPage() {
     };
 
     setPayrollRunList((prev) => [newRun, ...prev]);
-    setPayslipList((prev) => [...pendingRun.payslips, ...prev]);
+    setPayslipList((prev) => withPayslips(prev, pendingRun.payslips));
     setPendingRun(null);
     setRunNotice(null);
     setActiveTab('runs');
@@ -832,7 +884,7 @@ export function PayrollPage() {
       <Modal
         open={!!pendingRun}
         onClose={closeRunPayrollConfirm}
-        title="Confirm payroll run"
+        title={pendingRun?.topUpOf ? 'Pay employees missing from this run' : 'Confirm payroll run'}
         subtitle={pendingRun ? monthLabel(pendingRun.month) : undefined}
         size="sm"
         footer={
@@ -840,7 +892,15 @@ export function PayrollPage() {
             <Button variant="secondary" onClick={closeRunPayrollConfirm}>
               Cancel
             </Button>
-            <Button variant="primary" icon={<Play size={16} />} onClick={commitPayrollRun}>
+            {/* A run that pays nobody cannot be confirmed. Each month runs
+                once, so confirming one would record a permanent ₹0 payroll
+                for real employees — QA stopped short of exactly that. */}
+            <Button
+              variant="primary"
+              icon={<Play size={16} />}
+              onClick={commitPayrollRun}
+              disabled={!pendingRun || pendingRun.employeeCount === 0}
+            >
               Confirm & Run Payroll
             </Button>
           </>
@@ -861,7 +921,15 @@ export function PayrollPage() {
                 className="w-full"
               />
             </div>
-            <p className="text-sm text-ink-600">
+            {pendingRun.topUpOf ? (
+              <p className="text-sm text-ink-600" data-testid="run-payroll-topup">
+                Payroll for {monthLabel(pendingRun.month)} already ran for {pendingRun.topUpOf.employeeCount}{' '}
+                employee{pendingRun.topUpOf.employeeCount === 1 ? '' : 's'}. These {pendingRun.employeeCount} on roll
+                have no payslip for it yet: {pendingRun.payslips.map((p) => getEmployee(p.employeeId)?.fullName ?? p.employeeId).join(', ')}.
+                Confirming pays only them and adds them to that run — nobody already paid is paid again.
+              </p>
+            ) : null}
+            <p className="text-sm text-ink-600" hidden={Boolean(pendingRun.topUpOf)}>
               This pays every employee on roll for {monthLabel(pendingRun.month)} — joined by the month&rsquo;s
               end and not resigned — and records the run. Once
               confirmed, this cycle cannot be run again — a second attempt will be refused.
@@ -889,6 +957,13 @@ export function PayrollPage() {
                 </p>
               </div>
             </div>
+            {pendingRun.employeeCount === 0 && (
+              <p role="alert" className="text-sm text-brand-700" data-testid="run-payroll-nobody">
+                Nobody was on roll for {monthLabel(pendingRun.month)}: every employee either joined after{' '}
+                {monthLabel(pendingRun.month)} or has resigned, so there is nothing to pay and this run cannot be
+                confirmed. If someone&rsquo;s joining date is wrong, correct it on their profile first.
+              </p>
+            )}
             {pendingRun.unconfiguredCount > 0 && (
               <p className="text-xs text-amber-700">
                 {pendingRun.unconfiguredCount} of {pendingRun.employeeCount} employee

@@ -121,7 +121,13 @@ function EmployeeFinancePage() {
 
   const employeeRecord = employee;
 
-  const currentPayslip = buildPayslip(employee, currentMonthIso(), 'Paid');
+  // What was actually issued for this month, when payroll has run for this
+  // person; otherwise an estimate, and every surface below says which. This
+  // card used to compute a payslip and label it "Paid" whether or not payroll
+  // had ever run — QA found Priya shown a Sept payout with no payslip behind it.
+  const issuedThisMonth = payslipHistory.find((p) => p.month === currentMonthIso());
+  const currentPayslip = issuedThisMonth ?? buildPayslip(employee, currentMonthIso(), 'Draft');
+  const isEstimate = !issuedThisMonth;
   const salary = buildPayslipComponents(employee);
 
   function showDownloadNotice(message: string) {
@@ -239,17 +245,17 @@ function EmployeeFinancePage() {
           icon={<IndianRupee size={22} />}
         />
         <StatCard
-          label="Monthly Gross"
+          label={isEstimate ? "Monthly Gross (estimate)" : "Monthly Gross"}
           value={formatINR(currentPayslip.grossEarnings)}
           icon={<Wallet size={22} />}
         />
         <StatCard
-          label="Total Deductions"
+          label={isEstimate ? "Total Deductions (estimate)" : "Total Deductions"}
           value={formatINR(currentPayslip.totalDeductions)}
           icon={<ReceiptText size={22} />}
         />
         <StatCard
-          label="Net Pay"
+          label={isEstimate ? "Net Pay (estimate)" : "Net Pay"}
           value={formatINR(currentPayslip.netPay)}
           icon={<Landmark size={22} />}
         />
@@ -266,9 +272,15 @@ function EmployeeFinancePage() {
             </div>
           </div>
           <div className="md:ml-auto rounded-xl bg-brand-600 px-5 py-4 text-white">
-            <p className="text-xs uppercase tracking-wide text-brand-100">Current payout</p>
+            <p className="text-xs uppercase tracking-wide text-brand-100">
+              {isEstimate ? 'Estimated this month' : 'Current payout'}
+            </p>
             <p className="mt-1 text-2xl font-bold">{formatINR(currentPayslip.netPay)}</p>
-            <p className="mt-1 text-xs text-brand-100">Paid for {monthLabel(currentPayslip.month)}</p>
+            <p className="mt-1 text-xs text-brand-100" data-testid="finance-payout-status">
+              {isEstimate
+                ? `${monthLabel(currentPayslip.month)} — not yet paid; payroll has not been run for you`
+                : `Paid for ${monthLabel(currentPayslip.month)}`}
+            </p>
           </div>
         </div>
       </Card>
@@ -397,7 +409,7 @@ function EmployeeFinancePage() {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Payroll Status</p>
-            <p className="mt-1 text-ink-800">{currentPayslip.status}</p>
+            <p className="mt-1 text-ink-800">{isEstimate ? 'Not yet run' : currentPayslip.status}</p>
           </div>
         </div>
       </Card>

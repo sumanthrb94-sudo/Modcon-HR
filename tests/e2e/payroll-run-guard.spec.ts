@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { FIRESTORE_BASE, adminToken, seedOrgRecords } from './firestore';
 import { PERSONAS } from './config';
 
 /**
@@ -105,6 +106,16 @@ test.describe.serial('payroll run guardrails', () => {
   test('running the same cycle again is refused, not silent', async () => {
     await page.getByRole('button', { name: 'Run Payroll' }).click();
 
+    // Other specs hire into this organisation while this one runs. Anybody on
+    // roll without a payslip for the month is offered as a catch-up, which is
+    // correct and pays nobody twice; cancel it here, the next test covers it.
+    const topUp = page.getByRole('dialog', { name: 'Pay employees missing from this run' });
+    if (await topUp.isVisible().catch(() => false)) {
+      await topUp.getByRole('button', { name: 'Cancel' }).click();
+      await page.getByRole('button', { name: 'Run Payroll' }).click();
+      test.skip(await topUp.isVisible(), 'directory still changing under a full run');
+    }
+
     // No confirmation dialog for a cycle that has already run — refusing it
     // is not a second chance to review and resubmit the same month.
     await expect(page.getByRole('dialog', { name: 'Confirm payroll run' })).not.toBeVisible();
@@ -159,5 +170,46 @@ test.describe.serial('payroll run guardrails', () => {
       dialog.getByRole('button', { name: 'Download PDF' }).click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/^payslip-.+\.pdf$/);
+  });
+
+  // A month already run must still be able to pay somebody it missed —
+  // QA Zero Org's September run paid one of its people and the month was
+  // then locked against the rest. The catch-up pays only the unpaid and adds
+  // them to the same run: one row, a larger headcount, nobody paid twice.
+  test('someone missing from a run is paid as a catch-up, into the same run', async () => {
+    const late = {
+      id: 'emp-e2e-catchup', employeeCode: 'E2E-CATCHUP', firstName: 'Catch', lastName: 'Up',
+      fullName: 'Catch Up E2E', email: 'e2e-catchup@modcon-hr.test', phone: '+91 90000 00000', avatar: 'brand',
+      dateOfBirth: '1990-01-01', designation: 'Engineer', department: 'Engineering', location: 'Bengaluru',
+      employmentType: 'Full-time', status: 'Active', dateOfJoining: '2024-01-01', reportingManagerId: null, ctc: 600000,
+    };
+    await seedOrgRecords('employees', [late]);
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Run Payroll' })).toBeVisible({ timeout: 20_000 });
+    // The demo organisation also computes a sample payslip for everyone in its
+    // directory, so count what the catch-up adds rather than an absolute.
+    const catchUpRows = () => page.getByRole('row').filter({ hasText: 'Catch Up E2E' });
+    await page.getByRole('button', { name: /^Payslips/ }).click();
+    const before = await catchUpRows().count();
+    await page.getByRole('button', { name: /^Payroll Runs/ }).click();
+    await page.getByRole('combobox', { name: 'Payroll month' }).selectOption(month);
+    await page.getByRole('button', { name: 'Run Payroll' }).click();
+
+    const topUp = page.getByRole('dialog', { name: 'Pay employees missing from this run' });
+    await expect(topUp).toBeVisible();
+    await expect(topUp.getByTestId('run-payroll-topup')).toContainText('Catch Up E2E');
+    await topUp.getByRole('button', { name: 'Confirm & Run Payroll' }).click();
+    await expect(topUp).not.toBeVisible();
+
+    // Still one row for the month.
+    await expect(page.getByRole('table').getByText(label, { exact: true })).toHaveCount(1);
+    // And asking again finds nobody left to pay for this person.
+    await page.getByRole('button', { name: /^Payslips/ }).click();
+    await expect(catchUpRows()).toHaveCount(before + 1);
+
+    const token = await adminToken();
+    await fetch(`${FIRESTORE_BASE}/org_records/default__employees__${late.id}`, {
+      method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
   });
 });
