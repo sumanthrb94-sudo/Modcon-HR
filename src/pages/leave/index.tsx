@@ -155,7 +155,10 @@ export function LeavePage() {
   // wasn't a plain Employee saw the whole company's leave; now HR and Admin do,
   // a Manager sees their own reporting line plus HR, and an Employee sees only
   // themselves. See lib/dataScope.ts.
-  const visibleEmployeeIds = useMemo(() => getVisibleEmployeeIds(profile), [profile, linkedEmployeeId]);
+  const visibleEmployeeIds = useMemo(
+    () => getVisibleEmployeeIds(profile),
+    [profile, directoryRevision, linkedEmployeeId],
+  );
   const scopedRequests = useMemo(
     () => leaveRequests.filter((request) => visibleEmployeeIds.has(request.employeeId)),
     [leaveRequests, visibleEmployeeIds],
