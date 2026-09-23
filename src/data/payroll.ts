@@ -5,6 +5,11 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { currentMonthIso } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 import { getAttendanceRecords } from '@/data/attendance';
+import { getEmployeeDirectory, isWeekOffFor } from '@/data/employees';
+import { getHolidayDirectory } from '@/data/holidays';
+import { getLeaveRequests } from '@/data/leave';
+import { normalizeLeaveTypeValue } from '@/data/leavePolicies';
+import { combineLossOfPay, unpaidLeaveByDate } from '@/data/lossOfPay';
 import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
 import {
   getTaxElectionFor,
@@ -138,26 +143,42 @@ function daysInMonth(month: string): number {
 }
 
 /**
- * Unpaid absence for an employee in a month, read from attendance.
+ * Unpaid absence for an employee in a month: attendance, and approved Unpaid
+ * leave.
  *
- * Attendance is the single source for pay deductions: a day is deducted
- * because the attendance record says the person was absent, never because a
- * leave balance went negative or someone keyed a number into payroll. That
- * keeps one register authoritative — if a day is wrong, it is fixed on the
- * attendance sheet (or via a regularization) and payroll follows.
+ * Attendance decides most of it — a day is deducted because the sheet says
+ * the person was absent, never because a balance went negative or someone
+ * keyed a number into payroll — so a wrong day is fixed on the sheet (or by a
+ * regularization) and payroll follows. `Absent` deducts a day, `Half Day`
+ * half; `Holiday` and `Weekend` are not working days.
  *
- * Only `Absent` counts. `On Leave` is approved and paid, `Holiday` and
- * `Weekend` are not working days, and `Half Day` deducts half.
+ * `On Leave` stays paid **unless the leave approved for that day is Unpaid**.
+ * That was the gap: approved leave of every type is `On Leave` on the sheet,
+ * so an approved Unpaid request cost nothing and its type was a label. The
+ * request is the organisation's decision that the day goes unpaid, and it is
+ * read here directly — only once approved, only on this person's working
+ * days, and combined with attendance per date so a day that is both on
+ * Unpaid leave and marked `Absent` is deducted once. The arithmetic is
+ * data/lossOfPay.ts, and unit tested.
+ *
+ * NCP days in the ECR are this same figure (see data/statutoryReturns.ts), so
+ * the return keeps reconciling against the payslip it came from.
  */
-export function lossOfPayDays(employeeId: string, month: string): number {
-  const records = getAttendanceRecords().filter(
-    (r) => r.employeeId === employeeId && r.date.startsWith(month),
+export function lossOfPayDays(
+  employeeId: string,
+  month: string,
+  employee: Pick<Employee, 'weekOff'> | null = getEmployeeDirectory().find((e) => e.id === employeeId) ?? null,
+): number {
+  const attendance = getAttendanceRecords().filter((r) => r.employeeId === employeeId);
+  const holidays = new Set(getHolidayDirectory().map((h) => h.date));
+  const unpaid = getLeaveRequests().filter(
+    (r) =>
+      r.employeeId === employeeId &&
+      r.status === 'Approved' &&
+      normalizeLeaveTypeValue(r.type) === 'Unpaid',
   );
-  return records.reduce((days, r) => {
-    if (r.status === 'Absent') return days + 1;
-    if (r.status === 'Half Day') return days + 0.5;
-    return days;
-  }, 0);
+  const unpaidDates = unpaidLeaveByDate(unpaid, month, (date) => holidays.has(date) || isWeekOffFor(employee, date));
+  return combineLossOfPay(attendance, unpaidDates, month);
 }
 
 // `computeTax` used to sit here: a simplified new-regime slab table, exported,
@@ -287,7 +308,7 @@ export function buildPayslipComponents(
       : null;
 
   const payableDays = daysInMonth(month);
-  const lopDays = lossOfPayDays(employee.id, month);
+  const lopDays = lossOfPayDays(employee.id, month, employee);
   const lossOfPay = Math.round((grossEarnings / payableDays) * lopDays);
 
   const totalDeductions = lossOfPay + pf + tax + otherDeductions;

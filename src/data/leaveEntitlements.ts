@@ -181,11 +181,10 @@ function daysAtStatus(
  * still has one option rather than none.
  *
  * `carriesNoBalance` (leaveApplication.ts) already treats a zero-grant type
- * as "record it, don't deduct it", and payroll's loss-of-pay figure
- * (`lossOfPayDays` in data/payroll.ts) is read from the attendance record's
- * own status, never from a leave request's type — so this changes nothing
- * about what anybody is paid; it only guarantees the type exists to apply
- * under.
+ * as "record it, don't deduct it" from any balance. What it does deduct is
+ * pay: once approved, every working day of an Unpaid request is loss of pay
+ * (`lossOfPayDays` in data/payroll.ts), whether the fallback supplied the type
+ * or the organisation configured its own.
  */
 const UNPAID_FALLBACK_POLICY: LeavePolicy = {
   id: 'fallback-unpaid',
