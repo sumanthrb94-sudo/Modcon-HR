@@ -110,6 +110,25 @@ export const GEOFENCE_PERSONA = {
   roleLabel: 'HR Manager',
 };
 
+/**
+ * A manager who IS somebody — linked through `employee_links` to a record with
+ * a report beneath it — for approvals-queue-scope.spec.ts.
+ *
+ * The role personas are accounts with no link, so every narrowed store is
+ * empty for them and a queue that shows nothing passes whether or not the
+ * scoping works. That is how the expense queue came to be verified as
+ * "correctly scoped" while it could not show a manager their own report's
+ * claim. Its own persona because the link is Firestore, shared by every
+ * project in a run — see GEOFENCE_PERSONA.
+ */
+export const APPROVALS_MANAGER_PERSONA = {
+  role: 'manager' as const,
+  email: process.env.E2E_APPROVALS_MANAGER_EMAIL ?? 'playwright-e2e-approvals@modcon-hr.test',
+  password: process.env.E2E_PASSWORD ?? 'Playwright!2026',
+  name: 'Playwright Approvals Manager',
+  roleLabel: 'Manager',
+};
+
 /** The hiring manager in careers.spec.ts — see the note above. */
 export const HIRING_MANAGER_PERSONA = {
   role: 'manager' as const,

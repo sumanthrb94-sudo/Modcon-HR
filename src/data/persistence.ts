@@ -665,6 +665,33 @@ export function startSharedCollectionsSync(
   return stopSharedCollectionsSync;
 }
 
+/**
+ * Tell the running sync which employee this account is, once that is known.
+ *
+ * The reader is handed to `startSharedCollectionsSync` at sign-in, and the
+ * employee id in it comes from the `employee_links` cache — which is empty
+ * until that document's first snapshot lands, because `startEmployeeLinkSync`
+ * starts beside this and not before it. So on any sign-in without a warm cache
+ * (a new tab, a new browser, a different account in this one) the `self`
+ * stores subscribed as `~nobody~` and nothing ever asked again: a manager's
+ * expense queue was empty for their own reports' claims, and an employee's own
+ * payslips and claims never arrived from the server. It went unnoticed while
+ * the narrowed caches were shared across the browser's tabs, because another
+ * tab's copy filled the gap — which was the leak a2c0da6 closed.
+ *
+ * Only the `self` stores are resubscribed; nothing else depends on who the
+ * reader is. A no-op when the id has not changed or no sync is running.
+ */
+export function setOrgRecordsReaderEmployee(employeeId: string | null): void {
+  if (!activeReader || !activeOrgKey) return;
+  if ((activeReader.employeeId ?? null) === employeeId) return;
+  activeReader = { ...activeReader, employeeId };
+  const orgKey = activeOrgKey;
+  registry.forEach((store) => {
+    if (store.readScope === 'self') subscribeStore(store, orgKey);
+  });
+}
+
 export function stopSharedCollectionsSync(): void {
   activeOrgKey = null;
   activeReader = null;

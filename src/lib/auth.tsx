@@ -44,7 +44,7 @@ import {
     EMPLOYEE_LINK_CHANGED_EVENT,
 } from '@/data/employeeLinks';
 import { startOrgSettingsSync } from './orgSettings';
-import { startSharedCollectionsSync } from '@/data/persistence';
+import { setOrgRecordsReaderEmployee, startSharedCollectionsSync } from '@/data/persistence';
 import { managerChainFor } from '@/lib/reportingChains';
 import { startOrgFeatureSync } from './features';
 import { getEmployeeByEmail, linkEmployeeToAuthAccount } from '@/data/employees';
@@ -613,6 +613,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.addEventListener(EMPLOYEE_LINK_CHANGED_EVENT, read);
         return () => window.removeEventListener(EMPLOYEE_LINK_CHANGED_EVENT, read);
     }, [profile?.uid]);
+
+    // The narrowed record stores subscribe as whoever the link says this
+    // account is, and the link usually resolves after they have started — so
+    // they are told again when it does. See `setOrgRecordsReaderEmployee`.
+    useEffect(() => {
+        setOrgRecordsReaderEmployee(linkedEmployeeId);
+    }, [linkedEmployeeId]);
 
     const isAdmin = profile?.role === 'admin';
     const isHR = profile?.role === 'hr';
