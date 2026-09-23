@@ -1,6 +1,8 @@
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { persistentCollection } from '@/data/persistence';
+import { expenseApprovalRefusal } from '@/lib/dataScope';
+import type { UserProfile } from '@/lib/auth';
 
 // ---------------------------------------------------------------------------
 // Seed data — 16 claims spread across employees & categories
@@ -268,3 +270,56 @@ const expenseStore = persistentCollection<ExpenseClaim>(
 export const EXPENSES_CHANGED_EVENT = expenseStore.changedEvent;
 export const getExpenseClaims = () => expenseStore.get();
 export const saveExpenseClaims = (next: ExpenseClaim[]) => expenseStore.save(next);
+
+/**
+ * The one place an expense claim's status changes, and the only place that
+ * decides whether it may.
+ *
+ * `/dashboard/pending-approvals/expense-claims` did neither. It listed
+ * `getExpenseClaims()` unfiltered — so a manager was shown, and offered
+ * Approve and Decline on, claims from people who do not report to them — and
+ * its buttons only moved React state, so a decision was never written
+ * anywhere and vanished on reload. QA found both live: Priya was offered
+ * Meera's claim, and the page disagreed with /expenses about how many claims
+ * even existed.
+ *
+ * The server refuses the READ (`readableBy` on the record), which is why the
+ * fix is not "narrow the query and move on": a stale or seeded cache still
+ * renders rows the server would never have sent, and the buttons on them
+ * still worked. This is the same lesson `updateLeaveRequestStatus` carries —
+ * the check belongs in the one function that writes a status, not in the
+ * pages, because a fourth approval surface will otherwise skip it.
+ *
+ * As with leave, `profile` is REQUIRED rather than optional: optional, every
+ * existing call site would have kept compiling and kept approving everyone.
+ */
+export interface ExpenseDecision {
+  ok: boolean;
+  reason?: string;
+  claims: ExpenseClaim[];
+}
+
+export function updateExpenseClaimStatus(
+  claimId: string,
+  nextStatus: ExpenseStatus,
+  decider: { profile: UserProfile | null },
+): ExpenseDecision {
+  const current = getExpenseClaims();
+  const claim = current.find((c) => c.id === claimId);
+  if (!claim) {
+    return { ok: false, reason: 'That expense claim no longer exists.', claims: current };
+  }
+
+  // Draft and Submitted are the claimant's own states; everything past them
+  // is a decision about somebody else's money, and firestore.rules refuses
+  // it server-side too (expenseDecisionIsAuthorised).
+  const isDecision = nextStatus !== 'Draft' && nextStatus !== 'Submitted';
+  if (isDecision) {
+    const refusal = expenseApprovalRefusal(decider.profile, claim.employeeId);
+    if (refusal) return { ok: false, reason: refusal, claims: current };
+  }
+
+  const updated = current.map((c) => (c.id === claimId ? { ...c, status: nextStatus } : c));
+  saveExpenseClaims(updated);
+  return { ok: true, claims: updated };
+}

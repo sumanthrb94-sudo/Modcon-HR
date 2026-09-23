@@ -225,6 +225,49 @@ export function leaveApprovalRefusal(
     : 'You can only decide leave for the people who report to you. HR can decide anybody’s.';
 }
 
+/**
+ * Why an expense decision is refused, phrased for the person who cannot make it.
+ *
+ * The same two routes to authority as leave, resolved through the same
+ * `getApprovableEmployeeIds` — whoever an employee reports to decides, as does
+ * anyone further up that line, as do HR and Admin organisation-wide, and
+ * nobody decides their own.
+ *
+ * It is a separate function from `leaveApprovalRefusal` only because the
+ * sentences name the thing being decided; the SET is deliberately identical,
+ * because "who decides for this person" is one question this app answers once.
+ */
+export function expenseApprovalRefusal(
+  profile: UserProfile | null,
+  employeeId: string,
+  directory: Employee[] = getEmployeeDirectory(),
+): string | null {
+  if (getApprovableEmployeeIds(profile, directory).has(employeeId)) return null;
+
+  const role = resolveAppRole(profile);
+  if (role === 'Employee') {
+    return 'Expense claims are decided by the reporting manager of the person who claimed, or by HR.';
+  }
+
+  const self = getCurrentEmployeeRecord(profile, directory);
+  if (self && self.id === employeeId) {
+    return 'You cannot decide your own expense claim — it goes to whoever you report to, or to another administrator.';
+  }
+
+  if (role === 'Admin' || role === 'HR Manager') {
+    return 'That claim names an employee who is not in the directory, so there is nobody to decide it for.';
+  }
+
+  if (!self) {
+    return 'This app has not been told which employee record your account belongs to, so it cannot tell who reports to you. An administrator can link it from Settings → Database, and HR can decide the claim in the meantime.';
+  }
+
+  const subject = directory.find((employee) => employee.id === employeeId);
+  return subject
+    ? `${subject.fullName} does not report to you. Their reporting manager, somebody further up that line, or HR can decide this.`
+    : 'You can only decide expense claims for the people who report to you. HR can decide anybody\'s.';
+}
+
 /** True when `profile` may see this specific employee's records. */
 export function canViewEmployee(
   profile: UserProfile | null,

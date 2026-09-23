@@ -259,7 +259,13 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
   const leave = getLeaveRequests().filter(
     (request) => request.status === 'Pending' && (!decidable || decidable.has(request.employeeId)),
   );
-  const expenses = getExpenseClaims().filter((claim) => claim.status === 'Submitted');
+  // Scoped to the same set as leave. It was organisation-wide, so the card
+  // promised a manager claims their own queue would refuse to show them —
+  // and after the queue was scoped, the count and the page disagreed, which
+  // is how QA found the gap in the first place.
+  const expenses = getExpenseClaims().filter(
+    (claim) => claim.status === 'Submitted' && (!decidable || decidable.has(claim.employeeId)),
+  );
   const regularizations = getRegularizationRequests().filter((request) => request.status === 'Pending');
   const onboardingTasks = getOnboardings()
     .flatMap((onboarding) => onboarding.tasks)
