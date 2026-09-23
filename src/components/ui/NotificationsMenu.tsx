@@ -10,6 +10,7 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
+import { useClampedMenuPosition } from '@/lib/useClampedMenuPosition';
 
 interface NotificationsMenuProps {
     compact?: boolean;
@@ -24,6 +25,11 @@ const ICONS: Record<NotificationIcon, LucideIcon> = {
     clock: Clock,
 };
 
+// Matches `w-80` on the panel below — the two have to agree, because the
+// clamp is computed from this number rather than measured from the panel
+// itself (which does not exist in the DOM to measure until it is open).
+const PANEL_WIDTH = 320;
+
 export function NotificationsMenu({ compact = false, className }: NotificationsMenuProps) {
     const navigate = useNavigate();
     const { profile } = useAuth();
@@ -31,6 +37,9 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const isEmployee = role === 'Employee';
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
+    // menuRef already wraps exactly the trigger (see the JSX below), so it
+    // doubles as the element the panel's position is measured from.
+    const position = useClampedMenuPosition(open, menuRef, PANEL_WIDTH);
     const notificationRevision = useNotificationPreferencesRevision();
     const integrationRevision = useIntegrationPreferencesRevision();
     const directoryRevision = useEmployeeDirectoryRevision();
@@ -111,8 +120,18 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                 </Button>
             )}
 
-            {open ? (
-                <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-ink-300 bg-white p-1.5 shadow-card-hover">
+            {open && position ? (
+                // Positioned from a measurement (useClampedMenuPosition), not
+                // a fixed CSS anchor: `right: 0` only stays on screen when the
+                // trigger itself is pinned to the screen's right edge, which
+                // is true of the topbar's compact bell but not of this button
+                // wherever else it renders (stacked under a heading on a
+                // phone, or second in a row after another button on the Admin
+                // dashboard) — both ran the panel off one edge of the screen.
+                <div
+                    className="fixed z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-ink-300 bg-white p-1.5 shadow-card-hover"
+                    style={{ top: position.top, left: position.left }}
+                >
                     <div className="flex items-center justify-between px-2.5 py-2">
                         <p className="text-sm font-semibold text-ink-800">Notifications</p>
                         <span className="text-xs text-ink-500">

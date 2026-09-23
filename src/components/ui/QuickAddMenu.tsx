@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, CalendarOff, LifeBuoy, Plus, Receipt, UserPlus } from 'lucide-react';
 import { Button } from './Button';
+import { useClampedMenuPosition } from '@/lib/useClampedMenuPosition';
 
 interface QuickAddMenuProps {
     size?: 'sm' | 'md';
@@ -17,10 +18,15 @@ const quickActions = [
     { label: 'Helpdesk Ticket', description: 'Open helpdesk module', path: '/helpdesk', icon: LifeBuoy },
 ];
 
+// Matches `w-64` on the panel below — see the constant of the same name in
+// NotificationsMenu.tsx for why this is a number rather than a measurement.
+const PANEL_WIDTH = 256;
+
 export function QuickAddMenu({ size = 'sm', variant = 'primary', className }: QuickAddMenuProps) {
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
+    const position = useClampedMenuPosition(open, menuRef, PANEL_WIDTH);
 
     useEffect(() => {
         function handleOutsideClick(event: MouseEvent) {
@@ -56,8 +62,16 @@ export function QuickAddMenu({ size = 'sm', variant = 'primary', className }: Qu
                 Quick Add
             </Button>
 
-            {open ? (
-                <div className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-ink-300 bg-white p-1.5 shadow-card-hover">
+            {open && position ? (
+                // Measured, not anchored — see useClampedMenuPosition and the
+                // comment on NotificationsMenu's panel. This button sits
+                // second in a row after Notifications on the Admin
+                // dashboard, so a fixed left-vs-right CSS anchor could not
+                // have been correct for both of them at once.
+                <div
+                    className="fixed z-50 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-ink-300 bg-white p-1.5 shadow-card-hover"
+                    style={{ top: position.top, left: position.left }}
+                >
                     {quickActions.map((item) => {
                         const Icon = item.icon;
                         return (

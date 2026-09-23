@@ -141,6 +141,53 @@ test('the Super Admin’s pages fit a 390px screen', async ({ page }) => {
   expect(problems, problems.join('\n')).toEqual([]);
 });
 
+// QA found the dashboard's Notifications panel with its first ~40px of text
+// missing on a phone — "Regularizations" read "larizations", "Preferences"
+// read "rences". The panel is a fixed-width dropdown (NotificationsMenu,
+// QuickAddMenu) anchored `right-0` to its trigger; on the dashboard that
+// trigger sits left-aligned in the page (PageHeader stacks title above
+// actions below `sm`), not pinned to the screen's right edge, so the panel
+// ran off the left of the viewport — invisible, not merely close to the
+// edge. `overflow()` above only ever checked the right edge, which is why
+// this shipped past it; this test checks the open panel's own bounding box.
+test('the Notifications and Quick Add panels open fully on screen at 390px', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await login(page, persona());
+  await page.goto('/');
+
+  // The topbar's bell is `compact`: an icon with an aria-label, no visible
+  // text — it always sat at the screen's right edge and was never broken.
+  // .filter({ hasText }) picks the dashboard's own full button by its
+  // visible label, which is the one this bug is about.
+  const notifications = page.locator('button').filter({ hasText: /^Notifications/ }).first();
+  await notifications.click();
+  // The panel is the trigger's next sibling in the DOM — both render inside
+  // the same `relative` wrapper — so this finds it without depending on
+  // whether this account has any notifications to show text for.
+  const notificationsPanel = notifications.locator('xpath=following-sibling::div[1]');
+  await expect(notificationsPanel).toBeVisible();
+  const notifBox = await notificationsPanel.boundingBox();
+  expect(notifBox, 'Notifications panel did not render').not.toBeNull();
+  expect(notifBox!.x, `Notifications panel left edge at ${notifBox!.x}px is off the left of the screen`).toBeGreaterThanOrEqual(-0.5);
+  expect(notifBox!.x + notifBox!.width, 'Notifications panel right edge runs past the screen').toBeLessThanOrEqual(390.5);
+  await notifications.click(); // close
+
+  // Quick Add is hidden from Employee (permission matrix) — Manager and
+  // Admin see it on the dashboard, stacked the same way as Notifications.
+  // The topbar's own copy of this button (`hidden md:inline-flex`) stays in
+  // the DOM below `md`, just invisible — `:visible` picks the dashboard's.
+  const quickAdd = page.locator('button:visible').filter({ hasText: /^Quick Add/ });
+  if (await quickAdd.count()) {
+    await quickAdd.click();
+    const quickAddPanel = quickAdd.locator('xpath=following-sibling::div[1]');
+    await expect(quickAddPanel).toBeVisible();
+    const quickAddBox = await quickAddPanel.boundingBox();
+    expect(quickAddBox, 'Quick Add panel did not render').not.toBeNull();
+    expect(quickAddBox!.x, `Quick Add panel left edge at ${quickAddBox!.x}px is off the left of the screen`).toBeGreaterThanOrEqual(-0.5);
+    expect(quickAddBox!.x + quickAddBox!.width, 'Quick Add panel right edge runs past the screen').toBeLessThanOrEqual(390.5);
+  }
+});
+
 test('the navigation opens and closes from the menu button on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page, persona());
