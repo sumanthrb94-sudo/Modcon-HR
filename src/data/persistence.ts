@@ -565,12 +565,21 @@ export function persistentCollection<T extends Identified>(
    * And it does not touch `lastPushed`, which still says what the server last
    * confirmed. Advancing it on a failure would make the next save think this
    * change had landed and skip re-sending it.
+   *
+   * What it always does is say so. The restore is conditional; the telling is
+   * not. This used to return early before the event too, so whenever the cache
+   * had moved on — a colleague's write arriving through the subscription is
+   * enough — a refusal was silent. The SDK's own snapshot then dropped the
+   * refused record, and the change simply vanished from the page with nothing
+   * to explain it: G7's failure mode, reached through the busy case rather than
+   * the quiet one. Found by write-failure-rollback.spec.ts in a full run.
    */
   function rollback(before: Overlay<T>, attempted: Overlay<T>, err: unknown) {
     if (typeof window === 'undefined') return;
-    if (stableJson(readOverlay()) !== stableJson(attempted)) return;
-    writeOverlay(before);
-    notify();
+    if (stableJson(readOverlay()) === stableJson(attempted)) {
+      writeOverlay(before);
+      notify();
+    }
     window.dispatchEvent(
       new CustomEvent(ORG_RECORDS_WRITE_FAILED_EVENT, {
         detail: { store: storeKey, message: messageFor(err) },

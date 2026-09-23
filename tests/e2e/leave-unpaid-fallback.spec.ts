@@ -182,7 +182,7 @@ test.describe.serial('leave stays usable when the organisation has configured al
     await restorePolicies();
   });
 
-  // FIXME (QA verifying by hand) — and NOT because the feature is broken.
+  // Was FIXME (QA verifying by hand) — and NOT because the feature was broken.
   //
   // The rendered option list was captured from a failing run and is exactly
   // what T8 promises:
@@ -196,7 +196,7 @@ test.describe.serial('leave stays usable when the organisation has configured al
   // point — it now times out further down rather than failing an assertion.
   // Left as the guard to finish rather than deleted, and the feature is not
   // reverted on the strength of a spec that has already shown it working.
-  test.fixme('Unpaid still appears, and no accrued balance, when nothing else does', async () => {
+  test('Unpaid still appears, and no accrued balance, when nothing else does', async () => {
     await login(page, EMPLOYEE.email, EMPLOYEE.password);
     await page.getByRole('link', { name: 'Leave', exact: true }).first().click();
     await expect(page.getByRole('heading', { name: 'Leave Management' })).toBeVisible();
@@ -219,9 +219,10 @@ test.describe.serial('leave stays usable when the organisation has configured al
     expect(optionTexts.some((t) => t === 'Unpaid — no accrued balance')).toBe(true);
 
     await typeSelect.selectOption('Unpaid');
-    // `.first()`: the phrase appears both in the option label and in the
-    // balance line beneath it, and either one proves the point.
-    await expect(dialog.getByText('No accrued balance').first()).toBeVisible();
+    // Exact: a substring match also finds the <option> "Unpaid — no accrued
+    // balance", which Playwright reports hidden, and `.first()` picked it —
+    // the timeout this spec was parked for, with the feature working all along.
+    await expect(dialog.getByText('No accrued balance', { exact: true })).toBeVisible();
 
     // A working day far enough out to be free of holidays, week-offs and any
     // existing request — this employee has none, so the first candidate that

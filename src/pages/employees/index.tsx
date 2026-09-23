@@ -3241,7 +3241,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h2 className="text-xl font-bold text-ink-900">{emp.fullName}</h2>
+                {/* The page's h1: a profile is a page of its own, and in the
+                    employee's self view it replaces the directory entirely, so
+                    nothing else on screen is the top-level heading (G11). */}
+                <h1 className="text-xl font-bold text-ink-900">{emp.fullName}</h1>
                 <Badge tone={statusTone(emp.status)} dot>{emp.status}</Badge>
               </div>
               <InlineText

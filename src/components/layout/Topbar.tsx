@@ -214,8 +214,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             />
           </div>
         ) : null}
+        {/* Not below `sm`: at a phone's width this button, Getting Started,
+            the bell and the account block did not fit in 375px and pushed
+            every page 22px wider than the screen, sign-out off the edge (G12).
+            The sidebar's first link is the dashboard, one tap away. */}
         {location.pathname !== '/' ? (
-          <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
+          <Button variant="secondary" size="sm" className="hidden sm:inline-flex" onClick={() => navigate('/')}>
             Dashboard
           </Button>
         ) : null}

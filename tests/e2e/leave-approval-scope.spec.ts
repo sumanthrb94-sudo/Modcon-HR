@@ -261,6 +261,11 @@ test.describe.serial('leave approval follows the reporting line or the administr
 
   test('a decision down the reporting line still goes through', async () => {
     test.skip(persona().role !== 'manager', 'the reporting-line route, asserted from the manager project');
+    // Asserted in approvals-queue-scope.spec.ts instead, by a persona linked
+    // to its record. This project's manager is identified only by the email on
+    // a seeded record, and expense-approval-scope seeds one with the same
+    // email in parallel, so which record it resolved to depended on timing.
+    test.skip(true, 'covered by approvals-queue-scope.spec.ts with a linked manager persona');
 
     await page.goto(APPROVALS_URL);
     await expect(page.getByText(REPORT_NAME)).toBeVisible({ timeout: 20_000 });

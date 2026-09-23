@@ -31,6 +31,16 @@ async function login(page: Page, p: Persona) {
   await page.locator('#password').fill(p.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 20_000 });
+  // The Getting started checklist opens itself on a first sign-in and covers
+  // the page — at a phone's width, the menu button included.
+  // It opens a moment after the page does, so give it that moment.
+  // Titled per role: "Getting started" for most, "Setting up your organisation" for admins.
+  const gettingStarted = page.getByRole('dialog', { name: /Getting started|Setting up your organisation/ });
+  await gettingStarted.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => {});
+  if (await gettingStarted.isVisible()) {
+    await gettingStarted.getByRole('button', { name: 'Close' }).last().click();
+    await expect(gettingStarted).toBeHidden();
+  }
 }
 
 /** Elements that stick out past the right edge of the screen, outside any scroll container. */

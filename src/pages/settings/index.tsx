@@ -5143,9 +5143,22 @@ export function SettingsPage() {
         }
       />
 
+      {/* Below `lg` the section list is a picker above the content. It sat
+          beside the content at every width, a fixed 224px column that pushed
+          the page to 583px on a 375px phone (G12). */}
+      <div className="lg:hidden mb-4">
+        <Select
+          ariaLabel="Settings section"
+          value={active}
+          onChange={setActive}
+          options={NAV_ITEMS.map((item) => ({ label: item.label, value: item.id }))}
+          className="w-full"
+        />
+      </div>
+
       <div className="flex gap-6 items-start">
         {/* Left nav */}
-        <aside className="w-56 shrink-0 sticky top-6">
+        <aside className="hidden lg:block w-56 shrink-0 sticky top-6">
           <Card padding={false}>
             <nav className="py-2">
               {NAV_ITEMS.map((item) => (
