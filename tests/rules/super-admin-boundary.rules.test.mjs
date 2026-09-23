@@ -172,6 +172,21 @@ describe('super admin — refused every tenant collection', () => {
     await assertFails(getDoc(doc(as(SUPER), 'org_settings', 'org-a__employeeSalaryStructures')));
   });
 
+  // The write half, which org-isolation.spec.ts ran into from the UI: the
+  // Super Admin stepped into an organisation and saved its salary split, and
+  // the publish was refused. Asserted here so it is a rule, not an accident.
+  it('org_settings: cannot overwrite an organisation\'s configuration', async () => {
+    await assertFails(setDoc(doc(as(SUPER), 'org_settings', 'org-a__salaryStructure'), {
+      orgId: 'org-a', key: 'salaryStructure', valueJson: '{"basicPercent":10}',
+    }));
+  });
+
+  it('org_settings: cannot create one for an organisation either', async () => {
+    await assertFails(setDoc(doc(as(SUPER), 'org_settings', 'org-a__holidays'), {
+      orgId: 'org-a', key: 'holidays', valueJson: '[]',
+    }));
+  });
+
   it('employee_documents: cannot read a PAN card record', async () => {
     await assertFails(getDoc(doc(as(SUPER), 'employee_documents', 'org-a__emp-a__pan-card')));
   });

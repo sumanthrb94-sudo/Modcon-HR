@@ -522,3 +522,36 @@ describe('regularizations — deciding one is a privileged transition', () => {
     await assertFails(setDoc(at(empB1()), reg('emp-a1', 'Approved')));
   });
 });
+
+// --- Expense decisions follow the reporting line, on the server -------------
+//
+// The read side is asserted in G1 above. This is the write side: deciding a
+// claim needs the manager to be in the claim's STORED readableBy (the subject
+// and everyone above them, stamped when the claim was written), so a manager
+// outside that line is refused even with a direct SDK call — and cannot get
+// in by adding themselves to readableBy on the way in, because authority on
+// an update is judged from the stored record.
+describe('expense decisions — a manager outside the reporting line is refused', () => {
+  const CLAIM = 'exp-line';
+  const at = (db) => doc(db, 'org_records', recordId(ORG_A, 'expenseClaims', CLAIM));
+  const claim = (status, readableBy) =>
+    record(ORG_A, 'expenseClaims', CLAIM, { employeeId: 'emp-a2', amount: 400, status }, readableBy);
+  const seed = (readableBy) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'org_records', recordId(ORG_A, 'expenseClaims', CLAIM)), claim('Submitted', readableBy));
+  });
+
+  it('a manager above the subject CAN approve their claim', async () => {
+    await seed(['emp-a2', 'emp-a-mgr']);
+    await assertSucceeds(setDoc(at(mgrA()), claim('Approved', ['emp-a2', 'emp-a-mgr'])));
+  });
+
+  it('a manager outside the line CANNOT approve it', async () => {
+    await seed(['emp-a2', 'emp-somebody-else']);
+    await assertFails(setDoc(at(mgrA()), claim('Approved', ['emp-a2', 'emp-somebody-else'])));
+  });
+
+  it('and cannot get in by writing themselves into readableBy', async () => {
+    await seed(['emp-a2', 'emp-somebody-else']);
+    await assertFails(setDoc(at(mgrA()), claim('Approved', ['emp-a2', 'emp-somebody-else', 'emp-a-mgr'])));
+  });
+});
