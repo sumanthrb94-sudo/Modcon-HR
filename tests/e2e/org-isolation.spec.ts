@@ -1,5 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-import { SUPER_ADMIN } from './config';
+import { test, expect, type Browser, type Page } from '@playwright/test';
+import { HR_PERSONA, SUPER_ADMIN } from './config';
 import { EMULATOR_HOST, FIRESTORE_BASE, adminToken } from './firestore';
 import { expectPublished } from './saveIndicator';
 
@@ -14,9 +14,9 @@ import { expectPublished } from './saveIndicator';
  * one there leaves the first organisation's untouched, and that switching back
  * shows the original figures again.
  *
- * This is the only spec that needs an account able to act across
- * organisations, which is why `SUPER_ADMIN` lives apart from the three role
- * personas — see tests/e2e/config.ts.
+ * The Super Admin creates the second organisation; each organisation's own
+ * administrator sets its structure, because the platform account can no
+ * longer touch an organisation's settings (gate G3).
  *
  * ## Emulator only, without an opt-in
  *
@@ -161,82 +161,103 @@ async function publishedFor(orgKey: string): Promise<Record<string, number> | nu
 }
 
 test.describe.serial('a second organisation shares no salary structure with the first', () => {
-  let page: Page;
+  // The Super Admin creates the organisation and nothing more. Each
+  // organisation's salary split is then set by that organisation's own
+  // administrator: since the platform boundary (gate G3) the Super Admin can
+  // neither read nor write an organisation's settings, and this spec — which
+  // used to step into both organisations as the Super Admin and edit their
+  // structures — was refused by the rules from then on.
   let newOrgId = '';
+  let newAdminPassword = '';
 
   test.skip(
     !EMULATOR_HOST,
     'creates an organisation and a Firebase Auth account — emulator only, never the live project',
   );
 
-  test.beforeAll(async ({ browser }) => {
-    page = await browser.newPage();
-    await login(page);
-    await manageDefaultOrg(page);
-    // The demo organisation's own split, so "unchanged at the end" means
-    // something specific rather than whatever a previous run left behind.
-    await openSalaryStructure(page);
-    await setStructure(page, DEMO);
-  });
+  async function signInAs(browser: Browser, email: string, password: string): Promise<Page> {
+    const page = await (await browser.newContext()).newPage();
+    await page.goto('/login');
+    await page.locator('#username').fill(email);
+    await page.locator('#password').fill(password);
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await expect(page.getByRole('link', { name: 'Settings', exact: true }).first()).toBeVisible({ timeout: 20_000 });
+    return page;
+  }
 
-  test.afterAll(async () => {
+  test.beforeAll(async ({ browser }) => {
+    // The demo organisation's own split, set by its own HR, so "unchanged at
+    // the end" means something specific rather than whatever a previous run
+    // left behind.
+    const hr = await signInAs(browser, HR_PERSONA.email, HR_PERSONA.password);
     try {
-      // Leave the browser managing the demo organisation again: the org key is
-      // per-browser and every other spec assumes the default.
-      await manageDefaultOrg(page);
+      await openSalaryStructure(hr);
+      await setStructure(hr, DEMO);
     } finally {
-      await page?.close();
+      await hr.context().close();
     }
   });
 
-  test('a super admin creates a second organisation', async () => {
-    await page.goto('/organizations');
-    await page.getByRole('button', { name: 'Create Organization' }).click();
+  test('a super admin creates a second organisation', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      await login(page);
+      await page.getByRole('button', { name: 'Create Organization' }).click();
 
-    const dialog = page.getByRole('dialog');
-    await dialog.getByPlaceholder('Acme Builders').fill(NEW_ORG);
-    await dialog.getByPlaceholder('Jane Doe').fill('E2E Org Admin');
-    await dialog.getByPlaceholder('hr@acme.com').fill(NEW_ORG_ADMIN);
-    await dialog.getByRole('button', { name: 'Create' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByPlaceholder('Acme Builders').fill(NEW_ORG);
+      await dialog.getByPlaceholder('Jane Doe').fill('E2E Org Admin');
+      await dialog.getByPlaceholder('hr@acme.com').fill(NEW_ORG_ADMIN);
+      await dialog.getByRole('button', { name: 'Create' }).click();
 
-    // Provisioning mints an Auth account, so this is slower than a Firestore write.
-    await expect(dialog.getByText('Organization created')).toBeVisible({ timeout: 30_000 });
-    await dialog.getByRole('button', { name: 'Done' }).click();
-    // The row, not any text node: the dialog is still fading out and carries
-    // the same name, so an unscoped match resolves to the hidden copy.
-    await expect(orgRow(page, NEW_ORG)).toBeVisible();
+      // Provisioning mints an Auth account, so this is slower than a Firestore write.
+      await expect(dialog.getByText('Organization created')).toBeVisible({ timeout: 30_000 });
+      newAdminPassword = (
+        await dialog.getByText('Temporary password', { exact: true }).locator('xpath=following-sibling::p').textContent()
+      )?.trim() ?? '';
+      expect(newAdminPassword, 'the dialog showed no temporary password').not.toBe('');
+      await dialog.getByRole('button', { name: 'Done' }).click();
+      // The row, not any text node: the dialog is still fading out and carries
+      // the same name, so an unscoped match resolves to the hidden copy.
+      await expect(orgRow(page, NEW_ORG)).toBeVisible();
+    } finally {
+      await context.close();
+    }
   });
 
-  test('the new organisation inherits no salary structure', async () => {
+  test('the new organisation inherits no salary structure', async ({ browser }) => {
     // The assertion this whole spec exists for. A fresh organisation showing
     // Basic 50% / HRA 25% would be showing it ModCon Builders' compensation
     // policy as its own.
-    await orgRow(page, NEW_ORG).getByRole('button', { name: 'Manage this org' }).click();
-    await confirmEnterOrg(page);
-    // Switching reloads the app so every org-scoped module re-evaluates. The
-    // new organisation's own row is what says it is the one being managed —
-    // the stat card carries the same words, hence the row scope.
-    await expect(
-      orgRow(page, NEW_ORG).getByRole('button', { name: 'Currently managing' }),
-    ).toBeVisible({ timeout: 20_000 });
-    newOrgId = await page.evaluate(() => sessionStorage.getItem('modcon.hr.superAdminSelectedOrg') ?? '');
-    expect(newOrgId, 'the browser did not switch organisation').not.toBe('');
-    expect(newOrgId).not.toBe('default');
+    const page = await signInAs(browser, NEW_ORG_ADMIN, newAdminPassword);
+    try {
+      newOrgId = await page.evaluate(() => localStorage.getItem('modcon.hr.activeOrgKey') ?? '');
+      expect(newOrgId, 'the new administrator is in no organisation').not.toBe('');
+      expect(newOrgId).not.toBe('default');
 
-    await openSalaryStructure(page);
-    await expect(page.getByTestId('salary-structure-unset')).toBeVisible();
-    await expect(page.getByLabel('Basic percent')).toHaveValue('');
-    await expect(page.getByLabel('HRA percent')).toHaveValue('');
-    await expect(page.getByLabel('Medical allowance')).toHaveValue('');
-    await expect(page.getByLabel('Conveyance allowance')).toHaveValue('');
+      await openSalaryStructure(page);
+      await expect(page.getByTestId('salary-structure-unset')).toBeVisible();
+      await expect(page.getByLabel('Basic percent')).toHaveValue('');
+      await expect(page.getByLabel('HRA percent')).toHaveValue('');
+      await expect(page.getByLabel('Medical allowance')).toHaveValue('');
+      await expect(page.getByLabel('Conveyance allowance')).toHaveValue('');
+    } finally {
+      await page.context().close();
+    }
   });
 
-  test("its own structure is stored separately from the first organisation's", async () => {
-    await openSalaryStructure(page);
-    await setStructure(page, OTHER);
+  test("its own structure is stored separately from the first organisation's", async ({ browser }) => {
+    const page = await signInAs(browser, NEW_ORG_ADMIN, newAdminPassword);
+    try {
+      await openSalaryStructure(page);
+      await setStructure(page, OTHER);
+    } finally {
+      await page.context().close();
+    }
 
     // Two documents, two different splits — not one document being rewritten.
-    expect(await publishedFor(newOrgId)).toMatchObject({
+    await expect.poll(() => publishedFor(newOrgId)).toMatchObject({
       basicPercent: OTHER.basic,
       hraPercent: OTHER.hra,
       medicalAllowance: OTHER.medical,
@@ -250,11 +271,14 @@ test.describe.serial('a second organisation shares no salary structure with the 
     });
   });
 
-  test('switching back shows the first organisation its own figures, unchanged', async () => {
-    await manageDefaultOrg(page);
-
-    await openSalaryStructure(page);
-    await expectStructure(page, DEMO);
+  test('the first organisation still sees its own figures, unchanged', async ({ browser }) => {
+    const hr = await signInAs(browser, HR_PERSONA.email, HR_PERSONA.password);
+    try {
+      await openSalaryStructure(hr);
+      await expectStructure(hr, DEMO);
+    } finally {
+      await hr.context().close();
+    }
   });
 });
 
