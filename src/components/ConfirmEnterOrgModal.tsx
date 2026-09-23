@@ -96,10 +96,15 @@ export function ConfirmEnterOrgModal({ target, onClose }: ConfirmEnterOrgModalPr
                 <div className="space-y-2 text-sm text-ink-700">
                     <p>
                         You are about to enter{' '}
-                        <span className="font-semibold text-ink-900">{target?.name}</span> as its HR
-                        administrator. From that moment the whole HR app renders this organization's
-                        directory, attendance, payroll and settings as though you worked there — full
-                        access, not a read-only look.
+                        <span className="font-semibold text-ink-900">{target?.name}</span>. The app will
+                        show you this organization's workspace, but its people data stays its own: the
+                        platform cannot read or change its employees, attendance, leave, payroll or
+                        settings, and any change you try is refused by the server and undone.
+                    </p>
+                    <p>
+                        To change something inside it — a reporting manager, a leave decision, a
+                        policy — ask the organization's own HR administrator, or use Reset password
+                        on the Organizations page if they cannot sign in.
                     </p>
                     <p>This is recorded in the platform's audit log against your account, with the time.</p>
                 </div>
