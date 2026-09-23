@@ -122,7 +122,7 @@ const APP_SPECS = /(smoke|interactions|persistence|attendance|regularizations|ch
  * read — so it is emulator-only for the same reason the others here are, and
  * there is no live-reachable equivalent to fall back to.
  */
-const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance|approvals-queue-scope|write-failure-rollback)\.spec\.ts$/;
+const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-policy|leave-unpaid-fallback|location-directory|hr-designations|onboarding|careers|shift-timings|role-change-propagation|week-off-policy|geofenced-attendance|shared-records|statutory-payroll|payroll-run-guard|org-create-validation|superadmin-governance|approvals-queue-scope|write-failure-rollback)\.spec\.ts$/;
 
 /**
  * …and org-isolation is a third writer that has to run after, not alongside.
@@ -140,12 +140,7 @@ const SHARED_CONFIG_SPECS = /(org-settings|salary-structure|employee-leave-polic
  * dependency: this project starts once the other has finished and put the demo
  * split back.
  */
-// leave-unpaid-fallback.spec.ts runs here for the same reason: it replaces the
-// organisation's whole leave policy list with a single tenure-gated type, and
-// org-settings.spec.ts and employee-leave-policy.spec.ts write that same
-// document during the org-settings project — so its option list was whatever
-// the last writer left, and it failed only in a full run.
-const ORG_ISOLATION_SPECS = /(org-isolation|leave-unpaid-fallback)\.spec\.ts$/;
+const ORG_ISOLATION_SPECS = /org-isolation\.spec\.ts$/;
 
 /**
  * …and they do not run against the live project by default.
