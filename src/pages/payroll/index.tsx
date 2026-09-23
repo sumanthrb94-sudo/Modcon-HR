@@ -35,7 +35,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { buildPayslip, buildPayslipComponents, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
+import { buildPayslip, buildPayslipComponents, storedDeductionRows, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate } from '@/lib/today';
@@ -233,19 +233,19 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
                 every time an administrator changed a rate.
                 The shared `Payslip` shape has fields for provident fund and tax
                 and nothing for ESI or professional tax, so those two ride in
-                `otherDeductions` alongside loss of pay and the row is labelled
-                for what it actually holds. Live surfaces (Finance, the profile's
+                `otherDeductions` alongside loss of pay; `storedDeductionRows`
+                splits them back out where the payslip recorded its LOP days,
+                and labels the bucket for what it holds where it did not. Live surfaces (Finance, the profile's
                 Compensation tab) split them out through `deductionRows`.
                 A head that came to zero is omitted rather than shown: "PF ₹0"
                 reads as a contribution that was calculated and came to nothing,
                 which is not what an organisation running no PF scheme means. */}
-            {[
-              { label: 'Loss of Pay, ESI & Professional Tax', value: payslip.otherDeductions },
-              { label: 'Provident Fund (employee)', value: payslip.pf },
-              { label: 'Tax Deducted at Source', value: payslip.tax },
-            ].filter((row) => row.value > 0).map((row) => (
+            {storedDeductionRows(payslip).map((row) => (
               <div key={row.label} className="flex items-center justify-between">
-                <span className="text-sm text-ink-600">{row.label}</span>
+                <span className="text-sm text-ink-600">
+                  {row.label}
+                  {row.hint && <span className="text-ink-400 ml-1.5 text-xs">{row.hint}</span>}
+                </span>
                 <span className="text-sm font-medium text-rose-700">{formatINR(row.value)}</span>
               </div>
             ))}

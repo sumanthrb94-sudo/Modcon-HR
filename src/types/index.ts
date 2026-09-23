@@ -240,6 +240,14 @@ export interface Payslip {
   pf: number; // deduction
   tax: number; // deduction
   otherDeductions: number;
+  /**
+   * Days of loss of pay this payslip deducted. Absent on payslips stored
+   * before it was recorded, which therefore carry no arrears either way —
+   * nobody can say now what they deducted. See `lossOfPayArrears`.
+   */
+  lopDays?: number;
+  /** Earlier months' loss of pay recovered (or refunded, negative) on this payslip. */
+  lopArrears?: { month: string; days: number; amount: number }[];
   grossEarnings: number;
   totalDeductions: number;
   netPay: number;

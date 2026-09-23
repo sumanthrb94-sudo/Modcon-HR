@@ -74,6 +74,12 @@ export interface PersistentCollection<T> {
   readonly changedEvent: string;
   /** The seed with this organisation's changes applied. */
   get(): T[];
+  /**
+   * Only what this organisation has stored — the seed left out. For a reader
+   * that needs records somebody actually wrote and must not call the seed,
+   * because the seed is computed from the reader (payslip arrears).
+   */
+  getStored(): T[];
   save(next: T[]): T[];
   /** Applies a change to the current value and stores the result. */
   update(fn: (current: T[]) => T[]): T[];
@@ -577,6 +583,10 @@ export function persistentCollection<T extends Identified>(
 
     get() {
       return mergeOverlay(seed(), readOverlay());
+    },
+
+    getStored() {
+      return mergeOverlay([], readOverlay());
     },
 
     save(next) {
