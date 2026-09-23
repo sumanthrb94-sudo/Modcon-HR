@@ -25,7 +25,7 @@ import {
   assertFails,
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT ?? 'modconhr-b2789';
 const HOST = '127.0.0.1';
@@ -38,6 +38,10 @@ const USERS = {
   // nothing at all here.
   hrA: { uid: 'hr-a', email: 'hr-a@example.com', role: 'hr', orgId: 'org-a' },
   employeeA: { uid: 'employee-a', email: 'employee-a@example.com', role: 'employee', orgId: 'org-a' },
+  // An organisation's Administrator: the one tenant role that reads its own
+  // organisation's entries (product decision, 2026-09-23).
+  adminA: { uid: 'admin-a', email: 'admin-a@example.com', role: 'admin', orgId: 'org-a' },
+  adminB: { uid: 'admin-b', email: 'admin-b@example.com', role: 'admin', orgId: 'org-b' },
 };
 
 let testEnv;
@@ -173,13 +177,30 @@ describe('reading the log', () => {
     await assertSucceeds(getDoc(doc(as(USERS.superA), 'audit_logs', 'existing')));
   });
 
-  it('a tenant administrator does not', async () => {
-    // Deliberately closed rather than open. Whether a tenant should see who
-    // administered them is a product decision about what this platform
-    // promises its customers; widening a read later is safe, narrowing one
-    // after customers have seen it is not.
+  it('an HR Manager, an employee and anybody signed out do not', async () => {
+    // The product owner restricted it to Super Admin and Administrator: HR
+    // administers the organisation but is not shown who administered it.
     await assertFails(getDoc(doc(as(USERS.hrA), 'audit_logs', 'existing')));
     await assertFails(getDoc(doc(as(USERS.employeeA), 'audit_logs', 'existing')));
     await assertFails(getDoc(doc(anon(), 'audit_logs', 'existing')));
+  });
+
+  it("an organisation's Administrator reads its own organisation's entries", async () => {
+    await assertSucceeds(getDoc(doc(as(USERS.adminA), 'audit_logs', 'existing')));
+    await assertSucceeds(
+      getDocs(query(collection(as(USERS.adminA), 'audit_logs'), where('orgId', '==', 'org-a'))),
+    );
+  });
+
+  it("but never another organisation's, and not unfiltered", async () => {
+    await assertFails(getDoc(doc(as(USERS.adminB), 'audit_logs', 'existing')));
+    await assertFails(
+      getDocs(query(collection(as(USERS.adminB), 'audit_logs'), where('orgId', '==', 'org-a'))),
+    );
+    await assertFails(getDocs(collection(as(USERS.adminA), 'audit_logs')));
+  });
+
+  it('and still cannot write one', async () => {
+    await assertFails(setDoc(doc(as(USERS.adminA), 'audit_logs', 'forged'), entry({ actorUid: USERS.adminA.uid })));
   });
 });

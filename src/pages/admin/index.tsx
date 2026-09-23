@@ -25,6 +25,7 @@ import {
     type InviteAccountResult,
 } from '@/lib/accountInvites';
 import { useAuth, ADMIN_EMAILS, type UserProfile, type UserRole } from '@/lib/auth';
+import { AuditLogPanel } from '@/components/AuditLogPanel';
 import { setEmployeeDocumentStatus, useEmployeeDocuments } from '@/lib/employeeDocuments';
 import type { EmployeeDocument, DocumentStatus } from '@/types';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
@@ -417,6 +418,9 @@ export function AdminDashboardPage() {
                     </Button>
                 }
             />
+
+            {/* Super Admin and Administrator only; renders nothing for HR. */}
+            <AuditLogPanel />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard label="Total Users" value={String(users.length)} icon={<Users size={18} />} />

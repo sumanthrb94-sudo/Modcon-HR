@@ -8,8 +8,9 @@
  * disagrees with any of that is refused, not silently narrowed — this module
  * does not try to be more lenient than the rules it is written against.
  *
- * Entries are append-only and readable only by super admins; there is no
- * update or delete path here to match.
+ * Entries are append-only, readable by super admins and by an organisation's
+ * Administrator for that organisation (see AuditLogPanel); there is no update
+ * or delete path here to match.
  */
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';

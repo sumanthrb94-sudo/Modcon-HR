@@ -198,15 +198,20 @@ test.describe.serial('an employee account is scoped to itself everywhere', () =>
   test('organisation-wide KPI graphs are not an employee module', async () => {
     await page.goto('/dashboard/kpi-graphs');
 
-    if (isEmployee) {
+    // Reports & Analytics is HR Manager and Administrator only (product
+    // decision, 2026-09-23), pinned so no stored matrix can grant it — so a
+    // Manager is refused here as well as an Employee.
+    if (persona().role !== 'admin') {
       // RequireModuleAccess renders the refusal in place rather than
       // redirecting, so the URL is not the thing to assert on.
       await expect(page.getByRole('heading', { name: /Access Restricted/ })).toBeVisible({
         timeout: 20_000,
       });
+      await page.goto('/reports');
+      await expect(page.getByRole('heading', { name: /Access Restricted/ })).toBeVisible({
+        timeout: 20_000,
+      });
     } else {
-      // Manager holds Reports & Analytics at `view`, so the page renders for
-      // both remaining personas.
       await expect(page.getByText('Total Employees').first()).toBeVisible({ timeout: 20_000 });
     }
   });

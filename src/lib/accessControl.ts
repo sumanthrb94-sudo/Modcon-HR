@@ -53,7 +53,10 @@ export const defaultPermissions: PermissionMatrix = {
   Expenses: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'full' },
   Assets: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
   Helpdesk: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'full' },
-  'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
+  // HR Manager and Administrator only, organisation-wide — the product owner's
+  // decision (2026-09-23). Pinned below, so a stored matrix cannot hand it back
+  // to Managers: these are company-wide figures, not a team view.
+  'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
   // The employee handbook is company policy every employee must be able to
   // read, so no role is ever 'none' here — the read floor is pinned for every
   // role in enforceRequiredPermissions. 'full' means publish, and goes to the
@@ -106,6 +109,7 @@ export const PINNED_PERMISSIONS: Partial<
   'Employee Directory': { Employee: 'view' },
   Documents: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Admin: { Admin: 'full' },
+  'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
 };
 
 /** The fixed level for a cell, or undefined when it is configurable. */
