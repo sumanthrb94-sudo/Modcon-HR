@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
 import { listOrgRecords } from './firestore';
 
@@ -66,4 +66,50 @@ test('two tickets raised back to back both reach the server', async ({ page }) =
       { timeout: 20_000, message: 'both tickets should reach Firestore' },
     )
     .toBe('true,true');
+});
+
+test('two pages raising a ticket each do not write the same document', async ({ browser }) => {
+  // The case that actually lost a write, and the reason it was mistaken for a
+  // persistence bug for so long: nothing fails. Helpdesk minted ids from a
+  // `useState(57)` counter held per page load, so EVERY fresh page produced
+  // `tkt-new-57` for its first ticket. Two pages wrote one document; the
+  // duplicate ids collapsed in `deriveOverlay`, the change set came out empty,
+  // and `push()` returned without sending anything. No error, no warning, the
+  // row on screen, gone on the next reload.
+  //
+  // One page could never show this — the counter only restarts on a fresh
+  // load — which is why back-to-back saves in a single page (above) pass.
+  test.setTimeout(120_000);
+  const stamp = Date.now().toString(36);
+  const A = `Two pages A ${stamp}`;
+  const B = `Two pages B ${stamp}`;
+
+  const contexts: BrowserContext[] = [];
+  try {
+    for (const subject of [A, B]) {
+      const context = await browser.newContext();
+      contexts.push(context);
+      const page = await context.newPage();
+      await login(page);
+      await page.getByRole('link', { name: 'Helpdesk', exact: true }).first().click();
+      await raiseTicket(page, subject);
+    }
+
+    await expect
+      .poll(
+        async () => {
+          const tickets = await listOrgRecords<{ id?: string; subject?: string }>('tickets');
+          const mine = tickets.filter((t) => t.subject === A || t.subject === B);
+          // Distinct ids as well as both present: two records sharing one id
+          // is the defect, and "both subjects are somewhere" would not catch
+          // it if one had overwritten the other.
+          const ids = new Set(mine.map((t) => t.id));
+          return `${mine.length}/${ids.size}`;
+        },
+        { timeout: 25_000, message: 'both tickets, under distinct ids' },
+      )
+      .toBe('2/2');
+  } finally {
+    for (const context of contexts) await context.close();
+  }
 });

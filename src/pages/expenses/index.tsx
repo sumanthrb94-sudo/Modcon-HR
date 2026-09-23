@@ -50,6 +50,7 @@ import { formatINR, formatDate, cn } from '@/lib/utils';
 import { expenseByCategory, getExpenseClaims, saveExpenseClaims, EXPENSES_CHANGED_EVENT } from '@/data/expenses';
 import { employees, getEmployee, getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { newRecordId } from '@/lib/ids';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
@@ -258,7 +259,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
     if (!validate()) return;
     const now = todayIso();
     const claim: ExpenseClaim = {
-      id: `exp-${Date.now()}`,
+      id: newRecordId('exp'),
       employeeId: form.employeeId || defaultEmployeeId || employees[0]?.id || '',
       title: form.title.trim(),
       category: form.category as ExpenseCategory,
@@ -282,7 +283,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
     const fallbackEmployeeId = employees[0]?.id ?? '';
 
     return {
-      id: `exp-draft-${Date.now()}`,
+      id: newRecordId('exp-draft'),
       employeeId: form.employeeId || defaultEmployeeId || fallbackEmployeeId,
       title: form.title.trim() || 'Untitled Draft Claim',
       category: (form.category as ExpenseCategory) || 'Other',

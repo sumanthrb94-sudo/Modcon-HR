@@ -25,6 +25,7 @@ import {
 import { tickets as initialTickets, ticketCategories, getTickets, saveTickets, TICKETS_CHANGED_EVENT } from '@/data/helpdesk';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
+import { newRecordId, nextCodeNumber } from '@/lib/ids';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -409,7 +410,7 @@ export function HelpdeskPage() {
   const [search, setSearch] = useState('');
   const [showRaise, setShowRaise] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [ticketCounter, setTicketCounter] = useState(57); // next ticket number
+
 
   const visibleTickets = useMemo(
     () => (isEmployee && currentEmployee ? ticketList.filter((ticket) => ticket.raisedById === currentEmployee.id) : ticketList),
@@ -448,9 +449,15 @@ export function HelpdeskPage() {
   }, [visibleTickets, tab, search, directoryRevision]);
 
   const handleRaise = (partial: Omit<Ticket, 'id' | 'ticketCode'>) => {
-    const id = `tkt-new-${ticketCounter}`;
-    const code = `HD-${2040 + ticketCounter}`;
-    setTicketCounter((n) => n + 1);
+    // The id was `tkt-new-${ticketCounter}`, counting from a `useState(57)`
+    // held per page load — so every fresh page produced `tkt-new-57` for its
+    // first ticket, and two people raising one wrote the same document. The
+    // second write was dropped in silence: duplicate ids collapse, the change
+    // set comes out empty, and nothing is sent. See lib/ids.ts.
+    const id = newRecordId('tkt');
+    // The code is only a label people quote, so it is derived from what the
+    // organisation already holds rather than restarted from a constant.
+    const code = `HD-${nextCodeNumber(ticketList.map((t) => t.ticketCode), 'HD', 2096)}`;
     const newTicket: Ticket = { id, ticketCode: code, ...partial };
     setTicketList((prev) => [newTicket, ...prev]);
     setTab('open');

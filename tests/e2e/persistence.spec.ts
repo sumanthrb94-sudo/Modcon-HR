@@ -41,13 +41,7 @@ test.describe.serial('data survives a refresh', () => {
     await page?.close();
   });
 
-  // FIXME (QA verifying by hand). Passes alone; fails only when
-  // helpdesk-attribution writes a ticket just before it. The pre-reload
-  // assertion succeeds and the post-reload one does not, so the ticket
-  // reaches the screen and not the server — which is either the optimistic
-  // write being dropped or the wait still returning early. It is the
-  // behaviour gate G7 is about, so it wants diagnosing rather than patching.
-  test.fixme('a raised helpdesk ticket is still there after reload', async () => {
+  test('a raised helpdesk ticket is still there after reload', async () => {
     const subject = `Persistence check ${stamp}`;
 
     await page.getByRole('link', { name: 'Helpdesk', exact: true }).first().click();

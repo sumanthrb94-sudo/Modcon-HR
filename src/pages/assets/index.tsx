@@ -40,6 +40,7 @@ import {
 import { todayIso } from '@/lib/today';
 import { CHART_STATE, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
+import { newRecordId } from '@/lib/ids';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -396,7 +397,7 @@ export function AssetsPage() {
   };
 
   const handleAddAsset = (asset: Omit<Asset, 'id'>) => {
-    const newAsset: Asset = { ...asset, id: `ast-${Date.now()}` };
+    const newAsset: Asset = { ...asset, id: newRecordId('ast') };
     setAssetList((prev) => [newAsset, ...prev]);
     setSearch('');
     setCategoryFilter('');

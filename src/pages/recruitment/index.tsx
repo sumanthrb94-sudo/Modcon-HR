@@ -50,6 +50,7 @@ import type { JobOpening, Candidate, CandidateStage, Department, EmploymentType,
 import { locations, getEmployeeName, getEmployeeDirectory } from '@/data/employees';
 import { getDepartmentRecord } from '@/data/departments';
 import { useAuth } from '@/lib/auth';
+import { newRecordId } from '@/lib/ids';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { departments } from '@/data/departments';
 import { useMyEmployeeId } from '@/lib/useMyEmployeeId';
@@ -1319,7 +1320,7 @@ export function RecruitmentPage() {
 
   async function handlePostJob(form: { title: string; department: string; location: string; type: string; openings: string; experience: string; description: string; publish: boolean }) {
     const newJob: JobOpening = {
-      id: `job-new-${Date.now()}`,
+      id: newRecordId('job'),
       title: form.title,
       department: form.department as Department,
       location: form.location,
