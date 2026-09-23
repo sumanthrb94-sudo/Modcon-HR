@@ -476,9 +476,24 @@ export async function waitForOrgRecordsQuiet(
 export async function seedOrgRecords<T extends { id: string }>(
   store: string,
   records: T[],
-  options: { orgKey?: string; employeeId?: (record: T) => string } = {},
+  options: {
+    orgKey?: string;
+    employeeId?: (record: T) => string;
+    /**
+     * Who may read this record — the subject, then everyone above them.
+     * Defaults to the subject alone, which is what `readableByFor` in
+     * src/data/persistence.ts produces for somebody with no manager.
+     *
+     * A spec that seeds a reporting line has to say so, because the helper
+     * cannot know it: the chain is computed from the directory at write time
+     * in the app, and a seed writes straight to Firestore. Omit it and the
+     * records are readable by their subject and the administrators only —
+     * which is a manager's queue silently empty, not an error.
+     */
+    readableBy?: (record: T) => string[];
+  } = {},
 ): Promise<void> {
-  const { orgKey = 'default', employeeId } = options;
+  const { orgKey = 'default', employeeId, readableBy } = options;
   const token = await adminToken();
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -506,6 +521,19 @@ export async function seedOrgRecords<T extends { id: string }>(
           ...(typeof (item as { status?: unknown }).status === 'string'
             ? { status: { stringValue: (item as { status: string }).status } }
             : {}),
+          // Lifted exactly as persistence.ts lifts it, for the same reason as
+          // `status` above: a seeded record has to look like one the app
+          // wrote, or the rules judge it differently from every real one.
+          ...(() => {
+            const ids = readableBy
+              ? readableBy(item)
+              : employeeId
+                ? [employeeId(item)]
+                : null;
+            return ids
+              ? { readableBy: { arrayValue: { values: ids.map((v) => ({ stringValue: v })) } } }
+              : {};
+          })(),
         },
       }),
     });

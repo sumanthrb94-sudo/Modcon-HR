@@ -110,7 +110,14 @@ async function seedReportingLine(page: Page, managerEmail: string) {
       claim('exp-e2e-outsider', 'emp-e2e-exp-outsider', 'E2E claim from outside the line'),
       claim('exp-e2e-self', MANAGER_ID, 'E2E claim raised by the manager themselves'),
     ],
-    { employeeId: (record) => record.employeeId },
+    {
+      employeeId: (record) => record.employeeId,
+      // The reporting line this spec seeded. Without it a manager cannot read
+      // their report's claim at all — which is the narrowing working, not a
+      // scoping bug, and would make the assertions below meaningless.
+      readableBy: (record) =>
+        record.employeeId === MANAGER_ID ? [MANAGER_ID] : [record.employeeId, MANAGER_ID],
+    },
   );
 
   await page.reload();
