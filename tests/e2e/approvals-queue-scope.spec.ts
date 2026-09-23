@@ -137,8 +137,13 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
       employeeId: (r) => r.employeeId,
       readableBy: (r) => (r.employeeId === REPORT ? [REPORT, LEAD] : [r.employeeId]),
     });
+    // Readable by the subject and everyone above them, as the app stamps it:
+    // regularizations are narrowed on the server like expense claims, so a
+    // request without its manager in readableBy is one that manager cannot
+    // read or decide.
     await seedOrgRecords('regularizationOverrides', [regularization(REPORT), regularization(OUTSIDER)], {
       employeeId: (r) => r.employeeId,
+      readableBy: (r) => (r.employeeId === REPORT ? [REPORT, LEAD] : [r.employeeId]),
     });
     await seedOrgRecords('leaveRequests', [leave('lr-e2e-aq-report', REPORT), leave('lr-e2e-aq-outsider', OUTSIDER)], {
       employeeId: (r) => r.employeeId,

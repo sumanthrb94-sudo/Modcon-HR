@@ -359,6 +359,12 @@ const regularizationStore = persistentCollection<RegularizationRequest>(
   'modcon-hr-regularizations-changed',
   () => [],
   'regularizationOverrides',
+  // Read by the person whose day it is and by whoever is above them, and
+  // decided only by those above them (or HR and Admin) — the same reader list
+  // and the same rule as expense claims, so a manager outside the line is
+  // refused by the server, not only by the page. See
+  // regularizationDecisionIsAuthorised() in firestore.rules.
+  'self',
 );
 
 export const REGULARIZATIONS_CHANGED_EVENT = regularizationStore.changedEvent;
@@ -440,8 +446,9 @@ export function decideRegularization(
   // checked — the same arrangement as `updateLeaveRequestStatus` and
   // `updateExpenseClaimStatus`, and for the same reason: two pages decide
   // these, and a check in each page is a check the third one forgets.
-  // `firestore.rules` (regularizationDecisionIsAuthorised) states the coarse
-  // half server-side; the reporting line is this.
+  // `firestore.rules` enforces the same reporting line server-side, through
+  // the request's stored `readableBy`; this is the check that explains a
+  // refusal instead of letting the write be rolled back.
   const refusal = regularizationApprovalRefusal(decider.profile, current.employeeId);
   if (refusal) return { ok: false, reason: refusal };
 

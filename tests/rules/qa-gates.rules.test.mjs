@@ -477,12 +477,18 @@ describe('G1 — approval is a privileged transition', () => {
 // which is what payroll deducts, so it is gated like leave and expenses.
 describe('regularizations — deciding one is a privileged transition', () => {
   const REG = 'reg-emp-a1-2026-09-01';
-  const reg = (employeeId, status) =>
+  const reg = (employeeId, status, readableBy) =>
     record(ORG_A, 'regularizationOverrides', REG, {
       id: REG, employeeId, date: '2026-09-01', reason: 'Forgot to check in',
       requestedStatus: 'Present', status,
-    });
+    }, readableBy);
   const at = (db) => doc(db, 'org_records', recordId(ORG_A, 'regularizationOverrides', REG));
+  // A request emp-a1 raised, as the app stores it: readable by emp-a1 and by
+  // whoever is above them. `line` says who that is.
+  const raised = (line) => testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'org_records', recordId(ORG_A, 'regularizationOverrides', REG)),
+      reg('emp-a1', 'Pending', ['emp-a1', ...line]));
+  });
 
   it('empA1 CAN raise a regularization for their own day', async () => {
     await assertSucceeds(setDoc(at(empA1()), reg('emp-a1', 'Pending')));
@@ -506,20 +512,74 @@ describe('regularizations — deciding one is a privileged transition', () => {
     await assertFails(setDoc(at(empA1()), smuggled));
   });
 
-  it("a manager CAN approve somebody else's regularization", async () => {
-    await assertSucceeds(setDoc(at(mgrA()), reg('emp-a1', 'Approved')));
+  it("a manager CAN approve their report's request", async () => {
+    await raised(['emp-a-mgr']);
+    await assertSucceeds(setDoc(at(mgrA()), reg('emp-a1', 'Approved', ['emp-a1', 'emp-a-mgr'])));
+  });
+
+  // The QA finding, now refused by the server and not only hidden by the page.
+  it('a manager outside the reporting line CANNOT approve it', async () => {
+    await raised(['emp-somebody-else']);
+    await assertFails(setDoc(at(mgrA()), reg('emp-a1', 'Approved', ['emp-a1', 'emp-somebody-else'])));
+  });
+
+  it('and cannot get in by writing themselves into readableBy', async () => {
+    await raised(['emp-somebody-else']);
+    await assertFails(setDoc(at(mgrA()), reg('emp-a1', 'Approved', ['emp-a1', 'emp-somebody-else', 'emp-a-mgr'])));
+  });
+
+  it('nor raise a request against somebody else\'s day to approve afterwards', async () => {
+    await assertFails(setDoc(at(mgrA()), reg('emp-a1', 'Pending', ['emp-a1', 'emp-a-mgr'])));
+  });
+
+  // The known limit, written down: a day the app flagged that nobody raised
+  // has no stored request, so its first decision creates one and the reader
+  // list is the decider's. It carries no requested status in the app, so it
+  // changes no attendance and no pay. This is also the ordinary path a
+  // manager takes on a flagged day, which is why it must keep working.
+  it('a manager deciding a flagged day nobody raised creates the record', async () => {
+    await assertSucceeds(setDoc(at(mgrA()), reg('emp-a1', 'Approved', ['emp-a1', 'emp-a-mgr'])));
   });
 
   it('a manager CANNOT approve their own', async () => {
-    await assertFails(setDoc(at(mgrA()), reg('emp-a-mgr', 'Approved')));
+    await assertFails(setDoc(at(mgrA()), reg('emp-a-mgr', 'Approved', ['emp-a-mgr'])));
   });
 
-  it('HR CAN decline a regularization', async () => {
-    await assertSucceeds(setDoc(at(hrA()), reg('emp-a1', 'Rejected')));
+  it('HR CAN decline a regularization, whatever the reporting line', async () => {
+    await raised(['emp-somebody-else']);
+    await assertSucceeds(setDoc(at(hrA()), reg('emp-a1', 'Rejected', ['emp-a1', 'emp-somebody-else'])));
   });
 
   it('another organisation cannot decide one', async () => {
     await assertFails(setDoc(at(empB1()), reg('emp-a1', 'Approved')));
+  });
+
+  describe('reading', () => {
+    it('the subject and their manager read the request', async () => {
+      await raised(['emp-a-mgr']);
+      await assertSucceeds(getDoc(at(empA1())));
+      await assertSucceeds(getDoc(at(mgrA())));
+    });
+
+    it('a manager outside the line and a colleague do not', async () => {
+      await raised(['emp-somebody-else']);
+      await assertFails(getDoc(at(mgrA())));
+      await assertFails(getDoc(at(as(USERS.empA2))));
+    });
+
+    it('HR reads it whatever the line', async () => {
+      await raised(['emp-somebody-else']);
+      await assertSucceeds(getDoc(at(hrA())));
+    });
+
+    it('an unnarrowed list is refused, the narrowed one the app sends is not', async () => {
+      await raised(['emp-a-mgr']);
+      await assertFails(getDocs(query(collection(mgrA(), 'org_records'),
+        where('orgId', '==', ORG_A), where('store', '==', 'regularizationOverrides'))));
+      await assertSucceeds(getDocs(query(collection(mgrA(), 'org_records'),
+        where('orgId', '==', ORG_A), where('store', '==', 'regularizationOverrides'),
+        where('readableBy', 'array-contains', 'emp-a-mgr'))));
+    });
   });
 });
 

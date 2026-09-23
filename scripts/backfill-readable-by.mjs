@@ -27,11 +27,29 @@
  *
  * Against the emulator instead, which is where it should be proven first:
  *   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/backfill-readable-by.mjs --apply
+ *
+ * `--store=<store>` limits it to one store. `regularizationOverrides` is only
+ * ever backfilled when named this way: it joined the narrowed stores later,
+ * and a default run keeps doing exactly what it was proven to do.
+ *
+ * `--additive` never removes a reader: the new list is what is stored plus
+ * whoever the reporting tree adds. Use it where the stored list may know more
+ * than this script can — the demo organisation's reporting lines partly live
+ * in the app's seed data, not in its `employees` store, so a replacing run
+ * could drop a manager the app had rightly stamped.
  */
 import { createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-const NARROWED_STORES = new Set(['expenseClaims', 'payslips']);
+const DEFAULT_STORES = ['expenseClaims', 'payslips'];
+const KNOWN_STORES = [...DEFAULT_STORES, 'regularizationOverrides'];
+const onlyStore = process.argv.find((a) => a.startsWith('--store='))?.slice('--store='.length) ?? null;
+if (onlyStore && !KNOWN_STORES.includes(onlyStore)) {
+  console.error(`--store must be one of ${KNOWN_STORES.join(', ')}`);
+  process.exit(2);
+}
+const NARROWED_STORES = new Set(onlyStore ? [onlyStore] : DEFAULT_STORES);
+const additive = process.argv.includes('--additive');
 const apply = process.argv.includes('--apply');
 const onlyOrg = process.argv.find((a) => a.startsWith('--org='))?.slice('--org='.length) ?? null;
 
@@ -137,13 +155,17 @@ for (const d of docs) {
   // an administrator still reads it, and inventing a reader is worse than a
   // record only administrators can see.
   if (!employeeId) continue;
-  const next = Array.from(new Set([employeeId, ...(chains.get(org)?.get(employeeId) ?? [])]));
   const current = (f.readableBy?.arrayValue?.values ?? []).map((v) => v.stringValue);
+  const computed = [employeeId, ...(chains.get(org)?.get(employeeId) ?? [])];
+  // Additive: the subject first, then everyone already stored, then whoever
+  // the tree adds — nobody who could read it before loses it.
+  const next = Array.from(new Set(additive ? [employeeId, ...current, ...computed] : computed));
   if (current.length === next.length && current.every((v, i) => v === next[i])) continue;
   planned.push({ name: d.name, id: d.name.split('/').pop(), store, org, employeeId, current, next });
 }
 
 console.log(`org_records scanned: ${docs.length}`);
+console.log(`stores: ${[...NARROWED_STORES].join(', ')}${additive ? ' (additive)' : ''}`);
 console.log(`narrowed-store documents needing readableBy: ${planned.length}`);
 for (const p of planned) {
   console.log(`  ${p.store.padEnd(14)} ${p.id.padEnd(50)} ${JSON.stringify(p.current)} -> ${JSON.stringify(p.next)}`);

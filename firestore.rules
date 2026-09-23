@@ -1455,27 +1455,40 @@ service cloud.firestore {
      * client half live (a manager offered regularizations outside her line);
      * this is the half the server can state on its own.
      *
-     * `Pending` is raising or re-raising, which is the subject's own act or
-     * somebody who marks attendance for others — the same set
-     * attendanceWriteIsAuthorised() allows to write the day itself, including
-     * its exemption for an account with no `employee_links` document, for the
-     * reasons written there. `Approved` and `Rejected` need `isManager()` and
+     * `Pending` is raising or re-raising, which is the subject's own act —
+     * the app raises a regularization only from My Attendance — or an
+     * administrator's. It used to admit any manager and any account with no
+     * `employee_links` document, which let a manager outside the subject's
+     * line raise a request against their day, naming themselves as a reader,
+     * and then approve it. `Approved` and `Rejected` need `isManager()` and
      * never the subject.
      *
-     * Rules cannot walk the org chart, so a manager may still decide a
-     * regularization outside their own reporting line here; `decideRegularization`
-     * (src/data/attendance.ts) through `src/lib/dataScope.ts` is where that
-     * narrowing lives. The same honest limit as the leave and expense rules.
+     * The reporting line is enforced by narrowedRecordWriteIsAuthorised(),
+     * which this store joined alongside expense claims and payslips: on an
+     * existing request the decider has to be in its STORED `readableBy` (the
+     * subject, then everyone above them, stamped when the subject raised it),
+     * or be HR or an administrator. Reads are narrowed the same way
+     * (orgRecordReadIsAuthorised()).
+     *
+     * One case the server still cannot judge: the FIRST decision on a day the
+     * app flagged (absent, or late) that nobody raised. No request exists yet,
+     * so the decision creates one and its `readableBy` is the decider's own
+     * claim. Such an entry carries no requested status, so deciding it changes
+     * no attendance and no pay — it records the decision only. The attendance
+     * day itself is governed by attendanceWriteIsAuthorised(), not here.
      */
     function regularizationDecisionIsAuthorised() {
       return request.resource.data.store != 'regularizationOverrides' ||
         isTombstone() ||
         (declaresItsStatus() && (
           (request.resource.data.status == 'Pending' && (
-            isManager() ||
-            myEmployeeId() == null ||
+            isOrgAdmin() ||
             isSelf(request.resource.data.get('employeeId', '')))) ||
-          (isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
+          // Deciding, and only deciding: without naming the statuses this
+          // clause also admitted a manager writing `Pending`, which is the
+          // raise-it-then-approve-it route the clause above closes.
+          (request.resource.data.status in ['Approved', 'Rejected'] &&
+            isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
     }
 
     /**
@@ -1541,7 +1554,7 @@ service cloud.firestore {
       let store = resource.data.get('store', '');
       return store == 'payrollRuns'
         ? isOrgAdmin()
-        : (!(store in ['expenseClaims', 'payslips']) || recordIsMineToRead());
+        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides']) || recordIsMineToRead());
     }
 
     /**
@@ -1600,7 +1613,7 @@ service cloud.firestore {
      * every unlinked account exactly the power this closes.
      */
     function narrowedRecordWriteIsAuthorised() {
-      return !(request.resource.data.store in ['expenseClaims', 'payslips']) ||
+      return !(request.resource.data.store in ['expenseClaims', 'payslips', 'regularizationOverrides']) ||
         isOrgAdmin() ||
         (resource != null
           ? (isSelf(resource.data.get('employeeId', null)) ||

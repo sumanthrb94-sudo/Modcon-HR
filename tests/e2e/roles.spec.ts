@@ -93,7 +93,7 @@ test.describe.serial('role-based access', () => {
         // This persona is linked to no employee record, so it is shown the
         // personal page's "no record" state — never the organisation's payroll.
         await expect(
-          page.getByText('Payslip History').or(page.getByText('Finance information unavailable')),
+          page.getByRole('heading', { name: 'Payslip History' }).or(page.getByText('Finance information unavailable')),
         ).toBeVisible({ timeout: 20_000 });
         await expect(page.getByRole('button', { name: /Run Payroll/i })).toHaveCount(0);
       }

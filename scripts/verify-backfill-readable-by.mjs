@@ -70,6 +70,20 @@ await put(`${ORG}__payslips__old-slip`, {
   employeeId: S('emp-mgr'),
   data: S(JSON.stringify({ id: 'old-slip', employeeId: 'emp-mgr', net: 1000 })),
 });
+// Regularizations: one that predates readableBy, and one whose stored list
+// knows a reader the directory does not (emp-former) — the additive run must
+// keep them.
+await put(`${ORG}__regularizationOverrides__reg-old`, {
+  orgId: S(ORG), store: S('regularizationOverrides'), recordId: S('reg-old'),
+  employeeId: S('emp-rep'), status: S('Pending'),
+  data: S(JSON.stringify({ id: 'reg-old', employeeId: 'emp-rep', date: '2026-09-01', requestedStatus: 'Present', status: 'Pending' })),
+});
+await put(`${ORG}__regularizationOverrides__reg-kept`, {
+  orgId: S(ORG), store: S('regularizationOverrides'), recordId: S('reg-kept'),
+  employeeId: S('emp-rep'), status: S('Pending'),
+  readableBy: { arrayValue: { values: [S('emp-rep'), S('emp-former')] } },
+  data: S(JSON.stringify({ id: 'reg-kept', employeeId: 'emp-rep', date: '2026-09-02', requestedStatus: 'Present', status: 'Pending' })),
+});
 // A store the backfill must NOT touch.
 await put(`${ORG}__tickets__old-ticket`, {
   orgId: S(ORG), store: S('tickets'), recordId: S('old-ticket'),
@@ -80,6 +94,8 @@ const before = {
   claim: await read(`${ORG}__expenseClaims__old-claim`),
   slip: await read(`${ORG}__payslips__old-slip`),
   ticket: await read(`${ORG}__tickets__old-ticket`),
+  regOld: await read(`${ORG}__regularizationOverrides__reg-old`),
+  regKept: await read(`${ORG}__regularizationOverrides__reg-kept`),
 };
 
 // --- 1. dry run writes nothing -----------------------------------------
@@ -121,6 +137,33 @@ check('second --apply plans nothing', /needing readableBy: 0/.test(second), seco
 const claim2 = await read(`${ORG}__expenseClaims__old-claim`);
 check('second --apply did not rewrite the document', claim2.updateTime === claim1.updateTime);
 
+// --- 3b. a default run never touches regularizations ------------------
+check('default runs left both regularizations untouched',
+  (await read(`${ORG}__regularizationOverrides__reg-old`)).updateTime === before.regOld.updateTime &&
+  (await read(`${ORG}__regularizationOverrides__reg-kept`)).updateTime === before.regKept.updateTime);
+
+// --- 3c. regularizations, named and additive -----------------------------
+const REG_ARGS = ['scripts/backfill-readable-by.mjs', '--store=regularizationOverrides', '--additive'];
+const regDry = execFileSync('node', REG_ARGS, { encoding: 'utf8', env: { ...process.env, FIRESTORE_EMULATOR_HOST: HOST } });
+check('regularization dry run plans both', /needing readableBy: 2/.test(regDry), regDry.match(/needing readableBy: \d+/)?.[0]);
+check('regularization dry run wrote nothing',
+  (await read(`${ORG}__regularizationOverrides__reg-old`)).updateTime === before.regOld.updateTime);
+execFileSync('node', [...REG_ARGS, '--apply'], { encoding: 'utf8', env: { ...process.env, FIRESTORE_EMULATOR_HOST: HOST } });
+const regOld1 = await read(`${ORG}__regularizationOverrides__reg-old`);
+const regKept1 = await read(`${ORG}__regularizationOverrides__reg-kept`);
+check('old regularization: subject then manager',
+  JSON.stringify(arr(regOld1)) === JSON.stringify(['emp-rep', 'emp-mgr']), JSON.stringify(arr(regOld1)));
+check('additive: a reader already stored is kept',
+  JSON.stringify(arr(regKept1)) === JSON.stringify(['emp-rep', 'emp-former', 'emp-mgr']), JSON.stringify(arr(regKept1)));
+{
+  const strip = (d) => { const f = { ...d.fields }; delete f.readableBy; return JSON.stringify(f); };
+  check('regularization: no field but readableBy changed', strip(before.regOld) === strip(regOld1));
+}
+check('the regularization run did not touch the claim',
+  (await read(`${ORG}__expenseClaims__old-claim`)).updateTime === claim2.updateTime);
+const regSecond = execFileSync('node', [...REG_ARGS, '--apply'], { encoding: 'utf8', env: { ...process.env, FIRESTORE_EMULATOR_HOST: HOST } });
+check('second regularization --apply plans nothing', /needing readableBy: 0/.test(regSecond), regSecond.match(/needing readableBy: \d+/)?.[0]);
+
 // --- 4. the manager can now read the report's old claim -----------------
 const env = await initializeTestEnvironment({
   projectId: PROJECT,
@@ -128,7 +171,7 @@ const env = await initializeTestEnvironment({
 });
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
-  for (const [uid, employeeId, role] of [['u-mgr', 'emp-mgr', 'manager'], ['u-rep', 'emp-rep', 'employee'], ['u-other', 'emp-other', 'employee']]) {
+  for (const [uid, employeeId, role] of [['u-mgr', 'emp-mgr', 'manager'], ['u-rep', 'emp-rep', 'employee'], ['u-other', 'emp-other', 'employee'], ['u-mgr2', 'emp-mgr2', 'manager']]) {
     await setDoc(doc(db, 'users', uid), { uid, email: `${uid}@x.test`, role, orgId: ORG });
     await setDoc(doc(db, 'employee_links', uid), { employeeId, orgId: ORG });
   }
@@ -146,6 +189,21 @@ try {
   await assertFails(getDoc(doc(as('u-other'), 'org_records', `${ORG}__expenseClaims__old-claim`)));
   check('an unrelated colleague still cannot', true);
 } catch (e) { check('an unrelated colleague still cannot', false, String(e).slice(0, 120)); }
+
+// --- 5. regularizations: the manager above decides, one outside cannot ----
+const regAt = (uid) => doc(as(uid), 'org_records', `${ORG}__regularizationOverrides__reg-old`);
+const regDecision = (status, readableBy) => ({
+  orgId: ORG, store: 'regularizationOverrides', recordId: 'reg-old', employeeId: 'emp-rep', status, readableBy,
+  data: JSON.stringify({ id: 'reg-old', employeeId: 'emp-rep', date: '2026-09-01', requestedStatus: 'Present', status }),
+});
+for (const [label, fn] of [
+  ['manager CAN read the report’s backfilled regularization', () => assertSucceeds(getDoc(regAt('u-mgr')))],
+  ['a manager outside the line CANNOT read it', () => assertFails(getDoc(regAt('u-mgr2')))],
+  ['a manager outside the line CANNOT approve it', () => assertFails(setDoc(regAt('u-mgr2'), regDecision('Approved', ['emp-rep', 'emp-mgr', 'emp-mgr2'])))],
+  ['the manager above CAN approve it', () => assertSucceeds(setDoc(regAt('u-mgr'), regDecision('Approved', ['emp-rep', 'emp-mgr'])))],
+]) {
+  try { await fn(); check(label, true); } catch (e) { check(label, false, String(e).slice(0, 120)); }
+}
 await env.cleanup();
 
 console.log('\n=== PASS ===');
