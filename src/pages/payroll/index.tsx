@@ -38,7 +38,9 @@ import { formatINR, formatDate } from '@/lib/utils';
 import { buildPayslip, buildPayslipComponents, storedDeductionRows, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
-import { currentMonthIso, todayDate } from '@/lib/today';
+import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
+import { downloadPayslipPdf } from '@/lib/payslipPdf';
+import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
@@ -54,7 +56,7 @@ import {
   usePayslipDocuments,
 } from '@/lib/payslipDocuments';
 import { PayslipUploadModal } from './PayslipUploadModal';
-import type { Payslip, PayrollRun, PayslipDocument } from '@/types';
+import type { Employee, Payslip, PayrollRun, PayslipDocument } from '@/types';
 import { CHART_GRID, CHART_PRIMARY, CHART_TICK_FILL, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
 
 // ---------------------------------------------------------------------------
@@ -136,6 +138,33 @@ interface PendingPayrollRun {
 // Payslip Modal
 // ---------------------------------------------------------------------------
 
+/** The last calendar day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
+function lastDayOf(month: string): string {
+  const [year, mon] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, mon, 0)).toISOString().slice(0, 10);
+}
+
+/** Employees on roll for a month: joined by its last day, and not resigned. */
+function payeesFor(month: string): Employee[] {
+  const end = lastDayOf(month);
+  return employees.filter(
+    (employee) => employee.status !== 'Resigned' && (!employee.dateOfJoining || employee.dateOfJoining <= end),
+  );
+}
+
+/**
+ * The months a run may be for: this one and the five before it. A payroll for
+ * a month that has not happened is refused by being absent; one further back
+ * than six months is a correction, not a run, and belongs to whoever files.
+ */
+function runnableMonths(current: string): string[] {
+  const [year, mon] = current.split('-').map(Number);
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(Date.UTC(year, mon - 1 - i, 1));
+    return d.toISOString().slice(0, 7);
+  });
+}
+
 interface PayslipModalProps {
   payslip: Payslip | null;
   onClose: () => void;
@@ -153,6 +182,16 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
       title="Payslip"
       subtitle={`${empName} — ${monthLabel(payslip.month)}`}
       size="lg"
+      footer={emp ? (
+        // The same PDF the employee downloads from Finance — see lib/payslipPdf.
+        <Button
+          variant="primary"
+          icon={<Download size={16} />}
+          onClick={() => { void downloadPayslipPdf(payslip, emp, getCompanyProfile().name || undefined); }}
+        >
+          Download PDF
+        </Button>
+      ) : undefined}
     >
       {/* Header strip */}
       <div className="flex items-center gap-4 pb-5 border-b border-ink-100 mb-5">
@@ -290,6 +329,9 @@ export function PayrollPage() {
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
+  // Which month Run Payroll is for. This month by default; up to five back, so
+  // a month missed or run late can still be paid — each month once.
+  const [runMonth, setRunMonth] = useState(() => currentMonthIso());
   // The PDFs payroll actually issued, keyed by the payslip they document, so
   // the list below can say which months are covered and which are not.
   const { documents: uploadedPayslips } = usePayslipDocuments(profile);
@@ -405,8 +447,7 @@ export function PayrollPage() {
   }
 
   /** Open the Run Payroll confirmation, or refuse with a reason if refused. */
-  function openRunPayrollConfirm() {
-    const month = currentMonthIso();
+  function openRunPayrollConfirm(month: string = currentMonthIso()) {
     const existing = alreadyRunFor(month);
     if (existing) {
       setPendingRun(null);
@@ -421,16 +462,20 @@ export function PayrollPage() {
       return;
     }
     setRunNotice(null);
-    const payslips = employees.map((employee) => buildPayslip(employee, month, 'Paid'));
+    // Who is on roll for THIS month: joined by its last day and not resigned.
+    // Every directory entry used to be paid, so a resigned employee kept
+    // receiving payslips, and a month run late paid people who joined after it.
+    const onRoll = payeesFor(month);
+    const payslips = onRoll.map((employee) => buildPayslip(employee, month, 'Paid'));
     const grossTotal = payslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
     const netTotal = payslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
     // Informational only — see PendingPayrollRun. Read through
     // buildPayslipComponents (not stored on Payslip) purely to count who has
     // no structure; it does not change what gets paid or saved.
-    const unconfiguredCount = employees.filter(
+    const unconfiguredCount = onRoll.filter(
       (employee) => !buildPayslipComponents(employee, month).splitConfigured,
     ).length;
-    setPendingRun({ month, employeeCount: employees.length, grossTotal, netTotal, unconfiguredCount, payslips });
+    setPendingRun({ month, employeeCount: onRoll.length, grossTotal, netTotal, unconfiguredCount, payslips });
   }
 
   function closeRunPayrollConfirm() {
@@ -445,8 +490,9 @@ export function PayrollPage() {
       // The guard fired between opening the dialog and clicking Confirm.
       // Re-run the open path so the refusal (and its up-to-date figures)
       // replaces the now-stale preview, rather than committing a duplicate.
+      const month = pendingRun.month;
       setPendingRun(null);
-      openRunPayrollConfirm();
+      openRunPayrollConfirm(month);
       return;
     }
 
@@ -457,7 +503,9 @@ export function PayrollPage() {
       employeeCount: pendingRun.employeeCount,
       grossTotal: pendingRun.grossTotal,
       netTotal: pendingRun.netTotal,
-      processedOn: `${pendingRun.month}-30`,
+      // The day it was actually processed. This was `${month}-30`, which is
+      // not a date in February and says nothing about when anybody pressed it.
+      processedOn: todayIso(),
     };
 
     setPayrollRunList((prev) => [newRun, ...prev]);
@@ -599,7 +647,7 @@ export function PayrollPage() {
         title="Payroll"
         subtitle="Manage salary disbursements, payslips, and compensation analytics"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Presentation only — firestore.rules is what refuses the write.
                 See the header of src/lib/payslipDocuments.ts. */}
             {canUploadPayslips(profile) && (
@@ -612,10 +660,20 @@ export function PayrollPage() {
                 record, not whether the app runs, because an HR system that
                 denied reads over an invoice would take a company's attendance
                 history away from it. */}
+            <Select
+              ariaLabel="Payroll month"
+              value={runMonth}
+              onChange={setRunMonth}
+              options={runnableMonths(currentMonthIso()).map((m) => ({
+                label: `${monthLabel(m)}${alreadyRunFor(m) ? ' (run)' : ''}`,
+                value: m,
+              }))}
+              className="!py-1.5 !text-sm w-40"
+            />
             <Button
               icon={<Play size={16} />}
               variant="primary"
-              onClick={openRunPayrollConfirm}
+              onClick={() => openRunPayrollConfirm(runMonth)}
               disabled={workspaceLocked}
               title={workspaceLocked ? 'Paused until billing is arranged — Settings → Billing' : undefined}
             >
@@ -790,8 +848,22 @@ export function PayrollPage() {
       >
         {pendingRun && (
           <div className="space-y-4" data-testid="run-payroll-preview">
+            <div>
+              <label className="text-sm font-medium text-ink-700 block mb-1">Pay month</label>
+              <Select
+                ariaLabel="Pay month"
+                value={pendingRun.month}
+                onChange={(month) => { setRunMonth(month); openRunPayrollConfirm(month); }}
+                options={runnableMonths(currentMonthIso()).map((m) => ({
+                  label: `${monthLabel(m)}${alreadyRunFor(m) ? ' — already run' : ''}`,
+                  value: m,
+                }))}
+                className="w-full"
+              />
+            </div>
             <p className="text-sm text-ink-600">
-              This pays every employee on roll for {monthLabel(pendingRun.month)} and records the run. Once
+              This pays every employee on roll for {monthLabel(pendingRun.month)} — joined by the month&rsquo;s
+              end and not resigned — and records the run. Once
               confirmed, this cycle cannot be run again — a second attempt will be refused.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

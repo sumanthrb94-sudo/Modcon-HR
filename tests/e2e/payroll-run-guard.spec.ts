@@ -122,4 +122,42 @@ test.describe.serial('payroll run guardrails', () => {
     const monthCells = page.getByRole('table').getByText(label, { exact: true });
     await expect(monthCells).toHaveCount(1);
   });
+
+  // Payroll could only ever be run for the current month, so a month missed
+  // or run late could never be paid. The Payroll month selector beside the
+  // button reaches the five before it — each still once.
+  test('an earlier month can be run from the month selector, once', async () => {
+    const [yr, mo] = month.split('-').map(Number);
+    const previous = new Date(Date.UTC(yr, mo - 2, 1)).toISOString().slice(0, 7);
+    const previousLabel = monthLabel(previous);
+
+    await page.getByRole('combobox', { name: 'Payroll month' }).selectOption(previous);
+    await page.getByRole('button', { name: 'Run Payroll' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Confirm payroll run' });
+    const notice = page.getByTestId('run-payroll-notice');
+    await expect(dialog.or(notice)).toBeVisible();
+    if (await dialog.isVisible()) {
+      await expect(dialog).toContainText(previousLabel);
+      await dialog.getByRole('button', { name: 'Confirm & Run Payroll' }).click();
+      await expect(dialog).not.toBeVisible();
+    } else {
+      await expect(notice).toContainText('already been run');
+    }
+    await expect(page.getByRole('table').getByText(previousLabel, { exact: true })).toHaveCount(1);
+  });
+
+  // HR could open a payslip but not download it; the PDF lived only on the
+  // employee's Finance page. The modal now offers the same document.
+  test('HR downloads an employee payslip as a PDF from Payroll', async () => {
+    await page.getByRole('button', { name: /^Payslips/ }).click();
+    await page.getByRole('table').locator('tbody tr').first().click();
+    const dialog = page.getByRole('dialog', { name: 'Payslip' });
+    await expect(dialog).toBeVisible();
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      dialog.getByRole('button', { name: 'Download PDF' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^payslip-.+\.pdf$/);
+  });
 });
