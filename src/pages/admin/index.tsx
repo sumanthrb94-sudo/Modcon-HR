@@ -546,10 +546,13 @@ export function AdminDashboardPage() {
                                     {pwCopied ? 'Copied' : 'Copy'}
                                 </Button>
                             </div>
-                            {/* Shown once and never stored. There is no email delivery in
-                                this app, so say so rather than implying one. */}
+                            {/* Shown once and never stored. The set-password email is
+                                the ordinary way in; this is the fallback when it does
+                                not arrive, so the text says which of the two happened. */}
                             <p className="mt-1.5 text-xs text-ink-400">
-                                Shown once — nothing emails it. Pass it on, and have them change it.
+                                {invited.emailSent
+                                    ? `A "set your password" email was sent to ${invited.email}. This temporary password is shown once, as a backup if the email does not arrive.`
+                                    : `The set-password email could not be sent${invited.emailError ? ` (${invited.emailError})` : ''}. Pass this temporary password on — it is shown once — and have them change it.`}
                             </p>
                         </div>
                         {invited.linkedEmployeeId ? (

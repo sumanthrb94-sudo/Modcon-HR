@@ -1693,7 +1693,7 @@ function ReportingManagerRow({
         </div>
       )}
       {!managerId && !choosing ? (
-        <p className="mt-1 text-xs text-ink-400">Until one is recorded, nobody can approve their leave.</p>
+        <p className="mt-1 text-xs text-ink-400">Until one is recorded, their leave and requests go to HR to decide.</p>
       ) : null}
     </div>
   );

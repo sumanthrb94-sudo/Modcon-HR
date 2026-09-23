@@ -2181,6 +2181,90 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Support chat — an organisation's HR to the platform.
+    //
+    // The product owner's answer to "who does an HR team talk to": the
+    // Super Admin cannot see an organisation's HR data (gate G3), so an HR
+    // Manager or Administrator who needs the platform opens a conversation
+    // here, and the Super Admin answers it. Employees and Managers are not
+    // parties — they raise things with their own HR through Helpdesk.
+    //
+    // A thread belongs to one organisation: readable by that organisation's
+    // administrators (isOrgAdmin: admin or hr, of that org) and by the Super
+    // Admin, by nobody else. A list must filter on orgId for the same reason
+    // every tenant collection's does. Messages are append-only and signed:
+    // author is the caller, the moment is the server's, and the side
+    // ("org" or "platform") follows from who the caller is, so an HR account
+    // cannot post as the platform. Nothing is ever deleted — a support record
+    // is a record of what each side said.
+    // -------------------------------------------------------------------
+    // isSuperAdmin() reads `superAdmin` directly, which errors on an ordinary
+    // account whose profile has no such field. That is harmless where it is
+    // one side of an OR, but negated or used as a condition the error denies
+    // the whole rule — so the support block asks with a default.
+    function callerIsSuperAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        myProfile().get('superAdmin', false) == true;
+    }
+
+    function supportOrgSide(orgId) {
+      return isSignedIn() && isOrgAdmin() && !callerIsSuperAdmin() && orgId == myOrgKey();
+    }
+
+    function canReadSupportThread(threadId) {
+      return callerIsSuperAdmin() || supportOrgSide(
+        get(/databases/$(database)/documents/support_threads/$(threadId)).data.orgId);
+    }
+
+    match /support_threads/{threadId} {
+      allow get, list: if callerIsSuperAdmin() ||
+        supportOrgSide(resource.data.get('orgId', ''));
+
+      allow create: if supportOrgSide(request.resource.data.get('orgId', '')) &&
+        request.resource.data.keys().hasAll(
+          ['orgId', 'subject', 'status', 'createdByUid', 'createdAt', 'lastMessageAt', 'lastMessageBy']) &&
+        request.resource.data.keys().hasOnly(
+          ['orgId', 'orgName', 'subject', 'status', 'createdByUid', 'createdByEmail',
+           'createdAt', 'lastMessageAt', 'lastMessageBy']) &&
+        request.resource.data.subject is string &&
+        request.resource.data.subject.size() > 0 &&
+        request.resource.data.subject.size() <= 200 &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.lastMessageAt == request.time &&
+        request.resource.data.lastMessageBy == 'org';
+
+      // Either side reopens, resolves, or bumps the thread when it writes.
+      // Nothing else about a thread changes — not its organisation, not its
+      // subject, not who opened it.
+      allow update: if (callerIsSuperAdmin() || supportOrgSide(resource.data.get('orgId', ''))) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'lastMessageAt', 'lastMessageBy']) &&
+        request.resource.data.status in ['open', 'resolved'] &&
+        request.resource.data.lastMessageBy in ['org', 'platform'];
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow get, list: if canReadSupportThread(threadId);
+
+        allow create: if canReadSupportThread(threadId) &&
+          request.resource.data.keys().hasAll(['authorUid', 'authorSide', 'text', 'at']) &&
+          request.resource.data.keys().hasOnly(['authorUid', 'authorEmail', 'authorSide', 'text', 'at']) &&
+          request.resource.data.authorUid == request.auth.uid &&
+          request.resource.data.at == request.time &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 4000 &&
+          request.resource.data.authorSide == (callerIsSuperAdmin() ? 'platform' : 'org');
+
+        allow update, delete: if false;
+      }
+    }
+
+    // -------------------------------------------------------------------
     // Deny everything else by default.
     // -------------------------------------------------------------------
     match /{document=**} {

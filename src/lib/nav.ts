@@ -19,6 +19,7 @@ import {
   Building2,
   BookOpen,
   Megaphone,
+  MessagesSquare,
   type LucideIcon,
 } from 'lucide-react';
 import { canAccessModule, type AppModule, type AppRole } from '@/lib/accessControl';
@@ -83,6 +84,10 @@ export const navItems: NavItem[] = [
   { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Operations', module: 'Admin', adminOnly: true, platform: true },
   { label: 'Organizations', path: '/organizations', icon: Building2, group: 'Operations', module: 'Admin', adminOnly: true, superAdminOnly: true, platform: true },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Operations', module: 'Settings' },
+  // HR and Administrator talk to the platform here; the Super Admin answers,
+  // so it is a platform item too. No `module`: support is not something a
+  // permission matrix should be able to switch off. See pages/support.
+  { label: 'Support', path: '/support', icon: MessagesSquare, group: 'Operations', adminOnly: true, platform: true },
 ];
 
 export const navGroups: NavItem['group'][] = ['Main', 'People', 'Operations'];

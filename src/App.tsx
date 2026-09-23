@@ -29,6 +29,7 @@ const PerformancePage = lazy(() => import('@/pages/performance').then((m) => ({ 
 const ExpensesPage = lazy(() => import('@/pages/expenses').then((m) => ({ default: m.ExpensesPage })));
 const AssetsPage = lazy(() => import('@/pages/assets').then((m) => ({ default: m.AssetsPage })));
 const HelpdeskPage = lazy(() => import('@/pages/helpdesk').then((m) => ({ default: m.HelpdeskPage })));
+const SupportPage = lazy(() => import('@/pages/support').then((m) => ({ default: m.SupportPage })));
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })));
 const DocumentsPage = lazy(() => import('@/pages/documents').then((m) => ({ default: m.DocumentsPage })));
 const SettingsPage = lazy(() => import('@/pages/settings').then((m) => ({ default: m.SettingsPage })));
@@ -277,6 +278,9 @@ function AppRoutes() {
             keeping privileged routes consistent with /approvals. */}
         <Route path="admin" element={<RequireOrgAdmin><RequireModuleAccess module="Admin"><AdminDashboardPage /></RequireModuleAccess></RequireOrgAdmin>} />
         <Route path="organizations" element={<RequireSuperAdmin><OrganizationsPage /></RequireSuperAdmin>} />
+        {/* HR and Administrator of an organisation, and the Super Admin, who
+            answers. Managers and Employees are redirected: they use Helpdesk. */}
+        <Route path="support" element={<RequireOrgAdmin><SupportPage /></RequireOrgAdmin>} />
         <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals/leave-requests" element={<RequireManager><LeaveRequestsApprovalsPage /></RequireManager>} />
