@@ -2076,11 +2076,11 @@ function CompensationTab({ emp }: { emp: Employee }) {
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-400 mb-2">
                 Withheld from salary
               </p>
-              {deductionRows(components).filter((row) => row.value > 0).length === 0 ? (
+              {deductionRows(components).filter((row) => row.value !== 0).length === 0 ? (
                 <p className="text-sm text-ink-500">Nothing withheld this month.</p>
               ) : (
                 deductionRows(components)
-                  .filter((row) => row.value > 0)
+                  .filter((row) => row.value !== 0)
                   .map((row) => (
                     <div key={row.label} className="flex items-center justify-between text-sm py-1">
                       <span className="text-ink-600">

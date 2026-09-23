@@ -9,7 +9,7 @@ import { getEmployeeDirectory, isWeekOffFor } from '@/data/employees';
 import { getHolidayDirectory } from '@/data/holidays';
 import { getLeaveRequests } from '@/data/leave';
 import { normalizeLeaveTypeValue } from '@/data/leavePolicies';
-import { combineLossOfPay, unpaidLeaveByDate } from '@/data/lossOfPay';
+import { combineLossOfPay, lossOfPayArrears, unpaidLeaveByDate, type LopArrear, type PaidMonth } from '@/data/lossOfPay';
 import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
 import {
   getTaxElectionFor,
@@ -78,6 +78,14 @@ export interface PayslipComponents {
   lopDays: number;
   /** Working days in the month, the divisor for the per-day rate. */
   payableDays: number;
+  /**
+   * Earlier months' loss of pay that changed after they were paid — leave
+   * approved late, an absence regularised late — recovered (or refunded) here.
+   * See `lossOfPayArrears` in data/lossOfPay.ts.
+   */
+  lopArrears: LopArrear[];
+  /** Their sum in rupees: positive is deducted, negative is paid back. */
+  lopArrearsAmount: number;
   grossEarnings: number;
   totalDeductions: number;
   netPay: number;
@@ -185,6 +193,37 @@ export function lossOfPayDays(
     });
   const unpaidDates = unpaidLeaveByDate(unpaid, month, (date) => holidays.has(date) || isWeekOffFor(employee, date));
   return combineLossOfPay(attendance, unpaidDates, month);
+}
+
+/**
+ * The months this employee has already been paid for, as stored payslips
+ * recorded them — only those that recorded `lopDays`, since a payslip that
+ * did not cannot say what it deducted.
+ *
+ * Read through `storedPayslips`, which is bound once the store below exists:
+ * the payroll-run seed computes payslips at module load, before it does, and
+ * the payslip seed is itself built by `buildPayslip`, so reading `get()` here
+ * would recurse into it. Stored payslips are the only ones that can carry
+ * `lopDays` anyway — the seed is computed, never paid.
+ */
+let storedPayslips: () => Payslip[] = () => [];
+
+function paidMonthsFor(employeeId: string): PaidMonth[] {
+  const seen = new Set<string>();
+  const paid: PaidMonth[] = [];
+  for (const payslip of storedPayslips()) {
+    if (payslip.employeeId !== employeeId || typeof payslip.lopDays !== 'number') continue;
+    if (seen.has(payslip.month)) continue; // one cycle, one payslip
+    seen.add(payslip.month);
+    paid.push({
+      month: payslip.month,
+      lopDays: payslip.lopDays,
+      grossEarnings: payslip.grossEarnings,
+      payableDays: daysInMonth(payslip.month),
+      lopArrears: payslip.lopArrears,
+    });
+  }
+  return paid;
 }
 
 // `computeTax` used to sit here: a simplified new-regime slab table, exported,
@@ -317,13 +356,20 @@ export function buildPayslipComponents(
   const lopDays = lossOfPayDays(employee.id, month, employee);
   const lossOfPay = Math.round((grossEarnings / payableDays) * lopDays);
 
-  const totalDeductions = lossOfPay + pf + tax + otherDeductions;
+  const lopArrears = lossOfPayArrears(
+    month,
+    paidMonthsFor(employee.id),
+    (earlier) => lossOfPayDays(employee.id, earlier, employee),
+  );
+  const lopArrearsAmount = lopArrears.reduce((sum, arrear) => sum + arrear.amount, 0);
+
+  const totalDeductions = lossOfPay + lopArrearsAmount + pf + tax + otherDeductions;
   const netPay = grossEarnings - totalDeductions;
 
   return {
     monthly, splitConfigured: split !== null,
     basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance, bonus,
-    pf, tax, otherDeductions, lossOfPay, lopDays, payableDays,
+    pf, tax, otherDeductions, lossOfPay, lopDays, payableDays, lopArrears, lopArrearsAmount,
     statutory,
     grossEarnings, totalDeductions, netPay,
   };
@@ -350,7 +396,13 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     // them. `buildPayslipComponents().statutory` is where a live view gets the
     // heads separately; a stored payslip is a record of what was paid, and the
     // total is what was paid.
-    otherDeductions: c.lossOfPay + c.otherDeductions,
+    otherDeductions: c.lossOfPay + c.lopArrearsAmount + c.otherDeductions,
+    // What this payslip deducted, so a later payroll can tell what is still
+    // owed for this month if its loss of pay changes after it is paid.
+    lopDays: c.lopDays,
+    ...(c.lopArrears.length > 0
+      ? { lopArrears: c.lopArrears.map(({ month: m, days, amount }) => ({ month: m, days, amount })) }
+      : {}),
     grossEarnings: c.grossEarnings,
     totalDeductions: c.totalDeductions,
     netPay: c.netPay,
@@ -486,6 +538,8 @@ const payslipStore = persistentCollection<Payslip>(
   'self',
 );
 
+storedPayslips = () => payslipStore.getStored();
+
 export const PAYSLIPS_CHANGED_EVENT = payslipStore.changedEvent;
 export const getPayslips = () => payslipStore.get();
 export const savePayslips = (next: Payslip[]) => payslipStore.save(next);
@@ -507,6 +561,23 @@ export const savePayslips = (next: Payslip[]) => payslipStore.save(next);
  * administrator declares it. The exception is loss of pay, which is always
  * listed: a payslip that says nothing about absence is one nobody can check.
  */
+/**
+ * How the loss-of-pay figure was reached, spelled out: the month's gross over
+ * its calendar days, times the unpaid days. Printed beside the deduction so an
+ * employee can check it with a calculator rather than take it on trust.
+ */
+export function lossOfPayFormula(
+  components: Pick<PayslipComponents, 'grossEarnings' | 'payableDays' | 'lopDays'>,
+): string {
+  const gross = `₹${components.grossEarnings.toLocaleString('en-IN')}`;
+  return `${gross} ÷ ${components.payableDays} days × ${components.lopDays} day${components.lopDays === 1 ? '' : 's'}`;
+}
+
+function formatMonth(month: string): string {
+  const [year, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, m - 1, 1)).toLocaleString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
 export function deductionRows(
   components: PayslipComponents,
 ): Array<{ label: string; value: number; hint?: string }> {
@@ -514,11 +585,21 @@ export function deductionRows(
     {
       label: 'Loss of Pay (unpaid absence)',
       value: components.lossOfPay,
-      hint: components.lopDays > 0
-        ? `${components.lopDays} of ${components.payableDays} days`
-        : undefined,
+      hint: components.lopDays > 0 ? lossOfPayFormula(components) : undefined,
     },
   ];
+  // Only when there is one: an arrears line reading ₹0 every month is noise.
+  if (components.lopArrearsAmount !== 0) {
+    rows.push({
+      label: components.lopArrearsAmount > 0
+        ? 'Loss of Pay arrears (earlier months)'
+        : 'Loss of Pay refund (earlier months)',
+      value: components.lopArrearsAmount,
+      hint: components.lopArrears
+        .map((a) => `${formatMonth(a.month)}: ${a.days > 0 ? '' : '−'}${Math.abs(a.days)} day${Math.abs(a.days) === 1 ? '' : 's'}`)
+        .join(', '),
+    });
+  }
 
   const s = components.statutory;
   if (!s) return rows;
@@ -552,6 +633,54 @@ export function deductionRows(
   }
 
   return rows;
+}
+
+/**
+ * The deduction lines of a **stored** payslip — what was actually paid.
+ *
+ * The stored shape has fields for provident fund and tax and one bucket,
+ * `otherDeductions`, for everything else: loss of pay, its arrears, ESI and
+ * professional tax. A payslip that recorded `lopDays` can be split back out,
+ * because its loss of pay is the formula it was paid on (gross ÷ the month's
+ * days × those days) and its arrears are listed; the remainder is ESI and
+ * professional tax. One stored before `lopDays` existed cannot be split, and
+ * is shown as one line labelled for everything it holds.
+ *
+ * The Finance PDF used to print that bucket as "Loss of Pay (unpaid
+ * absence)" and leave PF and TDS off entirely, so its lines did not add up to
+ * its own total. The Payroll modal and the PDF both read this now.
+ */
+export function storedDeductionRows(payslip: Payslip): Array<{ label: string; value: number; hint?: string }> {
+  const rows: Array<{ label: string; value: number; hint?: string }> = [];
+  if (typeof payslip.lopDays === 'number') {
+    const payableDays = daysInMonth(payslip.month);
+    const lossOfPay = Math.round((payslip.grossEarnings / payableDays) * payslip.lopDays);
+    const arrears = (payslip.lopArrears ?? []).reduce((sum, a) => sum + a.amount, 0);
+    rows.push({
+      label: 'Loss of Pay (unpaid absence)',
+      value: lossOfPay,
+      hint: payslip.lopDays > 0
+        ? lossOfPayFormula({ grossEarnings: payslip.grossEarnings, payableDays, lopDays: payslip.lopDays })
+        : undefined,
+    });
+    if (arrears !== 0) {
+      rows.push({
+        label: arrears > 0 ? 'Loss of Pay arrears (earlier months)' : 'Loss of Pay refund (earlier months)',
+        value: arrears,
+        hint: (payslip.lopArrears ?? [])
+          .map((a) => `${formatMonth(a.month)}: ${a.days > 0 ? '' : '−'}${Math.abs(a.days)} day${Math.abs(a.days) === 1 ? '' : 's'}`)
+          .join(', '),
+      });
+    }
+    rows.push({ label: 'ESI & Professional Tax', value: payslip.otherDeductions - lossOfPay - arrears });
+  } else {
+    rows.push({ label: 'Loss of Pay, ESI & Professional Tax', value: payslip.otherDeductions });
+  }
+  rows.push({ label: 'Provident Fund (employee)', value: payslip.pf });
+  rows.push({ label: 'Tax Deducted at Source', value: payslip.tax });
+  // Loss of pay is always listed, as on the live payslip; any other head that
+  // came to nothing is left out rather than printed as a calculated zero.
+  return rows.filter((row, i) => (i === 0 && typeof payslip.lopDays === 'number') || row.value !== 0);
 }
 
 /**

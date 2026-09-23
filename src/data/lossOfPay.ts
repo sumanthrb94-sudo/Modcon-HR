@@ -136,3 +136,64 @@ export function combineLossOfPay(
   for (const weight of byDate.values()) total += weight;
   return total;
 }
+
+/** One month already paid, as far as the loss-of-pay arrears need to know it. */
+export interface PaidMonth {
+  readonly month: string;
+  /** Days of loss of pay that month's payslip deducted. */
+  readonly lopDays: number;
+  readonly grossEarnings: number;
+  /** The divisor that month's per-day rate used — its calendar days. */
+  readonly payableDays: number;
+  /** Earlier months' corrections this payslip carried, if any. */
+  readonly lopArrears?: readonly { readonly month: string; readonly days: number }[];
+}
+
+export interface LopArrear {
+  readonly month: string;
+  /** Positive: days still to deduct. Negative: days deducted that are no longer unpaid. */
+  readonly days: number;
+  /** At that month's own per-day rate, rounded to the rupee; negative is a refund. */
+  readonly amount: number;
+}
+
+/**
+ * Loss of pay that changed after its month was paid, carried into `month`.
+ *
+ * A payslip is computed when payroll runs, and the leave that decides it can
+ * be approved afterwards — the 28th's Unpaid request approved on the 3rd, a
+ * backdated absence applied for the week after. Without this those days were
+ * never deducted anywhere: the month they belong to was already paid, and the
+ * next month's payslip only looks at its own dates. The reverse happens too:
+ * an absence regularised after payroll was deducted and never given back.
+ *
+ * So for every earlier month that was paid, the loss of pay it *should* have
+ * carried (`lopDaysNow`, recomputed from today's records) is compared with
+ * what was actually deducted — its own payslip's days plus any arrears later
+ * payslips already recovered for it — and the difference is charged, or
+ * refunded, at that month's own rate: gross ÷ its days, the same formula it
+ * was paid on. Only corrections recorded on payslips *before* `month` count as
+ * recovered, so recomputing a month that has itself been paid gives the same
+ * answer it was paid with.
+ */
+export function lossOfPayArrears(
+  month: string,
+  paid: readonly PaidMonth[],
+  lopDaysNow: (month: string) => number,
+): LopArrear[] {
+  const earlier = paid.filter((p) => p.month < month).sort((a, b) => a.month.localeCompare(b.month));
+  const out: LopArrear[] = [];
+  for (const p of earlier) {
+    let deducted = p.lopDays;
+    for (const later of earlier) {
+      if (later.month <= p.month) continue;
+      for (const arrear of later.lopArrears ?? []) {
+        if (arrear.month === p.month) deducted += arrear.days;
+      }
+    }
+    const days = lopDaysNow(p.month) - deducted;
+    if (days === 0 || p.payableDays <= 0) continue;
+    out.push({ month: p.month, days, amount: Math.round((p.grossEarnings / p.payableDays) * days) });
+  }
+  return out;
+}

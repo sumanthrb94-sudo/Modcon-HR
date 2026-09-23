@@ -26,6 +26,7 @@ import {
   deductionRows,
   employerContributionRows,
   getPayslips,
+  storedDeductionRows,
   PAYSLIPS_CHANGED_EVENT,
 } from '@/data/payroll';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
@@ -188,10 +189,14 @@ function EmployeeFinancePage() {
       y += 2;
 
       writeLine('Deductions', { bold: true, size: 11 });
-      // Attendance is the only basis for deduction, so the payslip PDF lists
-      // loss of pay alone rather than statutory heads that are never withheld.
-      writeLine(`Loss of Pay (unpaid absence): ${formatINR(payslip.otherDeductions)}`);
+      // Every head the payslip withheld, labelled for what it holds — this
+      // printed the whole `otherDeductions` bucket as "Loss of Pay" and left PF
+      // and TDS off, so the lines did not add up to the total beneath them.
+      for (const row of storedDeductionRows(payslip)) {
+        writeLine(`${row.label}: ${formatINR(row.value)}${row.hint ? ` (${row.hint})` : ''}`);
+      }
       writeLine(`Total Deductions: ${formatINR(payslip.totalDeductions)}`, { bold: true });
+      writeLine('Loss of pay = gross earnings ÷ calendar days in the month × days of unpaid absence.', { size: 8 });
       y += 2;
 
       writeLine('Salary Information', { bold: true, size: 11 });
