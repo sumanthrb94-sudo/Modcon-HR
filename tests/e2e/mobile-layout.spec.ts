@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { type Persona } from './config';
+import { SUPER_ADMIN, type Persona } from './config';
 
 /**
  * The app is usable at real phone widths — 375, 390 and 414 px (G12).
@@ -24,6 +24,13 @@ function persona(): Persona {
 
 const WIDTHS = [375, 390, 414];
 const ROUTES = ['/', '/leave', '/attendance', '/expenses', '/helpdesk', '/employees', '/assets', '/settings', '/board'];
+// Pages only some roles reach. The Admin dashboard was 7px wider than a 390px
+// screen, and no route in the list above would have said so.
+const ROLE_ROUTES: Record<string, string[]> = {
+  admin: ['/admin', '/payroll', '/support'],
+  manager: ['/finance'],
+  employee: ['/finance'],
+};
 
 async function login(page: Page, p: Persona) {
   await page.goto('/login');
@@ -73,7 +80,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 800 });
     await login(page, persona());
     const problems: string[] = [];
-    for (const route of ROUTES) {
+    for (const route of [...ROUTES, ...(ROLE_ROUTES[persona().role] ?? [])]) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 20_000 });
       const result = await overflow(page);
@@ -84,6 +91,24 @@ for (const width of WIDTHS) {
     expect(problems, problems.join('\n')).toEqual([]);
   });
 }
+
+// The Super Admin's own pages, once: they are nobody's role project, and the
+// Admin dashboard's audit log and cross-organisation user list are theirs.
+test('the Super Admin’s pages fit a 390px screen', async ({ page }) => {
+  test.skip(persona().role !== 'admin', 'runs once, from the admin project');
+  await page.setViewportSize({ width: 390, height: 800 });
+  await login(page, SUPER_ADMIN as Persona);
+  const problems: string[] = [];
+  for (const route of ['/admin', '/organizations', '/support']) {
+    await page.goto(route);
+    await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 20_000 });
+    const result = await overflow(page);
+    if (result.pageScrolls) {
+      problems.push(`${route}: page is ${result.scrollWidth}px wide on a ${result.width}px screen — ${result.offenders.join(', ')}`);
+    }
+  }
+  expect(problems, problems.join('\n')).toEqual([]);
+});
 
 test('the navigation opens and closes from the menu button on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });

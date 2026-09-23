@@ -78,6 +78,15 @@ test.describe.serial('authenticated interactions', () => {
   test('sign out returns to the login screen', async () => {
     // Navigate back into the app shell first (404 above is inside the layout).
     await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+    // The Getting started checklist opens itself a moment after the dashboard
+    // does, and it covers the Sign out button — which is why this test failed
+    // while signing out worked. Close it the way a person would.
+    const gettingStarted = page.getByRole('dialog', { name: /Getting started|Setting up your organisation/ });
+    await gettingStarted.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => {});
+    if (await gettingStarted.isVisible()) {
+      await gettingStarted.getByRole('button', { name: 'Close' }).last().click();
+      await expect(gettingStarted).toBeHidden();
+    }
     await page.locator('button[title="Sign out"]').click();
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole('heading', { name: /sign in/i })).toBeVisible();

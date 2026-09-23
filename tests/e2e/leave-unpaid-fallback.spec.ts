@@ -182,26 +182,15 @@ test.describe.serial('leave stays usable when the organisation has configured al
     await restorePolicies();
   });
 
-  // Was FIXME (QA verifying by hand) — and NOT because the feature was broken.
-  //
-  // The rendered option list was captured from a failing run and is exactly
-  // what T8 promises:
-  //
-  //     Earned — available after 1 year of service
-  //     Unpaid — no accrued balance
-  //
-  // with no Casual and no Sick. So the fallback is present for an employee
-  // the organisation's only policy does not yet cover, which is the gate.
-  // What remains red is this spec's own driving of the dialog after that
-  // point — it now times out further down rather than failing an assertion.
-  // Left as the guard to finish rather than deleted, and the feature is not
-  // reverted on the strength of a spec that has already shown it working.
-  // Still parked, for a different reason now: it passes on its own (the
-  // exact-text fix below), but it replaces the organisation's whole leave
-  // policy list while org-settings and employee-leave-policy write the same
-  // document, so in a full run its option list is whatever the last writer
-  // left. Needs its own organisation to run beside them.
-  test.fixme('Unpaid still appears, and no accrued balance, when nothing else does', async () => {
+  // Parked twice, and neither time because the feature was broken: first on
+  // a locator that matched the hidden <option> as well as the note, then
+  // because other specs in this project rewrite the same policy document and
+  // the option list was whatever the last writer left. The policy is now
+  // re-asserted, and confirmed on the server, immediately before the
+  // employee signs in — the only moment its contents matter.
+  test('Unpaid still appears, and no accrued balance, when nothing else does', async () => {
+    await writePolicies(JSON.stringify(EARNED_ONLY_POLICY));
+    await expect.poll(async () => (await readPolicies()).valueJson).toBe(JSON.stringify(EARNED_ONLY_POLICY));
     await login(page, EMPLOYEE.email, EMPLOYEE.password);
     await page.getByRole('link', { name: 'Leave', exact: true }).first().click();
     await expect(page.getByRole('heading', { name: 'Leave Management' })).toBeVisible();

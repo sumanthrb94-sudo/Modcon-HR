@@ -76,7 +76,7 @@ export function AuditLogPanel() {
             ) : (
                 <ul className="divide-y divide-ink-100" data-testid="audit-log">
                     {rows.map((row) => (
-                        <li key={row.id} className="py-2.5 text-sm">
+                        <li key={row.id} className="py-2.5 text-sm break-words">
                             <p className="text-ink-900">{ACTION_LABELS[row.action] ?? row.action}</p>
                             <p className="text-xs text-ink-500">
                                 {row.actorEmail ?? 'Unknown actor'}

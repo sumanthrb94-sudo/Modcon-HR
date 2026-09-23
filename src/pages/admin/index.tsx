@@ -430,7 +430,9 @@ export function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="lg:col-span-2">
+                {/* min-w-0: a grid column is otherwise as wide as the widest row
+                    of the user table, whatever its own scroll container says. */}
+                <Card className="lg:col-span-2 min-w-0">
                     <CardHeader
                         title="User & Role Management"
                         subtitle="Grant or revoke admin access. Fixed admins cannot be modified."
@@ -455,7 +457,7 @@ export function AdminDashboardPage() {
                     )}
                 </Card>
 
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader title="System Snapshot" subtitle="Live counts across modules" />
                     <div className="space-y-3">
                         <SnapshotRow label="Employees" value={employees.length} />

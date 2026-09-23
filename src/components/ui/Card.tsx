@@ -26,7 +26,7 @@ interface CardHeaderProps {
 export function CardHeader({ title, subtitle, action, className }: CardHeaderProps) {
   return (
     <div className={cn('flex items-start justify-between gap-4 mb-4', className)}>
-      <div>
+      <div className="min-w-0">
         {/* h2, not h3: a card sits directly under the page's h1, and skipping a
             level leaves screen-reader users unable to tell whether they missed
             a section in between (G11). */}
