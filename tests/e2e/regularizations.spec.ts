@@ -1,7 +1,7 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { PERSONAS } from './config';
 import { istToday } from './clock';
-import { clearOrgRecords, listOrgRecords } from './firestore';
+import { FIRESTORE_BASE, adminToken, clearOrgRecords, listOrgRecords, seedOrgRecords } from './firestore';
 
 /**
  * Attendance → Regularizations → Approvals, end to end.
@@ -114,6 +114,26 @@ async function todayValue(page: Page): Promise<string> {
   return (await option.getAttribute('value')) as string;
 }
 
+const REG_SUBJECT = {
+  id: 'emp-e2e-reg-subject',
+  employeeCode: 'E2E-REG-SUBJ',
+  firstName: 'Aabha',
+  lastName: 'Regularization Subject',
+  fullName: 'Aabha Regularization Subject',
+  email: 'e2e-reg-subject@modcon-hr.test',
+  phone: '+91 90000 00000',
+  avatar: 'brand',
+  dateOfBirth: '1990-01-01',
+  designation: 'Engineer',
+  department: 'Engineering',
+  location: 'Bengaluru',
+  employmentType: 'Full-time',
+  status: 'Active',
+  dateOfJoining: '2024-01-01',
+  reportingManagerId: null,
+  ctc: 1200000,
+};
+
 test.describe.serial('regularizations derive from attendance', () => {
   let page: Page;
   let people: string[];
@@ -191,18 +211,30 @@ test.describe.serial('deciding a regularization', () => {
   const reason = `Client site all day ${Date.now().toString(36)}`;
 
   test.beforeAll(async ({ browser }) => {
+    // A subject of this block's own. It used to be whoever sorted first in
+    // the directory — which, in a full run, check-in-out.spec.ts has just
+    // given this same admin persona's email, making it the admin's OWN
+    // request. Nobody decides their own regularization (the same rule as
+    // leave and expenses), so the approvals page rightly left it out and this
+    // block failed on another spec's timing.
+    await seedOrgRecords('employees', [REG_SUBJECT]);
     page = await browser.newPage();
     // Same anchor as the block above — the request raised here is against the
     // day just marked, so it has to be a day the subject actually works.
     await page.clock.setFixedTime(istToday('10:00'));
     await login(page);
-    person = (await employeeLabels(page, 1))[0];
+    person = `${REG_SUBJECT.fullName} (${REG_SUBJECT.employeeCode})`;
     today = await todayValue(page);
     await resetRegularizationStore(page);
   });
 
   test.afterAll(async () => {
     await page?.close();
+    const token = await adminToken();
+    await fetch(`${FIRESTORE_BASE}/org_records/default__employees__${REG_SUBJECT.id}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
   });
 
   test('a raised request states the status its author chose', async () => {

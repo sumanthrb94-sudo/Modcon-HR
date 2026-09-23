@@ -222,4 +222,33 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
     // The report's request and not the outsider's: one, not two.
     await expect(tile.locator('p').nth(1)).toHaveText('1', { timeout: 20_000 });
   });
+
+  // Moved here from the role-manager project of leave-approval-scope and
+  // expense-approval-scope. There the manager was the unlinked role persona,
+  // identified by the email on a seeded record — and both specs seeded one
+  // with that same email, in parallel, so the account resolved to whichever
+  // record the directory listed first and each spec failed on the other's
+  // timing. A linked persona has exactly one identity.
+  test('the Expenses list shows the report’s claim, not an outsider’s', async ({ page }) => {
+    await login(page);
+    await page.goto('/expenses');
+    await expect(page.getByRole('heading', { name: 'Expenses', exact: true })).toBeVisible({ timeout: 20_000 });
+    const row = (name: string) => page.getByRole('row').filter({ hasText: name });
+    await expect(row('E2E Queue Report')).toHaveCount(1, { timeout: 20_000 });
+    await expect(row('E2E Queue Outsider')).toHaveCount(0);
+  });
+
+  test('the leave queue holds the report’s request, and approving it lands', async ({ page }) => {
+    await login(page);
+    await page.goto('/dashboard/pending-approvals/leave-requests');
+    const row = (employeeId: string) =>
+      page.locator(`[data-testid="leave-approval-request"][data-employee-id="${employeeId}"]`);
+    await expect(row(REPORT)).toHaveCount(1, { timeout: 20_000 });
+    await expect(row(OUTSIDER)).toHaveCount(0);
+
+    await row(REPORT).getByRole('button', { name: 'Approve' }).click();
+    await expect(row(REPORT)).toHaveCount(0);
+    await expect(page.getByRole('status')).toHaveCount(0);
+    await waitForOrgRecord<{ status?: string }>('leaveRequests', 'lr-e2e-aq-report', (r) => r?.status === 'Approved');
+  });
 });

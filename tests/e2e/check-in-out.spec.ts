@@ -240,7 +240,12 @@ test.describe.serial('check in and check out', () => {
     await expect(page.getByRole('button', { name: 'Check Out' })).toHaveCount(0);
   });
 
-  test('a manager can approve the day the late stamp raised', async () => {
+  // The late stamp is this account's own day, and nobody decides their own
+  // regularization — the rule leave and expenses already had, applied to
+  // regularizations when QA found a manager offered other teams' requests.
+  // This used to approve it, which was the account excusing its own lateness.
+  // A manager approving a report's flagged day is approvals-queue-scope.spec.ts.
+  test('the late stamp raises a flag its own author cannot approve', async () => {
     // The previous spec left the browser on My Attendance.
     await page.goto('/attendance');
     const queue = page
@@ -248,12 +253,9 @@ test.describe.serial('check in and check out', () => {
       .filter({ has: page.getByRole('columnheader', { name: 'Requested' }) });
     const flagged = queue.locator('tbody tr').filter({ hasText: 'Checked in at 09:47' }).first();
 
-    await flagged.getByRole('button', { name: 'Approve' }).click();
-    await expect(flagged).toContainText('Approved');
-
-    // No requested status, so the decision is recorded and the day is left as
-    // it was recorded — approving cannot invent what it should become.
-    await expect(flagged.locator('td').nth(2)).toContainText('Present');
+    await expect(flagged).toContainText('Pending');
+    await expect(flagged.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    await expect(flagged).toContainText('Decided by their manager or HR');
   });
   test('a shift running past midnight can still be closed', async () => {
     // Check in at 23:50, then let the date roll over before checking out.
