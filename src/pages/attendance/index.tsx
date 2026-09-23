@@ -50,7 +50,7 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useAuth } from '@/lib/auth';
 import { LocationReviewQueue } from './LocationReviewQueue';
-import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
+import { canDecideRegularization, getApprovableEmployeeIds, getVisibleEmployeeIds, regularizationChangesTheDay } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
@@ -74,6 +74,7 @@ export function AttendancePage() {
   // can change while this grid is open.
   const weekOffRevision = useWeekOffRevision();
   const { profile, linkedEmployeeId } = useAuth();
+  const canMarkAttendance = profile?.role === 'hr' || profile?.role === 'admin';
   // Monday–Sunday of whichever week today falls in, not the week the seed
   // records happen to cover. A date literal here would have gone stale the
   // following Monday and stayed wrong forever. All seven days: the working
@@ -438,7 +439,7 @@ export function AttendancePage() {
       key: 'actions',
       header: 'Actions',
       render: (row) =>
-        row.status === 'Pending' && approvableEmployeeIds.has(row.employeeId) ? (
+        row.status === 'Pending' && canDecideRegularization(profile, row, approvableEmployeeIds) ? (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -464,7 +465,9 @@ export function AttendancePage() {
         ) : row.status === 'Pending' ? (
           // Said, not left blank: an empty cell beside a pending request reads
           // as a page that failed to draw its buttons.
-          <span className="text-xs text-ink-400">Decided by their manager or HR</span>
+          <span className="text-xs text-ink-400">
+            {regularizationChangesTheDay(row) ? 'Decided by HR — it changes the attendance day' : 'Decided by their manager or HR'}
+          </span>
         ) : (
           <span className="text-xs text-ink-400">—</span>
         ),
@@ -476,11 +479,14 @@ export function AttendancePage() {
       <PageHeader
         title="Attendance"
         subtitle={`Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])}`}
-        actions={
+        // Only HR and Admin write somebody's attendance day — the record
+        // payroll deducts from. firestore.rules refuses anyone else
+        // (attendanceWriteIsAuthorised), so the button is not offered.
+        actions={canMarkAttendance ? (
           <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
             Mark Attendance
           </Button>
-        }
+        ) : undefined}
       />
 
       {/* Stat Cards — today's numbers */}

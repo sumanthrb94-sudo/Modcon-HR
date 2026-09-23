@@ -311,6 +311,51 @@ export function getCurrentEmployeeRecord(
  * were handed. QA found it live — Priya, whose one report is Karthik, was
  * offered Meera's and Sanjay's with working buttons.
  */
+/**
+ * A regularization that asks for a status changes the attendance day, and
+ * the attendance day — what payroll deducts — is written only by HR and
+ * Admin (attendanceWriteIsAuthorised in firestore.rules, product owner,
+ * 2026-09-23). So an employee-raised request is HR's and Admin's to decide.
+ * A manager still decides the entries the app flagged, which ask for nothing
+ * and change no day.
+ */
+export function regularizationChangesTheDay(request: { requestedStatus?: string | null }): boolean {
+  return Boolean(request.requestedStatus);
+}
+
+const HR_DECIDES_DAY_CHANGES =
+  'This request changes the attendance day, and only HR or an administrator changes an attendance day, so HR decides it.';
+
+/**
+ * Whether this account may decide this regularization: its reporting-line
+ * authority (`getApprovableEmployeeIds`) and, for a request that changes the
+ * day, the HR or Admin role. Every surface that offers the buttons or counts
+ * the queue asks this, so the page, the count and the refusal agree.
+ */
+export function canDecideRegularization(
+  profile: UserProfile | null,
+  request: { employeeId: string; requestedStatus?: string | null },
+  approvable: Set<string>,
+): boolean {
+  if (!approvable.has(request.employeeId)) return false;
+  if (!regularizationChangesTheDay(request)) return true;
+  const role = resolveAppRole(profile);
+  return role === 'Admin' || role === 'HR Manager';
+}
+
+/** Why this account may not decide this regularization, or null when it may. */
+export function regularizationDecisionRefusal(
+  profile: UserProfile | null,
+  request: { employeeId: string; requestedStatus?: string | null },
+  directory: Employee[] = getEmployeeDirectory(),
+): string | null {
+  const refusal = regularizationApprovalRefusal(profile, request.employeeId, directory);
+  if (refusal) return refusal;
+  return canDecideRegularization(profile, request, getApprovableEmployeeIds(profile, directory))
+    ? null
+    : HR_DECIDES_DAY_CHANGES;
+}
+
 export function regularizationApprovalRefusal(
   profile: UserProfile | null,
   employeeId: string,

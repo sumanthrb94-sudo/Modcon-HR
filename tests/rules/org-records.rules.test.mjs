@@ -658,7 +658,7 @@ describe('only an administrator writes the employee directory', () => {
   });
 });
 
-describe('attendance is written by its subject or by somebody who marks it', () => {
+describe('attendance is written by its subject, or by HR and Admin', () => {
   function attendance({ employeeId = 'emp-a1', id = 'att-1', ...rest } = {}) {
     return record({ store: 'attendanceRecords', id, employeeId, ...rest });
   }
@@ -683,13 +683,32 @@ describe('attendance is written by its subject or by somebody who marks it', () 
     );
   });
 
-  it('a manager marks somebody else', async () => {
-    // Attendance is `full` for Manager in defaultPermissions — marking the
-    // team's attendance is the ordinary path, not an escalation.
+  // Product owner, 2026-09-23: only HR and Admin write somebody else's day.
+  // It was any manager, and rules cannot tell a manager's own team from the
+  // rest of the company, so any manager could move any colleague's pay.
+  it('a manager CANNOT mark somebody else', async () => {
+    await assertFails(
+      setDoc(
+        doc(as(USERS.managerLinkedA), 'org_records', attDoc('att-3')),
+        attendance({ employeeId: 'emp-a9', id: 'att-3' }),
+      ),
+    );
+  });
+
+  it('a manager still checks themselves in', async () => {
     await assertSucceeds(
       setDoc(
-        doc(as(USERS.managerA), 'org_records', attDoc('att-3')),
-        attendance({ employeeId: 'emp-a9', id: 'att-3' }),
+        doc(as(USERS.managerLinkedA), 'org_records', attDoc('att-3m')),
+        attendance({ employeeId: 'emp-a2', id: 'att-3m' }),
+      ),
+    );
+  });
+
+  it('an administrator marks somebody else', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(USERS.adminA), 'org_records', attDoc('att-3a')),
+        attendance({ employeeId: 'emp-a9', id: 'att-3a' }),
       ),
     );
   });
@@ -703,12 +722,16 @@ describe('attendance is written by its subject or by somebody who marks it', () 
     );
   });
 
-  it('an unlinked account writes as before, and cannot unlink itself to get there', async () => {
-    // `resolveEmployeeForAccount` falls back to the directory when no link
-    // exists, so an unlinked employee resolves to a record in the app and
-    // checks in. Refusing them here would be the UI acting as one person
-    // while the server judges another — the failure CLAUDE.md's "Who an
-    // account *is*" section exists about. `hrB` is unlinked; org-b is theirs.
+  it('an unlinked account is no longer exempt, and cannot unlink itself to get there', async () => {
+    // The exemption let an account with no employee_links document write
+    // ANYBODY's day. `managerA` is unlinked: refused now.
+    await assertFails(
+      setDoc(
+        doc(as(USERS.managerA), 'org_records', attDoc('att-u1')),
+        attendance({ employeeId: 'emp-a9', id: 'att-u1' }),
+      ),
+    );
+    // An unlinked HR account is an administrator, and still marks its org's.
     await assertSucceeds(
       setDoc(
         doc(as(USERS.hrB), 'org_records', docId({ org: 'org-b', store: 'attendanceRecords', id: 'att-b1' })),
@@ -738,9 +761,9 @@ describe('attendance is written by its subject or by somebody who marks it', () 
     );
   });
 
-  it('a record with no employeeId falls to somebody who marks attendance', async () => {
+  it('a record with no employeeId falls to HR and Admin', async () => {
     // `.get('employeeId', '')` keeps a missing field from erroring the whole
-    // rule. Nobody is "self" to an absent id, so it lands on isManager().
+    // rule. Nobody is "self" to an absent id, so it lands on isOrgAdmin().
     await assertFails(
       setDoc(
         doc(as(USERS.employeeA), 'org_records', attDoc('att-7')),

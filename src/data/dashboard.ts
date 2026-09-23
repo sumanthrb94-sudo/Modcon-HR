@@ -17,7 +17,7 @@ import { getRecordsByDate, getWeekSummary, getRegularizationRequests } from './a
 import { getOnboardings } from './onboarding';
 import { getCandidates, getJobOpenings } from './recruitment';
 import { getReviews } from './performance';
-import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
+import { canDecideRegularization, getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import type { UserProfile } from '@/lib/auth';
 import { todayDate, todayIso } from '@/lib/today';
 import { formatMonthShort, formatWeekdayShort } from '@/lib/utils';
@@ -269,7 +269,8 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
   // what this account may decide, and a card counting the organisation's would
   // promise a manager requests the page will not show them.
   const regularizations = getRegularizationRequests().filter(
-    (request) => request.status === 'Pending' && (!decidable || decidable.has(request.employeeId)),
+    (request) => request.status === 'Pending' &&
+      (!decidable || canDecideRegularization(profile ?? null, request, decidable)),
   );
   const onboardingTasks = getOnboardings()
     .flatMap((onboarding) => onboarding.tasks)

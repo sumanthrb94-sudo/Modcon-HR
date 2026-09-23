@@ -11,7 +11,7 @@ import {
 } from '@/data/attendance';
 import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
-import { getApprovableEmployeeIds } from '@/lib/dataScope';
+import { canDecideRegularization, getApprovableEmployeeIds } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { formatDate } from '@/lib/utils';
@@ -57,9 +57,9 @@ export function RegularizationsApprovalsPage() {
 
     const pendingRegularizations = useMemo(
         () => getRegularizationRequests()
-            .filter((r) => r.status === 'Pending' && approvableEmployeeIds.has(r.employeeId))
+            .filter((r) => r.status === 'Pending' && canDecideRegularization(profile, r, approvableEmployeeIds))
             .sort((a, b) => b.date.localeCompare(a.date)),
-        [regularizationRevision, attendanceRevision, approvableEmployeeIds],
+        [regularizationRevision, attendanceRevision, approvableEmployeeIds, profile],
     );
 
     const employees = useMemo(() => getEmployeeDirectory(), [regularizationRevision, directoryRevision]);
@@ -83,7 +83,10 @@ export function RegularizationsApprovalsPage() {
             ) : null}
 
             <Card>
-                <CardHeader title="Pending Attendance Regularizations" subtitle="Only regularizations you may decide are listed" />
+                <CardHeader
+                    title="Pending Attendance Regularizations"
+                    subtitle="Only regularizations you may decide are listed. A request that changes an attendance day is decided by HR."
+                />
                 {pendingRegularizations.length === 0 ? (
                     <p className="text-sm text-ink-400 text-center py-6">No pending regularizations</p>
                 ) : (

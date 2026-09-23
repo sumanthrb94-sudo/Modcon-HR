@@ -68,14 +68,18 @@ const claim = (id: string, employeeId: string) => ({
   description: 'E2E approvals queue scope.',
 });
 
-const regularization = (employeeId: string) => ({
-  id: `reg-${employeeId}-2026-09-02`,
+// An entry the app flagged (no requested status): the manager decides it.
+// A raised request asks to change the attendance day, and since 2026-09-23
+// only HR and Admin change a day, so it is HR's to decide, not the manager's.
+const regularization = (employeeId: string, requestedStatus: string | null = null, date = '2026-09-02') => ({
+  id: `reg-${employeeId}-${date}`,
   employeeId,
-  date: '2026-09-02',
-  reason: 'E2E approvals queue scope.',
-  requestedStatus: 'Present',
+  date,
+  reason: requestedStatus ? 'E2E approvals queue scope — raised.' : 'E2E approvals queue scope.',
+  requestedStatus,
   status: 'Pending',
 });
+const RAISED_DATE = '2026-09-03';
 
 async function firestore(path: string, init: RequestInit = {}) {
   const token = await adminToken();
@@ -101,6 +105,7 @@ const SEEDED: Array<[string, string]> = [
   ['expenseClaims', 'exp-e2e-aq-outsider'],
   ['regularizationOverrides', `reg-${REPORT}-2026-09-02`],
   ['regularizationOverrides', `reg-${OUTSIDER}-2026-09-02`],
+  ['regularizationOverrides', `reg-${REPORT}-${RAISED_DATE}`],
   ['leaveRequests', 'lr-e2e-aq-report'],
   ['leaveRequests', 'lr-e2e-aq-outsider'],
 ];
@@ -141,7 +146,11 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
     // regularizations are narrowed on the server like expense claims, so a
     // request without its manager in readableBy is one that manager cannot
     // read or decide.
-    await seedOrgRecords('regularizationOverrides', [regularization(REPORT), regularization(OUTSIDER)], {
+    await seedOrgRecords('regularizationOverrides', [
+      regularization(REPORT),
+      regularization(OUTSIDER),
+      regularization(REPORT, 'Present', RAISED_DATE),
+    ], {
       employeeId: (r) => r.employeeId,
       readableBy: (r) => (r.employeeId === REPORT ? [REPORT, LEAD] : [r.employeeId]),
     });
@@ -190,7 +199,10 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
     const row = (employeeId: string) =>
       page.locator(`[data-testid="regularization-approval-request"][data-employee-id="${employeeId}"]`);
 
+    // The report's flagged entry, and not their raised request: that one
+    // changes the attendance day, which is HR's to decide.
     await expect(row(REPORT)).toHaveCount(1, { timeout: 20_000 });
+    await expect(page.getByText('E2E approvals queue scope — raised.')).toHaveCount(0);
     // The row QA was wrongly offered, with a working Approve button on it.
     await expect(row(OUTSIDER)).toHaveCount(0);
   });

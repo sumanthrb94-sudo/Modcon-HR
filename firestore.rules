@@ -1283,50 +1283,33 @@ service cloud.firestore {
      * present on a day they did not work, and payroll deducts unpaid absence
      * from what it pays.
      *
-     * `isManager()` is the set that may write somebody else's, and it is not
-     * an invention: `defaultPermissions` in src/lib/accessControl.ts gives the
-     * Attendance module `full` to Admin, HR Manager **and Manager**, and
-     * `none` to Employee. A manager marking their team's attendance is the
-     * ordinary path, so narrowing this to `isOrgAdmin()` would refuse a role
-     * the product grants. `isManager()` in these rules is manager|hr|admin,
-     * which is exactly that set.
+     * Only HR and Admin (`isOrgAdmin()`) write somebody else's day — the
+     * product owner's decision, 2026-09-23. This used to be `isManager()`,
+     * because the Attendance module is `full` for Manager and a manager
+     * marking their team was the ordinary path; but rules cannot walk the org
+     * chart, so that meant ANY manager could write ANY colleague's day, and
+     * the day is what payroll deducts. The app follows: Mark Attendance is
+     * offered to HR and Admin only, and a regularization that changes the day
+     * is decided by HR (`canDecideRegularization` in src/lib/dataScope.ts).
      *
-     * The employee half is `isSelf` rather than "anyone" because
-     * `My Attendance` is `full` for Employee — checking yourself in is
-     * self-service, and it is the only attendance an employee may write.
+     * The employee half is `isSelf`: `My Attendance` is `full` for everyone,
+     * checking yourself in and out is self-service, and it is the only
+     * attendance anyone else may write.
      *
      * `.get('employeeId', '')` rather than `.employeeId`: a missing field
-     * errors and an error denies the whole rule, including the clauses beside
-     * it. An attendance record without one falls to `isManager()`, which is
-     * the safe direction — the field is lifted to the top level by
-     * `persistentCollection` precisely so this rule can read it.
+     * errors and an error denies the whole rule. A record without one is
+     * `isOrgAdmin()`'s alone, which is the safe direction.
      *
-     * An account with no `employee_links` document is exempt, and that is
-     * deliberate rather than an oversight. `resolveEmployeeForAccount` falls
-     * back to matching the directory by authUid, work email and display name
-     * when no link exists, so an unlinked employee resolves to a record in the
-     * app and checks in perfectly well — while `myEmployeeId()` here answers
-     * null. Refusing them would recreate exactly the divergence the
-     * "Who an account *is*" section of CLAUDE.md is about: the UI acting as
-     * one person while the server judges another, arriving as a console error
-     * with nothing on screen. Unlinked accounts are ordinary — they predate
-     * the collection, and Settings → Database is how they get one — so this
-     * rule is as strong as the linking is complete, and it gets stronger as
-     * the backfill runs rather than locking people out today.
-     *
-     * That exemption is not something an employee can arrange for themselves:
-     * `employee_links` is `isOrgAdmin()` for create, update *and* delete, so
-     * nobody can unlink themselves to escape the check.
-     *
-     * What this still does not do is check *whose* manager. Rules cannot walk
-     * the org chart, so a manager may write attendance outside their own
-     * reporting line; `src/lib/dataScope.ts` is where that narrowing lives.
-     * Same limit, and the same reason, as the leave rule below.
+     * The exemption for an account with no `employee_links` document is gone.
+     * It let such an account write ANYBODY's day. When it was removed every
+     * employee and manager account in production was linked — the only
+     * unlinked accounts were three HR administrators, who are `isOrgAdmin()`
+     * anyway — so it locked nobody out. An account that is not linked checks
+     * in once an administrator links it (Settings → Database).
      */
     function attendanceWriteIsAuthorised() {
       return request.resource.data.store != 'attendanceRecords' ||
-        isManager() ||
-        myEmployeeId() == null ||
+        isOrgAdmin() ||
         isSelf(request.resource.data.get('employeeId', ''));
     }
 

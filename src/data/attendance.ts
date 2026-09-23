@@ -6,7 +6,7 @@ import { persistentCollection } from '@/data/persistence';
 import { clockMinutes } from '@/data/shiftRules';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { UserProfile } from '@/lib/auth';
-import { regularizationApprovalRefusal } from '@/lib/dataScope';
+import { regularizationDecisionRefusal } from '@/lib/dataScope';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -449,7 +449,7 @@ export function decideRegularization(
   // `firestore.rules` enforces the same reporting line server-side, through
   // the request's stored `readableBy`; this is the check that explains a
   // refusal instead of letting the write be rolled back.
-  const refusal = regularizationApprovalRefusal(decider.profile, current.employeeId);
+  const refusal = regularizationDecisionRefusal(decider.profile, current);
   if (refusal) return { ok: false, reason: refusal };
 
   if (status === 'Approved' && current.requestedStatus) {
