@@ -15,7 +15,7 @@ import {
 } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
-import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { usePayslipDocuments } from '@/lib/payslipDocuments';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
@@ -50,7 +50,10 @@ function EmployeeFinancePage() {
   // hydrated from Firestore shortly after this one first renders.
   useSalaryStructureRevision();
   useStatutoryRevision();
-  const employee = getCurrentEmployee(profile);
+  // Any role's own record, not only an Employee's: a Manager has payslips too.
+  // `getCurrentEmployee` answers only for the Employee role, which left a
+  // Manager on this page as nobody.
+  const employee = getCurrentEmployeeRecord(profile);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);
 
@@ -106,6 +109,7 @@ function EmployeeFinancePage() {
   if (!employee) {
     return (
       <EmptyState
+        headingLevel="h1"
         icon={<Wallet size={24} />}
         title="Finance information unavailable"
         description="We could not match this signed-in account to an employee payroll record."
@@ -482,7 +486,11 @@ export function FinancePage() {
   const { profile } = useAuth();
   const role = resolveAppRole(profile);
 
-  if (role !== 'Employee') {
+  // The organisation's payroll is HR's and the Administrator's. Everyone else —
+  // Employees, and now Managers — sees their own payslips here. A Manager used
+  // to be sent to the Payroll page, which is why the module was switched off
+  // for them and they could not see their own pay at all.
+  if (role === 'HR Manager' || role === 'Admin') {
     return <PayrollPage />;
   }
 

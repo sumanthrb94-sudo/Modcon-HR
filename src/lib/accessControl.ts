@@ -45,7 +45,9 @@ export const defaultPermissions: PermissionMatrix = {
   'My Attendance': { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
   'Leave Management': { Admin: 'full', 'HR Manager': 'full', Manager: 'full', Employee: 'full' },
   // Admin is absent from Finance by design — see MODULE_ROLE_EXCLUSIONS.
-  Finance: { Admin: 'none', 'HR Manager': 'view', Manager: 'none', Employee: 'full' },
+  // Finance is a person's own pay. A Manager is paid too, so they have it
+  // (product owner, 2026-09-23); it shows their payslips, never the team's.
+  Finance: { Admin: 'none', 'HR Manager': 'view', Manager: 'full', Employee: 'full' },
   Payroll: { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },
   Recruitment: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
   Onboarding: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'none' },
@@ -107,6 +109,9 @@ export const PINNED_PERMISSIONS: Partial<
   Record<AppModule, Partial<Record<AppRole, PermissionLevel>>>
 > = {
   'Employee Directory': { Employee: 'view' },
+  // Pinned so an organisation that saved its matrix before Managers had it
+  // does not keep them locked out of their own payslips.
+  Finance: { Manager: 'full' },
   Documents: { Admin: 'full', 'HR Manager': 'full', Manager: 'view', Employee: 'view' },
   Admin: { Admin: 'full' },
   'Reports & Analytics': { Admin: 'full', 'HR Manager': 'full', Manager: 'none', Employee: 'none' },

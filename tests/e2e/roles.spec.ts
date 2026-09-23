@@ -43,12 +43,15 @@ test.describe.serial('role-based access', () => {
 
   test('base modules are always reachable', async () => {
     // Visibility follows the permission matrix in src/lib/accessControl.ts:
-    // employees get the self-service modules, while the company-wide Attendance
-    // and Reports views are restricted to managers and admins.
+    // employees get the self-service modules; company-wide Attendance is for
+    // managers and admins; Reports is HR Manager and Administrator only
+    // (product owner, 2026-09-23), and a Manager has their own Finance.
     const labels =
       persona().role === 'employee'
         ? ['Employees', 'My Attendance', 'Leave', 'Finance']
-        : ['Employees', 'Attendance', 'Leave', 'Reports'];
+        : persona().role === 'manager'
+          ? ['Employees', 'Attendance', 'Leave', 'Finance']
+          : ['Employees', 'Attendance', 'Leave', 'Reports'];
 
     for (const label of labels) {
       await page.getByRole('link', { name: label, exact: true }).first().click();
@@ -80,15 +83,26 @@ test.describe.serial('role-based access', () => {
     const p = persona();
     const finance = page.getByRole('link', { name: 'Finance', exact: true });
 
-    if (p.role === 'employee') {
-      // Finance is the employee's own payslip view.
+    if (p.role === 'employee' || p.role === 'manager') {
+      // Finance is a person's own payslip view, and a Manager is paid too
+      // (product owner, 2026-09-23) — their own payslips, never the Payroll
+      // page, which is HR's and the Administrator's.
       await expect(finance.first()).toBeVisible();
+      if (p.role === 'manager') {
+        await page.goto('/finance');
+        // This persona is linked to no employee record, so it is shown the
+        // personal page's "no record" state — never the organisation's payroll.
+        await expect(
+          page.getByText('Payslip History').or(page.getByText('Finance information unavailable')),
+        ).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('button', { name: /Run Payroll/i })).toHaveCount(0);
+      }
       return;
     }
 
-    // Manager has Finance set to 'none' in the permission matrix; Admin is
-    // excluded from it outright, because /finance rendered the Payroll page
-    // they already have (see MODULE_ROLE_EXCLUSIONS in lib/accessControl.ts).
+    // Admin is excluded from it outright, because /finance rendered the
+    // Payroll page they already have (see MODULE_ROLE_EXCLUSIONS in
+    // lib/accessControl.ts).
     await expect(finance).toHaveCount(0);
 
     if (p.role === 'admin') {
