@@ -101,7 +101,22 @@ const SEEDED: Array<[string, string]> = [
   ['expenseClaims', 'exp-e2e-aq-outsider'],
   ['regularizationOverrides', `reg-${REPORT}-2026-09-02`],
   ['regularizationOverrides', `reg-${OUTSIDER}-2026-09-02`],
+  ['leaveRequests', 'lr-e2e-aq-report'],
+  ['leaveRequests', 'lr-e2e-aq-outsider'],
 ];
+
+const leave = (id: string, employeeId: string) => ({
+  id,
+  employeeId,
+  type: 'Casual',
+  startDate: '2026-12-02',
+  endDate: '2026-12-02',
+  days: 1,
+  reason: 'E2E approvals queue scope.',
+  status: 'Pending',
+  appliedOn: '2026-09-01',
+  approverId: null,
+});
 
 test.describe.serial('a manager’s approval queues follow their reporting line', () => {
   let managerUid = '';
@@ -123,6 +138,9 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
       readableBy: (r) => (r.employeeId === REPORT ? [REPORT, LEAD] : [r.employeeId]),
     });
     await seedOrgRecords('regularizationOverrides', [regularization(REPORT), regularization(OUTSIDER)], {
+      employeeId: (r) => r.employeeId,
+    });
+    await seedOrgRecords('leaveRequests', [leave('lr-e2e-aq-report', REPORT), leave('lr-e2e-aq-outsider', OUTSIDER)], {
       employeeId: (r) => r.employeeId,
     });
 
@@ -191,5 +209,17 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
       (r) => r !== null,
     );
     expect(outsider?.status).toBe('Pending');
+  });
+
+  // QA saw an HR account's dashboard say "Pending Leaves: 0" beside a Leave
+  // Management queue of 3: managers and HR get the personal dashboard, and
+  // that tile counted only their own applications. An approver's tile now
+  // counts what they decide, the same figure the queue behind it holds.
+  test('the dashboard tile counts the leave this manager decides', async ({ page }) => {
+    await login(page);
+    await page.goto('/');
+    const tile = page.locator('p', { hasText: /^Leave Awaiting Your Approval$/ }).locator('xpath=..');
+    // The report's request and not the outsider's: one, not two.
+    await expect(tile.locator('p').nth(1)).toHaveText('1', { timeout: 20_000 });
   });
 });

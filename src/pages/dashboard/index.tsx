@@ -110,7 +110,7 @@ function EmptyChart({ message, height = 220 }: { message: string; height?: numbe
 }
 
 function EmployeeDashboard() {
-  const { profile } = useAuth();
+  const { profile, isManager, linkedEmployeeId } = useAuth();
   const currentEmployee = getCurrentEmployee(profile);
   const holidayRevision = useHolidayDirectoryRevision();
   // Both cards below read leave records, so both go stale without this: a
@@ -231,6 +231,19 @@ function EmployeeDashboard() {
     approved: leaveRequests.filter((request) => request.status === 'Approved').length,
   };
 
+  // Managers and HR land on this dashboard too — only `admin` gets the admin
+  // one — and for them "Pending Leaves" read as the queue they decide while
+  // counting only their own applications. QA saw it live: an HR account's tile
+  // said 0 beside a Leave Management queue of 3. So approvers are shown the
+  // queue, counted by the same scoped summary the approvals page uses, and
+  // the personal tiles say they are personal.
+  const leaveApprovalsWaiting = useMemo(
+    () => (isManager
+      ? pendingApprovalsSummary(profile).find((item) => item.type === 'Leave Requests')?.count ?? 0
+      : null),
+    [isManager, profile, linkedEmployeeId, dataRevision],
+  );
+
   const openTickets = employeeTickets.filter((ticket) => ticket.status === 'Open' || ticket.status === 'In Progress').length;
 
   return (
@@ -298,8 +311,12 @@ function EmployeeDashboard() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Leave Requests" value={String(leaveRequests.length)} icon={<CalendarOff size={18} />} />
-        <StatCard label="Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} />
+        <StatCard label="My Leave Requests" value={String(leaveRequests.length)} icon={<CalendarOff size={18} />} />
+        {leaveApprovalsWaiting !== null ? (
+          <StatCard label="Leave Awaiting Your Approval" value={String(leaveApprovalsWaiting)} icon={<Clock size={18} />} />
+        ) : (
+          <StatCard label="My Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} />
+        )}
         <StatCard label="Expense Claims" value={String(employeeExpenses.length)} icon={<IndianRupee size={18} />} />
         <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} />
       </div>
