@@ -41,6 +41,7 @@ import {
   pendingApprovalsSummary, recentActivity, weeklyAttendanceSeries, ATTENDANCE_COLORS,
 } from '@/data/dashboard';
 import { BRAND_ACCENT, CHART_GRID, CHART_TICK_FILL, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
+import { CozyDailyBriefing } from '@/components/dashboard/CozyDailyBriefing';
 
 // ---------------------------------------------------------------------------
 // Announcement category → badge tone helper
@@ -252,6 +253,13 @@ function EmployeeDashboard() {
         title={`Good ${currentHour() < 12 ? 'morning' : currentHour() < 17 ? 'afternoon' : 'evening'}, ${firstName} 👋`}
         subtitle={currentEmployee ? `${currentEmployee.designation} · ${currentEmployee.department}` : 'Employee workspace'}
         actions={<NotificationsMenu />}
+      />
+
+      <CozyDailyBriefing
+        currentEmployee={currentEmployee}
+        profile={profile}
+        isManager={isManager}
+        pendingApprovalsCount={leaveApprovalsWaiting ?? 0}
       />
 
       <div className="grid grid-cols-1 gap-4">

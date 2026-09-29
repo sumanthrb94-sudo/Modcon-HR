@@ -126,7 +126,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       <BrandMark size={24} className="lg:hidden" />
 
       {role !== 'Employee' ? (
-        <div className="relative hidden sm:block w-full max-w-md" ref={searchRef}>
+        <div className="relative hidden sm:block w-full max-w-xs md:max-w-sm xl:max-w-md shrink" ref={searchRef}>
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
           <input
             type="text"
@@ -172,7 +172,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         </div>
       ) : null}
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
         {isSuperAdmin ? (
           <div className="hidden sm:flex items-center gap-1.5 border border-ink-300 bg-brand-100 pl-2 pr-1 py-1">
             <Building2 size={14} className="text-brand-600 shrink-0" />
@@ -210,7 +210,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                   : [{ label: 'ModCon Builders (Default)', value: DEFAULT_ORG_KEY }]),
                 ...organizations.map((o) => ({ label: o.name, value: o.id ?? '' })),
               ]}
-              className="!py-1 !text-xs !border-0 !bg-transparent !shadow-none w-40 md:w-48"
+              className="!py-1 !text-xs !border-0 !bg-transparent !shadow-none w-36 sm:w-40 md:w-48"
             />
           </div>
         ) : null}
@@ -231,16 +231,20 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         {insideOrg ? <GettingStarted /> : null}
         {role !== 'Employee' ? <QuickAddMenu className="hidden md:inline-flex" /> : null}
         <NotificationsMenu compact />
-        <div className="flex items-center gap-2.5 pl-2 ml-1 border-l border-ink-200">
+        <div className="flex items-center gap-2 pl-2 ml-1 border-l border-ink-200">
           <Avatar name={profile?.displayName || profile?.email || 'User'} size="sm" />
-          <div className="hidden md:block leading-tight">
-            <p className="text-sm font-semibold text-ink-900">{profile?.displayName || profile?.email}</p>
-            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-500">{role === 'Admin' ? 'Administrator' : role}</p>
+          <div className="hidden md:block leading-tight max-w-[130px] lg:max-w-[170px]">
+            <p className="text-sm font-semibold text-ink-900 truncate" title={profile?.displayName || profile?.email || ''}>
+              {profile?.displayName || profile?.email}
+            </p>
+            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-500 truncate">
+              {role === 'Admin' ? 'Administrator' : role}
+            </p>
           </div>
           <button
             type="button"
             onClick={() => signOutUser()}
-            className="ml-1 p-1.5 text-ink-500 hover:bg-ink-100 hover:text-brand-700"
+            className="ml-0.5 p-1.5 text-ink-500 hover:bg-ink-100 hover:text-brand-700 shrink-0"
             title="Sign out"
             aria-label="Sign out"
           >

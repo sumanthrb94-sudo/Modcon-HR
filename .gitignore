@@ -55,3 +55,6 @@ coverage
 
 # Subagent git worktrees — scratch checkouts, never part of the repo.
 .claude/worktrees/
+
+/audit_screenshots/
+

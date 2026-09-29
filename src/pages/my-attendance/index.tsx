@@ -638,6 +638,16 @@ export function MyAttendancePage() {
             <StatCard label="Late Arrivals" value={stats.late} icon={<Clock size={20} />} />
           </div>
 
+          {/* Status Badge Legend Bar */}
+          <div className="flex items-center gap-4 flex-wrap px-4 py-2.5 bg-white border border-ink-200 text-xs text-ink-600 shadow-sm">
+            <span className="font-semibold text-ink-800 uppercase tracking-wider text-[10px]">Status Legend:</span>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" /><span>Present</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-500 shrink-0" /><span>WFH</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0" /><span>Regularized / Late</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" /><span>Absent / LOP</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-ink-400 shrink-0" /><span>Week Off</span></div>
+          </div>
+
           {/* Attendance records */}
           <Card padding={false}>
             <div className="p-5 border-b border-ink-100">
@@ -651,6 +661,7 @@ export function MyAttendancePage() {
               columns={columns}
               data={records}
               keyExtractor={(r) => r.id}
+              stickyFirstColumn={true}
               emptyMessage="No attendance records for this employee."
             />
           </Card>

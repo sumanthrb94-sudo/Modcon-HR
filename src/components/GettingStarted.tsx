@@ -47,7 +47,10 @@ const SEEN_KEY = 'modcon.hr.gettingStarted.seen';
 function hasOpenedBefore(uid: string): boolean {
   if (typeof window === 'undefined') return true;
   try {
-    return window.localStorage.getItem(orgScopedKey(`${SEEN_KEY}.${uid}`)) === '1';
+    return (
+      window.localStorage.getItem(`modcon.hr.gettingStarted.seen.${uid}`) === '1' ||
+      window.localStorage.getItem(orgScopedKey(`${SEEN_KEY}.${uid}`)) === '1'
+    );
   } catch {
     // A browser refusing storage should not mean this reopens on every page
     // load for the rest of somebody's day.
@@ -58,6 +61,7 @@ function hasOpenedBefore(uid: string): boolean {
 function rememberOpened(uid: string): void {
   if (typeof window === 'undefined') return;
   try {
+    window.localStorage.setItem(`modcon.hr.gettingStarted.seen.${uid}`, '1');
     window.localStorage.setItem(orgScopedKey(`${SEEN_KEY}.${uid}`), '1');
   } catch {
     // ignore
@@ -191,7 +195,10 @@ export function GettingStarted() {
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          if (profile?.uid) rememberOpened(profile.uid);
+          setOpen(false);
+        }}
         title={isOrgAdmin ? 'Setting up your organisation' : 'Getting started'}
         subtitle={
           remaining === 0
@@ -200,7 +207,17 @@ export function GettingStarted() {
               ? 'Each of these changes what the app actually does. They can be done in any order.'
               : 'A short list, and then the app is yours.'
         }
-        footer={<Button variant="primary" onClick={() => setOpen(false)}>Close</Button>}
+        footer={
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (profile?.uid) rememberOpened(profile.uid);
+              setOpen(false);
+            }}
+          >
+            Close
+          </Button>
+        }
       >
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm">

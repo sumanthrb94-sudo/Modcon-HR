@@ -429,3 +429,61 @@ export function getApprovedThisMonth(month = currentMonthIso()): number {
     (r) => r.status === 'Approved' && r.appliedOn.startsWith(month),
   ).length;
 }
+
+export interface TeamLeaveOverlap {
+  request: LeaveRequest;
+  employeeName: string;
+  department: string;
+  designation: string;
+  overlapDays: number;
+}
+
+/**
+ * Discovers colleagues in the same department who have approved or pending leave
+ * overlapping with the requested window [startDate, endDate].
+ * Used by the Leave Application modal to give employees peer availability insight.
+ */
+export function getOverlappingTeamLeaves(
+  applicantEmployeeId: string,
+  startDate: string,
+  endDate: string,
+  department?: string,
+): TeamLeaveOverlap[] {
+  if (!startDate || !endDate || startDate > endDate) return [];
+  const dir = getEmployeeDirectory();
+  const applicant = dir.find((e) => e.id === applicantEmployeeId);
+  const targetDept = department || applicant?.department;
+  if (!targetDept) return [];
+
+  const peersInDept = new Set(
+    dir.filter((e) => e.department === targetDept && e.id !== applicantEmployeeId).map((e) => e.id),
+  );
+
+  const overlaps: TeamLeaveOverlap[] = [];
+  const allRequests = getLeaveRequests();
+
+  for (const r of allRequests) {
+    if (!peersInDept.has(r.employeeId)) continue;
+    if (r.status !== 'Approved' && r.status !== 'Pending') continue;
+
+    // Overlap condition: r.startDate <= endDate && r.endDate >= startDate
+    if (r.startDate <= endDate && r.endDate >= startDate) {
+      const peer = dir.find((e) => e.id === r.employeeId);
+      const maxStart = r.startDate > startDate ? r.startDate : startDate;
+      const minEnd = r.endDate < endDate ? r.endDate : endDate;
+      const msDiff = new Date(minEnd).getTime() - new Date(maxStart).getTime();
+      const overlapDays = Math.max(1, Math.round(msDiff / (1000 * 60 * 60 * 24)) + 1);
+
+      overlaps.push({
+        request: r,
+        employeeName: peer?.fullName ?? 'Colleague',
+        department: targetDept,
+        designation: peer?.designation ?? '',
+        overlapDays,
+      });
+    }
+  }
+
+  return overlaps;
+}
+

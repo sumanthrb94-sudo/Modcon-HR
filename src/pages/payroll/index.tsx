@@ -272,19 +272,6 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
         <div>
           <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-3">Deductions</p>
           <div className="space-y-2.5">
-            {/* A STORED payslip, so these are the document's own figures and
-                not a recomputation — a payslip is a record of what was paid,
-                and re-deriving it from today's settings would rewrite history
-                every time an administrator changed a rate.
-                The shared `Payslip` shape has fields for provident fund and tax
-                and nothing for ESI or professional tax, so those two ride in
-                `otherDeductions` alongside loss of pay; `storedDeductionRows`
-                splits them back out where the payslip recorded its LOP days,
-                and labels the bucket for what it holds where it did not. Live surfaces (Finance, the profile's
-                Compensation tab) split them out through `deductionRows`.
-                A head that came to zero is omitted rather than shown: "PF ₹0"
-                reads as a contribution that was calculated and came to nothing,
-                which is not what an organisation running no PF scheme means. */}
             {storedDeductionRows(payslip).map((row) => (
               <div key={row.label} className="flex items-center justify-between">
                 <span className="text-sm text-ink-600">
@@ -301,6 +288,38 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
           </div>
         </div>
       </div>
+
+      {/* Competitor Benchmark (Rippling): Take-Home Ratio Breakdown */}
+      {payslip.grossEarnings > 0 && (
+        <div className="bg-ink-50 rounded-xl p-4 border border-ink-100 mb-5" data-testid="payslip-ratio-breakdown">
+          <div className="flex items-center justify-between text-xs font-semibold text-ink-700 mb-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+              Take-Home Pay ({Math.min(100, Math.max(0, Math.round((payslip.netPay / payslip.grossEarnings) * 100)))}%)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
+              Deductions ({Math.max(0, 100 - Math.min(100, Math.max(0, Math.round((payslip.netPay / payslip.grossEarnings) * 100))))}%)
+            </span>
+          </div>
+          <div
+            className="w-full bg-ink-200 h-2.5 rounded-full overflow-hidden flex"
+            title={`Take-Home: ${Math.round((payslip.netPay / payslip.grossEarnings) * 100)}%`}
+          >
+            <div
+              className="bg-emerald-500 h-full transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(0, Math.round((payslip.netPay / payslip.grossEarnings) * 100)))}%` }}
+            />
+            <div
+              className="bg-rose-500 h-full transition-all duration-500"
+              style={{ width: `${Math.max(0, 100 - Math.min(100, Math.max(0, Math.round((payslip.netPay / payslip.grossEarnings) * 100))))}%` }}
+            />
+          </div>
+          <p className="text-xs text-ink-500 mt-2">
+            Employee retains <strong className="text-ink-800 font-semibold">{Math.min(100, Math.max(0, Math.round((payslip.netPay / payslip.grossEarnings) * 100)))}%</strong> of gross earnings after statutory taxes and deductions.
+          </p>
+        </div>
+      )}
 
       {/* Net Pay highlight */}
       <div className="rounded-xl bg-brand-600 text-white p-5 flex items-center justify-between">
@@ -839,6 +858,7 @@ export function PayrollPage() {
               columns={runColumns}
               data={sortedPayrollRuns}
               keyExtractor={(r) => r.id}
+              stickyFirstColumn={true}
             />
           </div>
         )}
@@ -866,6 +886,7 @@ export function PayrollPage() {
               data={filteredPayslips}
               keyExtractor={(p) => p.id}
               onRowClick={(p) => setSelectedPayslip(p)}
+              stickyFirstColumn={true}
               emptyMessage="No payslips match your filters"
             />
           </div>

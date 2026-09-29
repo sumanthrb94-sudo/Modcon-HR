@@ -28,6 +28,7 @@ import {
   saveLeaveRequests,
   updateLeaveRequestStatus,
   LEAVE_REQUESTS_CHANGED_EVENT,
+  getOverlappingTeamLeaves,
 } from '@/data/leave';
 import { getLeavePolicies, hasEmployeeLeavePolicy, normalizeLeaveTypeValue } from '@/data/leavePolicies';
 import { getHolidayDirectory } from '@/data/holidays';
@@ -144,6 +145,11 @@ export function LeavePage() {
       }),
     [formEmployee, formType, formStart, formEnd, formHalfDay, leaveRequests, leavePoliciesRevision, holidayRevision],
   );
+
+  const teamOverlaps = useMemo(() => {
+    if (!formEmployee?.id || !formStart || !formEnd || formStart > formEnd) return [];
+    return getOverlappingTeamLeaves(formEmployee.id, formStart, formEnd, formEmployee.department);
+  }, [formEmployee, formStart, formEnd, leaveRequests]);
 
   // Half a day is only offered where the policy allows it on a single-day
   // request; changing type or dates away from that must not leave it set.
@@ -962,6 +968,56 @@ export function LeavePage() {
                   {formatDateShort(d)} — {formatWeekdayLong(d)} week-off (not charged)
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Competitor Benchmark: Collaborative Team Availability & Overlap Preview */}
+          {formStart && formEnd && formEnd >= formStart && (
+            <div data-testid="team-leave-overlap-preview">
+              {teamOverlaps.length === 0 ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-emerald-800">
+                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Team Availability Clear:</strong> No colleagues in your department are away during these dates.
+                    </span>
+                  </div>
+                  <Badge tone="green">All Clear</Badge>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/90 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-amber-900 font-semibold">
+                      <Users size={16} className="text-amber-600 shrink-0" />
+                      <span>Team Coverage Notice ({teamOverlaps.length} colleague{teamOverlaps.length > 1 ? 's' : ''} away)</span>
+                    </div>
+                    <Badge tone="amber">{teamOverlaps.length} Overlapping</Badge>
+                  </div>
+                  <p className="text-ink-600">
+                    Colleague(s) in your department have leave scheduled on overlapping dates:
+                  </p>
+                  <div className="space-y-1.5 pt-0.5">
+                    {teamOverlaps.map((o) => (
+                      <div key={o.request.id} className="flex items-center justify-between bg-white/90 border border-amber-200 rounded px-2.5 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={o.employeeName} size="xs" />
+                          <div>
+                            <span className="font-medium text-ink-900">{o.employeeName}</span>
+                            <span className="text-ink-400 ml-1">· {o.designation}</span>
+                          </div>
+                        </div>
+                        <div className="text-right text-xs">
+                          <span className="text-ink-800 font-medium">{formatDateShort(o.request.startDate)} to {formatDateShort(o.request.endDate)}</span>
+                          <span className="text-ink-400 ml-1">({o.request.type})</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-amber-800 pt-0.5">
+                    You can still submit your request. Your manager will see this team coverage status when reviewing.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

@@ -122,11 +122,17 @@ export function AttendancePage() {
     [profile, directoryRevision, linkedEmployeeId],
   );
   const [regDecisionNotice, setRegDecisionNotice] = useState<string | null>(null);
+  const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
 
   // Requests raised by people outside this viewer's scope aren't theirs to see.
   const visibleRegRequests = useMemo(
     () => regRequests.filter((request) => visibleEmployeeIds.has(request.employeeId)),
     [regRequests, visibleEmployeeIds],
+  );
+
+  const pendingRequests = useMemo(
+    () => visibleRegRequests.filter((r) => r.status === 'Pending' && canDecideRegularization(profile, r, approvableEmployeeIds)),
+    [visibleRegRequests, profile, approvableEmployeeIds],
   );
 
   // Every figure on this page — the stat cards, the weekly chart and the table
@@ -309,6 +315,16 @@ export function AttendancePage() {
   const approveReg = (id: string) => decideReg(id, 'Approved');
   const rejectReg = (id: string) => decideReg(id, 'Rejected');
 
+  function decideBulkReg(ids: string[], status: 'Approved' | 'Rejected') {
+    let successCount = 0;
+    for (const id of ids) {
+      const result = decideRegularization(id, status, { profile });
+      if (result.ok) successCount++;
+    }
+    setSelectedRegIds(new Set());
+    setRegDecisionNotice(`Batch ${status.toLowerCase()} ${successCount} regularization request(s).`);
+  }
+
   function resetMarkAttendanceForm() {
     setMarkEmployeeId('');
     setMarkStatus('Present');
@@ -361,6 +377,43 @@ export function AttendancePage() {
 
   const regColumns: Column<RegularizationRequest>[] = [
     {
+      key: 'select',
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Select all pending requests"
+          className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+          checked={pendingRequests.length > 0 && pendingRequests.every((r) => selectedRegIds.has(r.id))}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedRegIds(new Set(pendingRequests.map((r) => r.id)));
+            } else {
+              setSelectedRegIds(new Set());
+            }
+          }}
+        />
+      ),
+      className: 'w-10 text-center',
+      render: (row) =>
+        row.status === 'Pending' && canDecideRegularization(profile, row, approvableEmployeeIds) ? (
+          <input
+            type="checkbox"
+            aria-label={`Select request ${row.id}`}
+            className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+            checked={selectedRegIds.has(row.id)}
+            onChange={(e) => {
+              e.stopPropagation();
+              const next = new Set(selectedRegIds);
+              if (e.target.checked) next.add(row.id);
+              else next.delete(row.id);
+              setSelectedRegIds(next);
+            }}
+          />
+        ) : (
+          <span className="text-ink-300 text-xs">—</span>
+        ),
+    },
+    {
       key: 'employee',
       header: 'Employee',
       render: (row) => {
@@ -380,6 +433,43 @@ export function AttendancePage() {
       key: 'date',
       header: 'Date',
       render: (row) => <span className="text-ink-700">{formatDate(row.date)}</span>,
+    },
+    {
+      key: 'sla',
+      header: 'SLA Status',
+      render: (row) => {
+        if (row.status !== 'Pending') {
+          return <span className="text-xs text-ink-400">Resolved</span>;
+        }
+        const rowTime = new Date(`${row.date}T09:00:00Z`).getTime();
+        const now = new Date().getTime();
+        const diffHours = Math.max(0, Math.round((now - rowTime) / (1000 * 60 * 60)));
+        if (diffHours < 24) {
+          return (
+            <span title="Within 24-hour review SLA">
+              <Badge tone="green" dot>
+                &lt; 24h Normal
+              </Badge>
+            </span>
+          );
+        } else if (diffHours <= 48) {
+          return (
+            <span title="Warning: Review expiring soon">
+              <Badge tone="amber" dot>
+                {diffHours}h Warning
+              </Badge>
+            </span>
+          );
+        } else {
+          return (
+            <span title="SLA Breached (> 48h): Escalated to HR Ops">
+              <Badge tone="red" dot>
+                &gt; 48h Escalated
+              </Badge>
+            </span>
+          );
+        }
+      },
     },
     {
       key: 'actualStatus',
@@ -568,6 +658,7 @@ export function AttendancePage() {
           columns={columns}
           data={tableRows}
           keyExtractor={(r) => r.id}
+          stickyFirstColumn={true}
           emptyMessage="No attendance records for the selected filters."
         />
       </Card>
@@ -615,6 +706,41 @@ export function AttendancePage() {
             {regDecisionNotice}
           </div>
         ) : null}
+        {selectedRegIds.size > 0 && (
+          <div className="bg-brand-50 border-b border-brand-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center bg-brand-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                {selectedRegIds.size} selected
+              </span>
+              <span className="text-xs text-ink-700 font-medium">
+                Bulk actions for selected pending regularization requests
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedRegIds(new Set())}
+              >
+                Clear
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => decideBulkReg(Array.from(selectedRegIds), 'Rejected')}
+              >
+                Reject ({selectedRegIds.size})
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => decideBulkReg(Array.from(selectedRegIds), 'Approved')}
+              >
+                Approve All ({selectedRegIds.size})
+              </Button>
+            </div>
+          </div>
+        )}
         <Table
           columns={regColumns}
           data={visibleRegRequests}

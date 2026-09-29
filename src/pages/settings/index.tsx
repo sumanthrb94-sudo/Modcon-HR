@@ -5158,7 +5158,7 @@ export function SettingsPage() {
 
       <div className="flex gap-6 items-start">
         {/* Left nav */}
-        <aside className="hidden lg:block w-56 shrink-0 sticky top-6">
+        <aside className="hidden lg:block w-56 shrink-0 sticky top-20 z-10">
           <Card padding={false}>
             <nav className="py-2">
               {NAV_ITEMS.map((item) => (
