@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut, MapPin, CalendarDays, ChevronLeft, ChevronRight, List, AlertTriangle } from 'lucide-react';
+import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut, MapPin, CalendarDays, ChevronLeft, ChevronRight, List, AlertTriangle, Sparkles, Layers, CheckSquare, Square, X } from 'lucide-react';
 import {
   PageHeader,
   StatCard,
@@ -32,6 +32,7 @@ import {
   recordCheckIn,
   recordCheckOut,
   addRegularizationRequest,
+  addBulkRegularizationRequests,
   REGULARIZATIONS_CHANGED_EVENT,
   ATTENDANCE_CHANGED_EVENT,
   type RegularizationRequest,
@@ -42,7 +43,7 @@ import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
-import { cn, formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
+import { cn, formatDate, formatDateShort, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees, getCurrentEmployeeRecord } from '@/lib/dataScope';
@@ -149,13 +150,6 @@ export function MyAttendancePage() {
     setCalendarMonth(todayIso().slice(0, 7));
   }
 
-  function openRaiseForDate(date: string) {
-    setRaiseDate(date);
-    setRaiseStatus('Present');
-    setRaiseReason('');
-    setRaiseOpen(true);
-  }
-
   const employeeOptions = useMemo(
     () => viewableEmployees.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id })),
     [viewableEmployees],
@@ -168,6 +162,11 @@ export function MyAttendancePage() {
         .slice()
         .sort((a, b) => a.date.localeCompare(b.date)),
     [targetId, attendanceRevision],
+  );
+
+  const ownRequests = useMemo(
+    () => getRegularizationRequestsFor(targetId),
+    [targetId, regularizationRevision, attendanceRevision],
   );
 
   const calendarDays = useMemo(() => {
@@ -189,11 +188,16 @@ export function MyAttendancePage() {
       const isWeekOff = isWeekOffFor(targetEmployee, isoDate);
       const isToday = isoDate === today;
       const isFuture = isoDate > today;
+      const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending');
 
-      let status: 'Present' | 'WFH' | 'Leave' | 'HalfDay' | 'Absent' | 'WeekOff' | 'Holiday' | 'Future' = 'Future';
+      let status: 'Present' | 'WFH' | 'Leave' | 'HalfDay' | 'Absent' | 'WeekOff' | 'Holiday' | 'Future' | 'PendingReg' = 'Future';
       let isAttentionItem = false;
+      let isActionable = false;
 
-      if (record) {
+      if (pendingReq) {
+        status = 'PendingReg';
+        // Already requested; awaiting approval, so not an unaddressed red alert
+      } else if (record) {
         if (record.status === 'Present') status = 'Present';
         else if (record.status === 'Work From Home') status = 'WFH';
         else if (record.status === 'On Leave') status = 'Leave';
@@ -201,9 +205,11 @@ export function MyAttendancePage() {
         else if (record.status === 'Absent') {
           status = 'Absent';
           isAttentionItem = true;
+          isActionable = true;
         }
         if (record.isLate) {
           isAttentionItem = true;
+          isActionable = true;
         }
       } else if (isFuture) {
         status = 'Future';
@@ -214,6 +220,7 @@ export function MyAttendancePage() {
       } else {
         status = 'Absent';
         isAttentionItem = true;
+        isActionable = true;
       }
 
       days.push({
@@ -228,11 +235,20 @@ export function MyAttendancePage() {
         isFuture,
         status,
         isAttentionItem,
+        isActionable,
+        isPendingReg: Boolean(pendingReq),
+        pendingReq,
       });
     }
 
     return days;
-  }, [calendarMonth, records, targetEmployee, holidays]);
+  }, [calendarMonth, records, targetEmployee, holidays, ownRequests]);
+
+  const actionableDays = useMemo(() => {
+    return calendarDays
+      .filter((d): d is Extract<typeof calendarDays[number], { empty: false }> => !d.empty && !d.isFuture && d.isActionable)
+      .map((d) => d.date);
+  }, [calendarDays]);
 
   const monthStats = useMemo(() => {
     const realDays = calendarDays.filter((d): d is Extract<typeof calendarDays[number], { empty: false }> => !d.empty && !d.isFuture);
@@ -240,14 +256,15 @@ export function MyAttendancePage() {
     const wfh = realDays.filter((d) => d.status === 'WFH').length;
     const leave = realDays.filter((d) => d.status === 'Leave').length;
     const halfDay = realDays.filter((d) => d.status === 'HalfDay').length;
+    const pendingRegs = realDays.filter((d) => d.status === 'PendingReg').length;
     const absentOrMissing = realDays.filter((d) => d.status === 'Absent').length;
     const late = realDays.filter((d) => Boolean(d.record?.isLate)).length;
-    const attentionCount = realDays.filter((d) => d.isAttentionItem).length;
+    const attentionCount = actionableDays.length;
     const weekOffs = realDays.filter((d) => d.status === 'WeekOff').length;
     const holidayCount = realDays.filter((d) => d.status === 'Holiday').length;
 
-    return { present, wfh, leave, halfDay, absentOrMissing, late, attentionCount, weekOffs, holidayCount };
-  }, [calendarDays]);
+    return { present, wfh, leave, halfDay, pendingRegs, absentOrMissing, late, attentionCount, weekOffs, holidayCount };
+  }, [calendarDays, actionableDays]);
 
   const monthTitle = useMemo(() => {
     const [y, m] = calendarMonth.split('-').map(Number);
@@ -418,49 +435,98 @@ export function MyAttendancePage() {
     }
   }
 
-  // ---- Raising a regularization ---------------------------------------------
-  const ownRequests = useMemo(
-    () => getRegularizationRequestsFor(targetId),
-    [targetId, regularizationRevision, attendanceRevision],
-  );
+  // ---- Raising a regularization (single or bulk month) ----------------------
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
 
   const [raiseOpen, setRaiseOpen] = useState(false);
-  const [raiseDate, setRaiseDate] = useState('');
+  const [raiseDates, setRaiseDates] = useState<string[]>([]);
   const [raiseStatus, setRaiseStatus] = useState<AttendanceStatus>('Present');
   const [raiseReason, setRaiseReason] = useState('');
+  const [autoApproveChecked, setAutoApproveChecked] = useState(true);
 
-  // Only days this employee actually has a record for, plus the rest of the
-  // work week. Raising against a day outside the week the page shows would
-  // produce a request nothing on this page can explain.
-  //
-  // Their own week-off is excluded: there is nothing to correct about a day
-  // they were rostered not to work, and offering it invites a request an
-  // approver can only reject. Which day that is differs per person, so this
-  // filters on the employee rather than on the weekday.
+  const canAutoApprove = isAdmin || isManager || profile?.role === 'hr' || profile?.role === 'admin';
+
+  // Date options for single-date select: working past days in currently viewed month
   const raiseDateOptions = useMemo(() => {
-    const dates = new Set([...records.map((record) => record.date), ...weekDates]);
-    return Array.from(dates)
-      .filter((date) => !isWeekOffFor(targetEmployee, date))
+    const [y, m] = calendarMonth.split('-').map(Number);
+    const totalDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const today = todayIso();
+    const dates: string[] = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const iso = `${calendarMonth}-${String(d).padStart(2, '0')}`;
+      if (iso <= today && !isWeekOffFor(targetEmployee, iso)) {
+        dates.push(iso);
+      }
+    }
+    return dates
       .sort((a, b) => b.localeCompare(a))
       .map((date) => ({ label: `${formatDate(date)} · ${formatWeekdayLong(date)}`, value: date }));
-  }, [records, weekDates, targetEmployee]);
+  }, [calendarMonth, targetEmployee]);
 
   function openRaise() {
-    setRaiseDate(raiseDateOptions[0]?.value ?? '');
+    if (actionableDays.length > 0) {
+      openBulkRaiseAllMonth();
+    } else {
+      openRaiseForDate(todayIso());
+    }
+  }
+
+  function openBulkRaiseAllMonth() {
+    if (actionableDays.length === 0) return;
+    setRaiseDates(actionableDays);
     setRaiseStatus('Present');
-    setRaiseReason('');
+    setRaiseReason('Monthly attendance reconciliation before payroll cutoff');
+    setAutoApproveChecked(canAutoApprove);
     setRaiseOpen(true);
   }
 
+  function openBulkRaiseSelected() {
+    if (selectedDates.size === 0) return;
+    setRaiseDates(Array.from(selectedDates).sort());
+    setRaiseStatus('Present');
+    setRaiseReason('Monthly attendance reconciliation before payroll cutoff');
+    setAutoApproveChecked(canAutoApprove);
+    setRaiseOpen(true);
+  }
+
+  function openRaiseForDate(date: string) {
+    setRaiseDates([date]);
+    setRaiseStatus('Present');
+    setRaiseReason('');
+    setAutoApproveChecked(canAutoApprove);
+    setRaiseOpen(true);
+  }
+
+  function toggleDateSelection(date: string) {
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+
+  function toggleSelectAllActionable() {
+    if (selectedDates.size === actionableDays.length) {
+      setSelectedDates(new Set());
+    } else {
+      setSelectedDates(new Set(actionableDays));
+    }
+  }
+
   function submitRaise() {
-    if (!raiseDate || !raiseReason.trim()) return;
-    addRegularizationRequest({
+    if (raiseDates.length === 0 || !raiseReason.trim()) return;
+    addBulkRegularizationRequests({
       employeeId: targetId,
-      date: raiseDate,
+      dates: raiseDates,
       reason: raiseReason.trim(),
       requestedStatus: raiseStatus,
+      autoApprove: canAutoApprove && autoApproveChecked,
     });
     setRaiseOpen(false);
+    setIsBulkMode(false);
+    setSelectedDates(new Set());
   }
 
   const requestColumns: Column<RegularizationRequest>[] = [
@@ -755,14 +821,16 @@ export function MyAttendancePage() {
             <StatCard label="Late Arrivals" value={stats.late} icon={<Clock size={20} />} />
           </div>
 
-          {/* Status Badge Legend Bar */}
-          <div className="flex items-center gap-4 flex-wrap px-4 py-2.5 bg-white border border-ink-200 text-xs text-ink-600 shadow-sm">
-            <span className="font-semibold text-ink-800 uppercase tracking-wider text-[10px]">Status Legend:</span>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" /><span>Present</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-500 shrink-0" /><span>WFH</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0" /><span>Regularized / Late</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" /><span>Absent / LOP</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-ink-400 shrink-0" /><span>Week Off</span></div>
+          {/* Status Badge Legend Bar - Responsive & Minimal */}
+          <div className="flex items-center gap-3 sm:gap-4 flex-wrap px-3 sm:px-4 py-2 bg-white border border-ink-200 text-[11px] sm:text-xs text-ink-600 shadow-2xs rounded-lg">
+            <span className="font-semibold text-ink-800 uppercase tracking-wider text-[10px]">Legend:</span>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" /><span>Present</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500 shrink-0" /><span>WFH</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" /><span>Pending / Late</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" /><span>Absent / LOP</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-purple-500 shrink-0" /><span>Leave</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-ink-400 shrink-0" /><span>Week Off</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal-500 shrink-0" /><span>Holiday</span></div>
           </div>
 
           {/* Attendance Overview: Calendar with Status Dots & Table Toggle */}
@@ -841,42 +909,97 @@ export function MyAttendancePage() {
             </div>
 
             {/* Red Alert Banner: The things they should care about! */}
-            {monthStats.attentionCount > 0 && viewMode === 'calendar' && (
-              <div className="mx-4 sm:mx-5 mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-rose-50/90 border border-rose-300 rounded-xl text-sm">
+            {actionableDays.length > 0 && viewMode === 'calendar' && (
+              <div className="mx-3 sm:mx-5 mt-4 p-3 sm:p-4 bg-rose-50/95 border border-rose-300 rounded-xl text-sm shadow-2xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div className="flex items-start sm:items-center gap-2.5">
                   <span className="h-3 w-3 rounded-full bg-rose-600 shrink-0 mt-0.5 sm:mt-0 animate-pulse" />
                   <div>
                     <span className="font-bold text-rose-900">
-                      {monthStats.attentionCount} Red Flag{monthStats.attentionCount > 1 ? 's' : ''} in {monthTitle}:
+                      {actionableDays.length} Red Flag{actionableDays.length > 1 ? 's' : ''} in {monthTitle}:
                     </span>{' '}
                     <span className="text-rose-700 text-xs sm:text-sm">
                       {monthStats.absentOrMissing > 0 ? `${monthStats.absentOrMissing} missing punch / absent day${monthStats.absentOrMissing > 1 ? 's' : ''}` : ''}
                       {monthStats.absentOrMissing > 0 && monthStats.late > 0 ? ' · ' : ''}
                       {monthStats.late > 0 ? `${monthStats.late} late arrival${monthStats.late > 1 ? 's' : ''}` : ''}
-                      . Unregularized absences result in Loss of Pay (LOP).
+                      . Unregularized absences result in Loss of Pay (LOP) during payroll.
                     </span>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => openRaise()}
-                  className="shrink-0 bg-rose-600 hover:bg-rose-700 border-none text-white shadow-sm"
-                >
-                  <FilePlus size={14} /> Request Regularization
-                </Button>
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={openBulkRaiseAllMonth}
+                    className="bg-rose-600 hover:bg-rose-700 border-none text-white shadow-sm text-xs font-semibold"
+                  >
+                    <Sparkles size={14} className="mr-1" /> Bulk Regularize Month ({actionableDays.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setIsBulkMode(!isBulkMode);
+                      if (!isBulkMode) {
+                        setSelectedDates(new Set(actionableDays));
+                      }
+                    }}
+                    className={cn(
+                      'text-xs font-medium',
+                      isBulkMode ? 'bg-brand-100 text-brand-800 border-brand-300' : '',
+                    )}
+                  >
+                    <Layers size={14} className="mr-1" /> {isBulkMode ? 'Exit Select Mode' : 'Select Days'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Bulk Selection Active Action Bar */}
+            {isBulkMode && viewMode === 'calendar' && (
+              <div className="mx-3 sm:mx-5 mt-3 p-2.5 sm:p-3 bg-brand-50 border border-brand-200 rounded-lg flex items-center justify-between gap-2 flex-wrap text-xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-semibold text-brand-900">
+                    {selectedDates.size} of {actionableDays.length} days selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllActionable}
+                    className="text-brand-700 hover:underline font-medium cursor-pointer"
+                  >
+                    {selectedDates.size === actionableDays.length ? 'Deselect All' : `Select All (${actionableDays.length})`}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={selectedDates.size === 0}
+                    onClick={openBulkRaiseSelected}
+                    className="text-xs py-1 px-3 bg-brand-600 hover:bg-brand-700 text-white"
+                  >
+                    Regularize Selected ({selectedDates.size})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsBulkMode(false)}
+                    className="text-xs py-1 px-2 text-ink-500"
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </div>
             )}
 
             {viewMode === 'calendar' ? (
-              <div className="p-3 sm:p-5">
+              <div className="p-2.5 sm:p-5">
                 {/* 7-day header */}
-                <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-2">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-1.5 sm:mb-2">
                   {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayName, idx) => (
                     <div
                       key={dayName}
                       className={cn(
-                        'py-2 text-center text-[11px] font-semibold tracking-wider uppercase rounded-md',
+                        'py-1.5 sm:py-2 text-center text-[10px] sm:text-[11px] font-semibold tracking-wider uppercase rounded-md',
                         idx >= 5 ? 'text-ink-400 bg-ink-50/60' : 'text-ink-600 bg-ink-100/50',
                       )}
                     >
@@ -885,63 +1008,89 @@ export function MyAttendancePage() {
                   ))}
                 </div>
 
-                {/* Grid cells */}
-                <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                {/* Grid cells - Minimal & zero-overlap on mobile */}
+                <div className="grid grid-cols-7 gap-1 sm:gap-2">
                   {calendarDays.map((day) => {
                     if (day.empty) {
                       return (
                         <div
                           key={day.key}
-                          className="min-h-[85px] sm:min-h-[105px] rounded-xl bg-ink-50/30 border border-transparent"
+                          className="min-h-[52px] sm:min-h-[105px] rounded-lg sm:rounded-xl bg-ink-50/20 border border-transparent"
                         />
                       );
                     }
 
                     const isRed = day.isAttentionItem;
+                    const isPending = day.isPendingReg;
                     const isGreen = day.status === 'Present';
                     const isBlue = day.status === 'WFH';
                     const isPurple = day.status === 'Leave';
                     const isWeekOff = day.status === 'WeekOff';
                     const isHoliday = day.status === 'Holiday';
+                    const isSelected = selectedDates.has(day.date);
 
                     return (
                       <div
                         key={day.key}
+                        onClick={() => {
+                          if (isBulkMode && day.isActionable) {
+                            toggleDateSelection(day.date);
+                          } else if (!isBulkMode && (day.isActionable || isPending)) {
+                            openRaiseForDate(day.date);
+                          }
+                        }}
                         className={cn(
-                          'min-h-[85px] sm:min-h-[105px] rounded-xl border p-2 flex flex-col justify-between transition-all relative group',
-                          day.isToday && 'ring-2 ring-brand-500 shadow-sm',
-                          isRed && 'border-2 border-rose-400 bg-rose-50/80 hover:bg-rose-100/70 hover:border-rose-500 shadow-sm',
-                          isGreen && 'border-emerald-200 bg-emerald-50/30 hover:bg-emerald-50/70 hover:border-emerald-300',
-                          isBlue && 'border-sky-200 bg-sky-50/30 hover:bg-sky-50/70 hover:border-sky-300',
-                          isPurple && 'border-purple-200 bg-purple-50/30 hover:bg-purple-50/70 hover:border-purple-300',
-                          isWeekOff && 'border-dashed border-ink-200 bg-ink-50/40 text-ink-400',
-                          isHoliday && 'border-teal-200 bg-teal-50/40 text-teal-800',
-                          day.isFuture && 'border-ink-100 bg-white/40 text-ink-300',
+                          'min-h-[52px] sm:min-h-[105px] rounded-lg sm:rounded-xl border p-1 sm:p-2 flex flex-col justify-between transition-all relative select-none',
+                          (day.isActionable || isPending) && 'cursor-pointer',
+                          isSelected && 'ring-2 ring-brand-600 bg-brand-50/90 border-brand-500 shadow-sm',
+                          !isSelected && day.isToday && 'ring-2 ring-brand-500 shadow-sm',
+                          !isSelected && isRed && 'border-rose-300 sm:border-2 sm:border-rose-400 bg-rose-50/70 hover:bg-rose-100/80',
+                          !isSelected && isPending && 'border-amber-300 sm:border-2 sm:border-amber-400 bg-amber-50/60 hover:bg-amber-100/70',
+                          !isSelected && isGreen && 'border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50/70',
+                          !isSelected && isBlue && 'border-sky-200 bg-sky-50/40 hover:bg-sky-50/70',
+                          !isSelected && isPurple && 'border-purple-200 bg-purple-50/40 hover:bg-purple-50/70',
+                          !isSelected && isWeekOff && 'border-dashed border-ink-200 bg-ink-50/30 text-ink-400',
+                          !isSelected && isHoliday && 'border-teal-200 bg-teal-50/40 text-teal-800',
+                          !isSelected && day.isFuture && 'border-ink-100 bg-white/40 text-ink-300 pointer-events-none',
                         )}
                       >
-                        {/* Day number & indicators */}
+                        {/* Day number & bulk checkbox / Today dot */}
                         <div className="flex items-center justify-between">
                           <span
                             className={cn(
-                              'text-xs font-bold font-mono',
-                              day.isToday ? 'text-brand-700 underline decoration-2' : isRed ? 'text-rose-900' : 'text-ink-800',
+                              'text-[11px] sm:text-xs font-bold font-mono',
+                              day.isToday ? 'text-brand-700 font-extrabold' : isRed ? 'text-rose-900' : isPending ? 'text-amber-900' : 'text-ink-800',
                             )}
                           >
                             {day.dayNum}
                           </span>
-                          {day.isToday && (
-                            <span className="text-[9px] font-bold bg-brand-600 text-white px-1.5 py-0.5 rounded-full leading-none">
-                              Today
-                            </span>
-                          )}
+
+                          {isBulkMode && day.isActionable ? (
+                            <div className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex items-center justify-center">
+                              {isSelected ? (
+                                <span className="h-3.5 w-3.5 sm:h-4 sm:w-4 rounded bg-brand-600 text-white flex items-center justify-center text-[10px] font-bold">
+                                  ✓
+                                </span>
+                              ) : (
+                                <span className="h-3.5 w-3.5 sm:h-4 sm:w-4 rounded border border-ink-300 bg-white" />
+                              )}
+                            </div>
+                          ) : day.isToday ? (
+                            <>
+                              <span className="sm:hidden h-1.5 w-1.5 rounded-full bg-brand-600" />
+                              <span className="hidden sm:inline-block text-[9px] font-bold bg-brand-600 text-white px-1.5 py-0.5 rounded-full leading-none">
+                                Today
+                              </span>
+                            </>
+                          ) : null}
                         </div>
 
-                        {/* Status colored dot and badge */}
-                        <div className="my-1">
+                        {/* Minimal dot for mobile; clean pill badge on desktop */}
+                        <div className="my-0.5 sm:my-1 flex items-center justify-center sm:justify-start">
                           {isGreen && (
                             <div className="flex items-center gap-1.5">
                               <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 shadow-sm" />
-                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded border border-emerald-200 leading-none">
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded border border-emerald-200 leading-none">
                                 Present
                               </span>
                             </div>
@@ -950,8 +1099,17 @@ export function MyAttendancePage() {
                           {isBlue && (
                             <div className="flex items-center gap-1.5">
                               <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0 shadow-sm" />
-                              <span className="text-[10px] font-bold text-sky-800 bg-sky-100/70 px-1 py-0.5 rounded border border-sky-200 leading-none">
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-sky-800 bg-sky-100/70 px-1 py-0.5 rounded border border-sky-200 leading-none">
                                 WFH
+                              </span>
+                            </div>
+                          )}
+
+                          {isPending && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 shadow-sm animate-pulse" />
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-amber-800 bg-amber-100 px-1 py-0.5 rounded border border-amber-300 leading-none">
+                                Pending
                               </span>
                             </div>
                           )}
@@ -959,7 +1117,7 @@ export function MyAttendancePage() {
                           {isPurple && (
                             <div className="flex items-center gap-1.5">
                               <span className="h-2 w-2 rounded-full bg-purple-500 shrink-0 shadow-sm" />
-                              <span className="text-[10px] font-bold text-purple-800 bg-purple-100/70 px-1 py-0.5 rounded border border-purple-200 leading-none">
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-purple-800 bg-purple-100/70 px-1 py-0.5 rounded border border-purple-200 leading-none">
                                 Leave
                               </span>
                             </div>
@@ -968,14 +1126,14 @@ export function MyAttendancePage() {
                           {isWeekOff && (
                             <div className="flex items-center gap-1">
                               <span className="h-1.5 w-1.5 rounded-full bg-ink-400 shrink-0" />
-                              <span className="text-[10px] text-ink-500 font-medium">Off</span>
+                              <span className="hidden sm:inline-block text-[10px] text-ink-500 font-medium">Off</span>
                             </div>
                           )}
 
                           {isHoliday && (
                             <div className="flex items-center gap-1" title={day.holiday?.name}>
                               <span className="h-1.5 w-1.5 rounded-full bg-teal-500 shrink-0" />
-                              <span className="text-[10px] font-semibold text-teal-800 truncate max-w-[55px] sm:max-w-[70px]">
+                              <span className="hidden sm:inline-block text-[10px] font-semibold text-teal-800 truncate max-w-[70px]">
                                 {day.holiday?.name ?? 'Holiday'}
                               </span>
                             </div>
@@ -983,16 +1141,16 @@ export function MyAttendancePage() {
 
                           {isRed && (
                             <div className="flex items-center gap-1.5">
-                              <span className="h-2.5 w-2.5 rounded-full bg-rose-600 shrink-0 shadow-sm animate-pulse" />
-                              <span className="text-[10px] font-black text-rose-900 bg-rose-200/80 px-1.5 py-0.5 rounded border border-rose-300 leading-none uppercase tracking-wide">
+                              <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-600 shrink-0 shadow-sm animate-pulse" />
+                              <span className="hidden sm:inline-block text-[10px] font-black text-rose-900 bg-rose-200/80 px-1.5 py-0.5 rounded border border-rose-300 leading-none uppercase tracking-wide">
                                 {day.record?.isLate ? 'Late' : 'Absent'}
                               </span>
                             </div>
                           )}
                         </div>
 
-                        {/* Bottom action / timing */}
-                        <div className="mt-auto pt-1 border-t border-ink-100/60 flex items-center justify-between text-[10px]">
+                        {/* Bottom: Desktop-only details (Zero overlap on mobile) */}
+                        <div className="hidden sm:flex mt-auto pt-1 border-t border-ink-100/60 items-center justify-between text-[10px]">
                           {day.record ? (
                             <>
                               <span className="text-ink-500 font-mono truncate">
@@ -1002,10 +1160,15 @@ export function MyAttendancePage() {
                                 {day.record.workedHours > 0 ? `${day.record.workedHours.toFixed(1)}h` : ''}
                               </span>
                             </>
+                          ) : isPending ? (
+                            <span className="text-amber-700 font-medium text-[10px] truncate">In review</span>
                           ) : isRed ? (
                             <button
                               type="button"
-                              onClick={() => openRaiseForDate(day.date)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openRaiseForDate(day.date);
+                              }}
                               className="text-rose-700 hover:text-rose-900 font-bold hover:underline flex items-center gap-0.5 w-full justify-center py-0.5 bg-rose-100/60 rounded"
                             >
                               <FilePlus size={10} /> Regularize
@@ -1070,14 +1233,15 @@ export function MyAttendancePage() {
         </>
       )}
 
+      {/* Regularization Modal - Single & Bulk */}
       <Modal
         open={raiseOpen}
         onClose={() => setRaiseOpen(false)}
-        title="Request Regularization"
+        title={raiseDates.length > 1 ? `Bulk Regularize Month (${raiseDates.length} Days)` : 'Request Regularization'}
         subtitle={
           targetEmployee
-            ? `Ask for a day to be corrected on ${targetEmployee.fullName}’s record`
-            : 'Ask for a day to be corrected'
+            ? `${raiseDates.length > 1 ? `Regularize ${raiseDates.length} days` : 'Ask for a day to be corrected'} on ${targetEmployee.fullName}’s record`
+            : 'Ask for attendance to be corrected'
         }
         footer={
           <>
@@ -1087,40 +1251,143 @@ export function MyAttendancePage() {
             <Button
               variant="primary"
               onClick={submitRaise}
-              disabled={!raiseDate || !raiseReason.trim()}
+              disabled={raiseDates.length === 0 || !raiseReason.trim()}
+              className="bg-brand-600 hover:bg-brand-700 text-white shadow-sm"
             >
-              Submit Request
+              {raiseDates.length > 1 ? `Regularize All ${raiseDates.length} Days` : 'Submit Request'}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
+          {/* Selected Dates Display */}
+          {raiseDates.length > 1 ? (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-ink-700">
+                  Selected Dates ({raiseDates.length})
+                </label>
+                {actionableDays.length > raiseDates.length && (
+                  <button
+                    type="button"
+                    onClick={() => setRaiseDates(actionableDays)}
+                    className="text-xs text-brand-600 hover:underline font-medium cursor-pointer"
+                  >
+                    Select All ({actionableDays.length})
+                  </button>
+                )}
+              </div>
+              <div className="max-h-32 overflow-y-auto p-2 bg-ink-50/80 border border-ink-200 rounded-lg flex flex-wrap gap-1.5">
+                {raiseDates.map((date) => (
+                  <span
+                    key={date}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-white border border-ink-200 text-ink-800 shadow-2xs"
+                  >
+                    <span>{formatDateShort(date)} ({formatWeekdayShort(date)})</span>
+                    <button
+                      type="button"
+                      onClick={() => setRaiseDates((prev) => prev.filter((d) => d !== date))}
+                      className="text-ink-400 hover:text-rose-600 ml-0.5 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-ink-700 mb-1">Date</label>
+              <Select
+                value={raiseDates[0] ?? ''}
+                onChange={(val) => setRaiseDates([val])}
+                options={raiseDateOptions}
+              />
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-medium text-ink-700 mb-1">Date</label>
-            <Select value={raiseDate} onChange={setRaiseDate} options={raiseDateOptions} />
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Requested Status</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(['Present', 'Work From Home', 'Half Day', 'On Leave'] as AttendanceStatus[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setRaiseStatus(st)}
+                  className={cn(
+                    'py-2 px-2.5 rounded-lg text-xs font-semibold border transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer',
+                    raiseStatus === st
+                      ? 'border-brand-600 bg-brand-50 text-brand-900 shadow-2xs ring-1 ring-brand-500'
+                      : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'h-2 w-2 rounded-full shrink-0',
+                      st === 'Present' && 'bg-emerald-500',
+                      st === 'Work From Home' && 'bg-sky-500',
+                      st === 'Half Day' && 'bg-amber-500',
+                      st === 'On Leave' && 'bg-purple-500',
+                    )}
+                  />
+                  <span>{st === 'Work From Home' ? 'WFH' : st}</span>
+                </button>
+              ))}
+            </div>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-ink-700 mb-1">Requested Status</label>
-            <Select
-              value={raiseStatus}
-              onChange={(value) => setRaiseStatus(value as AttendanceStatus)}
-              options={(['Present', 'Work From Home', 'Half Day', 'On Leave'] as AttendanceStatus[]).map(
-                (status) => ({ label: status, value: status }),
-              )}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink-700 mb-1">Reason</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-ink-700">Reason</label>
+              <span className="text-[11px] text-ink-400">Quick presets:</span>
+            </div>
+            {/* Quick preset chips */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {[
+                'Attendance reconciliation before payroll cutoff',
+                'Missed biometric punch / system sync issue',
+                'On-site client meeting / field work',
+                'Approved work-from-home arrangement',
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setRaiseReason(preset)}
+                  className="text-[11px] px-2 py-0.5 rounded bg-ink-100/80 hover:bg-ink-200 text-ink-700 transition-colors cursor-pointer"
+                >
+                  + {preset.split(' / ')[0]}
+                </button>
+              ))}
+            </div>
             <textarea
-              className="input w-full h-24 resize-none"
-              placeholder="Why should this day be corrected?"
+              className="input w-full h-20 resize-none text-xs sm:text-sm"
+              placeholder="Why should this day be regularized?"
               value={raiseReason}
               onChange={(event) => setRaiseReason(event.target.value)}
             />
-            {/* Required: an approver deciding a request with no stated reason is
-                the fabricated-reason problem this replaced, in another form. */}
-            <p className="text-xs text-ink-400 mt-1">A reason is required.</p>
+            <p className="text-xs text-ink-400 mt-1">A valid reason is required for audit logs.</p>
           </div>
+
+          {/* Admin / HR auto-approve toggle */}
+          {canAutoApprove && (
+            <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                id="auto-approve-toggle"
+                checked={autoApproveChecked}
+                onChange={(e) => setAutoApproveChecked(e.target.checked)}
+                className="h-4 w-4 mt-0.5 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <label htmlFor="auto-approve-toggle" className="text-xs text-emerald-950 cursor-pointer">
+                <span className="font-bold block text-emerald-900">
+                  Directly apply & approve for payroll (Zero LOP)
+                </span>
+                <span className="text-emerald-700">
+                  Instantly updates attendance records so payroll calculation does not deduct loss-of-pay.
+                </span>
+              </label>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

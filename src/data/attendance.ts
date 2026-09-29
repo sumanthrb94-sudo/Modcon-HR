@@ -410,6 +410,83 @@ export function addRegularizationRequest(input: {
   return request;
 }
 
+export function addBulkRegularizationRequests(input: {
+  employeeId: string;
+  dates: string[];
+  reason: string;
+  requestedStatus: AttendanceStatus;
+  autoApprove?: boolean;
+}): RegularizationRequest[] {
+  if (input.dates.length === 0) return [];
+
+  const newRequests: RegularizationRequest[] = input.dates.map((date) => ({
+    id: regularizationId(input.employeeId, date),
+    employeeId: input.employeeId,
+    date,
+    reason: input.reason,
+    requestedStatus: input.requestedStatus,
+    status: input.autoApprove ? 'Approved' : 'Pending',
+  }));
+
+  // If autoApprove (e.g. Admin/HR bulk regularizing before payroll), directly apply all statuses to records in batch
+  if (input.autoApprove) {
+    const allRecords = getAttendanceRecords();
+    const otherRecords = allRecords.filter((r) => r.employeeId !== input.employeeId);
+    const empRecordsMap = new Map(
+      allRecords.filter((r) => r.employeeId === input.employeeId).map((r) => [r.date, r]),
+    );
+
+    for (const date of input.dates) {
+      const existing = empRecordsMap.get(date);
+      const defaultWorkedHours =
+        input.requestedStatus === 'Half Day'
+          ? 4.5
+          : input.requestedStatus === 'Present' || input.requestedStatus === 'Work From Home'
+            ? 8.5
+            : 0;
+      const defaultCheckIn =
+        input.requestedStatus === 'Absent' || input.requestedStatus === 'On Leave'
+          ? null
+          : (existing?.checkIn ?? '09:00');
+      const defaultCheckOut =
+        input.requestedStatus === 'Absent' || input.requestedStatus === 'On Leave'
+          ? null
+          : (existing?.checkOut ?? (input.requestedStatus === 'Half Day' ? '13:30' : '18:00'));
+
+      const corrected: AttendanceRecord = existing
+        ? {
+            ...existing,
+            status: input.requestedStatus,
+            checkIn: defaultCheckIn,
+            checkOut: defaultCheckOut,
+            workedHours: existing.workedHours > 0 ? existing.workedHours : defaultWorkedHours,
+            isLate: false,
+          }
+        : {
+            id: `att-reg-${input.employeeId}-${date}`,
+            employeeId: input.employeeId,
+            date,
+            status: input.requestedStatus,
+            checkIn: defaultCheckIn,
+            checkOut: defaultCheckOut,
+            workedHours: defaultWorkedHours,
+            shift: shiftCaptionFor(input.employeeId),
+            isLate: false,
+          };
+
+      empRecordsMap.set(date, corrected);
+    }
+
+    saveAttendanceRecords([...otherRecords, ...empRecordsMap.values()]);
+  }
+
+  const newIds = new Set(newRequests.map((r) => r.id));
+  const remainingOverrides = regularizationStore.get().filter((existing) => !newIds.has(existing.id));
+  regularizationStore.save([...newRequests, ...remainingOverrides]);
+
+  return newRequests;
+}
+
 /** Replace this id's override, keeping the rest. */
 function writeOverride(request: RegularizationRequest) {
   regularizationStore.save([
@@ -467,25 +544,41 @@ export function decideRegularization(
  */
 export type RegularizationDecision = { ok: true } | { ok: false; reason: string };
 
-function applyRequestedStatus(employeeId: string, date: string, status: AttendanceStatus) {
+export function applyRequestedStatus(employeeId: string, date: string, status: AttendanceStatus) {
   const records = getAttendanceRecords();
   const existing = records.find(
     (record) => record.employeeId === employeeId && record.date === date,
   );
 
+  const defaultWorkedHours =
+    status === 'Half Day' ? 4.5 : status === 'Present' || status === 'Work From Home' ? 8.5 : 0;
+  const defaultCheckIn =
+    status === 'Absent' || status === 'On Leave' ? null : (existing?.checkIn ?? '09:00');
+  const defaultCheckOut =
+    status === 'Absent' || status === 'On Leave'
+      ? null
+      : (existing?.checkOut ?? (status === 'Half Day' ? '13:30' : '18:00'));
+
   const corrected: AttendanceRecord = existing
-    ? { ...existing, status, isLate: false }
+    ? {
+        ...existing,
+        status,
+        checkIn: defaultCheckIn,
+        checkOut: defaultCheckOut,
+        workedHours: existing.workedHours > 0 ? existing.workedHours : defaultWorkedHours,
+        isLate: false,
+      }
     : {
-      id: `att-reg-${employeeId}-${date}`,
-      employeeId,
-      date,
-      status,
-      checkIn: null,
-      checkOut: null,
-      workedHours: 0,
-      shift: shiftCaptionFor(employeeId),
-      isLate: false,
-    };
+        id: `att-reg-${employeeId}-${date}`,
+        employeeId,
+        date,
+        status,
+        checkIn: defaultCheckIn,
+        checkOut: defaultCheckOut,
+        workedHours: defaultWorkedHours,
+        shift: shiftCaptionFor(employeeId),
+        isLate: false,
+      };
 
   saveAttendanceRecords([
     ...records.filter((record) => !(record.employeeId === employeeId && record.date === date)),
