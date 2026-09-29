@@ -35,6 +35,65 @@ const BILLING_PREFERENCES_COLLECTION = 'billing_preferences';
 const BILLING_INVOICES_COLLECTION = 'billing_invoices';
 const BILLING_PREFERENCES_DOC_ID = 'current';
 
+export interface SubscriptionPricing {
+  monthlyRate: number;
+  annualRate: number;
+  isFreeTier: boolean;
+  isTrialTier: boolean;
+  ratePerSeat: number;
+  planName: string;
+  maxCapApplied: boolean;
+}
+
+/**
+ * ModCon HR Transparent SaaS Pricing:
+ * - < 10 employees: 100% Free forever (₹0)
+ * - 10 - 49 employees: 3 Months Free Trial, then ₹50/employee/mo
+ * - 50+ employees: ₹50 per employee/month, strictly capped at a MAXIMUM of ₹5,000/month (₹60,000/year).
+ */
+export function calculateSubscriptionPrice(seats: number): SubscriptionPricing {
+  const safeSeats = Math.max(0, seats);
+
+  if (safeSeats < 10) {
+    return {
+      monthlyRate: 0,
+      annualRate: 0,
+      isFreeTier: true,
+      isTrialTier: false,
+      ratePerSeat: 0,
+      planName: 'Free Starter (< 10 seats)',
+      maxCapApplied: false,
+    };
+  }
+
+  if (safeSeats <= 49) {
+    const uncappedMonthly = safeSeats * 50;
+    const monthlyRate = Math.min(uncappedMonthly, 5000);
+    return {
+      monthlyRate,
+      annualRate: monthlyRate * 12,
+      isFreeTier: false,
+      isTrialTier: true,
+      ratePerSeat: 50,
+      planName: `Growth Plan (${safeSeats} seats · 3-Month Free Trial)`,
+      maxCapApplied: uncappedMonthly > 5000,
+    };
+  }
+
+  // 50+ seats: ₹50/employee/mo with hard max cap of ₹5,000/month
+  const uncappedMonthly = safeSeats * 50;
+  const monthlyRate = Math.min(uncappedMonthly, 5000);
+  return {
+    monthlyRate,
+    annualRate: monthlyRate * 12,
+    isFreeTier: false,
+    isTrialTier: false,
+    ratePerSeat: 50,
+    planName: `Scale & Pro (${safeSeats} seats)`,
+    maxCapApplied: uncappedMonthly >= 5000,
+  };
+}
+
 const defaultBillingPreferences: BillingPreferences = {
   planTier: 'Pro',
   totalSeats: 60,
@@ -42,14 +101,15 @@ const defaultBillingPreferences: BillingPreferences = {
   autoRenew: true,
 };
 
+// For 60 seats: 60 * 50 = ₹3,000/mo = ₹36,000/yr (previously incorrectly displayed as 2,99,940)
 const defaultBillingInvoices: BillingInvoice[] = [
   {
     id: 'INV-2026-06',
     date: '2026-06-01',
-    amount: 299940,
+    amount: 36000,
     status: 'Paid',
-    title: 'Pro Plan Renewal',
-    description: 'Annual Pro subscription for 60 seats.',
+    title: 'Pro Plan Renewal (60 seats)',
+    description: 'Annual Pro subscription for 60 seats (₹50/seat/mo, ₹36,000/yr).',
     planTier: 'Pro',
     totalSeats: 60,
     billingEmail: 'finance@modcon.io',
@@ -58,10 +118,10 @@ const defaultBillingInvoices: BillingInvoice[] = [
   {
     id: 'INV-2026-03',
     date: '2026-03-01',
-    amount: 299940,
+    amount: 36000,
     status: 'Paid',
-    title: 'Pro Plan Renewal',
-    description: 'Annual Pro subscription for 60 seats.',
+    title: 'Pro Plan Renewal (60 seats)',
+    description: 'Annual Pro subscription for 60 seats (₹50/seat/mo, ₹36,000/yr).',
     planTier: 'Pro',
     totalSeats: 60,
     billingEmail: 'finance@modcon.io',
@@ -70,10 +130,10 @@ const defaultBillingInvoices: BillingInvoice[] = [
   {
     id: 'INV-2025-12',
     date: '2025-12-01',
-    amount: 279960,
+    amount: 33600,
     status: 'Paid',
-    title: 'Pro Plan Renewal',
-    description: 'Annual Pro subscription for 56 seats.',
+    title: 'Pro Plan Renewal (56 seats)',
+    description: 'Annual Pro subscription for 56 seats (₹50/seat/mo, ₹33,600/yr).',
     planTier: 'Pro',
     totalSeats: 56,
     billingEmail: 'finance@modcon.io',

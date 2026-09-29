@@ -116,6 +116,7 @@ import { getNotificationPreferences, saveNotificationPreferences, type Notificat
 import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
 import {
   appendBillingInvoice,
+  calculateSubscriptionPrice,
   getBillingInvoices,
   getBillingPreferences,
   saveBillingPreferences,
@@ -1457,8 +1458,8 @@ function LeavePolicies() {
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="flex-1 min-w-0 max-w-xl">
               <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="leave-policy-upload">
                 Leave policy CSV
               </label>
@@ -1471,11 +1472,11 @@ function LeavePolicies() {
                 aria-label="Organisation leave policy CSV"
                 onChange={(event) => { void handlePolicyFile(event.target.files?.[0]); }}
               />
-              <p className="mt-1 text-xs text-ink-400">
-                Columns: <span className="font-mono">{LEAVE_POLICY_CSV_HEADER}</span>
+              <p className="mt-1.5 text-xs text-ink-500 break-words leading-relaxed">
+                Columns: <span className="font-mono text-[11px] bg-ink-100/70 text-ink-800 px-1.5 py-0.5 rounded border border-ink-200 inline-block mt-0.5">{LEAVE_POLICY_CSV_HEADER}</span>
               </p>
             </div>
-            <div className="flex items-end">
+            <div className="shrink-0 pt-1 sm:pt-0">
               <Button variant="secondary" onClick={handlePolicyTemplate}>
                 <Download size={14} /> Download current policy
               </Button>
@@ -2927,7 +2928,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   const isEnterprise = planTier === 'Enterprise';
 
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? invoices[0] ?? null;
-  const pricePerSeat = 4999;
+  const pricing = calculateSubscriptionPrice(totalSeats);
   const latestInvoice = invoices[0] ?? null;
 
   function formatAmount(amount: number) {
@@ -2995,6 +2996,10 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
     }
 
     const nextSeats = totalSeats + seats;
+    const currentPrice = calculateSubscriptionPrice(totalSeats).annualRate;
+    const nextPrice = calculateSubscriptionPrice(nextSeats).annualRate;
+    const diff = Math.max(0, nextPrice - currentPrice);
+
     setTotalSeats(nextSeats);
     saveBillingPreferences({
       planTier,
@@ -3004,7 +3009,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
     });
     appendBillingInvoice({
       date: todayIso(),
-      amount: seats * pricePerSeat,
+      amount: diff,
       status: 'Paid',
       title: 'Additional Seats Added',
       description: `${seats} seat${seats > 1 ? 's' : ''} added to the plan.`,
@@ -3020,7 +3025,8 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   }
 
   function handleUpgradeEnterprise() {
-    const nextSeats = Math.max(totalSeats, 500);
+    const nextSeats = Math.max(totalSeats, 100);
+    const enterprisePricing = calculateSubscriptionPrice(nextSeats);
     setPlanTier('Enterprise');
     setTotalSeats(nextSeats);
     saveBillingPreferences({
@@ -3031,17 +3037,17 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
     });
     appendBillingInvoice({
       date: todayIso(),
-      amount: nextSeats * pricePerSeat,
+      amount: enterprisePricing.annualRate,
       status: 'Paid',
       title: 'Enterprise Upgrade',
-      description: 'Plan upgraded to Enterprise with expanded seat capacity.',
+      description: 'Plan upgraded to Enterprise with maximum monthly subscription cap (₹5,000/mo max).',
       planTier: 'Enterprise',
       totalSeats: nextSeats,
       billingEmail,
       autoRenew,
     });
     setUpgradeOpen(false);
-    setActionNotice('Enterprise upgrade initiated. Our team will contact you shortly.');
+    setActionNotice('Enterprise plan activated with capped maximum pricing.');
   }
 
   useEffect(() => {
@@ -3051,14 +3057,15 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
   }, [upgradeRequestToken, isEnterprise]);
 
   const planFeatures = [
-    { feature: 'Employees (seats)', starter: '10', pro: '60', enterprise: 'Unlimited' },
-    { feature: 'All HR modules', starter: false, pro: true, enterprise: true },
-    { feature: 'Advanced Reports', starter: false, pro: true, enterprise: true },
-    { feature: 'AI Insights', starter: false, pro: false, enterprise: true },
-    { feature: 'Custom workflows', starter: false, pro: true, enterprise: true },
-    { feature: 'SSO / SAML', starter: false, pro: false, enterprise: true },
-    { feature: 'Priority support', starter: false, pro: false, enterprise: true },
-    { feature: 'Dedicated CSM', starter: false, pro: false, enterprise: true },
+    { feature: 'Team Size Range', starter: '1 - 9 employees', pro: '10 - 49 employees', enterprise: '50+ employees' },
+    { feature: 'Subscription Cost', starter: '100% Free Forever', pro: '3 Months Free Trial', enterprise: '₹50/emp/mo (Max ₹5k/mo)' },
+    { feature: 'Core HR & Employee Directory', starter: true, pro: true, enterprise: true },
+    { feature: 'Attendance & Geofencing', starter: true, pro: true, enterprise: true },
+    { feature: 'Statutory Payroll (PF, ESI, TDS, PT)', starter: true, pro: true, enterprise: true },
+    { feature: 'Leave Balances & Accrual Rules', starter: true, pro: true, enterprise: true },
+    { feature: 'Team Pulse & AI Briefings', starter: true, pro: true, enterprise: true },
+    { feature: 'Advanced Reports & Exports', starter: false, pro: true, enterprise: true },
+    { feature: 'Priority Support & Migration', starter: false, pro: false, enterprise: true },
   ];
 
   return (
@@ -3071,11 +3078,17 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-ink-900 text-lg">{`ModCon HR ${planTier}`}</span>
-                <Badge tone="violet">Active</Badge>
+                <span className="font-bold text-ink-900 text-lg">{pricing.planName}</span>
+                <Badge tone={pricing.isFreeTier ? 'green' : pricing.isTrialTier ? 'blue' : 'violet'}>
+                  {pricing.isFreeTier ? 'Free Forever' : pricing.isTrialTier ? '3-Month Trial' : 'Active'}
+                </Badge>
               </div>
-              <p className="text-sm text-ink-500">
-                {isEnterprise ? 'Enterprise plan with expanded seat capacity' : 'Billed annually · ₹4,999/seat/year'}
+              <p className="text-sm text-ink-600 mt-0.5">
+                {pricing.isFreeTier
+                  ? 'Free tier active · 100% free forever for teams under 10 employees'
+                  : pricing.isTrialTier
+                    ? '3-Month Free Trial active · Then ₹50/seat/month'
+                    : '₹50 per employee/month · Maximum subscription capped at ₹5,000/month'}
               </p>
             </div>
           </div>
@@ -3131,13 +3144,26 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
         <Card>
           <CardHeader title="Next Invoice" />
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-ink-500">
-                {isEnterprise ? 'Enterprise Plan' : `Pro Plan (${totalSeats} seats)`}
+                {pricing.planName}
               </span>
-              <span className="font-semibold">{formatAmount(299940)}</span>
+              <span className="font-semibold text-ink-900">
+                {formatAmount(pricing.annualRate)} <span className="text-xs font-normal text-ink-500">/ yr</span>
+              </span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center text-xs text-ink-500">
+              <span>Monthly equivalent</span>
+              <span className="font-semibold text-brand-700">
+                {pricing.isFreeTier ? '₹0' : `${formatAmount(pricing.monthlyRate)} / mo`}
+              </span>
+            </div>
+            {pricing.maxCapApplied && (
+              <div className="text-[11px] text-emerald-800 bg-emerald-50 rounded px-2 py-1 border border-emerald-200">
+                ✓ Capped at max ₹5,000/mo subscription rate
+              </div>
+            )}
+            <div className="flex justify-between pt-1">
               <span className="text-ink-500">Due date</span>
               <span className="font-semibold">01 Jan 2027</span>
             </div>
@@ -3176,18 +3202,18 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
       <Card padding={false}>
         <div className="px-5 py-4 border-b border-ink-100">
           <h3 className="text-base font-semibold text-ink-900">Plan Comparison</h3>
-          <p className="text-sm text-ink-500 mt-0.5">Your current plan is highlighted</p>
+          <p className="text-sm text-ink-500 mt-0.5">Transparent pricing tailored for growing businesses</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ink-200">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">Feature</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">Starter</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">Free (&lt; 10)</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-brand-600 uppercase tracking-wide bg-brand-50">
-                  Pro ✓
+                  Growth (10 - 49) ✓
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-700 uppercase tracking-wide">Enterprise</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-700 uppercase tracking-wide">Scale / Pro (50+)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -3196,21 +3222,21 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                   <td className="px-5 py-3 font-medium text-ink-800">{row.feature}</td>
                   <td className="px-4 py-3 text-center">
                     {typeof row.starter === 'string'
-                      ? <span className="text-ink-600">{row.starter}</span>
+                      ? <span className="text-ink-600 text-xs font-medium">{row.starter}</span>
                       : row.starter
                         ? <Check size={16} className="text-emerald-500 mx-auto" />
                         : <X size={16} className="text-ink-300 mx-auto" />}
                   </td>
                   <td className="px-4 py-3 text-center bg-brand-50">
                     {typeof row.pro === 'string'
-                      ? <span className="font-semibold text-brand-700">{row.pro}</span>
+                      ? <span className="font-semibold text-brand-700 text-xs">{row.pro}</span>
                       : row.pro
                         ? <Check size={16} className="text-brand-600 mx-auto" />
                         : <X size={16} className="text-ink-300 mx-auto" />}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {typeof row.enterprise === 'string'
-                      ? <span className="text-brand-700 font-semibold">{row.enterprise}</span>
+                      ? <span className="text-brand-700 font-semibold text-xs">{row.enterprise}</span>
                       : row.enterprise
                         ? <Check size={16} className="text-brand-600 mx-auto" />
                         : <X size={16} className="text-ink-300 mx-auto" />}

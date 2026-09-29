@@ -5,7 +5,7 @@ import { navGroups, getVisibleNavItems } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
-import { appendBillingInvoice, getBillingPreferences, saveBillingPreferences } from '@/data/billing';
+import { appendBillingInvoice, calculateSubscriptionPrice, getBillingPreferences, saveBillingPreferences } from '@/data/billing';
 import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
 import { BrandMark, Button, Modal, Wordmark } from '@/components/ui';
 import { todayIso } from '@/lib/today';
@@ -28,12 +28,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // See getVisibleNavItems — their role is `admin`, so without this they were
   // shown a tenant's Attendance, Leave and Payroll as if they worked there.
   const visibleItems = getVisibleNavItems(role, isSuperAdmin, isSuperAdminInsideOrg());
-  const planLabel = billingPreferences.planTier;
-  const seatLabel = billingPreferences.planTier === 'Enterprise'
-    ? 'Unlimited seats'
-    : `${billingPreferences.totalSeats} seats`;
+  const pricing = calculateSubscriptionPrice(billingPreferences.totalSeats);
+  const planLabel = billingPreferences.planTier === 'Enterprise' ? 'Enterprise' : pricing.planName;
+  const seatLabel = `${billingPreferences.totalSeats} seats`;
   const renewalLabel = billingPreferences.autoRenew ? 'Auto-renew on' : 'Auto-renew off';
-  const pricePerSeat = 4999;
 
   function handleUpgradePlan() {
     if (billingPreferences.planTier === 'Enterprise') {
@@ -46,7 +44,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   function confirmUpgradePlan() {
-    const nextSeats = Math.max(billingPreferences.totalSeats, 500);
+    const nextSeats = Math.max(billingPreferences.totalSeats, 100);
+    const enterprisePrice = calculateSubscriptionPrice(nextSeats).annualRate;
 
     saveBillingPreferences({
       planTier: 'Enterprise',
@@ -57,10 +56,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
     appendBillingInvoice({
       date: todayIso(),
-      amount: nextSeats * pricePerSeat,
+      amount: enterprisePrice,
       status: 'Paid',
       title: 'Enterprise Upgrade',
-      description: 'Enterprise plan activated from the sidebar.',
+      description: 'Enterprise plan activated with capped maximum pricing.',
       planTier: 'Enterprise',
       totalSeats: nextSeats,
       billingEmail: billingPreferences.billingEmail,

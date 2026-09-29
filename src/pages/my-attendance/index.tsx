@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut, MapPin } from 'lucide-react';
+import { Users, Monitor, Calendar, UserX, Clock, Info, FilePlus, LogIn, LogOut, MapPin, CalendarDays, ChevronLeft, ChevronRight, List, AlertTriangle } from 'lucide-react';
 import {
   PageHeader,
   StatCard,
@@ -36,11 +36,13 @@ import {
   ATTENDANCE_CHANGED_EVENT,
   type RegularizationRequest,
 } from '@/data/attendance';
-import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor } from '@/data/employees';
+import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor, employeeWeekOffs } from '@/data/employees';
+import { getHolidayDirectory } from '@/data/holidays';
+import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
-import { formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
+import { cn, formatDate, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees, getCurrentEmployeeRecord } from '@/lib/dataScope';
@@ -126,6 +128,34 @@ export function MyAttendancePage() {
   // gets an explanation and no attendance, rather than somebody else's.
   const isUnlinked = !canPickAny && !ownEmployee;
 
+  const [viewMode, setViewMode] = useState<'calendar' | 'table'>('calendar');
+  const [calendarMonth, setCalendarMonth] = useState(() => todayIso().slice(0, 7)); // 'YYYY-MM'
+  const holidayRevision = useHolidayDirectoryRevision();
+  const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
+
+  function prevMonth() {
+    const [y, m] = calendarMonth.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 2, 1));
+    setCalendarMonth(d.toISOString().slice(0, 7));
+  }
+
+  function nextMonth() {
+    const [y, m] = calendarMonth.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m, 1));
+    setCalendarMonth(d.toISOString().slice(0, 7));
+  }
+
+  function resetToCurrentMonth() {
+    setCalendarMonth(todayIso().slice(0, 7));
+  }
+
+  function openRaiseForDate(date: string) {
+    setRaiseDate(date);
+    setRaiseStatus('Present');
+    setRaiseReason('');
+    setRaiseOpen(true);
+  }
+
   const employeeOptions = useMemo(
     () => viewableEmployees.map((e) => ({ label: `${e.fullName} (${e.employeeCode})`, value: e.id })),
     [viewableEmployees],
@@ -139,6 +169,91 @@ export function MyAttendancePage() {
         .sort((a, b) => a.date.localeCompare(b.date)),
     [targetId, attendanceRevision],
   );
+
+  const calendarDays = useMemo(() => {
+    const [y, m] = calendarMonth.split('-').map(Number);
+    const totalDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const firstDayUtc = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); // 0 = Sun
+    const padLeft = (firstDayUtc + 6) % 7; // Monday = 0
+    const today = todayIso();
+
+    const days = [];
+    for (let i = 0; i < padLeft; i++) {
+      days.push({ empty: true as const, key: `pad-${i}` });
+    }
+
+    for (let d = 1; d <= totalDays; d++) {
+      const isoDate = `${calendarMonth}-${String(d).padStart(2, '0')}`;
+      const record = records.find((r) => r.date === isoDate);
+      const holiday = holidays.find((h) => h.date === isoDate);
+      const isWeekOff = isWeekOffFor(targetEmployee, isoDate);
+      const isToday = isoDate === today;
+      const isFuture = isoDate > today;
+
+      let status: 'Present' | 'WFH' | 'Leave' | 'HalfDay' | 'Absent' | 'WeekOff' | 'Holiday' | 'Future' = 'Future';
+      let isAttentionItem = false;
+
+      if (record) {
+        if (record.status === 'Present') status = 'Present';
+        else if (record.status === 'Work From Home') status = 'WFH';
+        else if (record.status === 'On Leave') status = 'Leave';
+        else if (record.status === 'Half Day') status = 'HalfDay';
+        else if (record.status === 'Absent') {
+          status = 'Absent';
+          isAttentionItem = true;
+        }
+        if (record.isLate) {
+          isAttentionItem = true;
+        }
+      } else if (isFuture) {
+        status = 'Future';
+      } else if (holiday) {
+        status = 'Holiday';
+      } else if (isWeekOff) {
+        status = 'WeekOff';
+      } else {
+        status = 'Absent';
+        isAttentionItem = true;
+      }
+
+      days.push({
+        empty: false as const,
+        key: isoDate,
+        date: isoDate,
+        dayNum: d,
+        record,
+        holiday,
+        isWeekOff,
+        isToday,
+        isFuture,
+        status,
+        isAttentionItem,
+      });
+    }
+
+    return days;
+  }, [calendarMonth, records, targetEmployee, holidays]);
+
+  const monthStats = useMemo(() => {
+    const realDays = calendarDays.filter((d): d is Extract<typeof calendarDays[number], { empty: false }> => !d.empty && !d.isFuture);
+    const present = realDays.filter((d) => d.status === 'Present').length;
+    const wfh = realDays.filter((d) => d.status === 'WFH').length;
+    const leave = realDays.filter((d) => d.status === 'Leave').length;
+    const halfDay = realDays.filter((d) => d.status === 'HalfDay').length;
+    const absentOrMissing = realDays.filter((d) => d.status === 'Absent').length;
+    const late = realDays.filter((d) => Boolean(d.record?.isLate)).length;
+    const attentionCount = realDays.filter((d) => d.isAttentionItem).length;
+    const weekOffs = realDays.filter((d) => d.status === 'WeekOff').length;
+    const holidayCount = realDays.filter((d) => d.status === 'Holiday').length;
+
+    return { present, wfh, leave, halfDay, absentOrMissing, late, attentionCount, weekOffs, holidayCount };
+  }, [calendarDays]);
+
+  const monthTitle = useMemo(() => {
+    const [y, m] = calendarMonth.split('-').map(Number);
+    const dateObj = new Date(Date.UTC(y, m - 1, 1));
+    return dateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }, [calendarMonth]);
 
   const stats = useMemo(() => {
     return {
@@ -469,8 +584,8 @@ export function MyAttendancePage() {
         title={isOwnRecord ? 'My Attendance' : 'Employee Attendance'}
         subtitle={
           isOwnRecord
-            ? `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
-            : `Viewing ${targetEmployee?.fullName ?? 'colleague'} · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
+            ? `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${employeeWeekOffs(targetEmployee).join(' & ')}`
+            : `Viewing ${targetEmployee?.fullName ?? 'colleague'} · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${employeeWeekOffs(targetEmployee).join(' & ')}`
         }
         actions={
           <div className="flex items-center gap-2">
@@ -650,22 +765,269 @@ export function MyAttendancePage() {
             <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-ink-400 shrink-0" /><span>Week Off</span></div>
           </div>
 
-          {/* Attendance records */}
-          <Card padding={false}>
-            <div className="p-5 border-b border-ink-100">
-              <CardHeader
-                title="Attendance Records"
-                subtitle={`${records.length} day${records.length !== 1 ? 's' : ''} recorded`}
-                className="mb-0"
-              />
+          {/* Attendance Overview: Calendar with Status Dots & Table Toggle */}
+          <Card padding={false} className="overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-ink-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-ink-900">Attendance Calendar</h3>
+                  <Badge tone={monthStats.attentionCount > 0 ? 'red' : 'green'}>
+                    {monthStats.attentionCount > 0 ? `${monthStats.attentionCount} action required` : 'All regularized'}
+                  </Badge>
+                </div>
+                <p className="text-xs text-ink-500 mt-1">
+                  {monthTitle} · {monthStats.present} present · {monthStats.wfh} WFH · {monthStats.leave} leaves · {monthStats.weekOffs} week-offs
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                {/* Month pagination */}
+                <div className="flex items-center bg-ink-50 border border-ink-200 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={prevMonth}
+                    aria-label="Previous month"
+                    className="p-1.5 text-ink-600 hover:text-ink-900 hover:bg-white rounded transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="px-3 text-xs font-semibold text-ink-800 min-w-[110px] text-center">
+                    {monthTitle}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={nextMonth}
+                    aria-label="Next month"
+                    className="p-1.5 text-ink-600 hover:text-ink-900 hover:bg-white rounded transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                <Button variant="ghost" size="sm" onClick={resetToCurrentMonth} className="text-xs">
+                  This Month
+                </Button>
+
+                {/* View switcher */}
+                <div className="flex items-center bg-ink-100 p-0.5 rounded-lg border border-ink-200">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('calendar')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                      viewMode === 'calendar'
+                        ? 'bg-white text-ink-900 shadow-sm'
+                        : 'text-ink-600 hover:text-ink-900',
+                    )}
+                  >
+                    <CalendarDays size={14} />
+                    <span>Calendar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('table')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                      viewMode === 'table'
+                        ? 'bg-white text-ink-900 shadow-sm'
+                        : 'text-ink-600 hover:text-ink-900',
+                    )}
+                  >
+                    <List size={14} />
+                    <span>Table</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <Table
-              columns={columns}
-              data={records}
-              keyExtractor={(r) => r.id}
-              stickyFirstColumn={true}
-              emptyMessage="No attendance records for this employee."
-            />
+
+            {/* Red Alert Banner: The things they should care about! */}
+            {monthStats.attentionCount > 0 && viewMode === 'calendar' && (
+              <div className="mx-4 sm:mx-5 mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-rose-50/90 border border-rose-300 rounded-xl text-sm">
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <span className="h-3 w-3 rounded-full bg-rose-600 shrink-0 mt-0.5 sm:mt-0 animate-pulse" />
+                  <div>
+                    <span className="font-bold text-rose-900">
+                      {monthStats.attentionCount} Red Flag{monthStats.attentionCount > 1 ? 's' : ''} in {monthTitle}:
+                    </span>{' '}
+                    <span className="text-rose-700 text-xs sm:text-sm">
+                      {monthStats.absentOrMissing > 0 ? `${monthStats.absentOrMissing} missing punch / absent day${monthStats.absentOrMissing > 1 ? 's' : ''}` : ''}
+                      {monthStats.absentOrMissing > 0 && monthStats.late > 0 ? ' · ' : ''}
+                      {monthStats.late > 0 ? `${monthStats.late} late arrival${monthStats.late > 1 ? 's' : ''}` : ''}
+                      . Unregularized absences result in Loss of Pay (LOP).
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => openRaise()}
+                  className="shrink-0 bg-rose-600 hover:bg-rose-700 border-none text-white shadow-sm"
+                >
+                  <FilePlus size={14} /> Request Regularization
+                </Button>
+              </div>
+            )}
+
+            {viewMode === 'calendar' ? (
+              <div className="p-3 sm:p-5">
+                {/* 7-day header */}
+                <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-2">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayName, idx) => (
+                    <div
+                      key={dayName}
+                      className={cn(
+                        'py-2 text-center text-[11px] font-semibold tracking-wider uppercase rounded-md',
+                        idx >= 5 ? 'text-ink-400 bg-ink-50/60' : 'text-ink-600 bg-ink-100/50',
+                      )}
+                    >
+                      {dayName}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Grid cells */}
+                <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                  {calendarDays.map((day) => {
+                    if (day.empty) {
+                      return (
+                        <div
+                          key={day.key}
+                          className="min-h-[85px] sm:min-h-[105px] rounded-xl bg-ink-50/30 border border-transparent"
+                        />
+                      );
+                    }
+
+                    const isRed = day.isAttentionItem;
+                    const isGreen = day.status === 'Present';
+                    const isBlue = day.status === 'WFH';
+                    const isPurple = day.status === 'Leave';
+                    const isWeekOff = day.status === 'WeekOff';
+                    const isHoliday = day.status === 'Holiday';
+
+                    return (
+                      <div
+                        key={day.key}
+                        className={cn(
+                          'min-h-[85px] sm:min-h-[105px] rounded-xl border p-2 flex flex-col justify-between transition-all relative group',
+                          day.isToday && 'ring-2 ring-brand-500 shadow-sm',
+                          isRed && 'border-2 border-rose-400 bg-rose-50/80 hover:bg-rose-100/70 hover:border-rose-500 shadow-sm',
+                          isGreen && 'border-emerald-200 bg-emerald-50/30 hover:bg-emerald-50/70 hover:border-emerald-300',
+                          isBlue && 'border-sky-200 bg-sky-50/30 hover:bg-sky-50/70 hover:border-sky-300',
+                          isPurple && 'border-purple-200 bg-purple-50/30 hover:bg-purple-50/70 hover:border-purple-300',
+                          isWeekOff && 'border-dashed border-ink-200 bg-ink-50/40 text-ink-400',
+                          isHoliday && 'border-teal-200 bg-teal-50/40 text-teal-800',
+                          day.isFuture && 'border-ink-100 bg-white/40 text-ink-300',
+                        )}
+                      >
+                        {/* Day number & indicators */}
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={cn(
+                              'text-xs font-bold font-mono',
+                              day.isToday ? 'text-brand-700 underline decoration-2' : isRed ? 'text-rose-900' : 'text-ink-800',
+                            )}
+                          >
+                            {day.dayNum}
+                          </span>
+                          {day.isToday && (
+                            <span className="text-[9px] font-bold bg-brand-600 text-white px-1.5 py-0.5 rounded-full leading-none">
+                              Today
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Status colored dot and badge */}
+                        <div className="my-1">
+                          {isGreen && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 shadow-sm" />
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded border border-emerald-200 leading-none">
+                                Present
+                              </span>
+                            </div>
+                          )}
+
+                          {isBlue && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0 shadow-sm" />
+                              <span className="text-[10px] font-bold text-sky-800 bg-sky-100/70 px-1 py-0.5 rounded border border-sky-200 leading-none">
+                                WFH
+                              </span>
+                            </div>
+                          )}
+
+                          {isPurple && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-purple-500 shrink-0 shadow-sm" />
+                              <span className="text-[10px] font-bold text-purple-800 bg-purple-100/70 px-1 py-0.5 rounded border border-purple-200 leading-none">
+                                Leave
+                              </span>
+                            </div>
+                          )}
+
+                          {isWeekOff && (
+                            <div className="flex items-center gap-1">
+                              <span className="h-1.5 w-1.5 rounded-full bg-ink-400 shrink-0" />
+                              <span className="text-[10px] text-ink-500 font-medium">Off</span>
+                            </div>
+                          )}
+
+                          {isHoliday && (
+                            <div className="flex items-center gap-1" title={day.holiday?.name}>
+                              <span className="h-1.5 w-1.5 rounded-full bg-teal-500 shrink-0" />
+                              <span className="text-[10px] font-semibold text-teal-800 truncate max-w-[55px] sm:max-w-[70px]">
+                                {day.holiday?.name ?? 'Holiday'}
+                              </span>
+                            </div>
+                          )}
+
+                          {isRed && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2.5 w-2.5 rounded-full bg-rose-600 shrink-0 shadow-sm animate-pulse" />
+                              <span className="text-[10px] font-black text-rose-900 bg-rose-200/80 px-1.5 py-0.5 rounded border border-rose-300 leading-none uppercase tracking-wide">
+                                {day.record?.isLate ? 'Late' : 'Absent'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bottom action / timing */}
+                        <div className="mt-auto pt-1 border-t border-ink-100/60 flex items-center justify-between text-[10px]">
+                          {day.record ? (
+                            <>
+                              <span className="text-ink-500 font-mono truncate">
+                                {day.record.checkIn ? `${day.record.checkIn}` : '—'}
+                              </span>
+                              <span className="font-bold text-ink-700 font-mono">
+                                {day.record.workedHours > 0 ? `${day.record.workedHours.toFixed(1)}h` : ''}
+                              </span>
+                            </>
+                          ) : isRed ? (
+                            <button
+                              type="button"
+                              onClick={() => openRaiseForDate(day.date)}
+                              className="text-rose-700 hover:text-rose-900 font-bold hover:underline flex items-center gap-0.5 w-full justify-center py-0.5 bg-rose-100/60 rounded"
+                            >
+                              <FilePlus size={10} /> Regularize
+                            </button>
+                          ) : (
+                            <span className="text-ink-300">—</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                data={records}
+                keyExtractor={(r) => r.id}
+                stickyFirstColumn={true}
+                emptyMessage="No attendance records for this employee."
+              />
+            )}
           </Card>
 
           {/* Regularization requests raised for this employee */}

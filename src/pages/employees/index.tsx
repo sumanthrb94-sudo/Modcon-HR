@@ -61,7 +61,7 @@ import { OrgChart } from './OrgChart';
 import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
-import { hasOwnWeekOff, updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
+import { employeeWeekOffs, hasOwnWeekOff, updateEmployeeInDirectory, weekOffOf } from '@/data/employees';
 import { getOrganisationWeekOff } from '@/data/weekOff';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import {
@@ -1816,7 +1816,7 @@ function OverviewTab({
             label="Week Off"
             value={
               hasOwnWeekOff(emp)
-                ? `${weekOffOf(emp)} · their own`
+                ? `${employeeWeekOffs(emp).join(' & ')} · their own`
                 : `${weekOffOf(emp)} · organisation's`
             }
           />
@@ -2718,6 +2718,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   // everybody ever edited a personal override equal to whatever the policy
   // happened to be that day, and quietly stop them following the next change.
   const [editWeekOff, setEditWeekOff] = useState<WeekOffDay | ''>('');
+  const [editWeekOff2, setEditWeekOff2] = useState<WeekOffDay | ''>('');
   // '' means "the organisation's default" — an absence from the assignment map
   // rather than a shift id, so removing an exception puts them back on the
   // organisation's hours rather than on nothing.
@@ -3050,6 +3051,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     // Their own day, or the empty "follow the organisation" option — never the
     // resolved day, which would pin the policy onto them on the next save.
     setEditWeekOff(emp.weekOff ?? '');
+    setEditWeekOff2(emp.weekOff2 ?? '');
     const ownHours = getEmployeeShiftOverrides()[emp.id];
     setEditShiftId(ownHours ? CUSTOM_SHIFT : (getShiftAssignments()[emp.id] ?? ''));
     // Seeded from the organisation's default when they have none, so the
@@ -3128,6 +3130,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       // following it when that changes. Only a day chosen deliberately is
       // stored, because a stored day stops tracking the policy for good.
       weekOff: editWeekOff || undefined,
+      weekOff2: editWeekOff2 || undefined,
       address: editAddress.trim() || undefined,
       reportingManagerId: editReportingManagerId || null,
       // getEmployeeDirectory() recomputes the name on read; setting it here
@@ -3608,19 +3611,25 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Week Off</label>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Primary Week Off</label>
             <Select
-              // Same reason as the Shift select below: the label beside it is
-              // not associated with it, so this is the only accessible name
-              // this combobox has.
-              ariaLabel="Week Off"
+              ariaLabel="Primary Week Off"
               value={editWeekOff}
               onChange={(value) => setEditWeekOff(value as WeekOffDay | '')}
               options={[
-                // Named with the day it resolves to, so choosing it is not a
-                // blind pick — and listed first because following the
-                // organisation is the ordinary case, not the exception.
                 { label: `Follow organisation (${organisationWeekOff})`, value: '' },
+                ...WEEK_OFF_DAYS.map((day) => ({ label: day, value: day })),
+              ]}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Second Week Off (Optional - 5-day week)</label>
+            <Select
+              ariaLabel="Second Week Off"
+              value={editWeekOff2}
+              onChange={(value) => setEditWeekOff2(value as WeekOffDay | '')}
+              options={[
+                { label: 'None (1 day off per week)', value: '' },
                 ...WEEK_OFF_DAYS.map((day) => ({ label: day, value: day })),
               ]}
             />

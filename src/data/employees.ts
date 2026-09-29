@@ -178,36 +178,40 @@ function buildEmployeeDirectory(source: Seed[]): Employee[] {
  * and the cache is hydrated from Firestore after sign-in; anything that stays
  * mounted subscribes with `useWeekOffRevision`.
  */
-export function weekOffOf(employee: Pick<Employee, 'weekOff'> | null | undefined): WeekOffDay {
+export function weekOffOf(employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined): WeekOffDay {
   return employee?.weekOff ?? getOrganisationWeekOff();
 }
 
 /**
- * True when this person's week-off is their own rather than the
- * organisation's.
- *
- * The surfaces that show a week-off say which it is: a day differing from
- * Settings with nothing to explain it reads as a defect in the roster rather
- * than the arrangement it is — the same reason a leave balance carries a
- * "Custom entitlement" badge.
+ * Returns all week-off days for this employee (including secondary week-off if configured, e.g. Sat & Sun).
  */
-export function hasOwnWeekOff(employee: Pick<Employee, 'weekOff'> | null | undefined): boolean {
-  return Boolean(employee?.weekOff);
+export function employeeWeekOffs(employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined): WeekOffDay[] {
+  const primary = employee?.weekOff ?? getOrganisationWeekOff();
+  const secondary = employee?.weekOff2;
+  const days: WeekOffDay[] = [primary];
+  if (secondary && secondary !== primary) {
+    days.push(secondary);
+  }
+  return days;
 }
 
 /**
- * True when `isoDate` is this employee's week-off.
- *
- * The day index is read in UTC, matching how `YYYY-MM-DD` record dates parse
- * everywhere else in the app (see lib/today.ts) — `getDay()` would answer in
- * the viewer's zone and put the week-off on the wrong date for anyone west of
- * IST.
+ * True when this person's week-off is their own rather than the organisation's.
+ */
+export function hasOwnWeekOff(employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined): boolean {
+  return Boolean(employee?.weekOff || employee?.weekOff2);
+}
+
+/**
+ * True when `isoDate` is this employee's week-off (matches primary or secondary week-off).
  */
 export function isWeekOffFor(
-  employee: Pick<Employee, 'weekOff'> | null | undefined,
+  employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined,
   isoDate: string,
 ): boolean {
-  return new Date(isoDate).getUTCDay() === WEEK_OFF_DAY_INDEX[weekOffOf(employee)];
+  const dayIndex = new Date(isoDate).getUTCDay();
+  const allDays = employeeWeekOffs(employee);
+  return allDays.some((day) => WEEK_OFF_DAY_INDEX[day] === dayIndex);
 }
 
 const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';

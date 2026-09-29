@@ -100,6 +100,10 @@ export interface Employee {
    * six-day week, so a person off on Monday works the Sunday.
    */
   weekOff?: WeekOffDay;
+  /**
+   * Optional second week-off day for employees on a 5-day work week (e.g. Saturday & Sunday).
+   */
+  weekOff2?: WeekOffDay;
   bloodGroup?: string;
   maritalStatus?: 'Single' | 'Married';
   address?: string;
