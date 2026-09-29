@@ -57,7 +57,7 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Main', module: 'Dashboard' },
+  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, group: 'Main', module: 'Dashboard' },
   // No `module`: the board is for everybody in the organisation, so there is
   // nothing in the permission matrix to filter it by. See the route in App.tsx.
   { label: 'The Board', path: '/board', icon: Megaphone, group: 'Main' },

@@ -17,13 +17,19 @@ import {
 } from 'lucide-react';
 import { BrandLockup } from '@/components/ui';
 import { submitDemoRequest, getWhatsAppDemoLink } from '@/lib/demoRequests';
+import { useAuth } from '@/lib/auth';
 
 // Direct Vite asset pipeline imports to guarantee bundling and rendering across all environments
 import heroEditorialImg from '@/assets/images/hero_editorial.jpg';
+import heroMobileImg from '@/assets/images/hero_mobile.jpg';
 import workplaceEditorialImg from '@/assets/images/workplace_editorial.jpg';
+import siteOperationsImg from '@/assets/images/site_operations.jpg';
 import operationsDirectorImg from '@/assets/images/operations_director.jpg';
+import payrollAuditImg from '@/assets/images/payroll_audit.jpg';
 
 export function LandingPage() {
+  const { user } = useAuth();
+
   // Demo Booking Form State
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -235,12 +241,12 @@ export function LandingPage() {
           {/* THE SINGLE CORPORATE LOGIN BUTTON */}
           <div className="flex items-center gap-3">
             <Link
-              to="/login"
+              to={user ? "/dashboard" : "/login"}
               id="corporate-login-main-button"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
             >
               <Lock size={12} className="text-brand-500" />
-              <span>Corporate Login</span>
+              <span>{user ? "Corporate Workspace →" : "Corporate Login"}</span>
             </Link>
           </div>
         </div>
@@ -249,7 +255,7 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       {/* 3. HERO: MINIMAL, ARCHITECTURAL, MODERNIST                        */}
       {/* ───────────────────────────────────────────────────────────────── */}
-      <section className="bg-white border-b-2 border-ink-900 py-14 sm:py-20">
+      <section className="bg-white border-b-2 border-ink-900 py-12 sm:py-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
@@ -286,6 +292,28 @@ export function LandingPage() {
                 </a>
               </div>
             </div>
+
+            {/* Mobile Immediate Image Stamp - visible above the fold on mobile screens */}
+            <div className="sm:hidden mt-8 p-3 bg-ink-50 border-2 border-ink-900 flex items-center gap-3.5">
+              <div className="w-20 h-20 border border-ink-900 shrink-0 overflow-hidden bg-ink-200">
+                <img
+                  src={heroMobileImg}
+                  alt="Workforce operations preview on mobile"
+                  className="w-full h-full object-cover grayscale-photo"
+                  loading="eager"
+                  onError={(e) => {
+                    e.currentTarget.src = '/images/hero_mobile.jpg';
+                  }}
+                />
+              </div>
+              <div className="text-[11px] font-mono leading-snug text-ink-700">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-brand-600 block mb-0.5">
+                  Plate 01 · Mobile View
+                </span>
+                <strong className="block text-ink-900 font-display font-bold">Bangalore & Hyderabad Cohort</strong>
+                <span className="text-ink-500 text-[10px]">Real-time attendance & shift roster deployment.</span>
+              </div>
+            </div>
           </div>
 
           {/* 3 Metric Pillars */}
@@ -304,18 +332,21 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Figure 01: Hero High-Resolution Authentic Editorial Photograph */}
+          {/* Figure 01: Hero High-Resolution Authentic Editorial Photograph with Responsive Mobile Crop */}
           <div className="mt-12 border-2 border-ink-900 bg-white">
-            <div className="relative aspect-[16/9] w-full overflow-hidden bg-ink-200">
-              <img
-                src={heroEditorialImg}
-                alt="Architecture and engineering workforce collaborating with Modcon HR in Bangalore studio"
-                className="w-full h-full object-cover grayscale-photo"
-                loading="eager"
-                onError={(e) => {
-                  e.currentTarget.src = '/images/hero_editorial.jpg';
-                }}
-              />
+            <div className="relative aspect-[4/3] sm:aspect-[16/9] w-full overflow-hidden bg-ink-200">
+              <picture>
+                <source media="(max-width: 640px)" srcSet={heroMobileImg} />
+                <img
+                  src={heroEditorialImg}
+                  alt="Architecture and engineering workforce collaborating with Modcon HR in Bangalore studio"
+                  className="w-full h-full object-cover grayscale-photo"
+                  loading="eager"
+                  onError={(e) => {
+                    e.currentTarget.src = '/images/hero_editorial.jpg';
+                  }}
+                />
+              </picture>
             </div>
             <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
               <span>Plate 01 · Collaborative workforce operations in an architecture & engineering studio.</span>
@@ -348,18 +379,21 @@ export function LandingPage() {
               <div className="lg:col-span-5 space-y-6">
                 <div className="border-2 border-ink-900 bg-white">
                   <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
-                    <img
-                      src={operationsDirectorImg}
-                      alt="Operations Director reviewing personnel rosters"
-                      className="w-full h-full object-cover grayscale-photo"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.src = '/images/operations_director.jpg';
-                      }}
-                    />
+                    <picture>
+                      <source media="(max-width: 640px)" srcSet={payrollAuditImg} />
+                      <img
+                        src={operationsDirectorImg}
+                        alt="Operations Director reviewing personnel rosters"
+                        className="w-full h-full object-cover grayscale-photo"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.src = '/images/operations_director.jpg';
+                        }}
+                      />
+                    </picture>
                   </div>
                   <div className="p-3 bg-ink-100 border-t-2 border-ink-900 text-[11px] font-mono text-ink-700">
-                    Plate 03 · People operations and payroll administration at Hyderabad design firm.
+                    Plate 04 · People operations and payroll administration at Hyderabad design firm.
                   </div>
                 </div>
 
@@ -653,22 +687,44 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Plate 02: Authentic Engineering Studio Photographic Plate */}
-          <div className="mt-12 border-2 border-ink-900 bg-white">
-            <div className="relative aspect-[16/9] w-full overflow-hidden bg-ink-200">
-              <img
-                src={workplaceEditorialImg}
-                alt="Collaborative workforce operations in an architecture & engineering studio"
-                className="w-full h-full object-cover grayscale-photo"
-                loading="lazy"
-                onError={(e) => {
-                  e.currentTarget.src = '/images/workplace_editorial.jpg';
-                }}
-              />
+          {/* Dual Photographic Plates: Mobile & Studio Operations */}
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Plate 02: Site & Biometric Operations */}
+            <div className="border-2 border-ink-900 bg-white">
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
+                <img
+                  src={siteOperationsImg}
+                  alt="On-site project operations and biometric geofence verification"
+                  className="w-full h-full object-cover grayscale-photo"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.src = '/images/site_operations.jpg';
+                  }}
+                />
+              </div>
+              <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 text-xs font-mono text-ink-700">
+                <span className="font-bold text-ink-900 block mb-0.5">Plate 02 · Mobile Geofence & Perimeter Check</span>
+                <span>Active field biometric validation with anti-spoofing cryptographic signatures.</span>
+              </div>
             </div>
-            <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
-              <span>Plate 02 · Operational synchronization across architectural project cohorts.</span>
-              <span className="text-ink-500 font-bold uppercase text-[10px]">Hyderabad Engineering & Site Office</span>
+
+            {/* Plate 03: Engineering Studio Cohort */}
+            <div className="border-2 border-ink-900 bg-white">
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
+                <img
+                  src={workplaceEditorialImg}
+                  alt="Collaborative workforce operations in an architecture & engineering studio"
+                  className="w-full h-full object-cover grayscale-photo"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.src = '/images/workplace_editorial.jpg';
+                  }}
+                />
+              </div>
+              <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 text-xs font-mono text-ink-700">
+                <span className="font-bold text-ink-900 block mb-0.5">Plate 03 · Operational Studio Synchronization</span>
+                <span>Real-time roster transparency across Hyderabad & Bangalore engineering cohorts.</span>
+              </div>
             </div>
           </div>
         </div>
@@ -851,8 +907,8 @@ export function LandingPage() {
             >
               WhatsApp
             </a>
-            <Link to="/login" className="font-bold text-ink-900 hover:text-brand-600 transition-colors uppercase font-display text-[11px]">
-              Corporate Login
+            <Link to={user ? "/dashboard" : "/login"} className="font-bold text-ink-900 hover:text-brand-600 transition-colors uppercase font-display text-[11px]">
+              {user ? "Corporate Workspace" : "Corporate Login"}
             </Link>
           </div>
 

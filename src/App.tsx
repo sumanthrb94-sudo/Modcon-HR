@@ -239,16 +239,17 @@ function AppRoutes() {
     <Routes>
       <Route
         path="login"
-        element={!loading && user ? <Navigate to="/" replace /> : <LoginPage />}
+        element={!loading && user ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
+      {/* Root URL defaults unconditionally to the public Landing Page */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="landing" element={<LandingPage />} />
       <Route path="careers" element={<CareersPage />} />
       <Route path="careers/:orgKey" element={<CareersPage />} />
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />
-      {!loading && !user && <Route path="/" element={<LandingPage />} />}
       <Route element={<RequireAuth><OrgContextGuard><AppLayout /></OrgContextGuard></RequireAuth>}>
-        <Route index element={<HomeRoute />} />
-        <Route path="dashboard" element={<Navigate to="/" replace />} />
+        <Route path="dashboard" element={<HomeRoute />} />
+        <Route path="app" element={<Navigate to="/dashboard" replace />} />
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
         <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />
