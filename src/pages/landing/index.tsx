@@ -23,7 +23,7 @@ export function LandingPage() {
       legacy:
         'Legacy platforms charge ₹150 to ₹350 per employee per month with mandatory annual lock-in contracts and hefty initial setup fees.',
       modcon:
-        'Free under 10 employees. 3 months free trial for 10–49 seats. Flat ₹50/employee/month thereafter, strictly capped at ₹5,000/month maximum.',
+        'Free under 10 employees. 3 months free trial for 10–49 seats. Flat ₹50/seat (or ₹49/employee/mo) with no arbitrary caps, no setup fees, and no lock-ins.',
     },
     {
       title: 'Location Spoofing & Hardware Queues',
@@ -63,15 +63,15 @@ export function LandingPage() {
       tier: '02',
       name: 'Growth',
       seats: '10 to 49 seats',
-      price: '₹50',
-      period: 'per seat / month',
+      price: '₹49',
+      period: 'per employee / month (or flat ₹50/seat)',
       badge: '3 Months Free Trial',
       highlight: true,
       features: [
         'All Startup features included',
+        '3 months free trial for growing teams',
         '1-Click whole-month bulk regularization',
         'Automated Indian statutory payroll & payslips',
-        'Multi-shift & rotational roster support',
         'Dedicated onboarding & priority support',
       ],
       ctaText: 'Call 9700144003 To Start',
@@ -82,12 +82,12 @@ export function LandingPage() {
       tier: '03',
       name: 'Enterprise',
       seats: '50+ seats',
-      price: '₹50',
-      period: 'per seat / month (Max ₹5,000/mo)',
-      badge: 'Capped at ₹5,000/mo',
+      price: '₹49',
+      period: 'per employee / month · Flat (No cap)',
+      badge: 'Flat Rate · No Cap',
       features: [
         'All Growth features included',
-        'Max billing cap of ₹5,000 flat per month',
+        'Flat rate: no maximum cap, pay only for active staff',
         'Multi-branch office geofencing',
         'Bank salary transfer file export (NEFT/RTGS)',
         'Custom shift policies & dedicated engineer',
@@ -181,7 +181,7 @@ export function LandingPage() {
             </h1>
 
             <p className="mt-6 text-base sm:text-lg text-ink-600 leading-relaxed font-sans">
-              Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for just ₹50 per seat.
+              Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹50 per seat (or ₹49/employee/mo) with no cap.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
@@ -216,8 +216,8 @@ export function LandingPage() {
               <div className="text-xs text-ink-600 mt-1">Full trial for organizations up to 49 seats</div>
             </div>
             <div className="border-l-2 border-ink-900 pl-4">
-              <div className="text-2xl font-extrabold text-ink-900 font-display">₹5,000 / mo Cap</div>
-              <div className="text-xs text-ink-600 mt-1">Flat maximum cap for enterprises (50+ seats)</div>
+              <div className="text-2xl font-extrabold text-ink-900 font-display">Flat ₹50 / seat</div>
+              <div className="text-xs text-ink-600 mt-1">Flat ₹49–₹50 per employee · No seat cap</div>
             </div>
           </div>
         </div>

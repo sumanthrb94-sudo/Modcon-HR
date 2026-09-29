@@ -3040,14 +3040,14 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
       amount: enterprisePricing.annualRate,
       status: 'Paid',
       title: 'Enterprise Upgrade',
-      description: 'Plan upgraded to Enterprise with maximum monthly subscription cap (₹5,000/mo max).',
+      description: 'Plan upgraded to Enterprise with flat per-seat subscription.',
       planTier: 'Enterprise',
       totalSeats: nextSeats,
       billingEmail,
       autoRenew,
     });
     setUpgradeOpen(false);
-    setActionNotice('Enterprise plan activated with capped maximum pricing.');
+    setActionNotice('Enterprise plan activated with flat per-seat pricing.');
   }
 
   useEffect(() => {
@@ -3058,7 +3058,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
 
   const planFeatures = [
     { feature: 'Team Size Range', starter: '1 - 9 employees', pro: '10 - 49 employees', enterprise: '50+ employees' },
-    { feature: 'Subscription Cost', starter: '100% Free Forever', pro: '3 Months Free Trial', enterprise: '₹50/emp/mo (Max ₹5k/mo)' },
+    { feature: 'Subscription Cost', starter: '100% Free Forever', pro: '3 Months Free Trial', enterprise: '₹50/emp/mo (or ₹49/seat)' },
     { feature: 'Core HR & Employee Directory', starter: true, pro: true, enterprise: true },
     { feature: 'Attendance & Geofencing', starter: true, pro: true, enterprise: true },
     { feature: 'Statutory Payroll (PF, ESI, TDS, PT)', starter: true, pro: true, enterprise: true },
@@ -3088,7 +3088,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                   ? 'Free tier active · 100% free forever for teams under 10 employees'
                   : pricing.isTrialTier
                     ? '3-Month Free Trial active · Then ₹50/seat/month'
-                    : '₹50 per employee/month · Maximum subscription capped at ₹5,000/month'}
+                    : '₹50 per employee/month (or ₹49/seat) · Flat rate with no cap'}
               </p>
             </div>
           </div>

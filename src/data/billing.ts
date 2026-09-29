@@ -48,8 +48,8 @@ export interface SubscriptionPricing {
 /**
  * ModCon HR Transparent SaaS Pricing:
  * - < 10 employees: 100% Free forever (₹0)
- * - 10 - 49 employees: 3 Months Free Trial, then ₹50/employee/mo
- * - 50+ employees: ₹50 per employee/month, strictly capped at a MAXIMUM of ₹5,000/month (₹60,000/year).
+ * - 10 - 49 employees: 3 Months Free Trial, then ₹50/employee/mo (or ₹49/seat)
+ * - 50+ employees: Flat ₹50 per employee/month (or ₹49/seat), uncapped.
  */
 export function calculateSubscriptionPrice(seats: number): SubscriptionPricing {
   const safeSeats = Math.max(0, seats);
@@ -66,31 +66,30 @@ export function calculateSubscriptionPrice(seats: number): SubscriptionPricing {
     };
   }
 
+  const ratePerSeat = 50;
+  const monthlyRate = safeSeats * ratePerSeat;
+
   if (safeSeats <= 49) {
-    const uncappedMonthly = safeSeats * 50;
-    const monthlyRate = Math.min(uncappedMonthly, 5000);
     return {
       monthlyRate,
       annualRate: monthlyRate * 12,
       isFreeTier: false,
       isTrialTier: true,
-      ratePerSeat: 50,
+      ratePerSeat,
       planName: `Growth Plan (${safeSeats} seats · 3-Month Free Trial)`,
-      maxCapApplied: uncappedMonthly > 5000,
+      maxCapApplied: false,
     };
   }
 
-  // 50+ seats: ₹50/employee/mo with hard max cap of ₹5,000/month
-  const uncappedMonthly = safeSeats * 50;
-  const monthlyRate = Math.min(uncappedMonthly, 5000);
+  // 50+ seats: Flat rate with no cap
   return {
     monthlyRate,
     annualRate: monthlyRate * 12,
     isFreeTier: false,
     isTrialTier: false,
-    ratePerSeat: 50,
-    planName: `Scale & Pro (${safeSeats} seats)`,
-    maxCapApplied: uncappedMonthly >= 5000,
+    ratePerSeat,
+    planName: `Scale & Enterprise (${safeSeats} seats)`,
+    maxCapApplied: false,
   };
 }
 
