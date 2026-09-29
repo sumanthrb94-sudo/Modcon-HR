@@ -250,6 +250,7 @@ function AppRoutes() {
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />
       <Route element={<RequireAuth><OrgContextGuard><AppLayout /></OrgContextGuard></RequireAuth>}>
         <Route index element={<HomeRoute />} />
+        <Route path="dashboard" element={<Navigate to="/" replace />} />
         <Route path="employees" element={<RequireModuleAccess module="Employee Directory"><EmployeesPage /></RequireModuleAccess>} />
         <Route path="employees/:id" element={<RequireModuleAccess module="Employee Directory"><EmployeeDetailPage /></RequireModuleAccess>} />
         <Route path="attendance" element={<RequireModuleAccess module="Attendance"><AttendancePage /></RequireModuleAccess>} />

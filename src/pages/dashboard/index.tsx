@@ -250,8 +250,8 @@ function EmployeeDashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader
-        title={`Good ${currentHour() < 12 ? 'morning' : currentHour() < 17 ? 'afternoon' : 'evening'}, ${firstName} 👋`}
-        subtitle={currentEmployee ? `${currentEmployee.designation} · ${currentEmployee.department}` : 'Employee workspace'}
+        title="Dashboard"
+        subtitle={currentEmployee ? `${currentEmployee.designation} · ${currentEmployee.department}` : 'Workspace & Analytics'}
         actions={<NotificationsMenu />}
       />
 
