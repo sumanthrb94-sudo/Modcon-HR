@@ -48,8 +48,8 @@ export interface SubscriptionPricing {
 /**
  * ModCon HR Transparent SaaS Pricing:
  * - < 10 employees: 100% Free forever (₹0)
- * - 10 - 49 employees: 3 Months Free Trial, then ₹50/employee/mo (or ₹49/seat)
- * - 50+ employees: Flat ₹50 per employee/month (or ₹49/seat), uncapped.
+ * - 10 - 49 employees: 3 Months Free Trial, then ₹49/seat/month
+ * - 50+ employees: Flat ₹49 per employee/month, uncapped.
  */
 export function calculateSubscriptionPrice(seats: number): SubscriptionPricing {
   const safeSeats = Math.max(0, seats);
@@ -66,7 +66,7 @@ export function calculateSubscriptionPrice(seats: number): SubscriptionPricing {
     };
   }
 
-  const ratePerSeat = 50;
+  const ratePerSeat = 49;
   const monthlyRate = safeSeats * ratePerSeat;
 
   if (safeSeats <= 49) {
@@ -100,15 +100,15 @@ const defaultBillingPreferences: BillingPreferences = {
   autoRenew: true,
 };
 
-// For 60 seats: 60 * 50 = ₹3,000/mo = ₹36,000/yr (previously incorrectly displayed as 2,99,940)
+// For 60 seats: 60 * 49 = ₹2,940/mo = ₹35,280/yr
 const defaultBillingInvoices: BillingInvoice[] = [
   {
     id: 'INV-2026-06',
     date: '2026-06-01',
-    amount: 36000,
+    amount: 35280,
     status: 'Paid',
     title: 'Pro Plan Renewal (60 seats)',
-    description: 'Annual Pro subscription for 60 seats (₹50/seat/mo, ₹36,000/yr).',
+    description: 'Annual Pro subscription for 60 seats (₹49/seat/mo, ₹35,280/yr).',
     planTier: 'Pro',
     totalSeats: 60,
     billingEmail: 'finance@modcon.io',
@@ -117,10 +117,10 @@ const defaultBillingInvoices: BillingInvoice[] = [
   {
     id: 'INV-2026-03',
     date: '2026-03-01',
-    amount: 36000,
+    amount: 35280,
     status: 'Paid',
     title: 'Pro Plan Renewal (60 seats)',
-    description: 'Annual Pro subscription for 60 seats (₹50/seat/mo, ₹36,000/yr).',
+    description: 'Annual Pro subscription for 60 seats (₹49/seat/mo, ₹35,280/yr).',
     planTier: 'Pro',
     totalSeats: 60,
     billingEmail: 'finance@modcon.io',
@@ -129,10 +129,10 @@ const defaultBillingInvoices: BillingInvoice[] = [
   {
     id: 'INV-2025-12',
     date: '2025-12-01',
-    amount: 33600,
+    amount: 32928,
     status: 'Paid',
     title: 'Pro Plan Renewal (56 seats)',
-    description: 'Annual Pro subscription for 56 seats (₹50/seat/mo, ₹33,600/yr).',
+    description: 'Annual Pro subscription for 56 seats (₹49/seat/mo, ₹32,928/yr).',
     planTier: 'Pro',
     totalSeats: 56,
     billingEmail: 'finance@modcon.io',

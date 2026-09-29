@@ -91,7 +91,7 @@ export function LandingPage() {
       legacy:
         'Legacy platforms charge ₹150 to ₹350 per employee per month with mandatory annual lock-in contracts and hefty initial setup fees.',
       modcon:
-        'Free under 10 employees. 3 months free trial for 10–49 seats. Flat ₹50/seat (or ₹49/employee/mo) with no arbitrary caps, no setup fees, and no lock-ins.',
+        'Free under 10 employees. 3 months free trial for 10–49 seats. Flat ₹49/seat with no arbitrary caps, no setup fees, and no lock-ins.',
     },
     {
       title: 'Location Spoofing & Hardware Queues',
@@ -132,7 +132,7 @@ export function LandingPage() {
       name: 'Growth',
       seats: '10 to 49 seats',
       price: '₹49',
-      period: 'per employee / month (or flat ₹50/seat)',
+      period: 'per employee / month · Flat ₹49/seat',
       badge: '3 Months Free Trial',
       highlight: true,
       features: [
@@ -284,7 +284,7 @@ export function LandingPage() {
             </h1>
 
             <p className="mt-6 text-base sm:text-lg text-ink-600 leading-relaxed font-sans">
-              Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹50 per seat (or ₹49/employee/mo) with no cap.
+              Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹49/seat with no cap.
             </p>
 
             {/* Single restrained CTA — no funnel stack on mobile */}
@@ -337,8 +337,8 @@ export function LandingPage() {
               <div className="text-xs text-ink-600 mt-1">Full trial for organizations up to 49 seats</div>
             </div>
             <div className="border-l-2 border-ink-900 pl-4">
-              <div className="text-2xl font-extrabold text-ink-900 font-display">Flat ₹50 / seat</div>
-              <div className="text-xs text-ink-600 mt-1">Flat ₹49–₹50 per employee · No seat cap</div>
+              <div className="text-2xl font-extrabold text-ink-900 font-display">Flat ₹49 / seat</div>
+              <div className="text-xs text-ink-600 mt-1">Flat ₹49 per employee · No seat cap</div>
             </div>
           </div>
 
@@ -555,7 +555,7 @@ export function LandingPage() {
                     >
                       <option value="1 to 9 employees (Free Starter)">1 to 9 employees (Free Starter)</option>
                       <option value="10 to 49 employees (3 Months Free Trial)">10 to 49 employees (3 Months Free Trial)</option>
-                      <option value="50 to 199 employees (Flat ₹49–₹50/seat)">50 to 199 employees (Flat ₹49–₹50/seat)</option>
+                      <option value="50 to 199 employees (Flat ₹49/seat)">50 to 199 employees (Flat ₹49/seat)</option>
                       <option value="200+ employees (Enterprise Custom)">200+ employees (Enterprise Custom)</option>
                     </select>
                   </div>

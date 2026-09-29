@@ -3058,7 +3058,7 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
 
   const planFeatures = [
     { feature: 'Team Size Range', starter: '1 - 9 employees', pro: '10 - 49 employees', enterprise: '50+ employees' },
-    { feature: 'Subscription Cost', starter: '100% Free Forever', pro: '3 Months Free Trial', enterprise: '₹50/emp/mo (or ₹49/seat)' },
+    { feature: 'Subscription Cost', starter: '100% Free Forever', pro: '3 Months Free Trial', enterprise: '₹49/seat/mo · Flat' },
     { feature: 'Core HR & Employee Directory', starter: true, pro: true, enterprise: true },
     { feature: 'Attendance & Geofencing', starter: true, pro: true, enterprise: true },
     { feature: 'Statutory Payroll (PF, ESI, TDS, PT)', starter: true, pro: true, enterprise: true },
@@ -3087,8 +3087,8 @@ function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: num
                 {pricing.isFreeTier
                   ? 'Free tier active · 100% free forever for teams under 10 employees'
                   : pricing.isTrialTier
-                    ? '3-Month Free Trial active · Then ₹50/seat/month'
-                    : '₹50 per employee/month (or ₹49/seat) · Flat rate with no cap'}
+                    ? '3-Month Free Trial active · Then ₹49/seat/month'
+                    : '₹49 per employee/month · Flat rate with no cap'}
               </p>
             </div>
           </div>
