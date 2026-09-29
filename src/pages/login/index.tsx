@@ -96,8 +96,8 @@ export function LoginPage() {
                     <Link to="/landing" className="text-ink-500 hover:text-brand-600 font-semibold flex items-center gap-1 transition-colors">
                         ← Product Overview & Pricing
                     </Link>
-                    <a href="tel:9700144003" className="text-ink-500 hover:text-ink-900 font-mono font-bold">
-                        Hotline: 9700144003
+                    <a href="tel:+919700144003" className="text-ink-500 hover:text-ink-900 font-mono font-bold">
+                        Helpline: +91 9700144003
                     </a>
                 </div>
                 <section className="card w-full p-6 sm:p-8">

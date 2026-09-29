@@ -1,8 +1,65 @@
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Phone, ArrowRight, Lock, Check, X, ShieldCheck } from 'lucide-react';
+import {
+  Phone,
+  ArrowRight,
+  Lock,
+  Check,
+  X,
+  ShieldCheck,
+  MessageCircle,
+  Calendar,
+  Building2,
+  User,
+  Mail,
+  Loader2,
+  CheckCircle2,
+} from 'lucide-react';
 import { BrandLockup } from '@/components/ui';
+import { submitDemoRequest, getWhatsAppDemoLink } from '@/lib/demoRequests';
 
 export function LandingPage() {
+  // Demo Booking Form State
+  const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [workEmail, setWorkEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [teamSize, setTeamSize] = useState('16 to 49 employees');
+  const [preferredSlot, setPreferredSlot] = useState('Morning (10:00 AM – 01:00 PM)');
+  const [message, setMessage] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  async function handleDemoSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFormError('');
+
+    if (!fullName.trim() || !companyName.trim() || !workEmail.trim() || !phone.trim()) {
+      setFormError('Please fill in your name, company, work email, and phone number.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await submitDemoRequest({
+        fullName: fullName.trim(),
+        companyName: companyName.trim(),
+        workEmail: workEmail.trim(),
+        phone: phone.trim(),
+        teamSize,
+        preferredSlot,
+        message: message.trim(),
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setFormError('Could not submit demo request. Please try calling +91 9700144003 directly.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const problemsAndSolutions = [
     {
       title: 'Rest Day Absences & Wrongful LOP',
@@ -74,9 +131,9 @@ export function LandingPage() {
         'Automated Indian statutory payroll & payslips',
         'Dedicated onboarding & priority support',
       ],
-      ctaText: 'Call 9700144003 To Start',
-      ctaHref: 'tel:9700144003',
-      isHotline: true,
+      ctaText: 'Book a Demo with Us',
+      ctaHref: '#book-demo',
+      isHotline: false,
     },
     {
       tier: '03',
@@ -92,8 +149,8 @@ export function LandingPage() {
         'Bank salary transfer file export (NEFT/RTGS)',
         'Custom shift policies & dedicated engineer',
       ],
-      ctaText: 'Call 9700144003 For Setup',
-      ctaHref: 'tel:9700144003',
+      ctaText: 'Call +91 9700144003',
+      ctaHref: 'tel:+919700144003',
       isHotline: true,
     },
   ];
@@ -101,37 +158,49 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-ink-50 text-ink-900 font-sans antialiased selection:bg-brand-600/20">
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 1. MINIMAL TOP UTILITY BAR                                        */}
+      {/* 1. TOP UTILITY BAR (HOTLINE, WHATSAPP, BOOK DEMO - NO DUP LOGIN) */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <div className="bg-ink-900 text-ink-100 text-xs py-2 px-4 border-b border-ink-900">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 bg-brand-600" />
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-3">
+            <span className="inline-block w-2 h-2 bg-brand-600 shrink-0" />
             <span className="font-mono text-[11px] uppercase tracking-wider text-ink-300">
-              Direct Enterprise Helpline:
+              Helpline:
             </span>
             <a
-              href="tel:9700144003"
-              className="font-mono font-bold text-white hover:text-brand-400 underline transition-colors"
+              href="tel:+919700144003"
+              className="font-mono font-bold text-white hover:text-brand-400 transition-colors flex items-center gap-1"
             >
-              9700144003
+              <Phone size={12} className="text-brand-500" />
+              <span>+91 9700144003</span>
             </a>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Link
-              to="/login"
-              className="text-xs text-ink-200 hover:text-white flex items-center gap-1.5 transition-colors font-medium"
+          <div className="flex items-center gap-5 text-xs">
+            <a
+              href={getWhatsAppDemoLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 transition-colors font-mono"
             >
-              <Lock size={12} className="text-brand-500" />
-              <span>Corporate Login</span>
-            </Link>
+              <MessageCircle size={13} />
+              <span>WhatsApp: +91 9700144003</span>
+            </a>
+
+            <span className="text-ink-600 hidden sm:inline">|</span>
+
+            <a
+              href="#book-demo"
+              className="text-ink-200 hover:text-white font-display font-extrabold uppercase tracking-wider text-[11px] transition-colors"
+            >
+              Book a Demo →
+            </a>
           </div>
         </div>
       </div>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 2. MINIMAL NAVIGATION                                            */}
+      {/* 2. MINIMAL NAVIGATION (ONLY ONE PROMINENT CORPORATE LOGIN BUTTON)  */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <header className="bg-white border-b-2 border-ink-900 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -146,17 +215,24 @@ export function LandingPage() {
             <a href="#pricing" className="hover:text-brand-600 transition-colors">
               Pricing
             </a>
-            <a href="tel:9700144003" className="hover:text-brand-600 transition-colors flex items-center gap-1 text-ink-900">
+            <a href="#book-demo" className="hover:text-brand-600 transition-colors text-brand-700">
+              Book a Demo
+            </a>
+            <a
+              href="tel:+919700144003"
+              className="hover:text-brand-600 transition-colors flex items-center gap-1 text-ink-900"
+            >
               <Phone size={12} className="text-brand-600" />
-              <span className="font-mono">9700144003</span>
+              <span className="font-mono font-bold">+91 9700144003</span>
             </a>
           </nav>
 
+          {/* THE SINGLE CORPORATE LOGIN BUTTON */}
           <div className="flex items-center gap-3">
             <Link
               to="/login"
-              id="nav-corporate-login"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900"
+              id="corporate-login-main-button"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
             >
               <Lock size={12} className="text-brand-500" />
               <span>Corporate Login</span>
@@ -171,7 +247,7 @@ export function LandingPage() {
       <section className="bg-white border-b-2 border-ink-900 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 mb-4 px-2 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
+            <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
               <span className="w-1.5 h-1.5 bg-brand-600" />
               Human Resource Operating System
             </div>
@@ -184,24 +260,32 @@ export function LandingPage() {
               Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹50 per seat (or ₹49/employee/mo) with no cap.
             </p>
 
-            <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <a
-                href="tel:9700144003"
+                href="#book-demo"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-brand-600 text-white hover:bg-brand-700 text-sm font-display font-extrabold uppercase tracking-wider transition-colors"
               >
-                <Phone size={15} />
-                <span>Call Hotline: 9700144003</span>
+                <Calendar size={15} />
+                <span>Book a Demo with Us</span>
               </a>
 
-              <Link
-                to="/login"
-                id="hero-corporate-login"
+              <a
+                href="tel:+919700144003"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white text-ink-900 hover:bg-ink-100 border-2 border-ink-900 text-sm font-display font-extrabold uppercase tracking-wider transition-colors"
               >
-                <Lock size={14} className="text-brand-600" />
-                <span>Corporate Login</span>
-                <ArrowRight size={14} />
-              </Link>
+                <Phone size={15} className="text-brand-600" />
+                <span>Call +91 9700144003</span>
+              </a>
+
+              <a
+                href={getWhatsAppDemoLink()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 bg-emerald-700 text-white hover:bg-emerald-800 text-sm font-display font-extrabold uppercase tracking-wider transition-colors"
+              >
+                <MessageCircle size={15} />
+                <span>WhatsApp Us</span>
+              </a>
             </div>
           </div>
 
@@ -224,7 +308,222 @@ export function LandingPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 4. PROBLEMS IN REGULAR HR TOOLS VS THE MODCON SOLUTION           */}
+      {/* 4. BOOK A DEMO WITH US FORM (MODERNIST & WHATSAPP INTEGRATION)     */}
+      {/* ───────────────────────────────────────────────────────────────── */}
+      <section id="book-demo" className="py-16 sm:py-20 bg-ink-100 border-b-2 border-ink-900 scroll-mt-16">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+          <div className="bg-white border-2 border-ink-900 p-6 sm:p-10">
+            <div className="border-b border-ink-200 pb-6 mb-8">
+              <span className="font-mono text-xs font-bold uppercase tracking-wider text-brand-600 block mb-1">
+                Direct Engagement
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-display font-extrabold text-ink-900">
+                Book a Demo with Us
+              </h2>
+              <p className="mt-2 text-xs sm:text-sm text-ink-600">
+                Schedule a 20-minute tailored walkthrough of Modcon HR with our deployment architects. We will show how dynamic week-offs, bulk regularization, and automated statutory payroll work for your team.
+              </p>
+            </div>
+
+            {submitted ? (
+              <div className="p-8 bg-ink-50 border-2 border-emerald-600 text-center space-y-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-600 text-white rounded-none">
+                  <CheckCircle2 size={24} />
+                </div>
+                <h3 className="text-xl font-display font-extrabold text-ink-900">
+                  Demo Request Confirmed!
+                </h3>
+                <p className="text-xs text-ink-700 max-w-md mx-auto leading-relaxed">
+                  Thank you, <strong>{fullName}</strong>. Our enterprise team will contact you at <strong>{workEmail}</strong> and <strong>{phone}</strong> within 2 business hours.
+                </p>
+
+                <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <a
+                    href={getWhatsAppDemoLink({ name: fullName, company: companyName, teamSize, phone })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
+                  >
+                    <MessageCircle size={15} />
+                    <span>Chat on WhatsApp Now (+91 9700144003)</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setSubmitted(false)}
+                    className="px-4 py-3 text-xs text-ink-600 hover:text-ink-900 font-bold uppercase"
+                  >
+                    Submit Another Inquiry
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleDemoSubmit} className="space-y-6">
+                {formError && (
+                  <div className="p-3 bg-rose-50 border border-rose-300 text-rose-700 text-xs font-medium">
+                    {formError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {/* Full Name */}
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                      Full Name *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="e.g. Rahul Sharma"
+                        className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Company Name */}
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                      Company / Organization Name *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="e.g. Acme Tech Pvt Ltd"
+                        className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Work Email */}
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                      Work Email Address *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        required
+                        value={workEmail}
+                        onChange={(e) => setWorkEmail(e.target.value)}
+                        placeholder="rahul@company.com"
+                        className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Phone / WhatsApp */}
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                      Phone / WhatsApp Number *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        required
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Team Size */}
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                      Estimated Team Headcount
+                    </label>
+                    <select
+                      value={teamSize}
+                      onChange={(e) => setTeamSize(e.target.value)}
+                      className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
+                    >
+                      <option value="1 to 9 employees (Free Starter)">1 to 9 employees (Free Starter)</option>
+                      <option value="10 to 49 employees (3 Months Free Trial)">10 to 49 employees (3 Months Free Trial)</option>
+                      <option value="50 to 199 employees (Flat ₹49–₹50/seat)">50 to 199 employees (Flat ₹49–₹50/seat)</option>
+                      <option value="200+ employees (Enterprise Custom)">200+ employees (Enterprise Custom)</option>
+                    </select>
+                  </div>
+
+                  {/* Preferred Slot */}
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                      Preferred Demo Time
+                    </label>
+                    <select
+                      value={preferredSlot}
+                      onChange={(e) => setPreferredSlot(e.target.value)}
+                      className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
+                    >
+                      <option value="Morning (10:00 AM – 01:00 PM)">Morning (10:00 AM – 01:00 PM)</option>
+                      <option value="Afternoon (02:00 PM – 05:00 PM)">Afternoon (02:00 PM – 05:00 PM)</option>
+                      <option value="Evening (05:00 PM – 07:00 PM)">Evening (05:00 PM – 07:00 PM)</option>
+                      <option value="Immediate Phone Callback">Immediate Phone Callback</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Specific Questions / Notes */}
+                <div>
+                  <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    Specific Requirements or Current System Challenges (Optional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder="Tell us about your shift rosters, current biometric setup, or payroll challenges..."
+                    className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
+                  />
+                </div>
+
+                {/* Submission CTA and WhatsApp quick-link */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-brand-600 text-white hover:bg-brand-700 text-xs font-display font-extrabold uppercase tracking-wider transition-colors disabled:opacity-50"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Sending Request…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Calendar size={14} />
+                        <span>Confirm & Book Demo</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-2 text-xs text-ink-600">
+                    <span>Or direct WhatsApp chat:</span>
+                    <a
+                      href={getWhatsAppDemoLink()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-700 font-bold hover:underline font-mono inline-flex items-center gap-1"
+                    >
+                      <MessageCircle size={13} />
+                      <span>+91 9700144003</span>
+                    </a>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────────── */}
+      {/* 5. PROBLEMS IN REGULAR HR TOOLS VS THE MODCON SOLUTION           */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="comparison" className="py-16 sm:py-20 bg-ink-50 border-b-2 border-ink-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -290,7 +589,7 @@ export function LandingPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 5. PRICING: MINIMAL, ARCHITECTURAL, TRANSPARENT                   */}
+      {/* 6. PRICING: MINIMAL, ARCHITECTURAL, TRANSPARENT                   */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="pricing" className="py-16 sm:py-20 bg-white border-b-2 border-ink-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -371,6 +670,14 @@ export function LandingPage() {
                       <Phone size={13} />
                       <span>{tier.ctaText}</span>
                     </a>
+                  ) : tier.ctaHref.startsWith('#') ? (
+                    <a
+                      href={tier.ctaHref}
+                      className="w-full inline-flex items-center justify-center gap-1.5 py-3 bg-brand-600 text-white hover:bg-brand-700 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
+                    >
+                      <Calendar size={13} />
+                      <span>{tier.ctaText}</span>
+                    </a>
                   ) : (
                     <Link
                       to={tier.ctaHref}
@@ -388,7 +695,7 @@ export function LandingPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 6. MINIMAL ENTERPRISE HOTLINE BANNER                              */}
+      {/* 7. ENTERPRISE HOTLINE & WHATSAPP BANNER                           */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <section className="bg-ink-900 text-white py-14 border-b-2 border-ink-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-8">
@@ -401,33 +708,34 @@ export function LandingPage() {
               Ready to eliminate false LOP and streamline payroll?
             </h2>
             <p className="mt-2 text-sm text-ink-300">
-              Call our enterprise deployment team directly at <strong className="text-white font-mono">9700144003</strong>. We set up your tenant, configure organizational week-offs, and migrate employee records within 24 hours.
+              Call our enterprise deployment desk directly at <strong className="text-white font-mono">+91 9700144003</strong> or chat with us on WhatsApp. We configure organizational week-offs and migrate employee records within 24 hours.
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full md:w-auto">
             <a
-              href="tel:9700144003"
+              href="tel:+919700144003"
               className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-brand-600 text-white hover:bg-brand-700 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
             >
               <Phone size={14} />
-              <span>Hotline: 9700144003</span>
+              <span>Call +91 9700144003</span>
             </a>
 
-            <Link
-              to="/login"
-              id="footer-corporate-login"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white text-ink-900 hover:bg-ink-100 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-white"
+            <a
+              href={getWhatsAppDemoLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
             >
-              <Lock size={13} className="text-brand-600" />
-              <span>Corporate Login</span>
-            </Link>
+              <MessageCircle size={14} />
+              <span>WhatsApp Demo Desk</span>
+            </a>
           </div>
         </div>
       </section>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 7. FOOTER                                                        */}
+      {/* 8. FOOTER                                                        */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <footer className="bg-ink-50 py-8 text-xs text-ink-600 border-t border-ink-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -440,15 +748,26 @@ export function LandingPage() {
           </div>
 
           <div className="flex items-center gap-6 text-xs">
-            <Link to="/login" className="font-bold text-ink-900 hover:text-brand-600 transition-colors uppercase font-display text-[11px]">
-              Corporate Login
-            </Link>
+            <a href="#book-demo" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
+              Book a Demo
+            </a>
             <Link to="/careers" className="hover:text-ink-900 transition-colors">
               Careers
             </Link>
-            <a href="tel:9700144003" className="font-mono font-bold text-brand-600 hover:underline">
-              9700144003
+            <a href="tel:+919700144003" className="font-mono font-bold text-brand-600 hover:underline">
+              +91 9700144003
             </a>
+            <a
+              href={getWhatsAppDemoLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono font-bold text-emerald-700 hover:underline"
+            >
+              WhatsApp
+            </a>
+            <Link to="/login" className="font-bold text-ink-900 hover:text-brand-600 transition-colors uppercase font-display text-[11px]">
+              Corporate Login
+            </Link>
           </div>
 
           <div className="font-mono text-[10px] text-ink-400">

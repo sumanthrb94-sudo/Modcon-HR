@@ -37,6 +37,7 @@ import {
 import type { Organization } from '@/types';
 import { APP_TIME_ZONE } from '@/lib/today';
 import SubscriptionsPanel from './SubscriptionsPanel';
+import DemoRequestsAnalyticsPanel from './DemoRequestsAnalyticsPanel';
 
 function formatCreatedAt(value: unknown): string {
     const seconds = (value as { seconds?: number } | undefined)?.seconds;
@@ -506,6 +507,16 @@ export function OrganizationsPage() {
                 `organizations/{orgId}` is super-admin-writable and nothing else
                 is, which is what makes a trial a trial. */}
             <SubscriptionsPanel organizations={organizations} loading={loading} />
+
+            {/* Inbound Demo Requests and Landing Page Form Analytics */}
+            <DemoRequestsAnalyticsPanel
+                onPreFillOrg={(company, email) => {
+                    setOrgName(company);
+                    setAdminEmail(email);
+                    setAdminName(company.split(' ')[0] + ' Admin');
+                    setCreateOpen(true);
+                }}
+            />
 
             <Modal
                 open={createOpen}

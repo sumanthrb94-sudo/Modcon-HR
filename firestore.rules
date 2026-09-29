@@ -2261,6 +2261,16 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------
+    // Inbound Demo Requests & Sales Leads from Public Landing Page
+    // -------------------------------------------------------------------
+    match /demo_requests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        myProfile().get('superAdmin', false) == true;
+    }
+
+    // -------------------------------------------------------------------
     // Deny everything else by default.
     // -------------------------------------------------------------------
     match /{document=**} {
