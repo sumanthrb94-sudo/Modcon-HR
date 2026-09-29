@@ -91,7 +91,15 @@ export function LoginPage() {
 
     return (
         <main className="min-h-screen bg-ink-50 px-4 py-8">
-            <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center justify-center">
+            <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center">
+                <div className="mb-3 flex items-center justify-between text-xs px-1">
+                    <Link to="/landing" className="text-ink-500 hover:text-brand-600 font-semibold flex items-center gap-1 transition-colors">
+                        ← Product Overview & Pricing
+                    </Link>
+                    <a href="tel:9700144003" className="text-ink-500 hover:text-ink-900 font-mono font-bold">
+                        Hotline: 9700144003
+                    </a>
+                </div>
                 <section className="card w-full p-6 sm:p-8">
                     <div className="mb-4">
                         <BrandLockup size={40} />

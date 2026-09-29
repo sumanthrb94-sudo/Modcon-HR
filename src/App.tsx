@@ -51,6 +51,7 @@ const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.L
 // it is read by candidates who have no account here — see src/pages/careers.
 const CareersPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersPage })));
 const CareersJobPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersJobPage })));
+const LandingPage = lazy(() => import('@/pages/landing').then((m) => ({ default: m.LandingPage })));
 
 function PageLoader() {
   return (
@@ -240,14 +241,11 @@ function AppRoutes() {
         path="login"
         element={!loading && user ? <Navigate to="/" replace /> : <LoginPage />}
       />
-      {/* Public, and unlike /login not redirected away from when somebody is
-          signed in: a careers page is a page anybody may read, including an
-          employee looking at what their own company has advertised. Declared
-          above the authenticated block so the catch-all inside it — which
-          sends an unknown path to the sign-in screen — never claims these. */}
+      <Route path="landing" element={<LandingPage />} />
       <Route path="careers" element={<CareersPage />} />
       <Route path="careers/:orgKey" element={<CareersPage />} />
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />
+      {!loading && !user && <Route path="/" element={<LandingPage />} />}
       <Route element={<RequireAuth><OrgContextGuard><AppLayout /></OrgContextGuard></RequireAuth>}>
         <Route index element={<HomeRoute />} />
         <Route path="dashboard" element={<Navigate to="/" replace />} />
