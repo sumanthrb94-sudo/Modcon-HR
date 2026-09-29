@@ -172,39 +172,55 @@ export function LandingPage() {
       {/* 1. TOP UTILITY BAR (HOTLINE, WHATSAPP, BOOK DEMO - NO DUP LOGIN) */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <div className="bg-ink-900 text-ink-100 text-xs py-2 px-4 border-b border-ink-900">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          {/* Mobile: just brand marker. Desktop: show direct desk label */}
           <div className="flex items-center gap-3">
             <span className="inline-block w-2 h-2 bg-brand-600 shrink-0" />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-ink-300">
-              Direct Desk:
+            <span className="hidden sm:inline font-mono text-[11px] uppercase tracking-wider text-ink-300">
+              Direct Desk
             </span>
-            <a
-              href="tel:+917799934943"
-              className="font-mono font-bold text-white hover:text-brand-400 transition-colors flex items-center gap-1"
-            >
-              <Phone size={12} className="text-brand-500" />
-              <span>+91 7799934943</span>
-            </a>
           </div>
 
-          <div className="flex items-center gap-5 text-xs">
+          <div className="flex items-center gap-3 text-xs">
+            {/* WhatsApp icon always visible */}
             <a
               href={getWhatsAppDemoLink()}
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Chat on WhatsApp"
               className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 transition-colors font-mono"
             >
               <MessageCircle size={13} />
-              <span>WhatsApp: +91 7799934943</span>
+              <span className="hidden sm:inline">WhatsApp Us</span>
+            </a>
+
+            <span className="text-ink-600 hidden sm:inline">|</span>
+
+            {/* Desktop only: phone link */}
+            <a
+              href="tel:+917799934943"
+              aria-label="Call us"
+              className="hidden sm:flex items-center gap-1 font-mono font-bold text-white hover:text-brand-400 transition-colors"
+            >
+              <Phone size={12} className="text-brand-500" />
+              <span>+91 7799934943</span>
+            </a>
+
+            {/* Mobile only: contact us pill */}
+            <a
+              href="#book-demo"
+              className="sm:hidden text-[11px] font-display font-extrabold uppercase tracking-wider text-brand-400 hover:text-brand-300 transition-colors"
+            >
+              Contact Us
             </a>
 
             <span className="text-ink-600 hidden sm:inline">|</span>
 
             <a
               href="#book-demo"
-              className="text-ink-200 hover:text-white font-display font-extrabold uppercase tracking-wider text-[11px] transition-colors"
+              className="hidden sm:inline text-ink-200 hover:text-white font-display font-extrabold uppercase tracking-wider text-[11px] transition-colors"
             >
-              Walkthrough Request →
+              Book Demo →
             </a>
           </div>
         </div>
@@ -271,47 +287,41 @@ export function LandingPage() {
               Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹50 per seat (or ₹49/employee/mo) with no cap.
             </p>
 
-            {/* Restrained professional action: minimal, no marketing funnel */}
-            <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+            {/* Single restrained CTA — no funnel stack on mobile */}
+            <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <a
                 href="#book-demo"
                 className="inline-flex items-center gap-2 px-6 py-3.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
               >
-                <span>Request System Walkthrough</span>
+                <span>Book a Demo</span>
                 <ArrowRight size={14} className="text-brand-500" />
               </a>
 
-              <div className="flex items-center gap-2 text-xs font-mono text-ink-700">
-                <span className="text-ink-400">Direct contact:</span>
-                <a
-                  href="tel:+917799934943"
-                  className="font-bold text-ink-900 hover:text-brand-600 transition-colors flex items-center gap-1"
-                >
-                  <Phone size={13} className="text-brand-600" />
-                  <span>+91 7799934943</span>
-                </a>
-              </div>
+              {/* Desktop only: show phone link; mobile gets WhatsApp icon */}
+              <a
+                href={getWhatsAppDemoLink()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-700 hover:text-emerald-900 transition-colors"
+              >
+                <MessageCircle size={13} />
+                <span className="sm:hidden">WhatsApp</span>
+                <span className="hidden sm:inline">WhatsApp: +91 7799934943</span>
+              </a>
             </div>
 
-            {/* Mobile Immediate Image Stamp - visible above the fold on mobile screens */}
-            <div className="sm:hidden mt-8 p-3 bg-ink-50 border-2 border-ink-900 flex items-center gap-3.5">
-              <div className="w-20 h-20 border border-ink-900 shrink-0 overflow-hidden bg-ink-200">
+            {/* Mobile clean image stamp */}
+            <div className="sm:hidden mt-6 border-2 border-ink-900 overflow-hidden">
+              <div className="aspect-[16/9] w-full bg-ink-200">
                 <img
                   src={heroMobileImg}
-                  alt="Workforce operations preview on mobile"
+                  alt="Workforce operations"
                   className="w-full h-full object-cover grayscale-photo"
                   loading="eager"
                   onError={(e) => {
                     e.currentTarget.src = '/images/hero_mobile.jpg';
                   }}
                 />
-              </div>
-              <div className="text-[11px] font-mono leading-snug text-ink-700">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-brand-600 block mb-0.5">
-                  Plate 01 · Mobile View
-                </span>
-                <strong className="block text-ink-900 font-display font-bold">Bangalore & Hyderabad Cohort</strong>
-                <span className="text-ink-500 text-[10px]">Real-time attendance & shift roster deployment.</span>
               </div>
             </div>
           </div>
@@ -444,7 +454,7 @@ export function LandingPage() {
                     className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
                   >
                     <MessageCircle size={15} />
-                    <span>Chat on WhatsApp Now (+91 7799934943)</span>
+                    <span>Chat on WhatsApp Now</span>
                   </a>
 
                   <button
@@ -602,18 +612,15 @@ export function LandingPage() {
                     )}
                   </button>
 
-                  <div className="flex items-center gap-2 text-xs text-ink-600">
-                    <span>Or direct WhatsApp chat:</span>
-                    <a
-                      href={getWhatsAppDemoLink()}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-emerald-700 font-bold hover:underline font-mono inline-flex items-center gap-1"
-                    >
-                      <MessageCircle size={13} />
-                      <span>+91 7799934943</span>
-                    </a>
-                  </div>
+                  <a
+                    href={getWhatsAppDemoLink()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-3.5 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors w-full sm:w-auto justify-center"
+                  >
+                    <MessageCircle size={14} />
+                    <span>WhatsApp Us</span>
+                  </a>
                 </div>
               </form>
             )}
@@ -802,15 +809,13 @@ export function LandingPage() {
                 <div className="mt-8 pt-6 border-t border-ink-200">
                   {tier.isHotline ? (
                     <a
-                      href={tier.ctaHref}
-                      className={`w-full inline-flex items-center justify-center gap-1.5 py-3 text-xs font-display font-extrabold uppercase tracking-wider transition-colors ${
-                        tier.highlight
-                          ? 'bg-brand-600 text-white hover:bg-brand-700'
-                          : 'bg-ink-900 text-white hover:bg-ink-800'
-                      }`}
+                      href={getWhatsAppDemoLink()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full inline-flex items-center justify-center gap-1.5 py-3 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
                     >
-                      <Phone size={13} />
-                      <span>{tier.ctaText}</span>
+                      <MessageCircle size={13} />
+                      <span>Contact Us</span>
                     </a>
                   ) : tier.ctaHref.startsWith('#') ? (
                     <a
@@ -889,26 +894,25 @@ export function LandingPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-6 text-xs">
+          <div className="flex flex-wrap items-center gap-4 text-xs">
             <a href="#book-demo" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
-              Consultation
-            </a>
-            <Link to="/careers" className="hover:text-ink-900 transition-colors">
-              Careers
-            </Link>
-            <a href="tel:+917799934943" className="font-mono font-bold text-brand-600 hover:underline">
-              +91 7799934943
+              Book Demo
             </a>
             <a
               href={getWhatsAppDemoLink()}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono font-bold text-emerald-700 hover:underline"
+              className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:underline"
             >
-              WhatsApp
+              <MessageCircle size={12} />
+              <span>WhatsApp</span>
+            </a>
+            {/* Phone only on desktop */}
+            <a href="tel:+917799934943" className="hidden sm:inline font-mono font-bold text-brand-600 hover:underline">
+              +91 7799934943
             </a>
             <Link to={user ? "/dashboard" : "/login"} className="font-bold text-ink-900 hover:text-brand-600 transition-colors uppercase font-display text-[11px]">
-              {user ? "Corporate Workspace" : "Corporate Login"}
+              {user ? "Workspace" : "Login"}
             </Link>
           </div>
 
