@@ -115,9 +115,11 @@ export function MyAttendancePage() {
   // it was a colleague. Nobody is the honest answer, and the direction a
   // missing identity has to fail.
   const fallbackId = ownEmployee?.id ?? viewableEmployees[0]?.id ?? '';
-  const [selectedId, setSelectedId] = useState(fallbackId);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const targetId = canPickAny ? selectedId || fallbackId : ownEmployee?.id ?? fallbackId;
+  // Always default to ownEmployee on My Attendance. An admin/manager can optionally
+  // inspect a colleague by explicitly selecting them from the dropdown.
+  const targetId = (canPickAny && selectedId) ? selectedId : (ownEmployee?.id ?? fallbackId);
   const targetEmployee = directory.find((e) => e.id === targetId);
 
   // A non-privileged account this app cannot match to an employee record. It
@@ -464,18 +466,18 @@ export function MyAttendancePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={canPickAny ? 'Employee Attendance' : 'My Attendance'}
+        title={isOwnRecord ? 'My Attendance' : 'Employee Attendance'}
         subtitle={
-          canPickAny
-            ? `Viewing the week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
-            : `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
+          isOwnRecord
+            ? `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
+            : `Viewing ${targetEmployee?.fullName ?? 'colleague'} · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${weekOffOf(targetEmployee)}`
         }
         actions={
           <div className="flex items-center gap-2">
             {canPickAny && (
               <Select
                 value={targetId}
-                onChange={setSelectedId}
+                onChange={(id) => setSelectedId(id === ownEmployee?.id ? null : id)}
                 options={employeeOptions}
                 className="w-64"
               />
