@@ -18,6 +18,11 @@ import {
 import { BrandLockup } from '@/components/ui';
 import { submitDemoRequest, getWhatsAppDemoLink } from '@/lib/demoRequests';
 
+// Direct Vite asset pipeline imports to guarantee bundling and rendering across all environments
+import heroEditorialImg from '@/assets/images/hero_editorial.jpg';
+import workplaceEditorialImg from '@/assets/images/workplace_editorial.jpg';
+import operationsDirectorImg from '@/assets/images/operations_director.jpg';
+
 export function LandingPage() {
   // Demo Booking Form State
   const [fullName, setFullName] = useState('');
@@ -54,7 +59,7 @@ export function LandingPage() {
       });
       setSubmitted(true);
     } catch (err) {
-      setFormError('Could not submit demo request. Please try calling +91 9700144003 directly.');
+      setFormError('Could not submit demo request. Please try calling +91 7799934943 directly.');
     } finally {
       setSubmitting(false);
     }
@@ -149,8 +154,8 @@ export function LandingPage() {
         'Bank salary transfer file export (NEFT/RTGS)',
         'Custom shift policies & dedicated engineer',
       ],
-      ctaText: 'Call +91 9700144003',
-      ctaHref: 'tel:+919700144003',
+      ctaText: 'Call +91 7799934943',
+      ctaHref: 'tel:+917799934943',
       isHotline: true,
     },
   ];
@@ -165,14 +170,14 @@ export function LandingPage() {
           <div className="flex items-center gap-3">
             <span className="inline-block w-2 h-2 bg-brand-600 shrink-0" />
             <span className="font-mono text-[11px] uppercase tracking-wider text-ink-300">
-              Helpline:
+              Direct Desk:
             </span>
             <a
-              href="tel:+919700144003"
+              href="tel:+917799934943"
               className="font-mono font-bold text-white hover:text-brand-400 transition-colors flex items-center gap-1"
             >
               <Phone size={12} className="text-brand-500" />
-              <span>+91 9700144003</span>
+              <span>+91 7799934943</span>
             </a>
           </div>
 
@@ -184,7 +189,7 @@ export function LandingPage() {
               className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 transition-colors font-mono"
             >
               <MessageCircle size={13} />
-              <span>WhatsApp: +91 9700144003</span>
+              <span>WhatsApp: +91 7799934943</span>
             </a>
 
             <span className="text-ink-600 hidden sm:inline">|</span>
@@ -193,7 +198,7 @@ export function LandingPage() {
               href="#book-demo"
               className="text-ink-200 hover:text-white font-display font-extrabold uppercase tracking-wider text-[11px] transition-colors"
             >
-              Book a Demo →
+              Walkthrough Request →
             </a>
           </div>
         </div>
@@ -215,15 +220,15 @@ export function LandingPage() {
             <a href="#pricing" className="hover:text-brand-600 transition-colors">
               Pricing
             </a>
-            <a href="#book-demo" className="hover:text-brand-600 transition-colors text-brand-700">
-              Book a Demo
+            <a href="#book-demo" className="hover:text-brand-600 transition-colors">
+              Consultation
             </a>
             <a
-              href="tel:+919700144003"
+              href="tel:+917799934943"
               className="hover:text-brand-600 transition-colors flex items-center gap-1 text-ink-900"
             >
               <Phone size={12} className="text-brand-600" />
-              <span className="font-mono font-bold">+91 9700144003</span>
+              <span className="font-mono font-bold">+91 7799934943</span>
             </a>
           </nav>
 
@@ -244,7 +249,7 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       {/* 3. HERO: MINIMAL, ARCHITECTURAL, MODERNIST                        */}
       {/* ───────────────────────────────────────────────────────────────── */}
-      <section className="bg-white border-b-2 border-ink-900 py-16 sm:py-24">
+      <section className="bg-white border-b-2 border-ink-900 py-14 sm:py-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
@@ -260,37 +265,31 @@ export function LandingPage() {
               Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹50 per seat (or ₹49/employee/mo) with no cap.
             </p>
 
-            <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Restrained professional action: minimal, no marketing funnel */}
+            <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-5">
               <a
                 href="#book-demo"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-brand-600 text-white hover:bg-brand-700 text-sm font-display font-extrabold uppercase tracking-wider transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
               >
-                <Calendar size={15} />
-                <span>Book a Demo with Us</span>
+                <span>Request System Walkthrough</span>
+                <ArrowRight size={14} className="text-brand-500" />
               </a>
 
-              <a
-                href="tel:+919700144003"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white text-ink-900 hover:bg-ink-100 border-2 border-ink-900 text-sm font-display font-extrabold uppercase tracking-wider transition-colors"
-              >
-                <Phone size={15} className="text-brand-600" />
-                <span>Call +91 9700144003</span>
-              </a>
-
-              <a
-                href={getWhatsAppDemoLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 bg-emerald-700 text-white hover:bg-emerald-800 text-sm font-display font-extrabold uppercase tracking-wider transition-colors"
-              >
-                <MessageCircle size={15} />
-                <span>WhatsApp Us</span>
-              </a>
+              <div className="flex items-center gap-2 text-xs font-mono text-ink-700">
+                <span className="text-ink-400">Direct contact:</span>
+                <a
+                  href="tel:+917799934943"
+                  className="font-bold text-ink-900 hover:text-brand-600 transition-colors flex items-center gap-1"
+                >
+                  <Phone size={13} className="text-brand-600" />
+                  <span>+91 7799934943</span>
+                </a>
+              </div>
             </div>
           </div>
 
           {/* 3 Metric Pillars */}
-          <div className="mt-14 pt-8 border-t border-ink-200 grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
+          <div className="mt-12 pt-8 border-t border-ink-200 grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
             <div className="border-l-2 border-brand-600 pl-4">
               <div className="text-2xl font-extrabold text-ink-900 font-display">₹0 / Free</div>
               <div className="text-xs text-ink-600 mt-1">Free forever for teams under 10 seats</div>
@@ -305,14 +304,17 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Figure 01: Authentic Workplace Editorial Photograph */}
+          {/* Figure 01: Hero High-Resolution Authentic Editorial Photograph */}
           <div className="mt-12 border-2 border-ink-900 bg-white">
             <div className="relative aspect-[16/9] w-full overflow-hidden bg-ink-200">
               <img
-                src="/images/workplace_editorial.jpg"
-                alt="Architecture and engineering team collaborating with Modcon HR"
+                src={heroEditorialImg}
+                alt="Architecture and engineering workforce collaborating with Modcon HR in Bangalore studio"
                 className="w-full h-full object-cover grayscale-photo"
                 loading="eager"
+                onError={(e) => {
+                  e.currentTarget.src = '/images/hero_editorial.jpg';
+                }}
               />
             </div>
             <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
@@ -347,14 +349,17 @@ export function LandingPage() {
                 <div className="border-2 border-ink-900 bg-white">
                   <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
                     <img
-                      src="/images/operations_director.jpg"
+                      src={operationsDirectorImg}
                       alt="Operations Director reviewing personnel rosters"
                       className="w-full h-full object-cover grayscale-photo"
                       loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.src = '/images/operations_director.jpg';
+                      }}
                     />
                   </div>
                   <div className="p-3 bg-ink-100 border-t-2 border-ink-900 text-[11px] font-mono text-ink-700">
-                    Plate 02 · People operations and payroll administration at Hyderabad design firm.
+                    Plate 03 · People operations and payroll administration at Hyderabad design firm.
                   </div>
                 </div>
 
@@ -366,9 +371,9 @@ export function LandingPage() {
                     </p>
                   </div>
                   <div className="pt-2 border-t border-ink-200">
-                    <span className="text-[10px] text-ink-500 uppercase font-bold block mb-0.5">Direct Hotline & WhatsApp</span>
-                    <a href="tel:+919700144003" className="text-ink-900 font-bold hover:text-brand-600 block">
-                      Phone: +91 9700144003
+                    <span className="text-[10px] text-ink-500 uppercase font-bold block mb-0.5">Direct Line & WhatsApp</span>
+                    <a href="tel:+917799934943" className="text-ink-900 font-bold hover:text-brand-600 block">
+                      Phone: +91 7799934943
                     </a>
                     <a
                       href={getWhatsAppDemoLink()}
@@ -376,7 +381,7 @@ export function LandingPage() {
                       rel="noopener noreferrer"
                       className="text-emerald-700 font-bold hover:underline block mt-0.5"
                     >
-                      WhatsApp: +91 9700144003
+                      WhatsApp: +91 7799934943
                     </a>
                   </div>
                 </div>
@@ -405,7 +410,7 @@ export function LandingPage() {
                     className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
                   >
                     <MessageCircle size={15} />
-                    <span>Chat on WhatsApp Now (+91 9700144003)</span>
+                    <span>Chat on WhatsApp Now (+91 7799934943)</span>
                   </a>
 
                   <button
@@ -572,7 +577,7 @@ export function LandingPage() {
                       className="text-emerald-700 font-bold hover:underline font-mono inline-flex items-center gap-1"
                     >
                       <MessageCircle size={13} />
-                      <span>+91 9700144003</span>
+                      <span>+91 7799934943</span>
                     </a>
                   </div>
                 </div>
@@ -645,6 +650,25 @@ export function LandingPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Plate 02: Authentic Engineering Studio Photographic Plate */}
+          <div className="mt-12 border-2 border-ink-900 bg-white">
+            <div className="relative aspect-[16/9] w-full overflow-hidden bg-ink-200">
+              <img
+                src={workplaceEditorialImg}
+                alt="Collaborative workforce operations in an architecture & engineering studio"
+                className="w-full h-full object-cover grayscale-photo"
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.src = '/images/workplace_editorial.jpg';
+                }}
+              />
+            </div>
+            <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
+              <span>Plate 02 · Operational synchronization across architectural project cohorts.</span>
+              <span className="text-ink-500 font-bold uppercase text-[10px]">Hyderabad Engineering & Site Office</span>
             </div>
           </div>
         </div>
@@ -757,40 +781,40 @@ export function LandingPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 7. ENTERPRISE HOTLINE & WHATSAPP BANNER                           */}
+      {/* 7. ENTERPRISE ASSISTED DEPLOYMENT & DESK                          */}
       {/* ───────────────────────────────────────────────────────────────── */}
-      <section className="bg-ink-900 text-white py-14 border-b-2 border-ink-900">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="max-w-xl text-center md:text-left">
+      <section className="bg-ink-900 text-white py-12 border-b-2 border-ink-900">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="max-w-xl">
             <div className="inline-flex items-center gap-2 mb-2 text-brand-400 font-mono text-xs font-bold uppercase tracking-wider">
               <ShieldCheck size={14} />
-              <span>Assisted Deployment & Migration</span>
+              <span>Assisted Deployment & Migration Desk</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-display font-extrabold tracking-tight">
               Ready to eliminate false LOP and streamline payroll?
             </h2>
-            <p className="mt-2 text-sm text-ink-300">
-              Call our enterprise deployment desk directly at <strong className="text-white font-mono">+91 9700144003</strong> or chat with us on WhatsApp. We configure organizational week-offs and migrate employee records within 24 hours.
+            <p className="mt-1.5 text-xs sm:text-sm text-ink-300 leading-relaxed">
+              Reach our deployment engineers at <strong className="text-white font-mono">+91 7799934943</strong> or message on WhatsApp. We configure organizational shift policies and migrate employee rosters within 24 hours.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0">
             <a
-              href="tel:+919700144003"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-brand-600 text-white hover:bg-brand-700 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
+              href="tel:+917799934943"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-ink-900 hover:bg-ink-100 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
             >
-              <Phone size={14} />
-              <span>Call +91 9700144003</span>
+              <Phone size={13} className="text-brand-600" />
+              <span>Call +91 7799934943</span>
             </a>
 
             <a
               href={getWhatsAppDemoLink()}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-700 text-white hover:bg-emerald-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
             >
-              <MessageCircle size={14} />
-              <span>WhatsApp Demo Desk</span>
+              <MessageCircle size={13} />
+              <span>WhatsApp Desk</span>
             </a>
           </div>
         </div>
@@ -811,13 +835,13 @@ export function LandingPage() {
 
           <div className="flex items-center gap-6 text-xs">
             <a href="#book-demo" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
-              Book a Demo
+              Consultation
             </a>
             <Link to="/careers" className="hover:text-ink-900 transition-colors">
               Careers
             </Link>
-            <a href="tel:+919700144003" className="font-mono font-bold text-brand-600 hover:underline">
-              +91 9700144003
+            <a href="tel:+917799934943" className="font-mono font-bold text-brand-600 hover:underline">
+              +91 7799934943
             </a>
             <a
               href={getWhatsAppDemoLink()}
