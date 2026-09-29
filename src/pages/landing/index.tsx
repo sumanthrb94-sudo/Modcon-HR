@@ -304,6 +304,22 @@ export function LandingPage() {
               <div className="text-xs text-ink-600 mt-1">Flat ₹49–₹50 per employee · No seat cap</div>
             </div>
           </div>
+
+          {/* Figure 01: Authentic Workplace Editorial Photograph */}
+          <div className="mt-12 border-2 border-ink-900 bg-white">
+            <div className="relative aspect-[16/9] w-full overflow-hidden bg-ink-200">
+              <img
+                src="/images/workplace_editorial.jpg"
+                alt="Architecture and engineering team collaborating with Modcon HR"
+                className="w-full h-full object-cover grayscale-photo"
+                loading="eager"
+              />
+            </div>
+            <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
+              <span>Plate 01 · Collaborative workforce operations in an architecture & engineering studio.</span>
+              <span className="text-ink-500 font-bold uppercase text-[10px]">Bangalore & Hyderabad Roster Cohort</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -311,7 +327,7 @@ export function LandingPage() {
       {/* 4. BOOK A DEMO WITH US FORM (MODERNIST & WHATSAPP INTEGRATION)     */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="book-demo" className="py-16 sm:py-20 bg-ink-100 border-b-2 border-ink-900 scroll-mt-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="bg-white border-2 border-ink-900 p-6 sm:p-10">
             <div className="border-b border-ink-200 pb-6 mb-8">
               <span className="font-mono text-xs font-bold uppercase tracking-wider text-brand-600 block mb-1">
@@ -324,6 +340,50 @@ export function LandingPage() {
                 Schedule a 20-minute tailored walkthrough of Modcon HR with our deployment architects. We will show how dynamic week-offs, bulk regularization, and automated statutory payroll work for your team.
               </p>
             </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Authentic Editorial Plate 02 & Direct Contacts */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="border-2 border-ink-900 bg-white">
+                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
+                    <img
+                      src="/images/operations_director.jpg"
+                      alt="Operations Director reviewing personnel rosters"
+                      className="w-full h-full object-cover grayscale-photo"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="p-3 bg-ink-100 border-t-2 border-ink-900 text-[11px] font-mono text-ink-700">
+                    Plate 02 · People operations and payroll administration at Hyderabad design firm.
+                  </div>
+                </div>
+
+                <div className="p-4 bg-ink-50 border border-ink-300 space-y-3 font-mono text-xs">
+                  <div>
+                    <span className="text-[10px] text-brand-600 uppercase font-bold block mb-0.5">Deployment Guarantee</span>
+                    <p className="text-ink-800 text-[11px]">
+                      24-hour tenant provisioning and full spreadsheet roster migration handled by our team.
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-ink-200">
+                    <span className="text-[10px] text-ink-500 uppercase font-bold block mb-0.5">Direct Hotline & WhatsApp</span>
+                    <a href="tel:+919700144003" className="text-ink-900 font-bold hover:text-brand-600 block">
+                      Phone: +91 9700144003
+                    </a>
+                    <a
+                      href={getWhatsAppDemoLink()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-700 font-bold hover:underline block mt-0.5"
+                    >
+                      WhatsApp: +91 9700144003
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Interactive Form */}
+              <div className="lg:col-span-7">
 
             {submitted ? (
               <div className="p-8 bg-ink-50 border-2 border-emerald-600 text-center space-y-4">
@@ -518,6 +578,8 @@ export function LandingPage() {
                 </div>
               </form>
             )}
+              </div>
+            </div>
           </div>
         </div>
       </section>
