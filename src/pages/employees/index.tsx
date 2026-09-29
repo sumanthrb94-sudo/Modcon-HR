@@ -21,7 +21,9 @@ import {
   MapPin,
   User,
   X,
+  Sparkles,
 } from 'lucide-react';
+
 import {
   Avatar,
   Badge,
@@ -912,6 +914,8 @@ export function EmployeesPage() {
   // Surfaced when adding or moving someone changes their platform access —
   // a silent role grant is the kind of thing an admin should be told about.
   const [roleNotice, setRoleNotice] = useState<string | null>(null);
+  // Shown exactly once when the org crosses from free (< 10) into paid tier.
+  const [showUpgradeNudge, setShowUpgradeNudge] = useState(false);
 
   useEffect(() => {
     const syncEmployeeList = () => {
@@ -960,6 +964,7 @@ export function EmployeesPage() {
 
   function handleAddEmployee(payload: NewEmployeePayload) {
     const { newManager, ...hire } = payload;
+    const countBefore = getEmployeeDirectory().length;
     // A manager typed into the dialog has to exist before anyone can report to
     // them, so they are created first and their id handed to the hire. Each
     // call re-reads the directory, so the hire cannot take the id the manager
@@ -970,7 +975,15 @@ export function EmployeesPage() {
       { profile, notify: setRoleNotice },
     );
 
-    setEmployeeList(getEmployeeDirectory());
+    const updatedList = getEmployeeDirectory();
+    setEmployeeList(updatedList);
+
+    // If this add crosses the free/paid boundary (9 → 10+), prompt the HR
+    // admin to contact premium support for onboarding assistance.
+    if (countBefore < 10 && updatedList.length >= 10) {
+      setShowUpgradeNudge(true);
+    }
+
     setSearch('');
     setDeptFilter('');
     setLocationFilter('');
@@ -1060,6 +1073,51 @@ export function EmployeesPage() {
           </button>
         </div>
       ) : null}
+
+      {/* Premium-support upgrade nudge — fires once when org crosses 10 employees */}
+      {showUpgradeNudge && (
+        <div
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-4 text-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-3">
+            <Sparkles size={18} className="shrink-0 mt-0.5 text-amber-600" />
+            <div>
+              <p className="font-bold text-amber-900">Your team just hit 10 employees — you’re on the Growth plan now.</p>
+              <p className="text-amber-800 text-xs mt-0.5">
+                You get a <strong>3-month free trial</strong> at ₹49/seat/month with dedicated onboarding. Contact our premium support team to activate your trial, migrate your roster, and get set up within 24 hours.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href="https://wa.me/917799934943?text=Hi%2C%20our%20team%20just%20crossed%2010%20employees%20on%20Modcon%20HR.%20Please%20help%20us%20activate%20the%20Growth%20plan%20trial."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-700 text-white text-xs font-bold rounded hover:bg-emerald-800 transition-colors"
+            >
+              <MessageSquare size={13} />
+              WhatsApp Support
+            </a>
+            <a
+              href="tel:+917799934943"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-900 text-white text-xs font-bold rounded hover:bg-amber-800 transition-colors"
+            >
+              <Phone size={13} />
+              Call Us
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowUpgradeNudge(false)}
+              className="shrink-0 text-amber-600 hover:text-amber-900 ml-1"
+              aria-label="Dismiss upgrade notice"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
       <PageHeader
         title="Employees"
         subtitle={isEmployeeSelfView
