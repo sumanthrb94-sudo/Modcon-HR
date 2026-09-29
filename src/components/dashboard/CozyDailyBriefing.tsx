@@ -146,27 +146,52 @@ export function CozyDailyBriefing({
         {/* Live Attendance Snapshot */}
         <div className="flex items-center gap-3 bg-white/90 border border-ink-200/80 rounded-xl px-4 py-2.5 shadow-xs">
           <Clock size={18} className="text-brand-600 shrink-0" />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-ink-900">
-                {myAttendance?.checkIn ? `Checked In: ${myAttendance.checkIn}` : 'Not Checked In Yet'}
-              </span>
-              <Badge tone={myAttendance?.checkIn ? 'green' : 'amber'} dot className="text-[11px] px-2 py-0.5">
-                {myAttendance?.status ?? 'Pending Punch'}
-              </Badge>
-            </div>
-            <p className="text-[11px] text-ink-500 mt-0.5">
-              {myAttendance?.checkIn
-                ? `${myAttendance.workedHours > 0 ? `${myAttendance.workedHours.toFixed(1)} hrs logged today` : 'Session active'} · ${myAttendance.isLate ? 'Late arrival' : 'On schedule'}`
-                : 'Tap to mark your arrival in My Attendance'}
-            </p>
-          </div>
-          {!myAttendance?.checkIn && (
-            <Link to="/my-attendance">
-              <Button size="sm" variant="secondary" className="text-xs ml-2">
-                Punch In
-              </Button>
-            </Link>
+          {currentEmployee ? (
+            <>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-ink-900">
+                    {myAttendance?.checkIn ? `Checked In: ${myAttendance.checkIn}` : 'Not Checked In Yet'}
+                  </span>
+                  <Badge tone={myAttendance?.checkIn ? 'green' : 'amber'} dot className="text-[11px] px-2 py-0.5">
+                    {myAttendance?.status ?? 'Pending Punch'}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-ink-500 mt-0.5">
+                  {myAttendance?.checkIn
+                    ? `${myAttendance.workedHours > 0 ? `${myAttendance.workedHours.toFixed(1)} hrs logged today` : 'Session active'} · ${myAttendance.isLate ? 'Late arrival' : 'On schedule'}`
+                    : 'Tap to mark your arrival in My Attendance'}
+                </p>
+              </div>
+              {!myAttendance?.checkIn && (
+                <Link to="/my-attendance">
+                  <Button size="sm" variant="secondary" className="text-xs ml-2">
+                    Punch In
+                  </Button>
+                </Link>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-ink-900">
+                    Attendance Master
+                  </span>
+                  <Badge tone="blue" dot className="text-[11px] px-2 py-0.5">
+                    Admin Mode
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-ink-500 mt-0.5">
+                  Manage organization attendance & logs
+                </p>
+              </div>
+              <Link to="/attendance">
+                <Button size="sm" variant="secondary" className="text-xs ml-2">
+                  Mark Attendance
+                </Button>
+              </Link>
+            </>
           )}
         </div>
       </div>

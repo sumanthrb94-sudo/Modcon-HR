@@ -29,7 +29,7 @@ import { announcements } from '@/data/common';
 import { getHolidayDirectory } from '@/data/holidays';
 import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatMonthYearLong, monthIndexOf, pct, timeAgo, yearOf } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
-import { getCurrentEmployee } from '@/lib/currentEmployee';
+import { getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
@@ -112,7 +112,7 @@ function EmptyChart({ message, height = 220 }: { message: string; height?: numbe
 
 function EmployeeDashboard() {
   const { profile, isManager, linkedEmployeeId } = useAuth();
-  const currentEmployee = getCurrentEmployee(profile);
+  const currentEmployee = getCurrentEmployeeRecord(profile);
   const holidayRevision = useHolidayDirectoryRevision();
   // Both cards below read leave records, so both go stale without this: a
   // request approved in another tab, or leave applied for on /leave while this
