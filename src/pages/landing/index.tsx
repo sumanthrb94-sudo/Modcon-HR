@@ -694,44 +694,22 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Dual Photographic Plates: Mobile & Studio Operations */}
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Plate 02: Site & Biometric Operations */}
-            <div className="border-2 border-ink-900 bg-white">
-              <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
-                <img
-                  src={siteOperationsImg}
-                  alt="On-site project operations and biometric geofence verification"
-                  className="w-full h-full object-cover grayscale-photo"
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.src = '/images/site_operations.jpg';
-                  }}
-                />
-              </div>
-              <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 text-xs font-mono text-ink-700">
-                <span className="font-bold text-ink-900 block mb-0.5">Plate 02 · Mobile Geofence & Perimeter Check</span>
-                <span>Active field biometric validation with anti-spoofing cryptographic signatures.</span>
-              </div>
+          {/* Single Photographic Plate — Payroll & Compliance Desk */}
+          <div className="mt-12 border-2 border-ink-900 bg-white">
+            <div className="relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden bg-ink-200">
+              <img
+                src={payrollAuditImg}
+                alt="Payroll audit and statutory compliance review at operations desk"
+                className="w-full h-full object-cover grayscale-photo"
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.src = '/images/payroll_audit.jpg';
+                }}
+              />
             </div>
-
-            {/* Plate 03: Engineering Studio Cohort */}
-            <div className="border-2 border-ink-900 bg-white">
-              <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
-                <img
-                  src={workplaceEditorialImg}
-                  alt="Collaborative workforce operations in an architecture & engineering studio"
-                  className="w-full h-full object-cover grayscale-photo"
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.src = '/images/workplace_editorial.jpg';
-                  }}
-                />
-              </div>
-              <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 text-xs font-mono text-ink-700">
-                <span className="font-bold text-ink-900 block mb-0.5">Plate 03 · Operational Studio Synchronization</span>
-                <span>Real-time roster transparency across Hyderabad & Bangalore engineering cohorts.</span>
-              </div>
+            <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 text-xs font-mono text-ink-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
+              <span className="font-bold text-ink-900">Plate 02 · Payroll &amp; Statutory Compliance Desk</span>
+              <span className="text-ink-500 uppercase text-[10px] font-bold">Hyderabad Operations Cohort</span>
             </div>
           </div>
         </div>
