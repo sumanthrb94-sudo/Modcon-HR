@@ -68,6 +68,9 @@ async function syncToFirestore() {
       // Sunday is week off
       if (dayOfWeek === 0) continue;
 
+      // Official Holidays in September 2026 (Janmashtami, Ganesh Chaturthi, Eid-e-Milad)
+      if (date === '2026-09-04' || date === '2026-09-14' || date === '2026-09-25') continue;
+
       const isWFH = (dayOfWeek === 6) || (emp.id === 'emp-003' && dayOfWeek === 3);
       const status = isWFH ? 'Work From Home' : 'Present';
       const checkIn = isWFH ? '09:05' : '08:58';

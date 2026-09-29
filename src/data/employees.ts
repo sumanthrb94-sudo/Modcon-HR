@@ -209,7 +209,8 @@ export function isWeekOffFor(
   employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined,
   isoDate: string,
 ): boolean {
-  const dayIndex = new Date(isoDate).getUTCDay();
+  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number);
+  const dayIndex = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   const allDays = employeeWeekOffs(employee);
   return allDays.some((day) => WEEK_OFF_DAY_INDEX[day] === dayIndex);
 }

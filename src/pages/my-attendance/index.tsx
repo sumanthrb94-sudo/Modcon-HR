@@ -197,16 +197,11 @@ export function MyAttendancePage() {
       if (pendingReq) {
         status = 'PendingReg';
         // Already requested; awaiting approval, so not an unaddressed red alert
-      } else if (record) {
+      } else if (record && record.status !== 'Absent') {
         if (record.status === 'Present') status = 'Present';
         else if (record.status === 'Work From Home') status = 'WFH';
         else if (record.status === 'On Leave') status = 'Leave';
         else if (record.status === 'Half Day') status = 'HalfDay';
-        else if (record.status === 'Absent') {
-          status = 'Absent';
-          isAttentionItem = true;
-          isActionable = true;
-        }
         if (record.isLate) {
           isAttentionItem = true;
           isActionable = true;
@@ -215,8 +210,16 @@ export function MyAttendancePage() {
         status = 'Future';
       } else if (holiday) {
         status = 'Holiday';
+        isAttentionItem = false;
+        isActionable = false;
       } else if (isWeekOff) {
         status = 'WeekOff';
+        isAttentionItem = false;
+        isActionable = false;
+      } else if (record && record.status === 'Absent') {
+        status = 'Absent';
+        isAttentionItem = true;
+        isActionable = true;
       } else {
         status = 'Absent';
         isAttentionItem = true;
@@ -844,7 +847,7 @@ export function MyAttendancePage() {
                   </Badge>
                 </div>
                 <p className="text-xs text-ink-500 mt-1">
-                  {monthTitle} · {monthStats.present} present · {monthStats.wfh} WFH · {monthStats.leave} leaves · {monthStats.weekOffs} week-offs
+                  {monthTitle} · {monthStats.present} present · {monthStats.wfh} WFH · {monthStats.leave} leaves · {monthStats.weekOffs} week-offs{monthStats.holidayCount > 0 ? ` · ${monthStats.holidayCount} holiday${monthStats.holidayCount > 1 ? 's' : ''}` : ''}
                 </p>
               </div>
 
@@ -1040,17 +1043,17 @@ export function MyAttendancePage() {
                           }
                         }}
                         className={cn(
-                          'min-h-[52px] sm:min-h-[105px] rounded-lg sm:rounded-xl border p-1 sm:p-2 flex flex-col justify-between transition-all relative select-none',
-                          (day.isActionable || isPending) && 'cursor-pointer',
-                          isSelected && 'ring-2 ring-brand-600 bg-brand-50/90 border-brand-500 shadow-sm',
-                          !isSelected && day.isToday && 'ring-2 ring-brand-500 shadow-sm',
-                          !isSelected && isRed && 'border-rose-300 sm:border-2 sm:border-rose-400 bg-rose-50/70 hover:bg-rose-100/80',
-                          !isSelected && isPending && 'border-amber-300 sm:border-2 sm:border-amber-400 bg-amber-50/60 hover:bg-amber-100/70',
-                          !isSelected && isGreen && 'border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50/70',
-                          !isSelected && isBlue && 'border-sky-200 bg-sky-50/40 hover:bg-sky-50/70',
-                          !isSelected && isPurple && 'border-purple-200 bg-purple-50/40 hover:bg-purple-50/70',
-                          !isSelected && isWeekOff && 'border-dashed border-ink-200 bg-ink-50/30 text-ink-400',
-                          !isSelected && isHoliday && 'border-teal-200 bg-teal-50/40 text-teal-800',
+                          'min-h-[56px] sm:min-h-[105px] rounded-lg sm:rounded-xl border p-1 sm:p-2.5 flex flex-col justify-between transition-all relative select-none shadow-2xs',
+                          (day.isActionable || isPending) && 'cursor-pointer active:scale-[0.98]',
+                          isSelected && 'ring-2 ring-brand-600 bg-brand-50/95 border-brand-500 shadow-sm',
+                          !isSelected && day.isToday && 'ring-2 ring-brand-500 shadow-sm border-brand-400',
+                          !isSelected && isRed && 'border-rose-300 sm:border-2 sm:border-rose-400/90 bg-rose-50/80 hover:bg-rose-100/90 text-rose-950',
+                          !isSelected && isPending && 'border-amber-300 sm:border-2 sm:border-amber-400/90 bg-amber-50/75 hover:bg-amber-100/80 text-amber-950',
+                          !isSelected && isGreen && 'border-emerald-200/90 bg-emerald-50/60 hover:bg-emerald-100/60 text-emerald-950',
+                          !isSelected && isBlue && 'border-sky-200/90 bg-sky-50/60 hover:bg-sky-100/60 text-sky-950',
+                          !isSelected && isPurple && 'border-purple-200/90 bg-purple-50/60 hover:bg-purple-100/60 text-purple-950',
+                          !isSelected && isWeekOff && 'border-dashed border-ink-200/90 bg-ink-50/50 hover:bg-ink-100/40 text-ink-600',
+                          !isSelected && isHoliday && 'border-teal-300/90 bg-teal-50/70 hover:bg-teal-100/70 text-teal-950',
                           !isSelected && day.isFuture && 'border-ink-100 bg-white/40 text-ink-300 pointer-events-none',
                         )}
                       >
@@ -1059,7 +1062,7 @@ export function MyAttendancePage() {
                           <span
                             className={cn(
                               'text-[11px] sm:text-xs font-bold font-mono',
-                              day.isToday ? 'text-brand-700 font-extrabold' : isRed ? 'text-rose-900' : isPending ? 'text-amber-900' : 'text-ink-800',
+                              day.isToday ? 'text-brand-700 font-extrabold' : isRed ? 'text-rose-900 font-extrabold' : isPending ? 'text-amber-900' : isHoliday ? 'text-teal-900' : 'text-ink-800',
                             )}
                           >
                             {day.dayNum}
@@ -1078,7 +1081,7 @@ export function MyAttendancePage() {
                           ) : day.isToday ? (
                             <>
                               <span className="sm:hidden h-1.5 w-1.5 rounded-full bg-brand-600" />
-                              <span className="hidden sm:inline-block text-[9px] font-bold bg-brand-600 text-white px-1.5 py-0.5 rounded-full leading-none">
+                              <span className="hidden sm:inline-block text-[9px] font-bold bg-brand-600 text-white px-1.5 py-0.5 rounded-full leading-none shadow-2xs">
                                 Today
                               </span>
                             </>
@@ -1089,8 +1092,8 @@ export function MyAttendancePage() {
                         <div className="my-0.5 sm:my-1 flex items-center justify-center sm:justify-start">
                           {isGreen && (
                             <div className="flex items-center gap-1.5">
-                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 shadow-sm" />
-                              <span className="hidden sm:inline-block text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded border border-emerald-200 leading-none">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 shadow-xs" />
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-200/90 leading-none">
                                 Present
                               </span>
                             </div>
@@ -1098,8 +1101,8 @@ export function MyAttendancePage() {
 
                           {isBlue && (
                             <div className="flex items-center gap-1.5">
-                              <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0 shadow-sm" />
-                              <span className="hidden sm:inline-block text-[10px] font-bold text-sky-800 bg-sky-100/70 px-1 py-0.5 rounded border border-sky-200 leading-none">
+                              <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0 shadow-xs" />
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-sky-800 bg-sky-100/90 px-1.5 py-0.5 rounded border border-sky-200/90 leading-none">
                                 WFH
                               </span>
                             </div>
@@ -1107,8 +1110,8 @@ export function MyAttendancePage() {
 
                           {isPending && (
                             <div className="flex items-center gap-1.5">
-                              <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 shadow-sm animate-pulse" />
-                              <span className="hidden sm:inline-block text-[10px] font-bold text-amber-800 bg-amber-100 px-1 py-0.5 rounded border border-amber-300 leading-none">
+                              <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 shadow-xs animate-pulse" />
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300 leading-none">
                                 Pending
                               </span>
                             </div>
@@ -1116,24 +1119,26 @@ export function MyAttendancePage() {
 
                           {isPurple && (
                             <div className="flex items-center gap-1.5">
-                              <span className="h-2 w-2 rounded-full bg-purple-500 shrink-0 shadow-sm" />
-                              <span className="hidden sm:inline-block text-[10px] font-bold text-purple-800 bg-purple-100/70 px-1 py-0.5 rounded border border-purple-200 leading-none">
+                              <span className="h-2 w-2 rounded-full bg-purple-500 shrink-0 shadow-xs" />
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-purple-800 bg-purple-100/90 px-1.5 py-0.5 rounded border border-purple-200/90 leading-none">
                                 Leave
                               </span>
                             </div>
                           )}
 
                           {isWeekOff && (
-                            <div className="flex items-center gap-1">
-                              <span className="h-1.5 w-1.5 rounded-full bg-ink-400 shrink-0" />
-                              <span className="hidden sm:inline-block text-[10px] text-ink-500 font-medium">Off</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-ink-400 shrink-0" />
+                              <span className="hidden sm:inline-block text-[10px] font-medium text-ink-600 bg-ink-100/90 px-1.5 py-0.5 rounded border border-ink-200/90 leading-none">
+                                Off
+                              </span>
                             </div>
                           )}
 
                           {isHoliday && (
-                            <div className="flex items-center gap-1" title={day.holiday?.name}>
-                              <span className="h-1.5 w-1.5 rounded-full bg-teal-500 shrink-0" />
-                              <span className="hidden sm:inline-block text-[10px] font-semibold text-teal-800 truncate max-w-[70px]">
+                            <div className="flex items-center gap-1.5" title={day.holiday?.name}>
+                              <span className="h-2 w-2 rounded-full bg-teal-500 shrink-0 shadow-xs" />
+                              <span className="hidden sm:inline-block text-[10px] font-bold text-teal-800 bg-teal-100/90 px-1.5 py-0.5 rounded border border-teal-200/90 leading-none truncate max-w-[85px]">
                                 {day.holiday?.name ?? 'Holiday'}
                               </span>
                             </div>
@@ -1141,8 +1146,8 @@ export function MyAttendancePage() {
 
                           {isRed && (
                             <div className="flex items-center gap-1.5">
-                              <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-600 shrink-0 shadow-sm animate-pulse" />
-                              <span className="hidden sm:inline-block text-[10px] font-black text-rose-900 bg-rose-200/80 px-1.5 py-0.5 rounded border border-rose-300 leading-none uppercase tracking-wide">
+                              <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-600 shrink-0 shadow-xs animate-pulse" />
+                              <span className="hidden sm:inline-block text-[10px] font-black text-rose-900 bg-rose-200/90 px-1.5 py-0.5 rounded border border-rose-300 leading-none uppercase tracking-wide">
                                 {day.record?.isLate ? 'Late' : 'Absent'}
                               </span>
                             </div>
