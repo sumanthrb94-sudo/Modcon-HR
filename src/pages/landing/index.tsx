@@ -15,7 +15,7 @@ import {
   Loader2,
   CheckCircle2,
 } from 'lucide-react';
-import { BrandLockup } from '@/components/ui';
+import { BrandLockup, BrandMark } from '@/components/ui';
 import { submitDemoRequest, getWhatsAppDemoLink } from '@/lib/demoRequests';
 import { useAuth } from '@/lib/auth';
 
@@ -312,11 +312,11 @@ export function LandingPage() {
 
             {/* Mobile clean image stamp */}
             <div className="sm:hidden mt-6 border-2 border-ink-900 overflow-hidden">
-              <div className="aspect-[16/9] w-full bg-ink-200">
+              <div className="landing-image-frame aspect-[16/9] w-full bg-ink-200">
                 <img
                   src={heroMobileImg}
                   alt="Workforce operations"
-                  className="w-full h-full object-cover grayscale-photo"
+                  className="landing-photo w-full h-full object-cover"
                   loading="eager"
                   onError={(e) => {
                     e.currentTarget.src = '/images/hero_mobile.jpg';
@@ -326,31 +326,42 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* 3 Metric Pillars */}
-          <div className="mt-12 pt-8 border-t border-ink-200 grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
-            <div className="border-l-2 border-brand-600 pl-4">
-              <div className="text-2xl font-extrabold text-ink-900 font-display">₹0 / Free</div>
-              <div className="text-xs text-ink-600 mt-1">Free forever for teams under 10 seats</div>
+          {/* Logo-led capability proof — no vanity counters */}
+          <div className="mt-12 pt-8 border-t border-ink-200">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
+              <div>
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-600">One operating layer</span>
+                <p className="mt-1 text-sm text-ink-600">The workday, from first check-in to final payslip.</p>
+              </div>
+              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-ink-500">Capabilities, not vanity metrics</span>
             </div>
-            <div className="border-l-2 border-brand-600 pl-4">
-              <div className="text-2xl font-extrabold text-brand-600 font-display">3 Months Free</div>
-              <div className="text-xs text-ink-600 mt-1">Full trial for organizations up to 49 seats</div>
-            </div>
-            <div className="border-l-2 border-ink-900 pl-4">
-              <div className="text-2xl font-extrabold text-ink-900 font-display">Flat ₹49 / seat</div>
-              <div className="text-xs text-ink-600 mt-1">Flat ₹49 per employee · No seat cap</div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 border-2 border-ink-900 bg-white">
+              {[
+                ['Attendance', 'Protected week-offs'],
+                ['Payroll', 'Statutory by default'],
+                ['People Ops', 'One shared record'],
+                ['Field Teams', 'Verified check-ins'],
+              ].map(([label, detail], index) => (
+                <div key={label} className={`group flex items-center gap-3 p-4 sm:p-5 ${index < 3 ? 'border-b-2 lg:border-b-0 lg:border-r-2 border-ink-900' : 'border-b-2 lg:border-b-0 border-ink-900'} ${index === 1 ? 'border-r-2' : ''} ${index === 2 ? 'lg:border-r-2' : ''}`}>
+                  <BrandLockup size={26} className="transition-transform duration-200 group-hover:-translate-y-0.5" />
+                  <div className="min-w-0">
+                    <div className="font-display text-xs sm:text-sm font-extrabold uppercase tracking-wide text-ink-900">{label}</div>
+                    <div className="mt-1 text-[10px] leading-tight text-ink-500">{detail}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Figure 01: Hero High-Resolution Authentic Editorial Photograph with Responsive Mobile Crop */}
           <div className="mt-12 border-2 border-ink-900 bg-white">
-            <div className="relative aspect-[4/3] sm:aspect-[16/9] w-full overflow-hidden bg-ink-200">
+            <div className="landing-image-frame relative aspect-[4/3] sm:aspect-[16/9] w-full overflow-hidden bg-ink-200">
               <picture>
                 <source media="(max-width: 640px)" srcSet={heroMobileImg} />
                 <img
                   src={heroEditorialImg}
                   alt="Architecture and engineering workforce collaborating with Modcon HR in Bangalore studio"
-                  className="w-full h-full object-cover grayscale-photo"
+                  className="landing-photo w-full h-full object-cover"
                   loading="eager"
                   onError={(e) => {
                     e.currentTarget.src = '/images/hero_editorial.jpg';
@@ -359,8 +370,8 @@ export function LandingPage() {
               </picture>
             </div>
             <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
-              <span>Plate 01 · Collaborative workforce operations in an architecture & engineering studio.</span>
-              <span className="text-ink-500 font-bold uppercase text-[10px]">Bangalore & Hyderabad Roster Cohort</span>
+              <span className="flex items-center gap-2"><BrandMark size={16} /> Editorial field note · Collaborative workforce operations in an architecture &amp; engineering studio.</span>
+              <span className="text-ink-500 font-bold uppercase text-[10px]">Built for Bangalore &amp; Hyderabad teams</span>
             </div>
           </div>
         </div>
@@ -385,16 +396,16 @@ export function LandingPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Left Column: Authentic Editorial Plate 02 & Direct Contacts */}
+              {/* Left Column: Editorial operations image & direct contacts */}
               <div className="lg:col-span-5 space-y-6">
                 <div className="border-2 border-ink-900 bg-white">
-                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
+                  <div className="landing-image-frame relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
                     <picture>
                       <source media="(max-width: 640px)" srcSet={payrollAuditImg} />
                       <img
                         src={operationsDirectorImg}
                         alt="Operations Director reviewing personnel rosters"
-                        className="w-full h-full object-cover grayscale-photo"
+                        className="landing-photo w-full h-full object-cover"
                         loading="lazy"
                         onError={(e) => {
                           e.currentTarget.src = '/images/operations_director.jpg';
@@ -403,7 +414,7 @@ export function LandingPage() {
                     </picture>
                   </div>
                   <div className="p-3 bg-ink-100 border-t-2 border-ink-900 text-[11px] font-mono text-ink-700">
-                    Plate 04 · People operations and payroll administration at Hyderabad design firm.
+                    <span className="flex items-center gap-2"><BrandMark size={16} /> People operations and payroll administration at a Hyderabad design firm.</span>
                   </div>
                 </div>
 
@@ -696,11 +707,11 @@ export function LandingPage() {
 
           {/* Single Photographic Plate — Payroll & Compliance Desk */}
           <div className="mt-12 border-2 border-ink-900 bg-white">
-            <div className="relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden bg-ink-200">
+            <div className="landing-image-frame relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden bg-ink-200">
               <img
                 src={payrollAuditImg}
                 alt="Payroll audit and statutory compliance review at operations desk"
-                className="w-full h-full object-cover grayscale-photo"
+                className="landing-photo w-full h-full object-cover"
                 loading="lazy"
                 onError={(e) => {
                   e.currentTarget.src = '/images/payroll_audit.jpg';
@@ -708,8 +719,8 @@ export function LandingPage() {
               />
             </div>
             <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 text-xs font-mono text-ink-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
-              <span className="font-bold text-ink-900">Plate 02 · Payroll &amp; Statutory Compliance Desk</span>
-              <span className="text-ink-500 uppercase text-[10px] font-bold">Hyderabad Operations Cohort</span>
+              <span className="font-bold text-ink-900 flex items-center gap-2"><BrandMark size={16} /> Payroll &amp; statutory compliance desk</span>
+              <span className="text-ink-500 uppercase text-[10px] font-bold">Designed for real operations</span>
             </div>
           </div>
         </div>
