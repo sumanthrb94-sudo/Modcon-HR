@@ -230,9 +230,9 @@ export function LandingPage() {
       {/* 2. MINIMAL NAVIGATION (ONLY ONE PROMINENT CORPORATE LOGIN BUTTON)  */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <header className="bg-white border-b-2 border-ink-900 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3">
           <Link to="/" className="flex items-center">
-            <BrandLockup size={32} />
+            <BrandLockup size={28} />
           </Link>
 
           <nav className="hidden md:flex items-center gap-8 text-xs font-display font-extrabold uppercase tracking-wider text-ink-700">
@@ -259,10 +259,11 @@ export function LandingPage() {
             <Link
               to={user ? "/dashboard" : "/login"}
               id="corporate-login-main-button"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
+              className="inline-flex shrink-0 items-center gap-2 px-3 sm:px-5 py-2.5 bg-ink-900 text-white hover:bg-ink-800 text-[10px] sm:text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm whitespace-nowrap"
             >
               <Lock size={12} className="text-brand-500" />
-              <span>{user ? "Corporate Workspace →" : "Corporate Login"}</span>
+              <span className="sm:hidden">{user ? "Workspace" : "Login"}</span>
+              <span className="hidden sm:inline">{user ? "Corporate Workspace →" : "Corporate Login"}</span>
             </Link>
           </div>
         </div>
@@ -271,7 +272,7 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       {/* 3. HERO: MINIMAL, ARCHITECTURAL, MODERNIST                        */}
       {/* ───────────────────────────────────────────────────────────────── */}
-      <section className="bg-white border-b-2 border-ink-900 py-12 sm:py-20">
+      <section className="bg-white border-b-2 border-ink-900 py-10 sm:py-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
@@ -279,19 +280,19 @@ export function LandingPage() {
               Human Resource Operating System
             </div>
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-display font-extrabold text-ink-900 tracking-tight leading-[1.08]">
+            <h1 className="text-[2.35rem] sm:text-5xl lg:text-6xl font-display font-extrabold text-ink-900 tracking-tight leading-[1.04]">
               Accurate attendance. Honest payroll. Zero false deductions.
             </h1>
 
-            <p className="mt-6 text-base sm:text-lg text-ink-600 leading-relaxed font-sans">
+            <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg text-ink-600 leading-relaxed font-sans">
               Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹49/seat with no cap.
             </p>
 
             {/* Single restrained CTA — no funnel stack on mobile */}
-            <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="mt-7 sm:mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
               <a
                 href="#book-demo"
-                className="inline-flex items-center gap-2 px-6 py-3.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
+                className="inline-flex justify-center items-center gap-2 px-6 py-3.5 bg-ink-900 text-white hover:bg-ink-800 text-xs font-display font-extrabold uppercase tracking-wider transition-colors border border-ink-900 shadow-sm"
               >
                 <span>Book a Demo</span>
                 <ArrowRight size={14} className="text-brand-500" />
@@ -333,17 +334,17 @@ export function LandingPage() {
                 <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-600">One operating layer</span>
                 <p className="mt-1 text-sm text-ink-600">The workday, from first check-in to final payslip.</p>
               </div>
-              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-ink-500">Capabilities, not vanity metrics</span>
+              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.13em] text-ink-500">Capabilities, not vanity metrics</span>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 border-2 border-ink-900 bg-white">
+            <div className="grid grid-cols-2 lg:grid-cols-4 border-2 border-ink-900 bg-white overflow-hidden">
               {[
                 ['Attendance', 'Protected week-offs'],
                 ['Payroll', 'Statutory by default'],
                 ['People Ops', 'One shared record'],
                 ['Field Teams', 'Verified check-ins'],
               ].map(([label, detail], index) => (
-                <div key={label} className={`group flex items-center gap-3 p-4 sm:p-5 ${index < 3 ? 'border-b-2 lg:border-b-0 lg:border-r-2 border-ink-900' : 'border-b-2 lg:border-b-0 border-ink-900'} ${index === 1 ? 'border-r-2' : ''} ${index === 2 ? 'lg:border-r-2' : ''}`}>
-                  <BrandLockup size={26} className="transition-transform duration-200 group-hover:-translate-y-0.5" />
+                <div key={label} className={`group flex min-w-0 items-center gap-2.5 p-3.5 sm:gap-3 sm:p-5 ${['border-r-2 border-b-2 lg:border-b-0 lg:border-r-2', 'border-b-2 lg:border-b-0', 'border-r-2 lg:border-r-2', ''][index]} border-ink-900`}>
+                  <BrandMark size={26} className="transition-transform duration-200 group-hover:-translate-y-0.5" />
                   <div className="min-w-0">
                     <div className="font-display text-xs sm:text-sm font-extrabold uppercase tracking-wide text-ink-900">{label}</div>
                     <div className="mt-1 text-[10px] leading-tight text-ink-500">{detail}</div>
@@ -369,8 +370,8 @@ export function LandingPage() {
                 />
               </picture>
             </div>
-            <div className="p-3.5 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-ink-700 gap-1.5">
-              <span className="flex items-center gap-2"><BrandMark size={16} /> Editorial field note · Collaborative workforce operations in an architecture &amp; engineering studio.</span>
+            <div className="p-3 bg-ink-100 border-t-2 border-ink-900 flex flex-col sm:flex-row items-start sm:items-center justify-between text-[11px] sm:text-xs font-mono text-ink-700 gap-2">
+              <span className="flex items-start gap-2 leading-relaxed"><BrandMark size={16} /> <span>Editorial field note · Collaborative workforce operations in an architecture &amp; engineering studio.</span></span>
               <span className="text-ink-500 font-bold uppercase text-[10px]">Built for Bangalore &amp; Hyderabad teams</span>
             </div>
           </div>
@@ -380,9 +381,9 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       {/* 4. BOOK A DEMO WITH US FORM (MODERNIST & WHATSAPP INTEGRATION)     */}
       {/* ───────────────────────────────────────────────────────────────── */}
-      <section id="book-demo" className="py-16 sm:py-20 bg-ink-100 border-b-2 border-ink-900 scroll-mt-16">
+      <section id="book-demo" className="py-12 sm:py-20 bg-ink-100 border-b-2 border-ink-900 scroll-mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="bg-white border-2 border-ink-900 p-6 sm:p-10">
+          <div className="bg-white border-2 border-ink-900 p-4 sm:p-10">
             <div className="border-b border-ink-200 pb-6 mb-8">
               <span className="font-mono text-xs font-bold uppercase tracking-wider text-brand-600 block mb-1">
                 Direct Engagement
@@ -414,7 +415,7 @@ export function LandingPage() {
                     </picture>
                   </div>
                   <div className="p-3 bg-ink-100 border-t-2 border-ink-900 text-[11px] font-mono text-ink-700">
-                    <span className="flex items-center gap-2"><BrandMark size={16} /> People operations and payroll administration at a Hyderabad design firm.</span>
+                    <span className="flex items-start gap-2 leading-relaxed"><BrandMark size={16} /> <span>People operations and payroll administration at a Hyderabad design firm.</span></span>
                   </div>
                 </div>
 

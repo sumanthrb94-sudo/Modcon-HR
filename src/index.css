@@ -123,6 +123,14 @@
     filter: saturate(1) sepia(0.04) contrast(1.08);
     transform: scale(1.04);
   }
+  @media (max-width: 640px) {
+    .landing-image-frame .landing-photo {
+      transform: scale(1.01);
+    }
+    .landing-image-frame:hover .landing-photo {
+      transform: scale(1.02);
+    }
+  }
 }
 
 /* Custom scrollbar — squared off, in the ink ramp. */
