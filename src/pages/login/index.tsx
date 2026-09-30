@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Loader2, Phone } from 'lucide-react';
+import { ArrowLeft, Loader2, Phone, ShieldCheck, Sparkles } from 'lucide-react';
 import { BrandLockup, Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { getLastSignedInOrgKey } from '@/lib/orgScope';
 import { careersPath } from '@/lib/publishedJobs';
+import workplaceEditorialImg from '@/assets/images/workplace_editorial.jpg';
 
 export function LoginPage() {
     const navigate = useNavigate();
@@ -90,18 +91,56 @@ export function LoginPage() {
     }
 
     return (
-        <main className="min-h-screen bg-ink-50 px-4 py-8">
-            <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center">
-                <div className="mb-3 flex items-center justify-between text-xs px-1">
-                    <Link to="/landing" className="text-ink-500 hover:text-brand-600 font-semibold flex items-center gap-1 transition-colors">
-                        ← Product Overview & Pricing
-                    </Link>
-                    <a href="tel:+917799934943" aria-label="Call helpline" title="Call helpline" className="inline-flex items-center justify-center text-ink-500 hover:text-ink-900 font-mono font-bold">
-                        <Phone size={16} />
-                        <span className="sr-only">Call helpline</span>
-                    </a>
-                </div>
-                <section className="card w-full p-6 sm:p-8">
+        <main className="min-h-screen bg-ink-900 px-3 py-3 sm:px-6 sm:py-6">
+            <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-6xl overflow-hidden border-2 border-ink-900 bg-ink-50 lg:grid-cols-[1.05fr_0.95fr]">
+                <aside className="relative hidden min-h-[720px] overflow-hidden bg-ink-900 text-white lg:flex lg:flex-col lg:justify-between">
+                    <img
+                        src={workplaceEditorialImg}
+                        alt="People operations team collaborating around a workplace plan"
+                        className="absolute inset-0 h-full w-full object-cover opacity-40"
+                        loading="eager"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-ink-900/95 via-ink-900/55 to-ink-900/95" />
+                    <div className="relative z-10 p-10">
+                        <BrandLockup size={38} onDark />
+                        <div className="mt-16 max-w-lg">
+                            <span className="inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-brand-400">
+                                <span className="h-1.5 w-1.5 bg-brand-500" />
+                                Human resource operating system
+                            </span>
+                            <h1 className="mt-5 text-5xl font-display font-extrabold leading-[1.02] tracking-tight">
+                                Make the workday feel more human.
+                            </h1>
+                            <p className="mt-6 max-w-md text-sm leading-relaxed text-ink-200">
+                                Attendance, payroll, leave, and people operations in one calm, accountable workspace.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="relative z-10 grid grid-cols-2 gap-3 border-t border-white/20 p-10 text-xs">
+                        <div className="flex items-start gap-2 border-l-2 border-brand-500 pl-3">
+                            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brand-400" />
+                            <span className="text-ink-200">Protected records<br /><strong className="text-white">by design</strong></span>
+                        </div>
+                        <div className="flex items-start gap-2 border-l-2 border-white/40 pl-3">
+                            <Sparkles size={15} className="mt-0.5 shrink-0 text-brand-400" />
+                            <span className="text-ink-200">Built for real<br /><strong className="text-white">teams at work</strong></span>
+                        </div>
+                    </div>
+                </aside>
+
+                <div className="flex items-center justify-center bg-ink-50 p-3 sm:p-8">
+                    <div className="w-full max-w-md">
+                        <div className="mb-3 flex items-center justify-between px-1 text-xs">
+                            <Link to="/landing" className="inline-flex items-center gap-1.5 font-semibold text-ink-500 transition-colors hover:text-brand-600">
+                                <ArrowLeft size={14} />
+                                <span>Product overview</span>
+                            </Link>
+                            <a href="tel:+917799934943" aria-label="Call helpline" title="Call helpline" className="inline-flex items-center justify-center text-ink-500 transition-colors hover:text-ink-900">
+                                <Phone size={17} />
+                                <span className="sr-only">Call helpline</span>
+                            </a>
+                        </div>
+                <section className="card w-full border-2 border-ink-900 bg-white p-5 shadow-[8px_8px_0_theme(colors.ink.900)] sm:p-8">
                     <div className="mb-4">
                         <BrandLockup size={40} />
                         <div className="mt-4 h-0.5 bg-ink-900" />
@@ -287,6 +326,8 @@ export function LoginPage() {
                     </>
                     )}
                 </section>
+                    </div>
+                </div>
             </div>
         </main>
     );
