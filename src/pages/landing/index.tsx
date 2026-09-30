@@ -65,7 +65,7 @@ export function LandingPage() {
       });
       setSubmitted(true);
     } catch (err) {
-      setFormError('Could not submit demo request. Please try calling +91 7799934943 directly.');
+      setFormError('Could not submit demo request. Please try calling our hotline directly.');
     } finally {
       setSubmitting(false);
     }
@@ -160,7 +160,7 @@ export function LandingPage() {
         'Bank salary transfer file export (NEFT/RTGS)',
         'Custom shift policies & dedicated engineer',
       ],
-      ctaText: 'Call +91 7799934943',
+      ctaText: 'Call us',
       ctaHref: 'tel:+917799934943',
       isHotline: true,
     },
@@ -203,7 +203,7 @@ export function LandingPage() {
               className="hidden sm:flex items-center gap-1 font-mono font-bold text-white hover:text-brand-400 transition-colors"
             >
               <Phone size={12} className="text-brand-500" />
-              <span>+91 7799934943</span>
+              <span className="sr-only">Call our hotline</span>
             </a>
 
             {/* Mobile only: contact us pill */}
@@ -250,7 +250,7 @@ export function LandingPage() {
               className="hover:text-brand-600 transition-colors flex items-center gap-1 text-ink-900"
             >
               <Phone size={12} className="text-brand-600" />
-              <span className="font-mono font-bold">+91 7799934943</span>
+              <span className="sr-only">Call our hotline</span>
             </a>
           </nav>
 
@@ -307,7 +307,7 @@ export function LandingPage() {
               >
                 <MessageCircle size={13} />
                 <span className="sm:hidden">WhatsApp</span>
-                <span className="hidden sm:inline">WhatsApp: +91 7799934943</span>
+                <span className="hidden sm:inline">WhatsApp Desk</span>
               </a>
             </div>
 
@@ -428,8 +428,9 @@ export function LandingPage() {
                   </div>
                   <div className="pt-2 border-t border-ink-200">
                     <span className="text-[10px] text-ink-500 uppercase font-bold block mb-0.5">Direct Line & WhatsApp</span>
-                    <a href="tel:+917799934943" className="text-ink-900 font-bold hover:text-brand-600 block">
-                      Phone: +91 7799934943
+                    <a href="tel:+917799934943" aria-label="Call our hotline" title="Call our hotline" className="inline-flex items-center gap-2 text-ink-900 font-bold hover:text-brand-600 block">
+                      <Phone size={14} className="text-brand-600" />
+                      <span>Call hotline</span>
                     </a>
                     <a
                       href={getWhatsAppDemoLink()}
@@ -437,7 +438,8 @@ export function LandingPage() {
                       rel="noopener noreferrer"
                       className="text-emerald-700 font-bold hover:underline block mt-0.5"
                     >
-                      WhatsApp: +91 7799934943
+                      <MessageCircle size={14} />
+                      WhatsApp desk
                     </a>
                   </div>
                 </div>
@@ -845,7 +847,7 @@ export function LandingPage() {
               Ready to eliminate false LOP and streamline payroll?
             </h2>
             <p className="mt-1.5 text-xs sm:text-sm text-ink-300 leading-relaxed">
-              Reach our deployment engineers at <strong className="text-white font-mono">+91 7799934943</strong> or message on WhatsApp. We configure organizational shift policies and migrate employee rosters within 24 hours.
+              Reach our deployment engineers by phone or WhatsApp. We configure organizational shift policies and migrate employee rosters within 24 hours.
             </p>
           </div>
 
@@ -855,7 +857,7 @@ export function LandingPage() {
               className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-ink-900 hover:bg-ink-100 text-xs font-display font-extrabold uppercase tracking-wider transition-colors"
             >
               <Phone size={13} className="text-brand-600" />
-              <span>Call +91 7799934943</span>
+              <span>Call us</span>
             </a>
 
             <a
@@ -898,8 +900,9 @@ export function LandingPage() {
               <span>WhatsApp</span>
             </a>
             {/* Phone only on desktop */}
-            <a href="tel:+917799934943" className="hidden sm:inline font-mono font-bold text-brand-600 hover:underline">
-              +91 7799934943
+            <a href="tel:+917799934943" aria-label="Call our hotline" title="Call our hotline" className="hidden sm:inline-flex items-center gap-1 font-mono font-bold text-brand-600 hover:underline">
+              <Phone size={13} />
+              <span className="sr-only">Call hotline</span>
             </a>
             <Link to={user ? "/dashboard" : "/login"} className="font-bold text-ink-900 hover:text-brand-600 transition-colors uppercase font-display text-[11px]">
               {user ? "Workspace" : "Login"}

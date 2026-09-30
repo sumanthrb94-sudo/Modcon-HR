@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Phone } from 'lucide-react';
 import { BrandLockup, Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { getLastSignedInOrgKey } from '@/lib/orgScope';
@@ -96,8 +96,9 @@ export function LoginPage() {
                     <Link to="/landing" className="text-ink-500 hover:text-brand-600 font-semibold flex items-center gap-1 transition-colors">
                         ← Product Overview & Pricing
                     </Link>
-                    <a href="tel:+917799934943" className="text-ink-500 hover:text-ink-900 font-mono font-bold">
-                        Helpline: +91 7799934943
+                    <a href="tel:+917799934943" aria-label="Call helpline" title="Call helpline" className="inline-flex items-center justify-center text-ink-500 hover:text-ink-900 font-mono font-bold">
+                        <Phone size={16} />
+                        <span className="sr-only">Call helpline</span>
                     </a>
                 </div>
                 <section className="card w-full p-6 sm:p-8">
