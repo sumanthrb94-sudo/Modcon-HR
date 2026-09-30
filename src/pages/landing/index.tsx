@@ -311,16 +311,16 @@ export function LandingPage() {
               </a>
             </div>
 
-            {/* Mobile clean image stamp */}
+            {/* Mobile editorial image stamp — intentionally distinct from the main hero plate */}
             <div className="sm:hidden mt-6 border-2 border-ink-900 overflow-hidden">
               <div className="landing-image-frame aspect-[16/9] w-full bg-ink-200">
                 <img
-                  src={heroMobileImg}
-                  alt="Workforce operations"
+                  src={workplaceEditorialImg}
+                  alt="People operations team collaborating on a workplace plan"
                   className="landing-photo w-full h-full object-cover"
                   loading="eager"
                   onError={(e) => {
-                    e.currentTarget.src = '/images/hero_mobile.jpg';
+                    e.currentTarget.src = '/images/workplace_editorial.jpg';
                   }}
                 />
               </div>
