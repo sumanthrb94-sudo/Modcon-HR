@@ -52,6 +52,7 @@ const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.L
 const CareersPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersPage })));
 const CareersJobPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersJobPage })));
 const LandingPage = lazy(() => import('@/pages/landing').then((m) => ({ default: m.LandingPage })));
+const IndiaFirstPage = lazy(() => import('@/pages/india-first').then((m) => ({ default: m.IndiaFirstPage })));
 
 function PageLoader() {
   return (
@@ -244,6 +245,7 @@ function AppRoutes() {
       {/* Root URL defaults unconditionally to the public Landing Page */}
       <Route path="/" element={<LandingPage />} />
       <Route path="landing" element={<LandingPage />} />
+      <Route path="india-first" element={<IndiaFirstPage />} />
       <Route path="careers" element={<CareersPage />} />
       <Route path="careers/:orgKey" element={<CareersPage />} />
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />

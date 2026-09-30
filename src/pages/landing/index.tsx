@@ -14,6 +14,11 @@ import {
   Mail,
   Loader2,
   CheckCircle2,
+  FileCheck2,
+  MapPin,
+  Smartphone,
+  Workflow,
+  ArrowUpRight,
 } from 'lucide-react';
 import { BrandLockup, BrandMark } from '@/components/ui';
 import { submitDemoRequest, getWhatsAppDemoLink } from '@/lib/demoRequests';
@@ -166,6 +171,29 @@ export function LandingPage() {
     },
   ];
 
+  const indiaFirstCards = [
+    {
+      icon: Workflow,
+      title: 'Exceptions, not just attendance',
+      body: 'Biometric, GPS, web punch, night shifts, missed punches and multiple sites — one workflow for the messy middle.',
+    },
+    {
+      icon: FileCheck2,
+      title: 'Payroll people can trust',
+      body: 'PF, ESI, PT, TDS, gratuity and leave encashment connected to the attendance decisions behind every payslip.',
+    },
+    {
+      icon: Smartphone,
+      title: 'Mobile-first for real teams',
+      body: 'Simple self-service for employees and fast approvals for managers, without forcing HR to become the middleman.',
+    },
+    {
+      icon: MapPin,
+      title: 'One record across every branch',
+      body: 'Head office, stores, sites and field teams stay aligned while policies and attendance rules remain location-aware.',
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-ink-50 text-ink-900 font-sans antialiased selection:bg-brand-600/20">
       {/* ───────────────────────────────────────────────────────────────── */}
@@ -239,6 +267,9 @@ export function LandingPage() {
             <a href="#comparison" className="hover:text-brand-600 transition-colors">
               Problems & Solutions
             </a>
+            <Link to="/india-first" className="hover:text-brand-600 transition-colors">
+              India-first HR
+            </Link>
             <a href="#pricing" className="hover:text-brand-600 transition-colors">
               Pricing
             </a>
@@ -277,15 +308,15 @@ export function LandingPage() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
               <span className="w-1.5 h-1.5 bg-brand-600" />
-              Human Resource Operating System
+              India-first Human Resource Operating System
             </div>
 
             <h1 className="text-[2.35rem] sm:text-5xl lg:text-6xl font-display font-extrabold text-ink-900 tracking-tight leading-[1.04]">
-              Accurate attendance. Honest payroll. Zero false deductions.
+              Indian HR, built for the exceptions.
             </h1>
 
             <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg text-ink-600 leading-relaxed font-sans">
-              Modcon HR eliminates false absences on Sundays and rostered week-offs, simplifies whole-month regularizations into a single click, and provides Indian statutory payroll for a flat ₹49/seat with no cap.
+              Modcon HR connects attendance, leave, payroll, onboarding and people operations around the realities Indian companies actually face — from missed punches and branch transfers to statutory payroll due today.
             </p>
 
             {/* Single restrained CTA — no funnel stack on mobile */}
@@ -309,6 +340,10 @@ export function LandingPage() {
                 <span className="sm:hidden">WhatsApp</span>
                 <span className="hidden sm:inline">WhatsApp Desk</span>
               </a>
+              <Link to="/india-first" className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-ink-600 hover:text-brand-600 transition-colors">
+                <ArrowUpRight size={13} />
+                <span>Why India-first</span>
+              </Link>
             </div>
 
             {/* Mobile editorial image stamp — intentionally distinct from the main hero plate */}
@@ -379,7 +414,39 @@ export function LandingPage() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────────── */}
-      {/* 4. BOOK A DEMO WITH US FORM (MODERNIST & WHATSAPP INTEGRATION)     */}
+      {/* 4. INDIA-FIRST POSITIONING                                         */}
+      {/* ───────────────────────────────────────────────────────────────── */}
+      <section id="india-first" className="bg-ink-900 py-14 text-white sm:py-20">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
+            <div>
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-brand-400">Built for the Indian exception</span>
+              <h2 className="mt-3 text-3xl font-display font-extrabold leading-tight tracking-tight sm:text-5xl">
+                The normal case is easy. Your workday is not.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-ink-300 sm:text-base">
+                Indian companies do not need another generic HRMS. They need one operating layer that stays calm when shifts change, documents go missing, branches multiply, and payroll still has to close today.
+              </p>
+              <Link to="/india-first" className="mt-7 inline-flex items-center gap-2 border border-white/40 px-4 py-3 text-xs font-display font-extrabold uppercase tracking-wider text-white transition-colors hover:border-brand-400 hover:bg-brand-600">
+                Explore the India-first model
+                <ArrowUpRight size={14} className="text-brand-400" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 gap-px overflow-hidden border border-white/20 bg-white/20 sm:grid-cols-2">
+              {indiaFirstCards.map(({ icon: Icon, title, body }) => (
+                <article key={title} className="bg-ink-900 p-5 sm:p-6">
+                  <Icon size={20} className="text-brand-400" />
+                  <h3 className="mt-5 text-base font-display font-extrabold text-white">{title}</h3>
+                  <p className="mt-2 text-xs leading-relaxed text-ink-300">{body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────────── */}
+      {/* 5. BOOK A DEMO WITH US FORM (MODERNIST & WHATSAPP INTEGRATION)     */}
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="book-demo" className="py-12 sm:py-20 bg-ink-100 border-b-2 border-ink-900 scroll-mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
