@@ -6,7 +6,7 @@
    Modcon HR — Modernist.
 
    Flat, architectural and set entirely in Archivo: near-mono ink on paper
-   with one accent, a visible modular grid, zero corner radius and strong
+   with one accent, a visible modular grid, softly rounded tiles and strong
    2px rules. Nothing floats and nothing is decorated — alignment and the
    strength of the dividers do the organising.
 
@@ -48,11 +48,11 @@
 }
 
 @layer components {
-  /* A card is a surface with a rule around it — no radius, no lift. The
+  /* A card is a softly rounded surface with a restrained lift. The
      shadow tokens stay available (`.elev-sm/md/lg`) for the few things that
      genuinely sit above the page, like menus and modals. */
   .card {
-    @apply bg-white border border-ink-300;
+    @apply rounded-2xl bg-white border border-ink-300 shadow-card;
   }
   .elev-sm {
     @apply shadow-card;
@@ -70,7 +70,7 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-display font-extrabold transition-colors duration-150 focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-display font-extrabold transition-colors duration-150 focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed;
   }
   .btn-primary {
     @apply btn bg-brand-600 text-ink-50 hover:bg-brand-700 active:bg-brand-800;
@@ -88,7 +88,7 @@
   }
 
   .input {
-    @apply w-full border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600;
+    @apply w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600;
   }
   /* Labels are the kit's 11-12px uppercase, tracked out. */
   .label {
@@ -104,6 +104,7 @@
      and red signal details breathe instead of flattening every image to B&W. */
   .landing-image-frame {
     isolation: isolate;
+    @apply rounded-xl;
   }
   .landing-image-frame::after {
     content: '';
@@ -133,7 +134,22 @@
   }
 }
 
-/* Custom scrollbar — squared off, in the ink ramp. */
+/* Older feature screens predate the shared Card/Button primitives and use
+   Tailwind's raw border utilities as their tile boundary. Give those surfaces
+   the same geometry centrally so the product reads as one design system. */
+#root :where([class~='border'], [class~='border-2']):not([class*='rounded-']) {
+  border-radius: theme('borderRadius.lg');
+}
+
+#root :where(button, a, input, select, textarea)[class*='border']:not([class*='rounded-']) {
+  border-radius: theme('borderRadius.lg');
+}
+
+#root :where(table, thead, tbody, tr, th, td)[class*='border'] {
+  border-radius: 0;
+}
+
+/* Custom scrollbar — compact and softly rounded, in the ink ramp. */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -143,6 +159,7 @@
 }
 ::-webkit-scrollbar-thumb {
   background: #bab6b6;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #7d7979;

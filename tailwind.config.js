@@ -2,7 +2,7 @@
 //
 // Tokens come from the Modcon HR brand identity kit (Modernist design system):
 // Signal Red #EC3013 on Paper #F3F2F2, ink #201E1D, Archivo throughout, and a
-// radius scale that is 0 at every step. The 100-900 ramps are the kit's, which
+// a soft tile radius scale. The 100-900 ramps are the kit's, which
 // were generated in OKLCH on one shared lightness scale — the same step of any
 // ramp carries the same visual weight, so a tint swapped for another tint keeps
 // its contrast. Tailwind's own 50/950 steps are extrapolated from those ends.
@@ -82,19 +82,18 @@ export default {
         nav: '0 3px 10px rgba(45, 43, 43, 0.16)',
         modal: '0 12px 32px rgba(45, 43, 43, 0.22)',
       },
-      // "Do not round a corner anywhere" — the whole scale is 0, `full`
-      // included, so `rounded-full` on a pill or an avatar squares off with
-      // everything else instead of quietly reintroducing the old look.
+      // Modern tile geometry: small controls stay compact, cards and dialogs
+      // get visibly soft corners, and pills/avatars remain truly circular.
       borderRadius: {
         none: '0px',
-        sm: '0px',
-        DEFAULT: '0px',
-        md: '0px',
-        lg: '0px',
-        xl: '0px',
-        '2xl': '0px',
-        '3xl': '0px',
-        full: '0px',
+        sm: '0.375rem',
+        DEFAULT: '0.5rem',
+        md: '0.625rem',
+        lg: '0.875rem',
+        xl: '1.125rem',
+        '2xl': '1.5rem',
+        '3xl': '2rem',
+        full: '9999px',
       },
       keyframes: {
         'fade-in': {
