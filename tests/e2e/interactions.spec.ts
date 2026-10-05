@@ -11,7 +11,7 @@ async function login(page: Page) {
   await page.locator('#username').fill(TEST_EMAIL);
   await page.locator('#password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 test('unauthenticated visit redirects to /login', async ({ page }) => {
@@ -77,7 +77,7 @@ test.describe.serial('authenticated interactions', () => {
 
   test('sign out returns to the login screen', async () => {
     // Navigate back into the app shell first (404 above is inside the layout).
-    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Today / Inbox', exact: true }).first().click();
     // The Getting started checklist opens itself a moment after the dashboard
     // does, and it covers the Sign out button — which is why this test failed
     // while signing out worked. Close it the way a person would.

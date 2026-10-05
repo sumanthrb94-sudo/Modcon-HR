@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { captureClientError } from '@/lib/observability';
 
 interface Props {
   children: ReactNode;
@@ -29,6 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
     // Surface for observability; in production this is where a logging service
     // (Sentry, etc.) would be notified.
     console.error('Uncaught application error:', error, info.componentStack);
+    captureClientError('react-error', error, info.componentStack ?? undefined);
   }
 
   handleReload = () => {

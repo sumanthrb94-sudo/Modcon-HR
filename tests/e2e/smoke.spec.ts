@@ -64,7 +64,7 @@ async function login(page: Page) {
   await page.locator('#password').fill(SMOKE_PERSONA.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
   // Successful auth redirects to the dashboard shell (sidebar visible).
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe.serial('ModCon HR — production smoke', () => {
@@ -92,7 +92,7 @@ test.describe.serial('ModCon HR — production smoke', () => {
   }
 
   test('employee detail: open first profile', async () => {
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await expect(page).toHaveURL(/employees$/);
     // Switch to list view and click the first (clickable) table row.
     await page.locator('button[title="List view"]').click();
@@ -102,7 +102,7 @@ test.describe.serial('ModCon HR — production smoke', () => {
     await expect(page).toHaveURL(/employees\/.+/);
     await expect(page.getByRole('heading').first()).toBeVisible();
     // Back to the directory to leave state clean for the error-check test.
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await expect(page).toHaveURL(/employees$/);
   });
 

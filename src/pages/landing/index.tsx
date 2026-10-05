@@ -144,7 +144,7 @@ export function LandingPage() {
         'All Startup features included',
         '3 months free trial for growing teams',
         '1-Click whole-month bulk regularization',
-        'Automated Indian statutory payroll & payslips',
+        'Explainable Indian statutory calculations & payslips',
         'Dedicated onboarding & priority support',
       ],
       ctaText: 'Book a Demo with Us',
@@ -316,7 +316,7 @@ export function LandingPage() {
             </h1>
 
             <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg text-ink-600 leading-relaxed font-sans">
-              Modcon HR connects attendance, leave, payroll, onboarding and people operations around the realities Indian companies actually face — from missed punches and branch transfers to statutory payroll due today.
+              Modcon HR connects attendance, leave, payroll preparation, onboarding and people operations around the realities Indian companies actually face — from missed punches and branch transfers to statutory deadlines.
             </p>
 
             {/* Single restrained CTA — no funnel stack on mobile */}
@@ -459,7 +459,7 @@ export function LandingPage() {
                 Book a Demo with Us
               </h2>
               <p className="mt-2 text-xs sm:text-sm text-ink-600">
-                Schedule a 20-minute tailored walkthrough of Modcon HR with our deployment architects. We will show how dynamic week-offs, bulk regularization, and automated statutory payroll work for your team.
+                Schedule a 20-minute tailored walkthrough of Modcon HR. We will show how dynamic week-offs, bulk regularization, and explainable payroll preparation work for your team.
               </p>
             </div>
 
@@ -954,6 +954,15 @@ export function LandingPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs">
+            <Link to="/payroll-boundaries" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
+              Payroll boundaries
+            </Link>
+            <Link to="/privacy" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
+              Privacy
+            </Link>
+            <Link to="/terms" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
+              Terms
+            </Link>
             <a href="#book-demo" className="text-ink-700 hover:text-brand-600 transition-colors uppercase font-display text-[11px] font-bold">
               Book Demo
             </a>

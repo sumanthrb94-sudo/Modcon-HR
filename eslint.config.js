@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint';
 // standard flat config for a Vite + React + TypeScript project — run
 // `npm install` after pulling this change to pick up the new devDependencies.
 export default tseslint.config(
-  { ignores: ['dist', 'graphify-out', 'node_modules'] },
+  { ignores: ['.kilo', 'dist', 'graphify-out', 'node_modules', 'tmp'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

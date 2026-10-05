@@ -30,7 +30,7 @@ async function login(page: Page, persona: (typeof PERSONAS)['admin']) {
   await page.locator('#username').fill(persona.email);
   await page.locator('#password').fill(persona.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 const stamp = `${Date.now().toString(36)}`;

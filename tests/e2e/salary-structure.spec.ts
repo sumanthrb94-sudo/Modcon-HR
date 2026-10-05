@@ -62,7 +62,7 @@ async function login(page: Page) {
   await page.locator('#username').fill(ADMIN.email);
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function openSalaryStructure(page: Page) {
@@ -142,7 +142,7 @@ interface Breakdown {
 }
 
 async function openCompensation(page: Page, name: string) {
-  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
   await page.getByPlaceholder('Search name, role, email, code…').fill(name);
   await page.getByText(name).first().click();
   await page.getByRole('button', { name: 'Compensation' }).click();

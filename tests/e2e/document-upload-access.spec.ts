@@ -44,7 +44,7 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#username').fill(email);
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function signOut(page: Page) {
@@ -54,7 +54,7 @@ async function signOut(page: Page) {
 
 /** Open an employee's Documents tab from the directory. */
 async function openDocumentsFor(page: Page, name: string) {
-  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
   await page.getByPlaceholder('Search name, role, email, code…').fill(name);
   await page.getByText(name).first().click();
   await page.getByRole('button', { name: 'Documents' }).click();
@@ -77,7 +77,7 @@ test.describe.serial('document uploads are offered by section and role', () => {
 
     // The employee record the signed-in employee account will resolve to, so
     // the "own record" case below is a real one.
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await page.getByRole('button', { name: 'Add Employee' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Employee code').fill('MC-9201');
@@ -119,7 +119,7 @@ test.describe.serial('document uploads are offered by section and role', () => {
 
     // An employee's Employees page is their own record, so this is the
     // own-record case rather than a directory lookup.
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await page.getByRole('button', { name: 'Documents' }).click();
     await expect(page.getByRole('heading', { name: 'Primary Documents' })).toBeVisible();
 

@@ -1,8 +1,8 @@
-# ModCon HR — Modern HR Platform
+# ModCon HR — India-first People Operations
 
-A modern, full-featured **HRMS (Human Resource Management System)** built as an
-investor-ready product demo. ModCon HR covers the complete employee lifecycle —
-from hire to retire — in a single, polished web application.
+ModCon HR is an India-first people operations workspace focused on employee
+records, attendance exceptions, leave, and explainable payroll preparation.
+Advanced modules remain available without overwhelming the default experience.
 
 > **Access & roles:** the app is protected by Firebase email/password
 > authentication with three roles — **employee**, **manager**, and **admin**.
@@ -52,6 +52,7 @@ from hire to retire — in a single, polished web application.
 npm install      # install dependencies
 npm run dev      # start dev server → http://localhost:5173
 npm run build    # type-check + production build
+npm run verify:launch # lint, build, unit tests, data integrity, production audit
 npm run preview  # preview the production build
 npm run test:e2e # end-to-end tests (Playwright, drives the production build)
 ```
@@ -93,8 +94,11 @@ framework preset, `npm run build`, `dist/` output, an SPA rewrite so
 client-side routes resolve, plus immutable caching on `/assets/*` and the
 baseline security headers.
 
-No environment variables are required. The Firebase web config in
-`src/lib/firebase.ts` is public by design and ships in the bundle.
+The Firebase web config in `src/lib/firebase.ts` is public by design and ships
+in the bundle. Production should set `VITE_APP_RELEASE` to the deployed commit.
+Set `VITE_OBSERVABILITY_ENDPOINT` to an approved error-ingestion endpoint to
+receive privacy-minimised browser error events. See
+[`docs/launch-readiness.md`](docs/launch-readiness.md) for the complete gate.
 
 To deploy by hand from a checkout:
 

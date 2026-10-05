@@ -24,7 +24,7 @@ async function signIn(page: Page) {
   await page.locator('#username').fill(PERSONA.email);
   await page.locator('#password').fill(PERSONA.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 test('the session does not outlive the browser', async ({ browser }) => {
@@ -46,7 +46,7 @@ test('the session does not outlive the browser', async ({ browser }) => {
 
   // Signed out: the login form, not the app shell.
   await expect(reopened.locator('#password')).toBeVisible({ timeout: 20_000 });
-  await expect(reopened.getByRole('link', { name: 'Employees' })).toHaveCount(0);
+  await expect(reopened.getByRole('link', { name: 'People & Documents' })).toHaveCount(0);
   await second.close();
 });
 
@@ -56,6 +56,6 @@ test('a reload inside the same tab stays signed in', async ({ page }) => {
 
   // Still in. Without this, dropping persistence entirely would look like a
   // fix while signing people out mid-form on every refresh.
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('#password')).toHaveCount(0);
 });

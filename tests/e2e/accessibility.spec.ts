@@ -28,7 +28,7 @@ async function login(page: Page, p: Persona) {
   await page.locator('#username').fill(p.email);
   await page.locator('#password').fill(p.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'Today / Inbox' }).first()).toBeVisible({ timeout: 20_000 });
 }
 
 /** Visible controls with no accessible name, and heading levels that skip. */

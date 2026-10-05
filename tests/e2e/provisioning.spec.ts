@@ -42,7 +42,7 @@ async function signIn(page: Page, persona: typeof PERSONAS.admin) {
   await page.locator('#username').fill(persona.email);
   await page.locator('#password').fill(persona.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function openCreateAccount(page: Page) {
@@ -210,6 +210,7 @@ test.describe('creating an account for a colleague', () => {
     const email = `e2e-invitee-${Date.now()}@modcon-hr.test`;
     let tempPassword = '';
 
+    let cleanupFailure: Error | null = null;
     try {
       await signIn(page, PERSONAS.admin);
       const dialog = await openCreateAccount(page);
@@ -269,9 +270,10 @@ test.describe('creating an account for a colleague', () => {
         // otherwise have passed, so this cannot mask the original error.
         console.error(`[provisioning] CLEANUP LEAK: ${leaked.join(' | ')}`);
         if (test.info().errors.length === 0) {
-          throw new Error(`cleanup left data behind in production: ${leaked.join(' | ')}`);
+          cleanupFailure = new Error(`cleanup left data behind in production: ${leaked.join(' | ')}`);
         }
       }
     }
+    if (cleanupFailure) throw cleanupFailure;
   });
 });

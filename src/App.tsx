@@ -53,6 +53,9 @@ const CareersPage = lazy(() => import('@/pages/careers').then((m) => ({ default:
 const CareersJobPage = lazy(() => import('@/pages/careers').then((m) => ({ default: m.CareersJobPage })));
 const LandingPage = lazy(() => import('@/pages/landing').then((m) => ({ default: m.LandingPage })));
 const IndiaFirstPage = lazy(() => import('@/pages/india-first').then((m) => ({ default: m.IndiaFirstPage })));
+const PrivacyPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.PrivacyPage })));
+const TermsPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.TermsPage })));
+const PayrollBoundariesPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.PayrollBoundariesPage })));
 
 function PageLoader() {
   return (
@@ -246,6 +249,9 @@ function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="landing" element={<LandingPage />} />
       <Route path="india-first" element={<IndiaFirstPage />} />
+      <Route path="privacy" element={<PrivacyPage />} />
+      <Route path="terms" element={<TermsPage />} />
+      <Route path="payroll-boundaries" element={<PayrollBoundariesPage />} />
       <Route path="careers" element={<CareersPage />} />
       <Route path="careers/:orgKey" element={<CareersPage />} />
       <Route path="careers/:orgKey/:jobId" element={<CareersJobPage />} />

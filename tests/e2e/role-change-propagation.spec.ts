@@ -49,7 +49,7 @@ async function signIn(page: Page, who: { email: string; password: string }) {
   await page.locator('#username').fill(who.email);
   await page.locator('#password').fill(who.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 /** The Admin dashboard's role control for one account, found by its address. */

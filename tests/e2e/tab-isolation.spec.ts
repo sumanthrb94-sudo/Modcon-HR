@@ -29,7 +29,7 @@ async function login(page: Page, persona: { email: string; password: string }) {
   await page.locator('#username').fill(persona.email);
   await page.locator('#password').fill(persona.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'Today / Inbox' }).first()).toBeVisible({ timeout: 20_000 });
 }
 
 const NARROWED_OVERLAYS = ['modcon.hr.expenseClaims.overlay', 'modcon.hr.payslips.overlay', 'modcon.hr.payrollRuns.overlay'];
@@ -50,7 +50,7 @@ test.describe('tabs in one browser', () => {
     // A reload re-reads the namespace at module load — the moment the old key
     // was read from the shared entry.
     await mine.reload();
-    await expect(mine.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(mine.getByRole('link', { name: 'Today / Inbox' }).first()).toBeVisible({ timeout: 20_000 });
     expect(await mine.evaluate(() => sessionStorage.getItem('modcon.hr.activeOrgKey'))).toBe('default');
     // And the lazily-loaded modules, which read it later still.
     await mine.goto('/expenses');

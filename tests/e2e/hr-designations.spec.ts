@@ -35,7 +35,7 @@ async function login(page: Page) {
   await page.locator('#username').fill(ADMIN.email);
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function openCompanyProfile(page: Page) {
@@ -58,8 +58,8 @@ test.describe.serial('HR designations come from the HR department', () => {
     // An engineer whose title is the one under test. Created rather than
     // assumed, so the spec does not depend on the seed happening to contain a
     // title that collides.
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
-    await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
+    await expect(page.getByRole('heading', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Add Employee' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Employee code').fill('MC-9401');

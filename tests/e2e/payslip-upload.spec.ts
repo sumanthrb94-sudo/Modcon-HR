@@ -37,7 +37,7 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#username').fill(email);
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe.serial('an administrator uploads payslips', () => {
@@ -55,7 +55,7 @@ test.describe.serial('an administrator uploads payslips', () => {
 
   test('the signed-in employee account is given an employee record', async () => {
     await login(page, ADMIN.email, ADMIN.password);
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await page.getByRole('button', { name: 'Add Employee' }).click();
 
     const dialog = page.getByRole('dialog');

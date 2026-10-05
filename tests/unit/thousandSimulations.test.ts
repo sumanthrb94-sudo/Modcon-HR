@@ -112,7 +112,7 @@ for (let offset = -20; offset < 30; offset++) {
 
 // 50 Clock Parsing Stress Tests
 for (let hour = 0; hour < 24; hour++) {
-  for (let minStep of [0, 30]) {
+  for (const minStep of [0, 30]) {
     const formatted = `${String(hour).padStart(2, '0')}:${String(minStep).padStart(2, '0')}`;
     const expected = hour * 60 + minStep;
     test(`[Clock Parser #151-${String(hour * 2 + (minStep ? 2 : 1)).padStart(3, '0')}] Parse ${formatted} -> ${expected} mins`, () => {

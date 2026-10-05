@@ -147,7 +147,7 @@ test('the navigation opens and closes from the menu button on a phone', async ({
   const menu = page.getByRole('button', { name: 'Open navigation menu' });
   await expect(menu).toBeVisible();
   await menu.click();
-  const dashboardLink = page.getByRole('link', { name: 'Dashboard' }).first();
+  const dashboardLink = page.getByRole('link', { name: 'Today / Inbox' }).first();
   await expect(dashboardLink).toBeInViewport();
   await page.getByRole('button', { name: 'Close navigation menu' }).click();
   await expect(dashboardLink).not.toBeInViewport();

@@ -30,7 +30,7 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#username').fill(email);
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 /** Days awaiting approval per leave type, as each balance surface reports them. */
@@ -72,7 +72,7 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
 
   test('an administrator adds the employee record the account signs in as', async () => {
     await login(page, ADMIN.email, ADMIN.password);
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await page.getByRole('button', { name: 'Add Employee' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -111,7 +111,7 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
     // or two blank pages would agree with each other and prove nothing.
     expect(Object.keys(fromLeaveModule).length).toBeGreaterThan(0);
 
-    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Today / Inbox', exact: true }).first().click();
     // The Leave page's own balance rows are still mounted for as long as the
     // lazily-loaded Dashboard is suspending. Without waiting for something only
     // the Dashboard renders, the read below can be served the Leave module's
@@ -125,7 +125,7 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
     // read the same seeded rows the Dashboard did and headed them "Jan – Dec"
     // besides — a different period from the financial year the figures are
     // actually counted in.
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await page.getByRole('button', { name: 'Time Off' }).click();
     await expect(page.getByText(/Accrued so far in FY/).first()).toBeVisible();
     expect(await readBalances(page)).toEqual(fromLeaveModule);
@@ -185,14 +185,14 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
     expect(await readPending(page)).toMatchObject({ Casual: String(charged) });
 
     // 2. The Dashboard card.
-    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Today / Inbox', exact: true }).first().click();
     await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening),/ })).toBeVisible();
     expect(await readPending(page)).toMatchObject({ Casual: String(charged) });
 
     // 3. The profile's Time Off tab — where the balances card and the Recent
     //    Leave Activity card sit one above the other, which is where the
     //    contradiction was plainest.
-    await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+    await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
     await page.getByRole('button', { name: 'Time Off' }).click();
     await expect(page.getByText(/Accrued so far in FY/).first()).toBeVisible();
     expect(await readPending(page)).toMatchObject({ Casual: String(charged) });

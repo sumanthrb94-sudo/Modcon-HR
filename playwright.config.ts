@@ -60,7 +60,7 @@ const baseUse = {
   screenshot: 'only-on-failure' as const,
 };
 
-function useFor(engine: Engine) {
+function browserOptionsFor(engine: Engine) {
   return {
     ...baseUse,
     ...DEVICE[engine],
@@ -252,7 +252,7 @@ export default defineConfig({
     ...ENGINES.map((engine) => ({
       name: engine === 'chromium' ? 'app' : `app-${engine}`,
       testMatch: APP_SPECS,
-      use: useFor(engine),
+      use: browserOptionsFor(engine),
     })),
     // One engine, one worker's worth of writers against the shared document —
     // and only when the run is allowed to touch it at all (see above).
@@ -261,12 +261,12 @@ export default defineConfig({
           {
             name: 'org-settings',
             testMatch: SHARED_CONFIG_SPECS,
-            use: useFor(ROLE_ENGINE),
+            use: browserOptionsFor(ROLE_ENGINE),
           },
           {
             name: 'org-isolation',
             testMatch: ORG_ISOLATION_SPECS,
-            use: useFor(ROLE_ENGINE),
+            use: browserOptionsFor(ROLE_ENGINE),
             // Never concurrently with the specs that rewrite the same document
             // — see ORG_ISOLATION_SPECS.
             dependencies: ['org-settings'],
@@ -277,19 +277,19 @@ export default defineConfig({
       name: 'role-employee',
       testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.employee },
-      use: useFor(ROLE_ENGINE),
+      use: browserOptionsFor(ROLE_ENGINE),
     },
     {
       name: 'role-manager',
       testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.manager },
-      use: useFor(ROLE_ENGINE),
+      use: browserOptionsFor(ROLE_ENGINE),
     },
     {
       name: 'role-admin',
       testMatch: ROLE_SPECS,
       metadata: { persona: PERSONAS.admin },
-      use: useFor(ROLE_ENGINE),
+      use: browserOptionsFor(ROLE_ENGINE),
     },
   ],
   webServer: {

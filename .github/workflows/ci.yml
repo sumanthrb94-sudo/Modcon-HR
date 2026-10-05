@@ -44,10 +44,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # `npm run build` is `tsc -b && vite build` — type checking is the
-      # correctness gate for this project, not lint (ESLint is unconfigured).
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Data integrity
+        run: npm run check:data
+
+      - name: Production dependency audit
+        run: npm run audit:prod
 
   rules:
     name: Firestore security rules

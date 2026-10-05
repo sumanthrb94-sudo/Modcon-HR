@@ -42,7 +42,7 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#username').fill(email);
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 /** Hire somebody and land on their profile, the way the directory does it. */
@@ -50,7 +50,7 @@ async function addEmployeeAndOpen(
   page: Page,
   params: { code: string; firstName: string; lastName: string; email: string },
 ) {
-  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
   await page.getByRole('button', { name: 'Add Employee' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Employee code').fill(params.code);
@@ -65,7 +65,7 @@ async function addEmployeeAndOpen(
   await expect(dialog).toBeHidden();
 
   const fullName = `${params.firstName} ${params.lastName}`;
-  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
   await page.getByPlaceholder('Search name, role, email, code…').fill(fullName);
   await page.getByText(fullName).first().click();
   await expect(page.getByRole('heading', { name: fullName })).toBeVisible();

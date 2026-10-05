@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { navGroups, getVisibleNavItems } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -16,12 +16,19 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+const navIconTone: Record<'Today' | 'Core workspace' | 'Advanced', string> = {
+  Today: 'bg-lime-100 text-lime-800',
+  'Core workspace': 'bg-sky-50 text-sky-700',
+  Advanced: 'bg-violet-50 text-violet-700',
+};
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { profile, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const billingRevision = useBillingPreferencesRevision();
   const billingPreferences = getBillingPreferences();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   void billingRevision;
   const role = profile ? resolveAppRole(profile) : 'Employee';
   // A super admin sees the platform console until they step into a company.
@@ -100,8 +107,20 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {navGroups.map((group) => (
             <div key={group}>
-              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500">{group}</p>
-              <div className="space-y-0.5">
+              {group === 'Advanced' ? (
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((value) => !value)}
+                  className="mb-1.5 flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900"
+                  aria-expanded={advancedOpen}
+                >
+                  <span>{group}</span>
+                  {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+              ) : (
+                <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500">{group}</p>
+              )}
+              <div className={cn('space-y-0.5', group === 'Advanced' && !advancedOpen && 'hidden')}>
                 {visibleItems
                   .filter((i) => i.group === group)
                   .map((item) => (
@@ -119,8 +138,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         )
                       }
                     >
-                      <item.icon size={18} className="shrink-0" />
-                      {item.label}
+                      <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', navIconTone[item.group])}>
+                        <item.icon size={17} aria-hidden="true" />
+                      </span>
+                      <span>{item.label}</span>
                     </NavLink>
                   ))}
               </div>

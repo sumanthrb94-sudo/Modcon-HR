@@ -26,7 +26,7 @@ async function login(page: Page) {
   await page.locator('#username').fill(PERSONAS.admin.email);
   await page.locator('#password').fill(PERSONAS.admin.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function raiseTicket(page: Page, subject: string) {

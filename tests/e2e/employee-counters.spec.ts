@@ -46,7 +46,7 @@ async function login(page: Page) {
   await page.locator('#username').fill(ADMIN.email);
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
 /** The number beside a StatCard/SnapshotRow's exact-text label, in `scope`. */
@@ -70,7 +70,7 @@ async function numberBesideLabel(scope: Page | Locator, label: string): Promise<
  * exists to check.
  */
 async function dashboardTotal(page: Page): Promise<number> {
-  await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Today / Inbox', exact: true }).first().click();
   await expect(page.getByText(TOTAL_EMPLOYEES_LABEL, { exact: true })).toBeVisible({ timeout: 20_000 });
   return numberBesideLabel(page, TOTAL_EMPLOYEES_LABEL);
 }
@@ -125,7 +125,7 @@ test('the Dashboard and Admin dashboard employee counts agree, before and after 
   const suffix = `${test.info().project.name}-${Date.now().toString(36)}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const hire = { ...HIRE, code: `E2E-C-${suffix}`.slice(0, 24), email: `e2e-counters-${suffix.toLowerCase()}@modcon-hr.test` };
 
-  await page.getByRole('link', { name: 'Employees', exact: true }).first().click();
+  await page.getByRole('link', { name: 'People & Documents', exact: true }).first().click();
   await page.getByRole('button', { name: 'Add Employee' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Employee code').fill(hire.code);

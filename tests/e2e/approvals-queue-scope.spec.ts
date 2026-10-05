@@ -94,7 +94,7 @@ async function login(page: Page) {
   await page.locator('#username').fill(APPROVALS_MANAGER_PERSONA.email);
   await page.locator('#password').fill(APPROVALS_MANAGER_PERSONA.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('link', { name: 'Today / Inbox' }).first()).toBeVisible({ timeout: 20_000 });
 }
 
 const SEEDED: Array<[string, string]> = [
