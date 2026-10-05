@@ -415,7 +415,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
             stopProfileWatch?.();
             stopProfileWatch = undefined;
-            setUser(firebaseUser);
+            // Authentication and authorisation are one published state. Firebase
+            // announces the user before the Firestore profile has resolved; when
+            // we published that half-state, every consumer treated a null profile
+            // as Employee and then remounted again as the stored role arrived.
+            // Besides a visible full-screen loader, that produced contradictory
+            // screens such as an EMPLOYEE label beside manager-only Attendance.
+            // Keep protected routes behind `loading` until both halves agree.
+            setLoading(true);
+            setUser(null);
+            setProfile(null);
             if (firebaseUser) {
                 try {
                     const p = await upsertUserProfile(firebaseUser);
@@ -438,6 +447,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         window.location.reload();
                         return;
                     }
+                    setUser(firebaseUser);
                     setProfile(p);
                     // Bind this account to its directory record now, while the
                     // sign-in address still matches the work email on it. The
@@ -469,9 +479,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // publishing the pre-sign-in role.
                     stopProfileWatch = watchUserProfile(firebaseUser, p.orgId, setProfile);
                 } catch {
+                    // Fail closed: a Firebase identity without its organisation
+                    // profile must not fall through the Employee defaults and
+                    // mount tenant routes with an unresolved role or org.
+                    setUser(null);
                     setProfile(null);
                 }
             } else {
+                setUser(null);
                 setProfile(null);
             }
             setLoading(false);

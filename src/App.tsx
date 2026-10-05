@@ -121,7 +121,10 @@ function RequireManager({ children }: { children: JSX.Element }) {
   if (!user) return <Navigate to="/login" replace />;
   // Approvals are one company's queue — a super admin has to be in that
   // company before there is anything here to decide.
-  return isManager ? <RequireOrgContext>{children}</RequireOrgContext> : <Navigate to="/" replace />;
+  // Keep an authenticated employee inside the application. Redirecting to the
+  // public landing page left `/approvals` displaying marketing content and
+  // looked like a broken route rather than a permission decision.
+  return isManager ? <RequireOrgContext>{children}</RequireOrgContext> : <Navigate to="/dashboard" replace />;
 }
 
 /**

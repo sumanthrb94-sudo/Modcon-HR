@@ -14,6 +14,19 @@ import { PERSONAS, SUPER_ADMIN } from './tests/e2e/config';
  */
 const PORT = Number(process.env.E2E_PORT ?? 4173);
 
+/**
+ * Prefix a command with environment variables in the host shell's syntax.
+ * Playwright launches `webServer.command` through cmd.exe on Windows, where
+ * POSIX `NAME=value command` assignments are interpreted as executable names.
+ */
+function commandEnvironment(values: Record<string, string>): string {
+  const entries = Object.entries(values);
+  if (process.platform === 'win32') {
+    return `${entries.map(([key, value]) => `set "${key}=${value}"`).join(' && ')} && `;
+  }
+  return `${entries.map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(' ')} `;
+}
+
 // Route the browser's outbound HTTPS (Firebase) through the sandbox proxy while
 // the local preview server bypasses it. No-op when HTTPS_PROXY is unset.
 const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy;
@@ -303,17 +316,14 @@ export default defineConfig({
     // env-overridable, so overriding one produced an account with none of the
     // role its spec was written to exercise — and a failure nowhere near the
     // cause.
-    command: `VITE_ENABLE_E2E_ACCOUNTS=true ${
-      FIRESTORE_EMULATOR ? `VITE_FIRESTORE_EMULATOR_HOST=${FIRESTORE_EMULATOR} ` : ''
-    }${
-      AUTH_EMULATOR ? `VITE_AUTH_EMULATOR_HOST=${AUTH_EMULATOR} ` : ''
-    }VITE_E2E_ADMIN_EMAIL=${PERSONAS.admin.email} ${
-      ''
-    }VITE_E2E_MANAGER_EMAIL=${PERSONAS.manager.email} ${
-      ''
-    }VITE_E2E_SUPER_ADMIN_EMAIL=${SUPER_ADMIN.email} ${
-      ''
-    }npm run build && npm run preview -- --port ${PORT} --strictPort`,
+    command: `${commandEnvironment({
+      VITE_ENABLE_E2E_ACCOUNTS: 'true',
+      ...(FIRESTORE_EMULATOR ? { VITE_FIRESTORE_EMULATOR_HOST: FIRESTORE_EMULATOR } : {}),
+      ...(AUTH_EMULATOR ? { VITE_AUTH_EMULATOR_HOST: AUTH_EMULATOR } : {}),
+      VITE_E2E_ADMIN_EMAIL: PERSONAS.admin.email,
+      VITE_E2E_MANAGER_EMAIL: PERSONAS.manager.email,
+      VITE_E2E_SUPER_ADMIN_EMAIL: SUPER_ADMIN.email,
+    })}npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
     timeout: 180_000,

@@ -54,7 +54,9 @@ async function signIn(page: Page, who: { email: string; password: string }) {
 
 /** The Admin dashboard's role control for one account, found by its address. */
 function roleSelectFor(adminPage: Page, email: string) {
-  return adminPage.locator('tr').filter({ hasText: email }).locator('select');
+  return adminPage.locator('tr').filter({
+    has: adminPage.getByText(email, { exact: true }),
+  }).locator('select');
 }
 
 test.describe.serial('a role change reaches an open session', () => {
@@ -131,7 +133,8 @@ test.describe.serial('a role change reaches an open session', () => {
 
     // Still sitting on /approvals when the role went away: RequireManager
     // re-evaluates on the next render, so the page this account no longer has
-    // is left rather than staying open until the next navigation.
-    await expect(subject).not.toHaveURL(/\/approvals$/);
+    // is left rather than staying open until the next navigation. The user
+    // remains inside the authenticated app.
+    await expect(subject).toHaveURL(/\/dashboard$/);
   });
 });

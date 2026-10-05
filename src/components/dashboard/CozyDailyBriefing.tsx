@@ -171,7 +171,7 @@ export function CozyDailyBriefing({
                 </Link>
               )}
             </>
-          ) : (
+          ) : isManager ? (
             <>
               <div>
                 <div className="flex items-center gap-2">
@@ -189,6 +189,27 @@ export function CozyDailyBriefing({
               <Link to="/attendance">
                 <Button size="sm" variant="secondary" className="text-xs ml-2">
                   Mark Attendance
+                </Button>
+              </Link>
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-ink-900">
+                    Personal Attendance
+                  </span>
+                  <Badge tone="amber" dot className="text-[11px] px-2 py-0.5">
+                    Profile not linked
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-ink-500 mt-0.5">
+                  Ask HR to link your account before recording attendance.
+                </p>
+              </div>
+              <Link to="/my-attendance">
+                <Button size="sm" variant="secondary" className="text-xs ml-2">
+                  My Attendance
                 </Button>
               </Link>
             </>

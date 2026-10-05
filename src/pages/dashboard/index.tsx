@@ -15,7 +15,7 @@ import {
 
 import {
   Card, CardHeader, Badge, Button, Avatar,
-  StatCard, ProgressBar, PageHeader, QuickAddMenu, NotificationsMenu,
+  StatCard, ProgressBar, PageHeader, QuickAddMenu,
 } from '@/components/ui';
 import { getEmployeeDirectory } from '@/data/employees';
 import { getLeaveRequests } from '@/data/leave';
@@ -252,7 +252,6 @@ function EmployeeDashboard() {
       <PageHeader
         title="Dashboard"
         subtitle={currentEmployee ? `${currentEmployee.designation} · ${currentEmployee.department}` : 'Workspace & Analytics'}
-        actions={<NotificationsMenu />}
       />
 
       <CozyDailyBriefing
@@ -654,7 +653,6 @@ function AdminDashboard() {
         subtitle={todayLabel}
         actions={
           <>
-            <NotificationsMenu />
             <QuickAddMenu />
           </>
         }

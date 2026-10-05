@@ -41,6 +41,24 @@ test.describe.serial('role-based access', () => {
     await expect(page.getByText(persona().roleLabel, { exact: true }).first()).toBeVisible();
   });
 
+  test('does not render an employee as attendance admin while the profile link resolves', async () => {
+    if (persona().role !== 'employee') return;
+
+    await page.goto('/dashboard');
+    await expect(page.getByText('Employee', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Attendance Master', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Admin Mode', { exact: true })).toHaveCount(0);
+  });
+
+  test('opens notifications without remounting or leaving the dashboard', async () => {
+    await page.goto('/dashboard');
+    await page.getByRole('button', { name: 'Notifications' }).click();
+    const notificationMenu = page.locator('button[aria-label="Notifications"][aria-expanded="true"] + div');
+    await expect(notificationMenu).toBeVisible();
+    await expect(notificationMenu).toContainText(/Nothing needs your attention|\d+ items?/);
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
   test('base modules are always reachable', async () => {
     // Visibility follows the permission matrix in src/lib/accessControl.ts:
     // employees get the self-service modules; company-wide Attendance is for
@@ -48,10 +66,10 @@ test.describe.serial('role-based access', () => {
     // (product owner, 2026-09-23), and a Manager has their own Finance.
     const labels =
       persona().role === 'employee'
-        ? ['Employees', 'My Attendance', 'Leave', 'Finance']
+        ? ['People & Documents', 'My Attendance', 'Leave', 'Finance & Payslips']
         : persona().role === 'manager'
-          ? ['Employees', 'Attendance', 'Leave', 'Finance']
-          : ['Employees', 'Attendance', 'Leave', 'Reports'];
+          ? ['People & Documents', 'Attendance', 'Leave', 'Finance & Payslips']
+          : ['People & Documents', 'Attendance', 'Leave', 'Reports'];
 
     for (const label of labels) {
       await page.getByRole('link', { name: label, exact: true }).first().click();
@@ -81,7 +99,7 @@ test.describe.serial('role-based access', () => {
 
   test('Finance nav visibility matches role', async () => {
     const p = persona();
-    const finance = page.getByRole('link', { name: 'Finance', exact: true });
+    const finance = page.getByRole('link', { name: 'Finance & Payslips', exact: true });
 
     if (p.role === 'employee' || p.role === 'manager') {
       // Finance is a person's own payslip view, and a Manager is paid too
@@ -115,8 +133,9 @@ test.describe.serial('role-based access', () => {
     const p = persona();
     await page.goto('/approvals');
     if (p.role === 'employee') {
-      // Employees are redirected back to the dashboard.
-      await expect(page).toHaveURL(/\/$|\/dashboard/);
+      // Employees stay in the authenticated app rather than being dropped on
+      // the public marketing page for a permission decision.
+      await expect(page).toHaveURL(/\/dashboard$/);
       await expect(page.getByRole('link', { name: 'Approvals', exact: true })).toHaveCount(0);
     } else {
       await expect(page).toHaveURL(/\/approvals$/);
