@@ -347,7 +347,7 @@ export function LandingPage() {
             </div>
 
             {/* Mobile editorial image stamp — intentionally distinct from the main hero plate */}
-            <div className="sm:hidden mt-6 border-2 border-ink-900 overflow-hidden">
+            <div className="sm:hidden mt-6 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
               <div className="landing-image-frame aspect-[16/9] w-full bg-ink-200">
                 <img
                   src={workplaceEditorialImg}
@@ -371,7 +371,7 @@ export function LandingPage() {
               </div>
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.13em] text-ink-500">Capabilities, not vanity metrics</span>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 border-2 border-ink-900 bg-white overflow-hidden">
+            <div className="grid grid-cols-2 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm lg:grid-cols-4">
               {[
                 ['Attendance', 'Protected week-offs'],
                 ['Payroll', 'Statutory by default'],
@@ -390,7 +390,7 @@ export function LandingPage() {
           </div>
 
           {/* Figure 01: Hero High-Resolution Authentic Editorial Photograph with Responsive Mobile Crop */}
-          <div className="mt-12 border-2 border-ink-900 bg-white">
+          <div className="mt-12 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
             <div className="landing-image-frame relative aspect-[4/3] sm:aspect-[16/9] w-full overflow-hidden bg-ink-200">
               <picture>
                 <source media="(max-width: 640px)" srcSet={heroMobileImg} />
@@ -432,7 +432,7 @@ export function LandingPage() {
                 <ArrowUpRight size={14} className="text-brand-400" />
               </Link>
             </div>
-            <div className="grid grid-cols-1 gap-px overflow-hidden border border-white/20 bg-white/20 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-white/20 bg-white/20 sm:grid-cols-2">
               {indiaFirstCards.map(({ icon: Icon, title, body }) => (
                 <article key={title} className="bg-ink-900 p-5 sm:p-6">
                   <Icon size={20} className="text-brand-400" />
@@ -450,7 +450,7 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="book-demo" className="py-12 sm:py-20 bg-ink-100 border-b-2 border-ink-900 scroll-mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="bg-white border-2 border-ink-900 p-4 sm:p-10">
+          <div className="rounded-2xl border-2 border-ink-900 bg-white p-4 shadow-sm sm:p-10">
             <div className="border-b border-ink-200 pb-6 mb-8">
               <span className="font-mono text-xs font-bold uppercase tracking-wider text-brand-600 block mb-1">
                 Direct Engagement
@@ -466,7 +466,7 @@ export function LandingPage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* Left Column: Editorial operations image & direct contacts */}
               <div className="lg:col-span-5 space-y-6">
-                <div className="border-2 border-ink-900 bg-white">
+                <div className="overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
                   <div className="landing-image-frame relative aspect-[4/3] w-full overflow-hidden bg-ink-200">
                     <picture>
                       <source media="(max-width: 640px)" srcSet={payrollAuditImg} />
@@ -486,7 +486,7 @@ export function LandingPage() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-ink-50 border border-ink-300 space-y-3 font-mono text-xs">
+                <div className="space-y-3 rounded-xl border border-ink-300 bg-ink-50 p-4 font-mono text-xs">
                   <div>
                     <span className="text-[10px] text-brand-600 uppercase font-bold block mb-0.5">Deployment Guarantee</span>
                     <p className="text-ink-800 text-[11px]">
@@ -516,8 +516,8 @@ export function LandingPage() {
               <div className="lg:col-span-7">
 
             {submitted ? (
-              <div className="p-8 bg-ink-50 border-2 border-emerald-600 text-center space-y-4">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-600 text-white rounded-none">
+              <div className="space-y-4 rounded-2xl border-2 border-emerald-600 bg-ink-50 p-8 text-center">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white">
                   <CheckCircle2 size={24} />
                 </div>
                 <h3 className="text-xl font-display font-extrabold text-ink-900">
@@ -550,7 +550,7 @@ export function LandingPage() {
             ) : (
               <form onSubmit={handleDemoSubmit} className="space-y-6">
                 {formError && (
-                  <div className="p-3 bg-rose-50 border border-rose-300 text-rose-700 text-xs font-medium">
+                  <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-medium text-rose-700">
                     {formError}
                   </div>
                 )}
@@ -728,7 +728,7 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="border-2 border-ink-900 bg-white">
+          <div className="overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-2 bg-ink-100 border-b-2 border-ink-900 text-xs font-display font-extrabold uppercase tracking-wider">
               <div className="p-4 flex items-center gap-2 text-ink-700 md:border-r-2 md:border-ink-900">
                 <X size={15} className="text-brand-600" />
@@ -776,7 +776,7 @@ export function LandingPage() {
           </div>
 
           {/* Single Photographic Plate — Payroll & Compliance Desk */}
-          <div className="mt-12 border-2 border-ink-900 bg-white">
+          <div className="mt-12 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
             <div className="landing-image-frame relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden bg-ink-200">
               <img
                 src={payrollAuditImg}
