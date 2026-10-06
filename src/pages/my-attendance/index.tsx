@@ -37,12 +37,13 @@ import {
   ATTENDANCE_CHANGED_EVENT,
   type RegularizationRequest,
 } from '@/data/attendance';
+import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
 import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor, employeeWeekOffs } from '@/data/employees';
 import { getHolidayDirectory } from '@/data/holidays';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
-import type { AttendanceRecord, AttendanceStatus } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, LeaveRequest } from '@/types';
 import { cn, formatDate, formatDateShort, formatWeekdayLong, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
@@ -71,6 +72,7 @@ export function MyAttendancePage() {
   // the records and the flagged entries as they were at mount.
   const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
   const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
+  const leaveRevision = useCollectionRevision(LEAVE_REQUESTS_CHANGED_EVENT);
   // The directory changes under this page — an account being linked to a
   // record, a rename, a deletion — and every identity decision below reads it.
   // Held with empty deps, `ownEmployee` stayed frozen at mount, so linking an
@@ -169,6 +171,13 @@ export function MyAttendancePage() {
     [targetId, regularizationRevision, attendanceRevision],
   );
 
+  const ownLeaves = useMemo(() => {
+    if (!targetId) return [];
+    return getLeaveRequests().filter(
+      (r) => r.employeeId === targetId && (r.status === 'Approved' || r.status === 'Pending'),
+    );
+  }, [targetId, leaveRevision]);
+
   const calendarDays = useMemo(() => {
     const [y, m] = calendarMonth.split('-').map(Number);
     const totalDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -189,6 +198,7 @@ export function MyAttendancePage() {
       const isToday = isoDate === today;
       const isFuture = isoDate > today;
       const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending');
+      const activeLeave = ownLeaves.find((l) => l.startDate <= isoDate && l.endDate >= isoDate);
 
       let status: 'Present' | 'WFH' | 'Leave' | 'HalfDay' | 'Absent' | 'WeekOff' | 'Holiday' | 'Future' | 'PendingReg' = 'Future';
       let isAttentionItem = false;
@@ -206,6 +216,12 @@ export function MyAttendancePage() {
           isAttentionItem = true;
           isActionable = true;
         }
+      } else if (activeLeave) {
+        // If an approved or pending leave covers this date, it is an authorized
+        // absence (Leave) — NOT an unregularized missing-punch anomaly.
+        status = 'Leave';
+        isAttentionItem = false;
+        isActionable = false;
       } else if (isFuture) {
         status = 'Future';
       } else if (holiday) {
@@ -241,11 +257,12 @@ export function MyAttendancePage() {
         isActionable,
         isPendingReg: Boolean(pendingReq),
         pendingReq,
+        activeLeave,
       });
     }
 
     return days;
-  }, [calendarMonth, records, targetEmployee, holidays, ownRequests]);
+  }, [calendarMonth, records, targetEmployee, holidays, ownRequests, ownLeaves]);
 
   const actionableDays = useMemo(() => {
     return calendarDays
@@ -1167,6 +1184,10 @@ export function MyAttendancePage() {
                             </>
                           ) : isPending ? (
                             <span className="text-amber-700 font-medium text-[10px] truncate">In review</span>
+                          ) : isPurple ? (
+                            <span className="text-purple-700 font-semibold text-[10px] truncate" title={day.activeLeave ? `${day.activeLeave.type} Leave (${day.activeLeave.status})` : 'Leave'}>
+                              {day.activeLeave ? `${day.activeLeave.type} (${day.activeLeave.status})` : 'Leave'}
+                            </span>
                           ) : isRed ? (
                             <button
                               type="button"

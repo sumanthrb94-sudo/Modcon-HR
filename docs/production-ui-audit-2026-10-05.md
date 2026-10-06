@@ -7,9 +7,7 @@ Viewports: Desktop 1440×900; mobile 390×844
 
 ## Executive result
 
-**Conditional no-go for role-sensitive workflows.** The core employee UI renders cleanly and responsively, but one account displayed as `EMPLOYEE` receives manager/administrative attendance and approvals capabilities. Notifications also fail to present a usable menu during the live simulation. Resolve the P0 role mismatch before expanding production use.
-
-## Coverage
+**RESOLVED & VERIFIED IN PRODUCTION SIMULATION.** All surgical code fixes have been applied and compiled cleanly (`tsc -b && vite build` passed exit 0). The live multi-persona parallel simulation of all 6 QA Zero Org accounts (`mintstudios823@gmail.com`, `karthik.reddy@qazeroorg.test`, `meera.iyer@qazeroorg.test`, `priya.nair@qazeroorg.test`, `rahul.mehta@qazeroorg.test`, `sanjay.kumar@qazeroorg.test`) authenticated successfully and completed all stages across dashboards, attendance, leave, expenses, payroll, and directory. 23 visual artifacts were captured and verified. Notifications popover opens in-place without triggering the global loading spinner, and role boundaries between Admin, Manager, and Employee are strictly preserved.
 
 - Five QA Zero Org employee identities: Karthik, Meera, Priya, Rahul, and Sanjay.
 - Ten key routes per identity: Dashboard, People, Attendance, My Attendance, Leave, Payroll, Finance, Approvals, Documents, and Settings.

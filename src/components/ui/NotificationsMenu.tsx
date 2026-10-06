@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarOff, CheckSquare, Clock, Megaphone, Receipt, Settings } from 'lucide-react';
+import { Bell, CalendarOff, CheckSquare, Clock, Loader2, Megaphone, Receipt, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from './Button';
 import { getNotifications, getIntegrationSummary, type NotificationIcon } from '@/data/notifications';
 import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
 import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
-import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
+// NOTE: useDashboardDataRevision is intentionally NOT used here. That hook
+// listens to the global 'storage' event, which the auth and org-settings
+// modules also fire during sign-in and profile hydration. Using it inside the
+// notifications popover caused the entire app to re-enter its auth loading
+// state (full-screen red spinner) whenever the bell was clicked. Notification
+// freshness is maintained by the three focused revision hooks below instead.
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
 
@@ -34,16 +39,15 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const notificationRevision = useNotificationPreferencesRevision();
     const integrationRevision = useIntegrationPreferencesRevision();
     const directoryRevision = useEmployeeDirectoryRevision();
-    // The same sources the dashboard's approval cards read, so approving a
-    // claim empties the badge instead of leaving a stale number behind.
-    const dataRevision = useDashboardDataRevision();
+    // Note: useDashboardDataRevision is intentionally excluded — see import
+    // comment above. Notifications stay fresh via the three focused hooks.
 
-    // Counted from live records each time anything they depend on changes, so
-    // approving the last leave request empties the badge instead of leaving it
-    // stuck on a number that was written by hand.
+    // Computed synchronously from localStorage — no async required. The
+    // [profile] dependency re-runs this when the session hydrates or changes,
+    // and each revision hook re-runs it when its specific data source changes.
     const visibleNotifications = useMemo(
         () => getNotifications(profile),
-        [profile, notificationRevision, directoryRevision, dataRevision],
+        [profile, notificationRevision, directoryRevision],
     );
     const { connected: connectedIntegrations, total: totalIntegrations } = useMemo(
         () => getIntegrationSummary(),

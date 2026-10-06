@@ -87,7 +87,7 @@ function RequireOrgAdmin({ children }: { children: JSX.Element }) {
   const { user, isAdmin, isHR, loading } = useAuth();
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+      <div className="min-h-[40vh] flex items-center justify-center">
         <Loader2 className="animate-spin text-brand-600" size={28} />
       </div>
     );
@@ -100,7 +100,7 @@ function RequireSuperAdmin({ children }: { children: JSX.Element }) {
   const { user, isSuperAdmin, loading } = useAuth();
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+      <div className="min-h-[40vh] flex items-center justify-center">
         <Loader2 className="animate-spin text-brand-600" size={28} />
       </div>
     );
@@ -113,7 +113,7 @@ function RequireManager({ children }: { children: JSX.Element }) {
   const { user, isManager, loading } = useAuth();
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+      <div className="min-h-[40vh] flex items-center justify-center">
         <Loader2 className="animate-spin text-brand-600" size={28} />
       </div>
     );
@@ -203,7 +203,7 @@ function RequireModuleAccess({ module, children }: { module: AppModule; children
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+      <div className="min-h-[40vh] flex items-center justify-center">
         <Loader2 className="animate-spin text-brand-600" size={28} />
       </div>
     );

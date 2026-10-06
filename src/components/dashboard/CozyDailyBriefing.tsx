@@ -33,6 +33,7 @@ import { getOnLeaveToday, getLeaveRequests } from '@/data/leave';
 import { getHolidayDirectory } from '@/data/holidays';
 import { currentHour, todayIso } from '@/lib/today';
 import { formatDate, formatDateShort, formatWeekdayLong } from '@/lib/utils';
+import { resolveAppRole } from '@/lib/accessControl';
 
 interface CozyDailyBriefingProps {
   currentEmployee?: Employee | null;
@@ -47,6 +48,14 @@ export function CozyDailyBriefing({
   isManager,
   pendingApprovalsCount = 0,
 }: CozyDailyBriefingProps) {
+  // P0 guard: the effective AppRole is the single source of truth for
+  // privileged UI branches. `isManager` from useAuth() can be true while
+  // profile.role is 'employee' when a Firestore document carries a stale or
+  // contradictory role value. Resolving through the same function that route
+  // guards and the top-bar label use prevents the dashboard from showing
+  // "Attendance Master" / "Admin Mode" to an account displayed as Employee.
+  const effectiveRole = resolveAppRole(profile);
+  const isPrivilegedRole = isManager && effectiveRole !== 'Employee';
   const hour = currentHour();
   const today = todayIso();
   const firstName = currentEmployee?.fullName?.split(' ')[0] ?? profile?.displayName?.split(' ')[0] ?? 'there';
@@ -171,7 +180,7 @@ export function CozyDailyBriefing({
                 </Link>
               )}
             </>
-          ) : isManager ? (
+          ) : isPrivilegedRole ? (
             <>
               <div>
                 <div className="flex items-center gap-2">
@@ -183,7 +192,7 @@ export function CozyDailyBriefing({
                   </Badge>
                 </div>
                 <p className="text-[11px] text-ink-500 mt-0.5">
-                  Manage organization attendance & logs
+                  Manage organization attendance &amp; logs
                 </p>
               </div>
               <Link to="/attendance">
@@ -271,24 +280,24 @@ export function CozyDailyBriefing({
               <Sparkles size={14} className="text-amber-600" />
               Action Digest
             </span>
-            {isManager && pendingApprovalsCount > 0 ? (
+            {isPrivilegedRole && pendingApprovalsCount > 0 ? (
               <Badge tone="amber">{pendingApprovalsCount} Pending</Badge>
             ) : (
               <Badge tone="green">Clear</Badge>
             )}
           </div>
 
-          {isManager ? (
+          {isPrivilegedRole ? (
             pendingApprovalsCount > 0 ? (
               <div className="space-y-2">
                 <p className="text-xs text-ink-700">
                   You have <strong className="text-amber-800">{pendingApprovalsCount}</strong> pending request(s) awaiting your manager review.
                 </p>
                 <Link
-                  to="/attendance"
+                  to="/approvals"
                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors"
                 >
-                  Review regularizations & leaves <ArrowRight size={13} />
+                  Review regularizations &amp; leaves <ArrowRight size={13} />
                 </Link>
               </div>
             ) : (

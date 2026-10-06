@@ -7,6 +7,7 @@ import { clockMinutes } from '@/data/shiftRules';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { UserProfile } from '@/lib/auth';
 import { regularizationDecisionRefusal } from '@/lib/dataScope';
+import { getLeaveRequests } from '@/data/leave';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -236,9 +237,17 @@ export function regularizationId(employeeId: string, date: string): string {
 export function deriveRegularizationRequests(
   records: AttendanceRecord[] = getAttendanceRecords(),
 ): RegularizationRequest[] {
+  let activeLeaves: { employeeId: string; startDate: string; endDate: string }[] = [];
+  try {
+    activeLeaves = getLeaveRequests().filter((l) => l.status === 'Approved' || l.status === 'Pending');
+  } catch {
+    // Leave store uninitialized fallback
+  }
+
   return records
     .filter((record) => record.status === 'Absent' || record.isLate)
     .filter((record) => !isWeekOffFor(getEmployee(record.employeeId), record.date))
+    .filter((record) => !activeLeaves.some((l) => l.employeeId === record.employeeId && l.startDate <= record.date && l.endDate >= record.date))
     .map((record) => ({
       id: regularizationId(record.employeeId, record.date),
       employeeId: record.employeeId,
