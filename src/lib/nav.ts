@@ -28,7 +28,7 @@ export interface NavItem {
   label: string;
   path: string;
   icon: LucideIcon;
-  group: 'Today' | 'Core workspace' | 'Advanced';
+  group: 'Today' | 'Core workspace' | 'More';
   /**
    * The permission-matrix module this item is gated by.
    *
@@ -68,29 +68,29 @@ export const navItems: NavItem[] = [
   { label: 'Finance & Payslips', path: '/finance', icon: Banknote, group: 'Core workspace', module: 'Finance' },
   { label: 'Approvals', path: '/approvals', icon: ClipboardCheck, group: 'Core workspace', module: 'Dashboard', managerOnly: true },
   { label: 'Documents', path: '/documents', icon: BookOpen, group: 'Core workspace', module: 'Documents' },
-  { label: 'The Board', path: '/board', icon: Megaphone, group: 'Advanced' },
-  { label: 'Recruitment', path: '/recruitment', icon: Briefcase, group: 'Advanced', module: 'Recruitment' },
-  { label: 'Onboarding', path: '/onboarding', icon: UserPlus, group: 'Advanced', module: 'Onboarding' },
-  { label: 'Performance', path: '/performance', icon: Target, group: 'Advanced', module: 'Performance' },
-  { label: 'Expenses', path: '/expenses', icon: IndianRupee, group: 'Advanced', module: 'Expenses' },
-  { label: 'Assets', path: '/assets', icon: Laptop, group: 'Advanced', module: 'Assets' },
-  { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'Advanced', module: 'Helpdesk' },
-  { label: 'Reports', path: '/reports', icon: BarChart3, group: 'Advanced', module: 'Reports & Analytics' },
+  { label: 'The Board', path: '/board', icon: Megaphone, group: 'Core workspace' },
+  { label: 'Recruitment', path: '/recruitment', icon: Briefcase, group: 'More', module: 'Recruitment' },
+  { label: 'Onboarding', path: '/onboarding', icon: UserPlus, group: 'More', module: 'Onboarding' },
+  { label: 'Performance', path: '/performance', icon: Target, group: 'More', module: 'Performance' },
+  { label: 'Expenses', path: '/expenses', icon: IndianRupee, group: 'More', module: 'Expenses' },
+  { label: 'Assets', path: '/assets', icon: Laptop, group: 'More', module: 'Assets' },
+  { label: 'Helpdesk', path: '/helpdesk', icon: LifeBuoy, group: 'More', module: 'Helpdesk' },
+  { label: 'Reports', path: '/reports', icon: BarChart3, group: 'More', module: 'Reports & Analytics' },
   // No adminOnly/managerOnly flag: the handbook is readable by every role, and
   // only the upload panel inside the page is HR-gated.
   // Both are platform items for a super admin: the Admin dashboard's user list
   // is deliberately cross-organisation for them (see useUserDirectory in
   // pages/admin), and Organizations is the console itself.
-  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'Advanced', module: 'Admin', adminOnly: true, platform: true },
-  { label: 'Organizations', path: '/organizations', icon: Building2, group: 'Advanced', module: 'Admin', adminOnly: true, superAdminOnly: true, platform: true },
-  { label: 'Settings', path: '/settings', icon: Settings, group: 'Advanced', module: 'Settings' },
+  { label: 'Admin', path: '/admin', icon: ShieldCheck, group: 'More', module: 'Admin', adminOnly: true, platform: true },
+  { label: 'Organizations', path: '/organizations', icon: Building2, group: 'More', module: 'Admin', adminOnly: true, superAdminOnly: true, platform: true },
+  { label: 'Settings', path: '/settings', icon: Settings, group: 'More', module: 'Settings' },
   // HR and Administrator talk to the platform here; the Super Admin answers,
   // so it is a platform item too. No `module`: support is not something a
   // permission matrix should be able to switch off. See pages/support.
-  { label: 'Support', path: '/support', icon: MessagesSquare, group: 'Advanced', adminOnly: true, platform: true },
+  { label: 'Support', path: '/support', icon: MessagesSquare, group: 'More', adminOnly: true, platform: true },
 ];
 
-export const navGroups: NavItem['group'][] = ['Today', 'Core workspace', 'Advanced'];
+export const navGroups: NavItem['group'][] = ['Today', 'Core workspace', 'More'];
 
 /**
  * The sidebar for one viewer.

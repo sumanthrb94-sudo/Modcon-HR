@@ -28,7 +28,6 @@ import {
   FileText,
   UploadCloud,
   Trash2,
-  Loader2,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -140,8 +139,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
   const [form, setForm] = useState<NewClaimForm>(() => ({ ...EMPTY_FORM, employeeId: defaultEmployeeId ?? '' }));
   const [errors, setErrors] = useState<Partial<Record<keyof NewClaimForm, string>>>({});
   const [isDragging, setIsDragging] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [ocrSuccess, setOcrSuccess] = useState(false);
 
   const options = employeeOptions ?? getEmployeeDirectory().map((e) => ({
     label: e.fullName,
@@ -179,66 +176,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
     reader.onload = () => {
       const base64String = reader.result as string;
       setForm((f) => ({ ...f, receiptImage: base64String }));
-      
-      // Start OCR simulation
-      setIsScanning(true);
-      setOcrSuccess(false);
-
-      setTimeout(() => {
-        setIsScanning(false);
-        setOcrSuccess(true);
-
-        // Simulated OCR parsing logic based on filename or random choice
-        const nameClean = file.name.toLowerCase();
-        let parsedTitle = 'Receipt Claim';
-        let parsedAmount = '1250';
-        let parsedCategory = 'Meals';
-        let parsedDesc = 'Scanned from receipt.';
-
-        if (nameClean.includes('cab') || nameClean.includes('taxi') || nameClean.includes('uber') || nameClean.includes('ola')) {
-          parsedTitle = 'Uber Cab Ride';
-          parsedAmount = '650';
-          parsedCategory = 'Travel';
-          parsedDesc = 'Uber ride home after late-night release.';
-        } else if (nameClean.includes('dinner') || nameClean.includes('lunch') || nameClean.includes('meal') || nameClean.includes('food') || nameClean.includes('starbucks')) {
-          parsedTitle = 'Starbucks Coffee & Snacks';
-          parsedAmount = '480';
-          parsedCategory = 'Meals';
-          parsedDesc = 'Team beverage during sync meeting.';
-        } else if (nameClean.includes('aws') || nameClean.includes('github') || nameClean.includes('figma') || nameClean.includes('software')) {
-          parsedTitle = 'AWS Monthly Bill';
-          parsedAmount = '8500';
-          parsedCategory = 'Software';
-          parsedDesc = 'Development database hosting services.';
-        } else if (nameClean.includes('hotel') || nameClean.includes('stay') || nameClean.includes('airbnb')) {
-          parsedTitle = 'Hotel Accommodation';
-          parsedAmount = '12000';
-          parsedCategory = 'Accommodation';
-          parsedDesc = 'Stay during annual company meetup.';
-        } else {
-          // Randomized defaults
-          const titles = ['Office Desk Organizer', 'Broadband Internet bill', 'Client Business Dinner', 'Aviation Flight Ticket'];
-          const amounts = ['1500', '2800', '4200', '16500'];
-          const categories: ExpenseCategory[] = ['Office Supplies', 'Other', 'Meals', 'Travel'];
-          const idx = Math.floor(Math.random() * titles.length);
-          parsedTitle = titles[idx];
-          parsedAmount = amounts[idx];
-          parsedCategory = categories[idx];
-          parsedDesc = `Reimbursement for ${titles[idx].toLowerCase()}.`;
-        }
-
-        setForm((f) => ({
-          ...f,
-          title: parsedTitle,
-          amount: parsedAmount,
-          category: parsedCategory,
-          description: parsedDesc,
-          date: todayIso(),
-        }));
-
-        // Remove success message after a few seconds
-        setTimeout(() => setOcrSuccess(false), 5000);
-      }, 1500);
     };
     reader.readAsDataURL(file);
   };
@@ -273,8 +210,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
     onSubmit(claim);
     setForm(EMPTY_FORM);
     setErrors({});
-    setIsScanning(false);
-    setOcrSuccess(false);
     onClose();
   }
 
@@ -314,16 +249,12 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
     }
     setForm({ ...EMPTY_FORM, employeeId: defaultEmployeeId ?? '' });
     setErrors({});
-    setIsScanning(false);
-    setOcrSuccess(false);
     onClose();
   }
 
   function handleClose() {
     setForm({ ...EMPTY_FORM, employeeId: defaultEmployeeId ?? '' });
     setErrors({});
-    setIsScanning(false);
-    setOcrSuccess(false);
     onClose();
   }
 
@@ -348,15 +279,8 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
       <div className="space-y-4">
         {/* Receipt Upload Zone */}
         <div className="relative">
-          {isScanning && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-brand-100 bg-brand-50/50 p-6 text-center animate-pulse">
-              <Loader2 className="animate-spin text-brand-600 mb-2" size={32} />
-              <p className="text-sm font-semibold text-brand-900">Scanning receipt...</p>
-              <p className="text-xs text-brand-600 mt-1">Extracting details via OCR</p>
-            </div>
-          )}
 
-          {!isScanning && !form.receiptImage && (
+          {!form.receiptImage && (
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -391,7 +315,7 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
             </div>
           )}
 
-          {!isScanning && form.receiptImage && (
+          {form.receiptImage && (
             <div className="flex items-center gap-4 rounded-2xl border border-ink-100 bg-ink-50/50 p-4">
               <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-ink-200 bg-white">
                 <img src={form.receiptImage} alt="Receipt preview" className="h-full w-full object-cover" />
@@ -399,20 +323,14 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <p className="text-sm font-semibold text-ink-800">Receipt Attached</p>
-                  {ocrSuccess && (
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200 animate-bounce">
-                      ✨ OCR Auto-filled
-                    </span>
-                  )}
                 </div>
-                <p className="text-xs text-ink-400 mt-0.5">Click "Submit" to complete the claim</p>
+                <p className="text-xs text-ink-400 mt-0.5">Fill in the amount and details below, then submit.</p>
               </div>
               <button
                 type="button"
                 className="rounded-lg p-2 text-ink-400 hover:bg-ink-100 hover:text-ink-600 transition-colors"
                 onClick={() => {
                   setForm((f) => ({ ...f, receiptImage: '' }));
-                  setOcrSuccess(false);
                 }}
               >
                 <Trash2 size={16} />
@@ -430,7 +348,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
             options={options}
             placeholder="Select employee…"
             className="w-full"
-            disabled={isScanning}
           />
           {errors.employeeId && <p className="text-xs text-rose-600 mt-1">{errors.employeeId}</p>}
         </div>
@@ -444,7 +361,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
             onChange={(e) => set('title')(e.target.value)}
             placeholder="e.g. Client Dinner — Acme Corp"
             className="input w-full"
-            disabled={isScanning}
           />
           {errors.title && <p className="text-xs text-rose-600 mt-1">{errors.title}</p>}
         </div>
@@ -459,7 +375,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
               options={CATEGORY_OPTIONS}
               placeholder="Category…"
               className="w-full"
-              disabled={isScanning}
             />
             {errors.category && <p className="text-xs text-rose-600 mt-1">{errors.category}</p>}
           </div>
@@ -472,7 +387,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
               placeholder="0"
               min={0}
               className="input w-full"
-              disabled={isScanning}
             />
             {errors.amount && <p className="text-xs text-rose-600 mt-1">{errors.amount}</p>}
           </div>
@@ -486,7 +400,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
             value={form.date}
             onChange={(e) => set('date')(e.target.value)}
             className="input w-full"
-            disabled={isScanning}
           />
           {errors.date && <p className="text-xs text-rose-600 mt-1">{errors.date}</p>}
         </div>
@@ -502,7 +415,6 @@ function NewClaimModal({ open, onClose, onSubmit, onSaveDraft, employeeOptions, 
             rows={3}
             placeholder="Provide additional details…"
             className="input w-full resize-none"
-            disabled={isScanning}
           />
         </div>
       </div>

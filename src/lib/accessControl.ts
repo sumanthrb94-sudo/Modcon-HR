@@ -1,6 +1,7 @@
 import type { UserProfile } from '@/lib/auth';
 import { orgScopedKey } from '@/lib/orgScope';
 import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
+import { isModuleEnabled } from '@/lib/moduleSwitches';
 
 export const APP_ROLES = ['Admin', 'HR Manager', 'Manager', 'Employee'] as const;
 export type AppRole = typeof APP_ROLES[number];
@@ -204,8 +205,13 @@ export function getPermissionLevel(module: AppModule, role: AppRole): Permission
   return matrix[module][role];
 }
 
+/**
+ * Whether this role may open this module *in this organisation*: the
+ * organisation has to have switched the module on (lib/moduleSwitches.ts) as
+ * well as the matrix granting it.
+ */
 export function canAccessModule(module: AppModule, role: AppRole): boolean {
-  return getPermissionLevel(module, role) !== 'none';
+  return isModuleEnabled(module) && getPermissionLevel(module, role) !== 'none';
 }
 
 export function resolveAppRole(profile: UserProfile | null): AppRole {

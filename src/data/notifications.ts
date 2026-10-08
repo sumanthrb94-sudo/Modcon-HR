@@ -119,7 +119,7 @@ function buildCandidates(profile: UserProfile | null): NotificationItem[] {
         recentAnnouncements === 1
           ? 'Posted in the last two weeks'
           : `${recentAnnouncements} posted in the last two weeks`,
-      path: '/dashboard/announcements',
+      path: '/board',
       icon: 'announcement',
       count: recentAnnouncements,
     },

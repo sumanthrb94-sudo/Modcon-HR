@@ -40,6 +40,14 @@ import { syncManagerChains } from '@/lib/reportingChains';
 import type { Employee } from '@/types';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
+import { findIndustryPreset, INDUSTRY_PRESETS, type IndustryPreset } from '@/data/industryPresets';
+import {
+  getEnabledModules,
+  MODULE_DESCRIPTIONS,
+  OPTIONAL_MODULES,
+  saveEnabledModules,
+  type OptionalModule,
+} from '@/lib/moduleSwitches';
 
 /**
  * The guided setup: company → you → people → policy → live.
@@ -154,6 +162,9 @@ export function SetupPage() {
   // Defaults to today: the day somebody runs the setup is, nearly always, the
   // day the company starts recording here. See data/goLive.ts.
   const [goLiveDate, setGoLiveDate] = useState(initialCompany.goLiveDate || todayIso());
+  // Stored as the preset's label in the profile's free-text `industry`, so a
+  // value typed in Settings that matches no preset is simply not preselected.
+  const [industry, setIndustry] = useState<IndustryPreset | undefined>(() => findIndustryPreset(initialCompany.industry));
 
   // ---- step 2: you ----------------------------------------------------------
   // Who this account already is in the directory, if anybody. A record an
@@ -219,6 +230,24 @@ export function SetupPage() {
     existingPolicies.length > 0 ? 'keep' : LEAVE_POLICY_TEMPLATES[0].id,
   );
 
+  const [modules, setModules] = useState<OptionalModule[]>(() => getEnabledModules());
+
+  /**
+   * Choosing an industry moves the later steps' answers to its defaults — on
+   * screen, not saved. The administrator sees them on the next steps and
+   * changes whatever does not fit; only what they then press Continue on is
+   * written. An organisation that already has its own leave policy keeps
+   * "keep what you have" selected: a preset is a starting point, not a reason
+   * to replace a policy somebody chose.
+   */
+  function chooseIndustry(preset: IndustryPreset) {
+    setIndustry(preset);
+    if (!getDeclaredOrganisationWeekOff()) setWeekOff(preset.weekOff);
+    if (saturdayChoiceOf(getOrganisationWeekOffRules()) === 'worked') setSaturdays(preset.saturdays);
+    if (leaveChoice !== 'keep') setLeaveChoice(preset.leaveTemplateId);
+    setModules((current) => Array.from(new Set([...current, ...preset.modules])) as OptionalModule[]);
+  }
+
   // ---- step 4: live ---------------------------------------------------------
   const remainingTasks = useMemo(
     () => (step === 'live' ? getOrganisationTasks().filter((task) => !task.done) : []),
@@ -246,7 +275,8 @@ export function SetupPage() {
       current.name === companyName.trim() &&
       current.legalName === nextLegalName &&
       current.teamSize === teamSize &&
-      current.goLiveDate === goLiveDate
+      current.goLiveDate === goLiveDate &&
+      (industry ? current.industry === industry.label : true)
     ) {
       go('you');
       return;
@@ -261,6 +291,7 @@ export function SetupPage() {
       legalName: nextLegalName,
       teamSize,
       goLiveDate,
+      ...(industry ? { industry: industry.label } : {}),
     });
     setSaving(false);
     if (!published) {
@@ -355,6 +386,9 @@ export function SetupPage() {
     if (JSON.stringify(nextRules) !== JSON.stringify(currentRules)) writes.push(saveOrganisationWeekOffRules(nextRules));
     const template = LEAVE_POLICY_TEMPLATES.find((item) => item.id === leaveChoice);
     if (template) writes.push(saveLeavePolicies(template.policies));
+    const currentModules = getEnabledModules();
+    const sameModules = currentModules.length === modules.length && modules.every((m) => currentModules.includes(m));
+    if (!sameModules) writes.push(saveEnabledModules(modules));
     const results = await Promise.all(writes);
     setSaving(false);
     if (results.some((ok) => !ok)) {
@@ -434,6 +468,28 @@ export function SetupPage() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div>
+              <span className="label">What kind of business is it?</span>
+              <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Industry">
+                {INDUSTRY_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={industry?.id === preset.id}
+                    onClick={() => chooseIndustry(preset)}
+                    className={cn(
+                      'border-2 px-3 py-2 text-left',
+                      industry?.id === preset.id ? 'border-ink-900 bg-ink-900 text-ink-50' : 'border-ink-300 text-ink-800 hover:border-ink-900',
+                    )}
+                  >
+                    <span className="block text-sm font-semibold">{preset.label}</span>
+                    <span className={cn('block text-xs', industry?.id === preset.id ? 'text-ink-200' : 'text-ink-500')}>{preset.summary}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-ink-500">This only fills in suggested answers for the next steps. You can change every one.</p>
             </div>
             <div>
               <label htmlFor="setup-go-live" className="label">Start recording attendance from</label>
@@ -730,6 +786,38 @@ export function SetupPage() {
               </p>
             )}
           </fieldset>
+
+          <fieldset className="mt-6">
+            <legend className="label">Also use</legend>
+            <p className="mb-2 text-xs text-ink-500">
+              People, attendance, leave, payroll and the Board are always on. Tick anything else you need; the rest stays
+              out of everyone&rsquo;s way. Settings → Modules changes this later.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {OPTIONAL_MODULES.map((module) => (
+                <label key={module} className="flex items-start gap-2 border border-ink-200 p-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={modules.includes(module)}
+                    onChange={(event) =>
+                      setModules((current) =>
+                        event.target.checked ? [...current, module] : current.filter((m) => m !== module))}
+                  />
+                  <span>
+                    <span className="block font-semibold text-ink-900">{MODULE_DESCRIPTIONS[module].label}</span>
+                    <span className="block text-xs text-ink-500">{MODULE_DESCRIPTIONS[module].detail}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {industry && (
+            <p className="mt-4 border-l-2 border-brand-600 pl-3 text-xs text-ink-700">
+              <span className="font-semibold">Attendance tip for {industry.label.toLowerCase()}:</span> {industry.attendanceTip}
+            </p>
+          )}
 
           <p className="mt-4 text-xs text-ink-600">
             Starting part-way through the year? Balances count from 1 April, so record the leave people have

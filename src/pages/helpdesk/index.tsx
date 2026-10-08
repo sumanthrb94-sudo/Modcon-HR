@@ -58,20 +58,6 @@ interface ConvoMessage {
 }
 
 /**
- * Who an auto-generated reply speaks as — never `ticket.assignedTo`.
- *
- * The two messages below are canned boilerplate that appears the instant a
- * ticket is filed or marked resolved, not something the assignee sat down and
- * typed. Attributing them to whoever the ticket happens to be assigned to —
- * a real colleague, or nobody at all once `UNASSIGNED_TICKET_OWNER` is a
- * possible value — put words in a real person's mouth they never wrote, the
- * same misattribution `a7929d8` fixed for the raiser default. A neutral
- * identity is who actually sent them: the system, on the organisation's
- * behalf, before any human has necessarily looked at the ticket.
- */
-const SUPPORT_IDENTITY = 'Support';
-
-/**
  * The routing state of a ticket nobody has picked up yet.
  *
  * Not a person, and deliberately never chosen for a submitter — see
@@ -81,31 +67,22 @@ const SUPPORT_IDENTITY = 'Support';
  */
 const UNASSIGNED_TICKET_OWNER = 'Unassigned';
 
-function mockConvo(ticket: Ticket): ConvoMessage[] {
-  const raiser = getEmployeeName(ticket.raisedById);
+/**
+ * What was actually said on a ticket: the request itself.
+ *
+ * This used to append two replies from "Support" that nobody wrote — an
+ * acknowledgement fifteen minutes in and a "this has been resolved" two hours
+ * later — so a ticket read as answered when nobody had looked at it. There is
+ * no reply feature yet, so the thread is the request and nothing else.
+ */
+function ticketThread(ticket: Ticket): ConvoMessage[] {
   return [
     {
-      author: raiser,
+      author: getEmployeeName(ticket.raisedById),
       isAgent: false,
       text: ticket.subject,
       time: ticket.createdOn,
     },
-    {
-      author: SUPPORT_IDENTITY,
-      isAgent: true,
-      text: `Hi ${raiser.split(' ')[0]}, I've received your ticket and am looking into it now.`,
-      time: new Date(new Date(ticket.createdOn).getTime() + 15 * 60 * 1000).toISOString(),
-    },
-    ...(ticket.status === 'Resolved' || ticket.status === 'Closed'
-      ? [
-          {
-            author: SUPPORT_IDENTITY,
-            isAgent: true,
-            text: 'This has been resolved. Please let us know if you face any further issues.',
-            time: new Date(new Date(ticket.createdOn).getTime() + 2 * 60 * 60 * 1000).toISOString(),
-          },
-        ]
-      : []),
   ];
 }
 
@@ -122,7 +99,7 @@ interface TicketDetailProps {
 
 function TicketDetailModal({ ticket, onClose, onStatusChange, canManage = true }: TicketDetailProps) {
   const [newStatus, setNewStatus] = useState<TicketStatus>(ticket.status);
-  const convo = useMemo(() => mockConvo(ticket), [ticket]);
+  const convo = useMemo(() => ticketThread(ticket), [ticket]);
   const raiserName = getEmployeeName(ticket.raisedById);
 
   const statusOptions: { label: string; value: string }[] = [

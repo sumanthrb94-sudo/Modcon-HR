@@ -1,14 +1,11 @@
-import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, X } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { navGroups, getVisibleNavItems } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
-import { appendBillingInvoice, calculateSubscriptionPrice, getBillingPreferences, saveBillingPreferences } from '@/data/billing';
-import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
-import { BrandMark, Button, Modal, Wordmark } from '@/components/ui';
-import { todayIso } from '@/lib/today';
+import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
+import { BrandMark, Wordmark } from '@/components/ui';
 import { isSuperAdminInsideOrg } from '@/lib/orgScope';
 
 interface SidebarProps {
@@ -16,67 +13,22 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const navIconTone: Record<'Today' | 'Core workspace' | 'Advanced', string> = {
+const navIconTone: Record<'Today' | 'Core workspace' | 'More', string> = {
   Today: 'bg-lime-100 text-lime-800',
   'Core workspace': 'bg-sky-50 text-sky-700',
-  Advanced: 'bg-violet-50 text-violet-700',
+  More: 'bg-violet-50 text-violet-700',
 };
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { profile, isAdmin, isSuperAdmin } = useAuth();
-  const navigate = useNavigate();
-  const billingRevision = useBillingPreferencesRevision();
-  const billingPreferences = getBillingPreferences();
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  void billingRevision;
+  const { profile, isSuperAdmin } = useAuth();
   const role = profile ? resolveAppRole(profile) : 'Employee';
+  // Re-render when the organisation switches a module on or off, or the
+  // permission matrix moves — both decide what is listed here.
+  useAccessControlRevision();
   // A super admin sees the platform console until they step into a company.
   // See getVisibleNavItems — their role is `admin`, so without this they were
   // shown a tenant's Attendance, Leave and Payroll as if they worked there.
   const visibleItems = getVisibleNavItems(role, isSuperAdmin, isSuperAdminInsideOrg());
-  const pricing = calculateSubscriptionPrice(billingPreferences.totalSeats);
-  const planLabel = billingPreferences.planTier === 'Enterprise' ? 'Enterprise' : pricing.planName;
-  const seatLabel = `${billingPreferences.totalSeats} seats`;
-  const renewalLabel = billingPreferences.autoRenew ? 'Auto-renew on' : 'Auto-renew off';
-
-  function handleUpgradePlan() {
-    if (billingPreferences.planTier === 'Enterprise') {
-      navigate('/settings?tab=billing');
-      onClose();
-      return;
-    }
-
-    setUpgradeOpen(true);
-  }
-
-  function confirmUpgradePlan() {
-    const nextSeats = Math.max(billingPreferences.totalSeats, 100);
-    const enterprisePrice = calculateSubscriptionPrice(nextSeats).annualRate;
-
-    saveBillingPreferences({
-      planTier: 'Enterprise',
-      totalSeats: nextSeats,
-      billingEmail: billingPreferences.billingEmail,
-      autoRenew: billingPreferences.autoRenew,
-    });
-
-    appendBillingInvoice({
-      date: todayIso(),
-      amount: enterprisePrice,
-      status: 'Paid',
-      title: 'Enterprise Upgrade',
-      description: 'Enterprise plan activated with capped maximum pricing.',
-      planTier: 'Enterprise',
-      totalSeats: nextSeats,
-      billingEmail: billingPreferences.billingEmail,
-      autoRenew: billingPreferences.autoRenew,
-    });
-
-    setUpgradeOpen(false);
-    navigate('/settings?tab=billing');
-    onClose();
-  }
 
   return (
     <>
@@ -105,22 +57,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          {navGroups.map((group) => (
+          {navGroups.filter((group) => visibleItems.some((item) => item.group === group)).map((group) => (
             <div key={group}>
-              {group === 'Advanced' ? (
-                <button
-                  type="button"
-                  onClick={() => setAdvancedOpen((value) => !value)}
-                  className="mb-1.5 flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900"
-                  aria-expanded={advancedOpen}
-                >
-                  <span>{group}</span>
-                  {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </button>
-              ) : (
-                <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500">{group}</p>
-              )}
-              <div className={cn('space-y-0.5', group === 'Advanced' && !advancedOpen && 'hidden')}>
+              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500">{group}</p>
+              <div className="space-y-0.5">
                 {visibleItems
                   .filter((i) => i.group === group)
                   .map((item) => (
@@ -149,47 +89,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Upgrade card */}
-        {isAdmin ? (
-          <div className="p-3">
-          <div className="bg-ink-900 p-4 text-white">
-            <p className="text-[10px] uppercase tracking-[0.1em] text-brand-500">ModCon HR</p>
-            <p className="mt-1 font-display text-sm font-extrabold">{planLabel}</p>
-            <p className="text-xs text-ink-300 mt-0.5">Unlock advanced analytics & automations.</p>
-            <button
-              type="button"
-              onClick={handleUpgradePlan}
-              className="mt-3 w-full bg-brand-600 hover:bg-brand-700 py-1.5 text-xs font-display font-extrabold text-left px-2 transition-colors"
-            >
-              {billingPreferences.planTier === 'Enterprise' ? 'Enterprise Active' : 'Upgrade to Enterprise'}
-            </button>
-          </div>
-          <div className="mt-2 space-y-0.5 px-1 text-[11px] text-ink-500">
-            <p>{seatLabel}</p>
-            <p className="truncate">Billing: {billingPreferences.billingEmail}</p>
-            <p>{renewalLabel}</p>
-          </div>
-          </div>
-        ) : null}
-
-        <Modal
-          open={upgradeOpen}
-          onClose={() => setUpgradeOpen(false)}
-          title="Upgrade to Enterprise"
-          subtitle="Confirm the upgrade to unlock the Enterprise plan from the sidebar."
-          size="sm"
-          footer={(
-            <>
-              <Button variant="secondary" onClick={() => setUpgradeOpen(false)}>Cancel</Button>
-              <Button variant="primary" onClick={confirmUpgradePlan}>Confirm Upgrade</Button>
-            </>
-          )}
-        >
-          <div className="space-y-2 text-sm text-ink-600">
-            <p>This will switch your workspace to Enterprise and update billing details everywhere.</p>
-            <p>Current billing contact: {billingPreferences.billingEmail}</p>
-          </div>
-        </Modal>
       </aside>
     </>
   );

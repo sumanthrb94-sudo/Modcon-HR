@@ -15,10 +15,9 @@ import { PERSONAS } from './config';
  *     sort first in the merged list. A ticket nobody has routed yet should
  *     say `Unassigned`, not name somebody who never picked it up.
  *   - the two auto-generated conversation messages (the acknowledgement and,
- *     once resolved, the closing note) were authored as `ticket.assignedTo`
- *     — canned boilerplate attributed to a real person, or to nobody, as if
- *     they had personally typed it. They now speak as a neutral `Support`
- *     identity regardless of who — if anyone — the ticket is assigned to.
+ *     once resolved, the closing note) were canned boilerplate presented as
+ *     replies. They are gone: the thread is the request itself until a reply
+ *     feature exists.
  *
  * Raised by an administrator on somebody else's behalf, the same path
  * `a7929d8`'s fix was written for: an HR/Admin account has no employee record
@@ -38,9 +37,9 @@ async function login(page: Page) {
   await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
-test('an unassigned ticket says so, and its auto-reply speaks as Support, not an employee', async ({ page }) => {
+test('an unassigned ticket says so, and nobody is shown replying to it', async ({ page }) => {
   await login(page);
-  await page.getByRole('link', { name: 'Helpdesk', exact: true }).first().click();
+  await page.goto('/helpdesk');
   await page.getByRole('button', { name: 'Raise Ticket' }).first().click();
 
   // By NAME, not by role alone. Submitting closes this dialog and opens the
@@ -68,8 +67,8 @@ test('an unassigned ticket says so, and its auto-reply speaks as Support, not an
   // Routing: Unassigned, not a colleague who never picked this up.
   await expect(detailDialog.getByText('Unassigned', { exact: true })).toBeVisible();
 
-  // The auto-generated acknowledgement speaks as Support — never the raiser,
-  // never a real employee's name standing in for "nobody has replied yet".
-  await expect(detailDialog.getByText(/I've received your ticket/)).toBeVisible();
-  await expect(detailDialog.getByText('Support', { exact: true })).toBeVisible();
+  // Nobody has replied, so nothing says anybody did. The canned
+  // acknowledgement this used to check for is gone: it read as an answer to a
+  // ticket nobody had looked at.
+  await expect(detailDialog.getByText(/I've received your ticket/)).toHaveCount(0);
 });

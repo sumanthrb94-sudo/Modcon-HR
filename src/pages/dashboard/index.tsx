@@ -26,7 +26,8 @@ import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import { financialYearLabel } from '@/lib/financialYear';
 import { getExpenseClaims } from '@/data/expenses';
 import { getTickets } from '@/data/helpdesk';
-import { announcements } from '@/data/common';
+import { BoardHighlights } from '@/components/BoardHighlights';
+import { isModuleEnabled } from '@/lib/moduleSwitches';
 import { getHolidayDirectory } from '@/data/holidays';
 import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatMonthYearLong, monthIndexOf, pct, timeAgo, yearOf } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -43,16 +44,6 @@ import {
 } from '@/data/dashboard';
 import { BRAND_ACCENT, CHART_GRID, CHART_TICK_FILL, CHART_TOOLTIP_STYLE, chartSeriesColor } from '@/lib/chartTheme';
 import { CozyDailyBriefing } from '@/components/dashboard/CozyDailyBriefing';
-
-// ---------------------------------------------------------------------------
-// Announcement category → badge tone helper
-// ---------------------------------------------------------------------------
-function annTone(cat: string) {
-  if (cat === 'Policy') return 'amber' as const;
-  if (cat === 'Event') return 'blue' as const;
-  if (cat === 'Celebration') return 'green' as const;
-  return 'gray' as const;
-}
 
 // ---------------------------------------------------------------------------
 // Approval icon map
@@ -172,13 +163,6 @@ function EmployeeDashboard() {
       .slice(0, 3),
     [holidayRevision],
   );
-  const latestAnnouncements = useMemo(
-    () => announcements
-      .slice()
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 3),
-    [],
-  );
   const nextPlannedLeave = useMemo(
     () => leaveRequests
       .filter((request) => request.status !== 'Rejected' && request.status !== 'Cancelled' && new Date(request.startDate) >= todayDate())
@@ -197,6 +181,9 @@ function EmployeeDashboard() {
       .sort((a, b) => b.createdOn.localeCompare(a.createdOn))[0],
     [employeeTickets],
   );
+  // Only what this organisation has switched on — see lib/moduleSwitches.ts.
+  const expensesOn = isModuleEnabled('Expenses');
+  const helpdeskOn = isModuleEnabled('Helpdesk');
   const quickActions = [
     {
       title: 'Request Leave',
@@ -220,13 +207,14 @@ function EmployeeDashboard() {
       accent: 'bg-brand-50 border-brand-100',
     },
     {
-      title: 'Read Updates',
-      subtitle: 'Announcements and news',
-      to: '/dashboard/announcements',
+      title: 'Read the Board',
+      subtitle: 'News from your organisation',
+      to: '/board',
       icon: <Megaphone size={18} className="text-emerald-600" />,
       accent: 'bg-emerald-50 border-emerald-100',
     },
-  ] as const;
+  ].filter((action) =>
+    (action.to !== '/expenses' || expensesOn) && (action.to !== '/helpdesk' || helpdeskOn));
 
   const leaveSummary = {
     pending: leaveRequests.filter((request) => request.status === 'Pending').length,
@@ -325,8 +313,8 @@ function EmployeeDashboard() {
         ) : (
           <StatCard label="My Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} />
         )}
-        <StatCard label="Expense Claims" value={String(employeeExpenses.length)} icon={<IndianRupee size={18} />} />
-        <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} />
+        {expensesOn && <StatCard label="Expense Claims" value={String(employeeExpenses.length)} icon={<IndianRupee size={18} />} />}
+        {helpdeskOn && <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} />}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -371,7 +359,7 @@ function EmployeeDashboard() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+            {expensesOn && <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
                 <IndianRupee size={16} className="text-amber-600" />
                 Reimbursements in flight
@@ -382,9 +370,9 @@ function EmployeeDashboard() {
               <p className="mt-1 text-sm text-ink-500">
                 {employeeExpenses.filter((claim) => claim.status === 'Submitted' || claim.status === 'Approved').length} claims awaiting payout or final reimbursement.
               </p>
-            </div>
+            </div>}
 
-            <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+            {helpdeskOn && <div className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
                 <Bell size={16} className="text-brand-600" />
                 Support status
@@ -397,7 +385,7 @@ function EmployeeDashboard() {
                   ? `${newestActiveTicket.status} · ${newestActiveTicket.assignedTo}`
                   : 'Raise a helpdesk ticket if you need HR, IT, payroll, or facilities support.'}
               </p>
-            </div>
+            </div>}
           </div>
         </Card>
 
@@ -427,17 +415,6 @@ function EmployeeDashboard() {
                 </div>
               </div>
             ))}
-            {latestAnnouncements[0] && (
-              <div className="rounded-2xl bg-brand-50 p-4">
-                <div className="flex items-center gap-2">
-                  <Megaphone size={16} className="text-brand-600" />
-                  <p className="text-sm font-semibold text-ink-900">Latest announcement</p>
-                </div>
-                <p className="mt-3 text-sm font-medium text-ink-900">{latestAnnouncements[0].title}</p>
-                <p className="mt-1 text-sm text-ink-500 line-clamp-3">{latestAnnouncements[0].body}</p>
-                <p className="mt-3 text-xs text-ink-400">{formatDate(latestAnnouncements[0].date)} · {latestAnnouncements[0].author}</p>
-              </div>
-            )}
           </div>
         </Card>
       </div>
@@ -460,7 +437,7 @@ function EmployeeDashboard() {
           </div>
         </Card>
 
-        <Card>
+        {expensesOn && <Card>
           <CardHeader title="Recent Expense Claims" subtitle="Your latest reimbursements" />
           <div className="space-y-3">
             {expenseRows.length === 0 ? (
@@ -475,9 +452,9 @@ function EmployeeDashboard() {
               </div>
             ))}
           </div>
-        </Card>
+        </Card>}
 
-        <Card>
+        {helpdeskOn && <Card>
           <CardHeader title="Recent Helpdesk Tickets" subtitle="Your latest requests" />
           <div className="space-y-3">
             {ticketRows.length === 0 ? (
@@ -492,31 +469,9 @@ function EmployeeDashboard() {
               </div>
             ))}
           </div>
-        </Card>
+        </Card>}
 
-        <Card>
-          <CardHeader
-            title="Company Updates"
-            subtitle="Recent announcements from people ops and leadership"
-            action={
-              <Link to="/dashboard/announcements" className="text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors">
-                View all
-              </Link>
-            }
-          />
-          <div className="space-y-3">
-            {latestAnnouncements.map((announcement) => (
-              <div key={announcement.id} className="rounded-xl border border-ink-100 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-ink-900">{announcement.title}</p>
-                  <Badge tone={annTone(announcement.category)}>{announcement.category}</Badge>
-                </div>
-                <p className="mt-2 text-sm text-ink-500 line-clamp-2">{announcement.body}</p>
-                <p className="mt-3 text-xs text-ink-400">{formatDate(announcement.date)} · {announcement.author}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <BoardHighlights />
       </div>
     </div>
   );
@@ -972,50 +927,7 @@ function AdminDashboard() {
 
         {/* ---- Col 2: Announcements + Holidays ---- */}
         <div className="space-y-5">
-          {/* Announcements */}
-          <Card>
-            <CardHeader
-              title="Announcements"
-              subtitle="Latest from the team"
-              action={(
-                <Link to="/dashboard/announcements" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
-                  View all
-                </Link>
-              )}
-            />
-            {announcements.length === 0 && (
-              <p className="text-sm text-ink-400 text-center py-6">No announcements published yet</p>
-            )}
-            <div className="space-y-4">
-              {announcements.map((ann) => (
-                <div key={ann.id} className="group cursor-pointer" onClick={() => navigate('/dashboard/announcements')}>
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-8 w-8 rounded-lg bg-brand-50 flex items-center justify-center shrink-0 mt-0.5">
-                      <Megaphone size={14} className="text-brand-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <p className="text-sm font-medium text-ink-800 group-hover:text-brand-600 transition-colors leading-snug">
-                          {ann.title}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge tone={annTone(ann.category)}>{ann.category}</Badge>
-                        <span className="text-[11px] text-ink-400">{timeAgo(ann.date)}</span>
-                        <span className="text-[11px] text-ink-400">· {ann.author}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-ink-500 mt-1.5 pl-10.5 line-clamp-2 leading-relaxed">{ann.body}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-ink-100">
-              <Link to="/dashboard/announcements" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
-                Open full Announcements page
-              </Link>
-            </div>
-          </Card>
+          <BoardHighlights />
 
           {/* Upcoming holidays */}
           <Card>

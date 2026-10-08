@@ -3,9 +3,8 @@ import { useLocation } from 'react-router-dom';
 import {
   Building2, Users, CalendarDays, Shield, Bell,
   Plug, CreditCard, ChevronRight, Check, X,
-  Plus, Edit2, Zap, ToggleLeft, ToggleRight,
-  Slack, Chrome, Package, Code2, Leaf,
-  AlertCircle, AlertTriangle, CheckCircle2, Star, Database, Trash2, Wallet, MapPin,
+  Plus, Edit2, ToggleLeft, ToggleRight,
+  AlertCircle, AlertTriangle, CheckCircle2, Database, Trash2, Wallet, MapPin,
   Upload, Download, RefreshCw, Clock, Landmark,
 } from 'lucide-react';
 import {
@@ -118,21 +117,9 @@ import {
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 import { getHolidayDirectory, holidayYearsCovered, saveHolidayDirectory } from '@/data/holidays';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
-import { getIntegrationPreferences, saveIntegrationPreferences } from '@/data/integrations';
-import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
 import { getNotificationPreferences, saveNotificationPreferences, type NotificationPreference } from '@/data/notificationPreferences';
 import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
-import {
-  appendBillingInvoice,
-  calculateSubscriptionPrice,
-  getBillingInvoices,
-  getBillingPreferences,
-  saveBillingPreferences,
-  type BillingInvoice,
-  type BillingPlanTier,
-} from '@/data/billing';
-import { useBillingPreferencesRevision } from '@/lib/useBillingPreferencesRevision';
-import { useBillingInvoicesRevision } from '@/lib/useBillingInvoicesRevision';
+import { getEnabledModules, isModuleEnabled, MODULE_DESCRIPTIONS, OPTIONAL_MODULES, saveEnabledModules, type OptionalModule } from '@/lib/moduleSwitches';
 import { cn, formatDate, formatINR, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
@@ -2956,7 +2943,7 @@ function NotificationsSection() {
     setNotifs(getNotificationPreferences());
   }, [notificationRevision]);
 
-  const toggle = (id: string, key: 'email' | 'inApp') => {
+  const toggle = (id: string, key: 'inApp') => {
     const updated = notifs.map((notif) => (notif.id === id ? { ...notif, [key]: !notif[key] } : notif));
     save.track(saveNotificationPreferences(updated));
     setNotifs(updated);
@@ -2967,14 +2954,13 @@ function NotificationsSection() {
   return (
     <SettingsSection
       title="Notification Preferences"
-      subtitle="Control which events trigger email and in-app notifications."
+      subtitle="Choose which events show in the notification bell. Email and WhatsApp alerts are not sent yet."
       action={<SaveIndicator state={save.state} />}
     >
       <Card padding={false}>
         {/* Header row */}
-        <div className="grid grid-cols-[1fr_80px_80px] px-5 py-3 border-b border-ink-100 text-xs font-semibold text-ink-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[1fr_80px] px-5 py-3 border-b border-ink-100 text-xs font-semibold text-ink-500 uppercase tracking-wide">
           <span>Notification</span>
-          <span className="text-center">Email</span>
           <span className="text-center">In-App</span>
         </div>
         {categories.map((cat) => (
@@ -2985,22 +2971,11 @@ function NotificationsSection() {
             {notifs.filter((n) => n.category === cat).map((n) => (
               <div
                 key={n.id}
-                className="grid grid-cols-[1fr_80px_80px] items-center px-5 py-3.5 border-b border-ink-100 last:border-0 hover:bg-ink-50 transition-colors"
+                className="grid grid-cols-[1fr_80px] items-center px-5 py-3.5 border-b border-ink-100 last:border-0 hover:bg-ink-50 transition-colors"
               >
                 <div>
                   <p className="text-sm font-medium text-ink-800">{n.label}</p>
                   <p className="text-xs text-ink-400 mt-0.5">{n.description}</p>
-                </div>
-                <div className="flex justify-center">
-                  <button
-                    onClick={() => toggle(n.id, 'email')}
-                    className={cn(
-                      'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                      n.email ? 'bg-brand-600' : 'bg-ink-200',
-                    )}
-                  >
-                    <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition duration-200', n.email ? 'translate-x-4' : 'translate-x-0')} />
-                  </button>
                 </div>
                 <div className="flex justify-center">
                   <button
@@ -3022,758 +2997,6 @@ function NotificationsSection() {
   );
 }
 
-// ===========================================================================
-// Section: Integrations
-// ===========================================================================
-interface Integration {
-  id: string;
-  name: string;
-  description: string;
-  icon: ReactNode;
-  iconBg: string;
-  category: string;
-  connected: boolean;
-  badge?: string;
-}
-
-const defaultIntegrations: Integration[] = [
-  {
-    id: 'slack',
-    name: 'Slack',
-    description: 'Send HR notifications, leave alerts, and announcements directly to Slack channels.',
-    icon: <Slack size={22} />,
-    iconBg: 'bg-[#4A154B] text-white',
-    category: 'Communication',
-    connected: true,
-    badge: 'Connected',
-  },
-  {
-    id: 'google',
-    name: 'Google Workspace',
-    description: 'Sync employee directory with Google accounts and enable SSO login.',
-    icon: <Chrome size={22} />,
-    iconBg: 'bg-ink-100 text-ink-900',
-    category: 'Identity & SSO',
-    connected: true,
-    badge: 'Connected',
-  },
-  {
-    id: 'razorpay',
-    name: 'Razorpay Payroll',
-    description: 'Automate salary disbursements, reimbursements, and compliance filings.',
-    icon: <Package size={22} />,
-    iconBg: 'bg-[#072654] text-white',
-    category: 'Payroll',
-    connected: false,
-  },
-  {
-    id: 'zoho',
-    name: 'Zoho People',
-    description: 'Bi-directional sync of employee records with Zoho People for legacy support.',
-    icon: <Leaf size={22} />,
-    iconBg: 'bg-red-50 text-red-600',
-    category: 'HR Tools',
-    connected: false,
-  },
-  {
-    id: 'bamboo',
-    name: 'BambooHR',
-    description: 'Migrate employee data and performance records from BambooHR seamlessly.',
-    icon: <Zap size={22} />,
-    iconBg: 'bg-green-50 text-green-600',
-    category: 'HR Tools',
-    connected: false,
-  },
-  {
-    id: 'github',
-    name: 'GitHub',
-    description: 'Pull engineering contributions data for performance review context.',
-    icon: <Code2 size={22} />,
-    iconBg: 'bg-ink-900 text-white',
-    category: 'Dev Tools',
-    connected: true,
-    badge: 'Connected',
-  },
-];
-
-function IntegrationsSection() {
-  const save = useSaveIndicator();
-  const integrationRevision = useIntegrationPreferencesRevision();
-  const [integrations, setIntegrations] = useState(defaultIntegrations);
-  const [configureOpen, setConfigureOpen] = useState(false);
-  const [editingIntegration, setEditingIntegration] = useState<Integration | null>(null);
-  const [configLabel, setConfigLabel] = useState('');
-  const [configError, setConfigError] = useState('');
-
-  useEffect(() => {
-    const preferenceById = new Map(getIntegrationPreferences().map((integration) => [integration.id, integration]));
-    setIntegrations(
-      defaultIntegrations.map((integration) => {
-        const preference = preferenceById.get(integration.id);
-        return {
-          ...integration,
-          connected: preference?.connected ?? integration.connected,
-          badge: preference?.badge ?? (preference?.connected ?? integration.connected ? 'Connected' : undefined),
-        };
-      }),
-    );
-  }, [integrationRevision]);
-
-  const toggleConnect = (id: string) => {
-    const updated = integrations.map((integration) => (
-      integration.id === id
-        ? { ...integration, connected: !integration.connected, badge: !integration.connected ? 'Connected' : undefined }
-        : integration
-    ));
-    save.track(saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge }))));
-    setIntegrations(updated);
-  };
-
-  const openConfigure = (integration: Integration) => {
-    setEditingIntegration(integration);
-    setConfigLabel(integration.badge ?? (integration.connected ? 'Connected' : 'Not connected'));
-    setConfigError('');
-    setConfigureOpen(true);
-  };
-
-  const saveConfigure = () => {
-    if (!editingIntegration) return;
-    const nextLabel = configLabel.trim();
-    if (!nextLabel) {
-      setConfigError('Display label is required.');
-      return;
-    }
-
-    const updated = integrations.map((integration) => (
-      integration.id === editingIntegration.id
-        ? { ...integration, badge: nextLabel }
-        : integration
-    ));
-    save.track(saveIntegrationPreferences(updated.map(({ id: integrationId, connected, badge }) => ({ id: integrationId, connected, badge }))));
-    setIntegrations(updated);
-    setConfigureOpen(false);
-    setEditingIntegration(null);
-    setConfigLabel('');
-    setConfigError('');
-  };
-
-  const categories = Array.from(new Set(integrations.map((i) => i.category)));
-
-  return (
-    <SettingsSection
-      title="Integrations"
-      subtitle="Connect ModCon HR with your existing tools and data sources."
-      action={<SaveIndicator state={save.state} />}
-    >
-      {categories.map((cat) => (
-        <div key={cat} className="mb-6">
-          <p className="text-xs font-bold text-ink-500 uppercase tracking-wider mb-3">{cat}</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {integrations.filter((i) => i.category === cat).map((integ) => (
-              <Card key={integ.id} className="hover:shadow-card-hover transition-shadow">
-                <div className="flex items-start gap-4">
-                  <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center shrink-0', integ.iconBg)}>
-                    {integ.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="font-semibold text-ink-900 text-sm">{integ.name}</span>
-                      {integ.connected && (
-                        <Badge tone="green" dot>Connected</Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-ink-500 leading-relaxed mb-3">{integ.description}</p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={integ.connected ? 'ghost' : 'secondary'}
-                        size="sm"
-                        onClick={() => toggleConnect(integ.id)}
-                        icon={integ.connected ? <X size={13} /> : <Plug size={13} />}
-                      >
-                        {integ.connected ? 'Disconnect' : 'Connect'}
-                      </Button>
-                      {integ.connected && (
-                        <Button variant="ghost" size="sm" icon={<Edit2 size={13} />} onClick={() => openConfigure(integ)}>Configure</Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <Modal
-        open={configureOpen}
-        onClose={() => {
-          setConfigureOpen(false);
-          setEditingIntegration(null);
-          setConfigLabel('');
-          setConfigError('');
-        }}
-        title="Configure Integration"
-        subtitle={editingIntegration ? `Adjust settings for ${editingIntegration.name}` : 'Adjust integration settings'}
-        size="sm"
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setConfigureOpen(false);
-                setEditingIntegration(null);
-                setConfigLabel('');
-                setConfigError('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={saveConfigure}>Save Changes</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <Field
-            label="Display Label"
-            value={configLabel}
-            onChange={(v) => {
-              setConfigLabel(v);
-              setConfigError('');
-            }}
-            hint="Shown as the integration badge in this demo"
-          />
-          {configError && <p className="text-sm text-rose-600">{configError}</p>}
-        </div>
-      </Modal>
-    </SettingsSection>
-  );
-}
-
-// ===========================================================================
-// Section: Billing
-// ===========================================================================
-function BillingSection({ upgradeRequestToken = 0 }: { upgradeRequestToken?: number }) {
-  const billingRevision = useBillingPreferencesRevision();
-  const invoiceRevision = useBillingInvoicesRevision();
-  const [planTier, setPlanTier] = useState<BillingPlanTier>(() => getBillingPreferences().planTier);
-  const [totalSeats, setTotalSeats] = useState(() => getBillingPreferences().totalSeats);
-  const [manageOpen, setManageOpen] = useState(false);
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [addSeatsOpen, setAddSeatsOpen] = useState(false);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [billingEmail, setBillingEmail] = useState(() => getBillingPreferences().billingEmail);
-  const [autoRenew, setAutoRenew] = useState(() => getBillingPreferences().autoRenew);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
-  const [addSeatsValue, setAddSeatsValue] = useState('5');
-  const [addSeatsError, setAddSeatsError] = useState('');
-  const [actionNotice, setActionNotice] = useState('');
-
-  useEffect(() => {
-    const preferences = getBillingPreferences();
-    setPlanTier(preferences.planTier);
-    setTotalSeats(preferences.totalSeats);
-    setBillingEmail(preferences.billingEmail);
-    setAutoRenew(preferences.autoRenew);
-  }, [billingRevision]);
-
-  const invoices = getBillingInvoices();
-  void invoiceRevision;
-
-  useEffect(() => {
-    if (!selectedInvoiceId && invoices.length > 0) {
-      setSelectedInvoiceId(invoices[0].id);
-    }
-  }, [invoices, selectedInvoiceId]);
-
-  const usedSeats = employees.length;
-  const usedPct = Math.round((usedSeats / totalSeats) * 100);
-  const isEnterprise = planTier === 'Enterprise';
-
-  const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? invoices[0] ?? null;
-  const pricing = calculateSubscriptionPrice(totalSeats);
-  const latestInvoice = invoices[0] ?? null;
-
-  function formatAmount(amount: number) {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  }
-
-  function createInvoiceDetails(invoice: BillingInvoice) {
-    return [
-      'ModCon HR Invoice',
-      `Invoice ID: ${invoice.id}`,
-      `Date: ${formatDate(invoice.date)}`,
-      `Title: ${invoice.title}`,
-      `Description: ${invoice.description}`,
-      `Plan: ${invoice.planTier}`,
-      `Seats: ${invoice.totalSeats}`,
-      `Billing Email: ${invoice.billingEmail}`,
-      `Auto-renew: ${invoice.autoRenew ? 'Enabled' : 'Disabled'}`,
-      `Amount: ${formatAmount(invoice.amount)}`,
-      `Status: ${invoice.status}`,
-    ].join('\n');
-  }
-
-  function downloadInvoice(invoiceId: string) {
-    const invoice = invoices.find((item) => item.id === invoiceId);
-    if (!invoice) return;
-
-    const fileText = createInvoiceDetails(invoice);
-
-    const blob = new Blob([fileText], { type: 'text/plain;charset=utf-8' });
-    const downloadUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = `${invoice.id}.txt`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(downloadUrl);
-
-    setActionNotice(`Downloaded invoice ${invoice.id}.`);
-  }
-
-  function handleSaveSubscription() {
-    if (!billingEmail.trim()) {
-      return;
-    }
-    saveBillingPreferences({
-      planTier,
-      totalSeats,
-      billingEmail: billingEmail.trim(),
-      autoRenew,
-    });
-    setManageOpen(false);
-    setActionNotice('Subscription details updated successfully.');
-  }
-
-  function handleAddSeats() {
-    const seats = Number(addSeatsValue);
-    if (!Number.isFinite(seats) || seats <= 0) {
-      setAddSeatsError('Please enter a valid number of seats to add.');
-      return;
-    }
-
-    const nextSeats = totalSeats + seats;
-    const currentPrice = calculateSubscriptionPrice(totalSeats).annualRate;
-    const nextPrice = calculateSubscriptionPrice(nextSeats).annualRate;
-    const diff = Math.max(0, nextPrice - currentPrice);
-
-    setTotalSeats(nextSeats);
-    saveBillingPreferences({
-      planTier,
-      totalSeats: nextSeats,
-      billingEmail,
-      autoRenew,
-    });
-    appendBillingInvoice({
-      date: todayIso(),
-      amount: diff,
-      status: 'Paid',
-      title: 'Additional Seats Added',
-      description: `${seats} seat${seats > 1 ? 's' : ''} added to the plan.`,
-      planTier,
-      totalSeats: nextSeats,
-      billingEmail,
-      autoRenew,
-    });
-    setAddSeatsOpen(false);
-    setAddSeatsValue('5');
-    setAddSeatsError('');
-    setActionNotice(`${seats} seat${seats > 1 ? 's' : ''} added to your plan.`);
-  }
-
-  function handleUpgradeEnterprise() {
-    const nextSeats = Math.max(totalSeats, 100);
-    const enterprisePricing = calculateSubscriptionPrice(nextSeats);
-    setPlanTier('Enterprise');
-    setTotalSeats(nextSeats);
-    saveBillingPreferences({
-      planTier: 'Enterprise',
-      totalSeats: nextSeats,
-      billingEmail,
-      autoRenew,
-    });
-    appendBillingInvoice({
-      date: todayIso(),
-      amount: enterprisePricing.annualRate,
-      status: 'Paid',
-      title: 'Enterprise Upgrade',
-      description: 'Plan upgraded to Enterprise with flat per-seat subscription.',
-      planTier: 'Enterprise',
-      totalSeats: nextSeats,
-      billingEmail,
-      autoRenew,
-    });
-    setUpgradeOpen(false);
-    setActionNotice('Enterprise plan activated with flat per-seat pricing.');
-  }
-
-  useEffect(() => {
-    if (upgradeRequestToken > 0 && !isEnterprise) {
-      setUpgradeOpen(true);
-    }
-  }, [upgradeRequestToken, isEnterprise]);
-
-  const planFeatures = [
-    { feature: 'Team Size Range', starter: '1 - 9 employees', pro: '10 - 49 employees', enterprise: '50+ employees' },
-    { feature: 'Subscription Cost', starter: '100% Free Forever', pro: '3 Months Free Trial', enterprise: '₹49/seat/mo · Flat' },
-    { feature: 'Core HR & Employee Directory', starter: true, pro: true, enterprise: true },
-    { feature: 'Attendance & Geofencing', starter: true, pro: true, enterprise: true },
-    { feature: 'Statutory Payroll (PF, ESI, TDS, PT)', starter: true, pro: true, enterprise: true },
-    { feature: 'Leave Balances & Accrual Rules', starter: true, pro: true, enterprise: true },
-    { feature: 'Team Pulse & AI Briefings', starter: true, pro: true, enterprise: true },
-    { feature: 'Advanced Reports & Exports', starter: false, pro: true, enterprise: true },
-    { feature: 'Priority Support & Migration', starter: false, pro: false, enterprise: true },
-  ];
-
-  return (
-    <SettingsSection title="Billing & Plan" subtitle="Manage your subscription, seats, and invoices.">
-      <Card className="mb-5 border-2 border-brand-600 bg-brand-100">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-brand-600 flex items-center justify-center">
-              <Star size={22} className="text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-ink-900 text-lg">{pricing.planName}</span>
-                <Badge tone={pricing.isFreeTier ? 'green' : pricing.isTrialTier ? 'blue' : 'violet'}>
-                  {pricing.isFreeTier ? 'Free Forever' : pricing.isTrialTier ? '3-Month Trial' : 'Active'}
-                </Badge>
-              </div>
-              <p className="text-sm text-ink-600 mt-0.5">
-                {pricing.isFreeTier
-                  ? 'Free tier active · 100% free forever for teams under 10 employees'
-                  : pricing.isTrialTier
-                    ? '3-Month Free Trial active · Then ₹49/seat/month'
-                    : '₹49 per employee/month · Flat rate with no cap'}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setManageOpen(true)}>Manage Subscription</Button>
-            <Button variant="ghost" size="sm" onClick={() => setInvoiceOpen(true)}>View Invoices</Button>
-          </div>
-        </div>
-      </Card>
-
-      {actionNotice && (
-        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {actionNotice}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        <Card className="md:col-span-2">
-          <CardHeader title="Seat Usage" subtitle={`${usedSeats} of ${totalSeats} seats used`} />
-          <div className="relative h-4 bg-ink-100 rounded-full overflow-hidden mb-2">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-700',
-                usedPct > 85 ? 'bg-rose-500' : usedPct > 70 ? 'bg-amber-500' : 'bg-brand-600',
-              )}
-              style={{ width: `${usedPct}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-xs text-ink-500 mb-4">
-            <span>{usedSeats} used</span>
-            <span className={cn('font-semibold', usedPct > 85 ? 'text-rose-600' : 'text-ink-600')}>
-              {totalSeats - usedSeats} remaining
-            </span>
-          </div>
-          {usedPct > 70 && (
-            <div className={cn(
-              'flex items-center gap-2 rounded-lg px-3 py-2 text-xs',
-              usedPct > 85 ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700',
-            )}>
-              <AlertCircle size={14} />
-              {usedPct > 85
-                ? isEnterprise
-                  ? 'Seat usage is high. Consider adding more buffer seats.'
-                  : 'You\'re nearly at capacity. Upgrade to add more seats.'
-                : isEnterprise
-                  ? 'Usage is growing steadily across your organisation.'
-                  : 'Consider upgrading soon to avoid disruption.'}
-            </div>
-          )}
-          <Button variant="primary" size="sm" className="mt-3" onClick={() => setAddSeatsOpen(true)}>Add Seats</Button>
-        </Card>
-
-        <Card>
-          <CardHeader title="Next Invoice" />
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between items-center">
-              <span className="text-ink-500">
-                {pricing.planName}
-              </span>
-              <span className="font-semibold text-ink-900">
-                {formatAmount(pricing.annualRate)} <span className="text-xs font-normal text-ink-500">/ yr</span>
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-xs text-ink-500">
-              <span>Monthly equivalent</span>
-              <span className="font-semibold text-brand-700">
-                {pricing.isFreeTier ? '₹0' : `${formatAmount(pricing.monthlyRate)} / mo`}
-              </span>
-            </div>
-            {pricing.maxCapApplied && (
-              <div className="text-[11px] text-emerald-800 bg-emerald-50 rounded px-2 py-1 border border-emerald-200">
-                ✓ Capped at max ₹5,000/mo subscription rate
-              </div>
-            )}
-            <div className="flex justify-between pt-1">
-              <span className="text-ink-500">Due date</span>
-              <span className="font-semibold">01 Jan 2027</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-500">Payment method</span>
-              <span className="font-semibold">•••• 4242</span>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-ink-100 space-y-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                if (latestInvoice) {
-                  setSelectedInvoiceId(latestInvoice.id);
-                }
-                setInvoiceOpen(true);
-              }}
-            >
-              View Invoice Details
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onClick={() => latestInvoice && downloadInvoice(latestInvoice.id)}
-              disabled={!latestInvoice}
-            >
-              Download Last Invoice
-            </Button>
-          </div>
-        </Card>
-      </div>
-
-      <Card padding={false}>
-        <div className="px-5 py-4 border-b border-ink-100">
-          <h3 className="text-base font-semibold text-ink-900">Plan Comparison</h3>
-          <p className="text-sm text-ink-500 mt-0.5">Transparent pricing tailored for growing businesses</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-ink-200">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">Feature</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-ink-500 uppercase tracking-wide">Free (&lt; 10)</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-600 uppercase tracking-wide bg-brand-50">
-                  Growth (10 - 49) ✓
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-brand-700 uppercase tracking-wide">Scale / Pro (50+)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ink-100">
-              {planFeatures.map((row) => (
-                <tr key={row.feature} className="hover:bg-ink-50">
-                  <td className="px-5 py-3 font-medium text-ink-800">{row.feature}</td>
-                  <td className="px-4 py-3 text-center">
-                    {typeof row.starter === 'string'
-                      ? <span className="text-ink-600 text-xs font-medium">{row.starter}</span>
-                      : row.starter
-                        ? <Check size={16} className="text-emerald-500 mx-auto" />
-                        : <X size={16} className="text-ink-300 mx-auto" />}
-                  </td>
-                  <td className="px-4 py-3 text-center bg-brand-50">
-                    {typeof row.pro === 'string'
-                      ? <span className="font-semibold text-brand-700 text-xs">{row.pro}</span>
-                      : row.pro
-                        ? <Check size={16} className="text-brand-600 mx-auto" />
-                        : <X size={16} className="text-ink-300 mx-auto" />}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {typeof row.enterprise === 'string'
-                      ? <span className="text-brand-700 font-semibold text-xs">{row.enterprise}</span>
-                      : row.enterprise
-                        ? <Check size={16} className="text-brand-600 mx-auto" />
-                        : <X size={16} className="text-ink-300 mx-auto" />}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-4 border-t border-ink-100">
-          <Button
-            variant="primary"
-            icon={<Zap size={15} />}
-            onClick={() => setUpgradeOpen(true)}
-            disabled={isEnterprise}
-          >
-            {isEnterprise ? 'Enterprise Active' : 'Upgrade to Enterprise'}
-          </Button>
-        </div>
-      </Card>
-
-      <Modal
-        open={manageOpen}
-        onClose={() => setManageOpen(false)}
-        title="Manage Subscription"
-        subtitle="Update billing contact and renewal preferences"
-        size="sm"
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setManageOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSaveSubscription}>Save Changes</Button>
-          </>
-        )}
-      >
-        <div className="space-y-4">
-          <Field label="Billing Contact Email" type="email" value={billingEmail} onChange={setBillingEmail} />
-          <div className="rounded-xl border border-ink-100 px-3 py-1">
-            <Toggle
-              checked={autoRenew}
-              onChange={setAutoRenew}
-              label="Auto-renew subscription"
-              description="Renew plan automatically on billing date"
-            />
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={invoiceOpen}
-        onClose={() => setInvoiceOpen(false)}
-        title="Invoices"
-        subtitle="View and download recent invoices"
-        size="lg"
-        footer={(
-          <Button variant="secondary" onClick={() => setInvoiceOpen(false)}>Close</Button>
-        )}
-      >
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-3">
-            {invoices.map((invoice) => {
-              const isSelected = invoice.id === selectedInvoice?.id;
-              return (
-                <button
-                  key={invoice.id}
-                  type="button"
-                  onClick={() => setSelectedInvoiceId(invoice.id)}
-                  className={cn(
-                    'w-full rounded-xl border p-3 text-left transition-colors',
-                    isSelected ? 'border-brand-300 bg-brand-50' : 'border-ink-100 hover:bg-ink-50',
-                  )}
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-ink-800">{invoice.title}</p>
-                      <p className="text-xs text-ink-500">{invoice.id} · {formatDate(invoice.date)} · {invoice.status}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-ink-800">{formatAmount(invoice.amount)}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div className="rounded-xl border border-ink-100 bg-ink-50 p-4">
-            {selectedInvoice ? (
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-semibold text-ink-800">{selectedInvoice.title}</p>
-                  <p className="text-xs text-ink-500">{selectedInvoice.id}</p>
-                </div>
-                <div className="space-y-2 text-sm text-ink-600">
-                  <p>{selectedInvoice.description}</p>
-                  <p>Plan: {selectedInvoice.planTier}</p>
-                  <p>Seats: {selectedInvoice.totalSeats}</p>
-                  <p>Billing: {selectedInvoice.billingEmail}</p>
-                  <p>Auto-renew: {selectedInvoice.autoRenew ? 'Enabled' : 'Disabled'}</p>
-                  <p>Status: {selectedInvoice.status}</p>
-                  <p className="font-semibold text-ink-800">Amount: {formatAmount(selectedInvoice.amount)}</p>
-                </div>
-                <Button variant="primary" className="w-full" onClick={() => downloadInvoice(selectedInvoice.id)}>
-                  Download Selected Invoice
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-ink-500">No invoices available.</p>
-            )}
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={addSeatsOpen}
-        onClose={() => {
-          setAddSeatsOpen(false);
-          setAddSeatsError('');
-          setAddSeatsValue('5');
-        }}
-        title="Add Seats"
-        subtitle="Increase your seat capacity immediately"
-        size="sm"
-        footer={(
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setAddSeatsOpen(false);
-                setAddSeatsError('');
-                setAddSeatsValue('5');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={handleAddSeats}>Add Seats</Button>
-          </>
-        )}
-      >
-        <div className="space-y-4">
-          <Field
-            label="Seats to Add"
-            type="number"
-            value={addSeatsValue}
-            onChange={(value) => {
-              setAddSeatsValue(value);
-              setAddSeatsError('');
-            }}
-            hint="Seats are provisioned instantly for your workspace"
-          />
-          {addSeatsError && <p className="text-sm text-rose-600">{addSeatsError}</p>}
-        </div>
-      </Modal>
-
-      <Modal
-        open={upgradeOpen}
-        onClose={() => setUpgradeOpen(false)}
-        title="Upgrade to Enterprise"
-        subtitle="Unlock higher seat capacity, SSO, AI insights, and priority support"
-        size="sm"
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setUpgradeOpen(false)}>Not Now</Button>
-            <Button variant="primary" onClick={handleUpgradeEnterprise}>Confirm Upgrade</Button>
-          </>
-        )}
-      >
-        <div className="space-y-2 text-sm text-ink-600">
-          <p>Enterprise upgrade requests are activated by our billing team.</p>
-          <p>You will receive a confirmation email at {billingEmail}.</p>
-        </div>
-      </Modal>
-    </SettingsSection>
-  );
-}
-
-// ===========================================================================
-// Nav definitions
-// ===========================================================================
 // ===========================================================================
 // Section: Database
 // ===========================================================================
@@ -5029,15 +4252,64 @@ function EmployeeSalaryStructuresSection() {
   );
 }
 
+// ===========================================================================
+// Modules — which optional parts of the app this organisation uses.
+// See lib/moduleSwitches.ts. The core (people, attendance, leave, payroll,
+// payslips and the Board) is always on and is not listed.
+// ===========================================================================
+function ModulesSection() {
+  const save = useSaveIndicator();
+  const revision = useAccessControlRevision();
+  const [enabled, setEnabled] = useState<OptionalModule[]>(() => getEnabledModules());
+
+  useEffect(() => {
+    setEnabled(getEnabledModules());
+  }, [revision]);
+
+  function toggle(module: OptionalModule, on: boolean) {
+    const next = on ? [...enabled, module] : enabled.filter((m) => m !== module);
+    setEnabled(next);
+    save.track(saveEnabledModules(next));
+  }
+
+  return (
+    <SettingsSection
+      title="Modules"
+      subtitle="People, attendance, leave, payroll and the Board are always on. Switch on anything else your organisation uses."
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="divide-y divide-ink-100">
+          {OPTIONAL_MODULES.map((module) => (
+            <Toggle
+              key={module}
+              checked={enabled.includes(module)}
+              onChange={(on) => toggle(module, on)}
+              label={MODULE_DESCRIPTIONS[module].label}
+              description={MODULE_DESCRIPTIONS[module].detail}
+            />
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-ink-500">
+          Switching a module off hides it for everybody. Nothing in it is deleted, and switching it back on brings it back as it was.
+        </p>
+      </Card>
+    </SettingsSection>
+  );
+}
+
 interface NavItem {
   id: string;
   label: string;
   icon: ReactNode;
   description: string;
+  /** Listed only while this optional module is switched on. */
+  module?: OptionalModule;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'company', label: 'Company Profile', icon: <Building2 size={17} />, description: 'Brand, legal & contact info' },
+  { id: 'modules', label: 'Modules', icon: <Plug size={17} />, description: 'What your organisation uses' },
   { id: 'departments', label: 'Departments', icon: <Users size={17} />, description: 'Org structure & heads' },
   { id: 'locations', label: 'Locations', icon: <MapPin size={17} />, description: 'Where the company works' },
   { id: 'leave', label: 'Leave Policies', icon: <CalendarDays size={17} />, description: 'Quotas & carry-forward' },
@@ -5046,12 +4318,12 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'shifts', label: 'Shifts', icon: <Clock size={17} />, description: 'Working hours & grace' },
   { id: 'weekoff', label: 'Week Off', icon: <CalendarDays size={17} />, description: 'The day the company is closed' },
   { id: 'geofence', label: 'Attendance Locations', icon: <MapPin size={17} />, description: 'Where check-in is accepted' },
-  { id: 'checkins', label: 'Progress Check-ins', icon: <RefreshCw size={17} />, description: 'Cadence & channels' },
+  // Goal check-ins belong to Performance, so they are listed only when it is on.
+  { id: 'checkins', label: 'Progress Check-ins', icon: <RefreshCw size={17} />, description: 'Cadence & channels', module: 'Performance' },
   { id: 'roles', label: 'Roles & Permissions', icon: <Shield size={17} />, description: 'Access control matrix' },
   { id: 'holidays', label: 'Holidays', icon: <CalendarDays size={17} />, description: 'Holiday calendar' },
-  { id: 'notifications', label: 'Notifications', icon: <Bell size={17} />, description: 'Alert preferences' },
-  { id: 'integrations', label: 'Integrations', icon: <Plug size={17} />, description: 'Third-party connections' },
-  { id: 'billing', label: 'Billing', icon: <CreditCard size={17} />, description: 'Plan & payments' },
+  { id: 'notifications', label: 'Notifications', icon: <Bell size={17} />, description: 'In-app alerts' },
+  { id: 'billing', label: 'Billing', icon: <CreditCard size={17} />, description: 'Your subscription' },
   { id: 'database', label: 'Database', icon: <Database size={17} />, description: 'Firestore seed & config' },
 ];
 
@@ -5441,10 +4713,8 @@ function AttendanceLocationsSection() {
 export function SettingsPage() {
   const location = useLocation();
   useEmployeeDirectoryRevision();
-  const billingRevision = useBillingPreferencesRevision();
-  const billingPreferences = getBillingPreferences();
+  useAccessControlRevision();
   const [active, setActive] = useState('company');
-  const [billingUpgradeRequestToken, setBillingUpgradeRequestToken] = useState(0);
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
@@ -5455,10 +4725,7 @@ export function SettingsPage() {
       setActive(queryTab);
     }
 
-    if (queryAction === 'upgrade-plan') {
-      setActive('billing');
-      setBillingUpgradeRequestToken((prev) => prev + 1);
-    }
+    if (queryAction === 'upgrade-plan') setActive('billing');
 
     const state = location.state as { settingsTab?: string; billingAction?: string } | null;
     if (!state) return;
@@ -5467,16 +4734,13 @@ export function SettingsPage() {
       setActive(state.settingsTab);
     }
 
-    if (state.billingAction === 'upgrade-plan') {
-      setActive('billing');
-      setBillingUpgradeRequestToken((prev) => prev + 1);
-    }
+    if (state.billingAction === 'upgrade-plan') setActive('billing');
   }, [location.search, location.state]);
-  void billingRevision;
 
   function renderContent() {
     switch (active) {
       case 'company': return <CompanyProfile />;
+      case 'modules': return <ModulesSection />;
       case 'departments': return <DepartmentsSection />;
       case 'locations': return <LocationsSection />;
       case 'leave': return (
@@ -5500,36 +4764,24 @@ export function SettingsPage() {
       case 'roles': return <RolesPermissions />;
       case 'holidays': return <HolidaysSection />;
       case 'notifications': return <NotificationsSection />;
-      case 'integrations': return <IntegrationsSection />;
-      case 'billing': return (
-        <>
-          {/* The real subscription, above the plan/seat/invoice UI below it —
-              which is still the demo dataset. What decides whether this
-              workspace works is the record on `organizations/{orgId}`, and it
-              is the first thing on the page for that reason. */}
-          <div className="mb-6">
-            <SubscriptionCard />
-          </div>
-          <BillingSection upgradeRequestToken={billingUpgradeRequestToken} />
-        </>
-      );
+      // Only the real subscription. The plan, seat and invoice screens that sat
+      // below it were demo data shown to every organisation — "Paid" invoices
+      // nobody paid and an "Add seats" button that recorded a payment without
+      // taking one.
+      case 'billing': return <SubscriptionCard />;
       case 'database': return <DatabaseSection />;
       default: return null;
     }
   }
 
-  const current = NAV_ITEMS.find((n) => n.id === active);
+  const navItems = NAV_ITEMS.filter((item) => !item.module || isModuleEnabled(item.module));
+  const current = navItems.find((n) => n.id === active);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Settings"
         subtitle="Manage your workspace, policies, and platform configuration"
-        actions={
-          <div className="flex items-center gap-2">
-            <Badge tone="green" dot>All systems operational</Badge>
-          </div>
-        }
       />
 
       {/* Below `lg` the section list is a picker above the content. It sat
@@ -5540,7 +4792,7 @@ export function SettingsPage() {
           ariaLabel="Settings section"
           value={active}
           onChange={setActive}
-          options={NAV_ITEMS.map((item) => ({ label: item.label, value: item.id }))}
+          options={navItems.map((item) => ({ label: item.label, value: item.id }))}
           className="w-full"
         />
       </div>
@@ -5550,7 +4802,7 @@ export function SettingsPage() {
         <aside className="hidden lg:block w-56 shrink-0 sticky top-20 z-10">
           <Card padding={false}>
             <nav className="py-2">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActive(item.id)}
@@ -5576,20 +4828,6 @@ export function SettingsPage() {
                 </button>
               ))}
             </nav>
-            {/* Footer info */}
-            <div className="border-t border-ink-100 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-7 rounded-lg bg-ink-900 flex items-center justify-center">
-                  <span className="text-white text-xs font-black">MC</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-ink-800 truncate">ModCon HR</p>
-                  <p className="text-[10px] text-ink-400">
-                    {billingPreferences.planTier} Plan · {billingPreferences.planTier === 'Enterprise' ? 'Unlimited seats' : `${billingPreferences.totalSeats} seats`}
-                  </p>
-                </div>
-              </div>
-            </div>
           </Card>
         </aside>
 

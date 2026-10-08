@@ -22,12 +22,12 @@ import { isBrowserTransportNoise } from './noise';
 const SMOKE_PERSONA = PERSONAS.admin;
 
 const MODULES: { label: string; path: string; heading: RegExp }[] = [
-  { label: 'Dashboard', path: '/', heading: /dashboard|welcome|overview/i },
-  { label: 'Employees', path: '/employees', heading: /employee/i },
+  { label: 'Today / Inbox', path: '/dashboard', heading: /dashboard|welcome|overview|good (morning|afternoon|evening)/i },
+  { label: 'People & Documents', path: '/employees', heading: /employee/i },
   { label: 'Attendance', path: '/attendance', heading: /attendance/i },
   { label: 'My Attendance', path: '/my-attendance', heading: /attendance/i },
   { label: 'Leave', path: '/leave', heading: /leave/i },
-  { label: 'Payroll', path: '/payroll', heading: /payroll/i },
+  { label: 'Payroll Readiness', path: '/payroll', heading: /payroll/i },
   { label: 'Recruitment', path: '/recruitment', heading: /recruit/i },
   { label: 'Onboarding', path: '/onboarding', heading: /onboard/i },
   { label: 'Performance', path: '/performance', heading: /performance/i },

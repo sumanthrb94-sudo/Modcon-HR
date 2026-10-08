@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
 import { EMPLOYEE_DIRECTORY_CHANGED_EVENT } from '@/data/employees';
 import { canAccessModule, isModuleExcluded, resolveAppRole, type AppModule } from '@/lib/accessControl';
+import { isModuleEnabled } from '@/lib/moduleSwitches';
 import { useAccessControlRevision } from '@/lib/useAccessControlRevision';
 import { isSuperAdminInsideOrg } from '@/lib/orgScope';
 
@@ -41,7 +42,6 @@ const LeaveRequestsApprovalsPage = lazy(() => import('@/pages/dashboard/LeaveReq
 const ExpenseClaimsApprovalsPage = lazy(() => import('@/pages/dashboard/ExpenseClaimsApprovalsPage').then((m) => ({ default: m.ExpenseClaimsApprovalsPage })));
 const RegularizationsApprovalsPage = lazy(() => import('@/pages/dashboard/RegularizationsApprovalsPage').then((m) => ({ default: m.RegularizationsApprovalsPage })));
 const OnboardingTasksApprovalsPage = lazy(() => import('@/pages/dashboard/OnboardingTasksApprovalsPage').then((m) => ({ default: m.OnboardingTasksApprovalsPage })));
-const AnnouncementsPage = lazy(() => import('@/pages/dashboard/AnnouncementsPage').then((m) => ({ default: m.AnnouncementsPage })));
 const CelebrationsPage = lazy(() => import('@/pages/dashboard/CelebrationsPage').then((m) => ({ default: m.CelebrationsPage })));
 const KpiGraphsPage = lazy(() => import('@/pages/dashboard/KpiGraphsPage').then((m) => ({ default: m.KpiGraphsPage })));
 const HolidayCalendarPage = lazy(() => import('@/pages/dashboard/HolidayCalendarPage').then((m) => ({ default: m.HolidayCalendarPage })));
@@ -177,6 +177,23 @@ function RequireOrgContext({ children }: { children: JSX.Element }) {
 }
 
 function AccessDeniedPage({ module, excluded }: { module: AppModule; excluded: boolean }) {
+  if (!isModuleEnabled(module)) {
+    // Not a permission: the organisation does not use this module. Saying
+    // "contact an administrator" would send somebody to ask for a role change
+    // that changes nothing.
+    return (
+      <div className="py-10">
+        <Card>
+          <div className="p-6 sm:p-8">
+            <h1 className="text-xl font-semibold text-ink-900">Not switched on</h1>
+            <p className="mt-2 text-sm text-ink-500">
+              Your organisation does not use {module}. An administrator can switch it on in Settings → Modules.
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="py-10">
       <Card>
@@ -313,7 +330,7 @@ function AppRoutes() {
             organisation-wide analytics — headcount, notice-period rate,
             average tenure — so they belong to Reports & Analytics, which an
             Employee does not hold. */}
-        <Route path="dashboard/announcements" element={<RequireModuleAccess module="Dashboard"><AnnouncementsPage /></RequireModuleAccess>} />
+        <Route path="dashboard/announcements" element={<Navigate to="/board" replace />} />
         <Route path="dashboard/celebrations" element={<RequireModuleAccess module="Dashboard"><CelebrationsPage /></RequireModuleAccess>} />
         <Route path="dashboard/kpi-graphs" element={<RequireModuleAccess module="Reports & Analytics"><KpiGraphsPage /></RequireModuleAccess>} />
         <Route path="dashboard/holiday-calendar" element={<RequireModuleAccess module="Dashboard"><HolidayCalendarPage /></RequireModuleAccess>} />

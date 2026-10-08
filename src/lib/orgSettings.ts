@@ -124,6 +124,11 @@ export const ORG_SETTINGS = {
   // still reads the server-backed profile role — but it stops one browser's
   // devtools edit from being the whole of it. See G5.
   accessControl: setting('accessControl', 'modcon.hr.accessControl.permissions', 'modcon-hr-access-control-changed'),
+  // Which optional modules this organisation uses at all. Shares the access
+  // control event because both answer "is this page in front of this person",
+  // and the nav, the route guards and the dashboard already re-render on it.
+  // See lib/moduleSwitches.ts.
+  enabledModules: setting('enabledModules', 'modcon.hr.enabledModules', 'modcon-hr-access-control-changed'),
   // Where the organisation accepts attendance from, and how hard it insists.
   // The fences themselves are configuration; the stamps they judge are
   // evidence and live in Firestore's `attendance_stamps`, not here — see

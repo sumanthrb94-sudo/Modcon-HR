@@ -1,3 +1,4 @@
+import { isModuleEnabled } from '@/lib/moduleSwitches';
 // ===========================================================================
 // ModCon HR — Dashboard module data & derived series
 // Every figure surfaced on a dashboard card is derived here from the real
@@ -276,7 +277,7 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
     .flatMap((onboarding) => onboarding.tasks)
     .filter((task) => task.status !== 'Completed');
 
-  return [
+  const items: ApprovalItem[] = [
     {
       type: 'Leave Requests',
       count: leave.length,
@@ -309,6 +310,11 @@ export function pendingApprovalsSummary(profile?: UserProfile | null): ApprovalI
       bgClass: 'bg-ink-100',
     },
   ];
+  // A queue for a module the organisation has switched off is not a queue
+  // anybody can work — see lib/moduleSwitches.ts.
+  return items.filter((item) =>
+    (item.type !== 'Expense Claims' || isModuleEnabled('Expenses')) &&
+    (item.type !== 'Onboarding Tasks' || isModuleEnabled('Onboarding')));
 }
 
 // ---------------------------------------------------------------------------
