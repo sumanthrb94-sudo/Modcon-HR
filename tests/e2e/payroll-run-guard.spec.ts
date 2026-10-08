@@ -70,7 +70,7 @@ test.describe.serial('payroll run guardrails', () => {
   });
 
   test('Run Payroll previews headcount and cost before it commits — or reports the cycle already ran', async () => {
-    await page.getByRole('link', { name: 'Payroll', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Payroll Readiness', exact: true }).first().click();
     await expect(page.getByRole('button', { name: 'Run Payroll' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Run Payroll' }).click();

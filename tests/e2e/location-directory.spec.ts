@@ -35,7 +35,7 @@ async function login(page: Page) {
 
 async function openAddEmployee(page: Page) {
   await page.goto('/employees');
-  await expect(page.getByRole('heading', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'Add Employee' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();

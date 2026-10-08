@@ -1022,7 +1022,9 @@ function AdminDashboard() {
             <CardHeader
               title="New Joiners"
               subtitle="Joined in last 60 days"
-              action={<Button variant="ghost" size="sm" icon={<UserPlus size={13} />} onClick={() => navigate('/onboarding')}>Onboard</Button>}
+              action={isModuleEnabled('Onboarding')
+                ? <Button variant="ghost" size="sm" icon={<UserPlus size={13} />} onClick={() => navigate('/onboarding')}>Onboard</Button>
+                : undefined}
             />
             {(() => {
               const cutoff = new Date(todayDate());

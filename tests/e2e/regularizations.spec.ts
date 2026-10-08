@@ -161,7 +161,7 @@ test.describe.serial('regularizations derive from attendance', () => {
     // Derived from the record just written, not from the seed.
     await expect(row.first()).toContainText('Marked absent');
     // Nobody asked for anything, so no status is claimed.
-    await expect(row.first().getByText('—', { exact: true })).toBeVisible();
+    await expect(row.first().getByTitle('Flagged from the attendance record; no status requested')).toBeVisible();
     // The Recorded column carries what the day actually says.
     await expect(row.first().getByText('Absent', { exact: true })).toBeVisible();
   });

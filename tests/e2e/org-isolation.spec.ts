@@ -319,7 +319,7 @@ test('a super admin outside every organisation sees the platform, not a tenant',
 
     // Stepping into one is what makes it theirs.
     await manageDefaultOrg(page);
-    await expect(page.getByRole('link', { name: 'Payroll', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Payroll Readiness', exact: true })).toBeVisible();
     await page.goto('/payroll');
     await expect(page.getByRole('heading', { name: 'Which organization?' })).toHaveCount(0);
   } finally {

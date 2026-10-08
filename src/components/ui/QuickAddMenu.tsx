@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, CalendarOff, LifeBuoy, Plus, Receipt, UserPlus } from 'lucide-react';
 import { Button } from './Button';
+import { isModuleEnabled } from '@/lib/moduleSwitches';
 
 interface QuickAddMenuProps {
     size?: 'sm' | 'md';
@@ -9,17 +10,19 @@ interface QuickAddMenuProps {
     className?: string;
 }
 
-const quickActions = [
+const allQuickActions = [
     { label: 'Add Employee', description: 'Open employee module', path: '/employees', icon: UserPlus },
     { label: 'Leave Request', description: 'Open leave module', path: '/leave', icon: CalendarOff },
-    { label: 'Job Opening', description: 'Open recruitment module', path: '/recruitment', icon: Briefcase },
-    { label: 'Log Expense', description: 'Open expenses module', path: '/expenses', icon: Receipt },
-    { label: 'Helpdesk Ticket', description: 'Open helpdesk module', path: '/helpdesk', icon: LifeBuoy },
+    { label: 'Job Opening', description: 'Open recruitment module', path: '/recruitment', icon: Briefcase, module: 'Recruitment' as const },
+    { label: 'Log Expense', description: 'Open expenses module', path: '/expenses', icon: Receipt, module: 'Expenses' as const },
+    { label: 'Helpdesk Ticket', description: 'Open helpdesk module', path: '/helpdesk', icon: LifeBuoy, module: 'Helpdesk' as const },
 ];
 
 export function QuickAddMenu({ size = 'sm', variant = 'primary', className }: QuickAddMenuProps) {
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
+    // Only modules this organisation has switched on — see lib/moduleSwitches.ts.
+    const quickActions = allQuickActions.filter((action) => !('module' in action) || !action.module || isModuleEnabled(action.module));
     const menuRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {

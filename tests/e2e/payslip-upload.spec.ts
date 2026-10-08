@@ -87,7 +87,7 @@ test.describe.serial('an administrator uploads payslips', () => {
   });
 
   test('files are matched to people before anything is uploaded', async () => {
-    await page.getByRole('link', { name: 'Payroll', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Payroll Readiness', exact: true }).first().click();
     await page.getByRole('button', { name: 'Upload payslips' }).click();
 
     const dialog = page.getByRole('dialog');

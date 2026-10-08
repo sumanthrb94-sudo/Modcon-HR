@@ -174,7 +174,7 @@ async function breakdownFor(page: Page, name: string): Promise<Breakdown> {
  * every module and would hide the very thing this checks.
  */
 async function payslipComponentsFor(page: Page, name: string): Promise<Breakdown> {
-  await page.getByRole('link', { name: 'Payroll', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Payroll Readiness', exact: true }).first().click();
   // Anchored: "Upload payslips" is also a button on this page, and the tab
   // carries its count ("Payslips42").
   await page.getByRole('button', { name: /^Payslips\d*$/ }).click();

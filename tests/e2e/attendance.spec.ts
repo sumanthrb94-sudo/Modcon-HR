@@ -168,7 +168,7 @@ test.describe.serial('raising a regularization', () => {
     await expect(flagged).toBeVisible();
     // Nobody asked for anything on a day the app flagged, so the Requested
     // cell is empty. It used to read "Present" on every one of these.
-    await expect(flagged.getByText('—', { exact: true })).toBeVisible();
+    await expect(flagged.getByTitle('Flagged from the attendance record; no status requested')).toBeVisible();
     // The Recorded cell carries the real value off the attendance record.
     await expect(flagged.getByText('Absent', { exact: true })).toBeVisible();
 

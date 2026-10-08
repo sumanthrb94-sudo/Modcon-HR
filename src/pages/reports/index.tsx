@@ -1,3 +1,4 @@
+import { isModuleEnabled } from '@/lib/moduleSwitches';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -488,7 +489,7 @@ export function ReportsPage() {
           </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {reportLibrary.map((r) => (
+          {reportLibrary.filter((r) => (r.route !== '/recruitment' || isModuleEnabled('Recruitment')) && (r.route !== '/performance' || isModuleEnabled('Performance'))).map((r) => (
             <Card key={r.title} className="hover:shadow-card-hover transition-shadow">
               <div className="flex items-start gap-3 mb-3">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${r.bg} ${r.color} shrink-0`}>
