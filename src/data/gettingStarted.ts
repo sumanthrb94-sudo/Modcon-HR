@@ -197,3 +197,20 @@ export function getEmployeeTasks(
 export function outstandingCount(tasks: GettingStartedTask[]): number {
   return tasks.filter((task) => !task.done && !task.optional).length;
 }
+
+/**
+ * The tasks the guided setup (`/setup`) walks through, in its order.
+ *
+ * They are the ones without which the app does nothing useful at all — nobody
+ * to track, no day off, nothing to take leave against — so they are what the
+ * dashboard's prompt and the checklist's button ask about. The rest of the
+ * checklist is still real work; it is where the setup hands over at the end.
+ */
+export const GUIDED_SETUP_TASK_IDS = ['company-profile', 'employees', 'week-off', 'leave-policies'] as const;
+
+/** True while any of the guided setup's tasks is undone. */
+export function guidedSetupOutstanding(tasks: GettingStartedTask[] = getOrganisationTasks()): boolean {
+  return tasks.some(
+    (task) => (GUIDED_SETUP_TASK_IDS as readonly string[]).includes(task.id) && !task.done,
+  );
+}

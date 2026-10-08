@@ -183,6 +183,15 @@ The Super Admin cannot read an organisation's HR data (gate G3), so Support (`/s
 - **"Onboarding In Progress" counts every record under 100%.** It required `progress > 0` as well, so a new hire on day one — the clearest case of one in progress — counted as none.
 - Employees already tracked are absent from the picker rather than disabled: a second checklist would split one person's progress across two records.
 
+### Guided setup — company, people, week off and leave, in that order
+
+`/setup` ([src/pages/setup](src/pages/setup/index.tsx)) is the first-run sequence for an organisation's administrators (`RequireOrgAdmin` + `RequireOrgContext`). The Getting Started checklist lists ten things in any order; this walks the four without which the app does nothing (`GUIDED_SETUP_TASK_IDS` in `src/data/gettingStarted.ts`) and hands the rest back to the checklist at the end. The dashboard shows a `SetupPrompt` strip while any of the four is undone — a strip, not the checklist's overlay, which once swallowed somebody's first click.
+
+- **It keeps no progress of its own.** Each step opens on what is saved and the "done" signals are the checklist's getters, so finishing a step in Settings instead is just as finished. A step that changes nothing writes nothing — re-publishing a whole `org_settings` document from a stale page would undo a colleague's edit.
+- **People come in through `createEmployeeFromDetails`**, now in [src/data/createEmployee.ts](src/data/createEmployee.ts) so the Employees page and the import share one copy (and one account-link call). The CSV is read by [src/data/employeeImport.ts](src/data/employeeImport.ts), pure and unit-tested: columns found by header with aliases, in any order; dates day-first; the same required fields as Add Employee; anyone already in the directory or repeated in the file refused; every unusable row reported with its line.
+- **Leave templates are a choice, not a default** ([src/data/leavePolicyTemplates.ts](src/data/leavePolicyTemplates.ts)). Nothing is applied until an administrator picks one with its figures on screen, "set it up myself" sits beside them, and ids are `lp-tpl-*` so `inheritedDemoPolicies` never mistakes one for borrowed demo data.
+- `tests/e2e/guided-setup.spec.ts` (org-settings project) proves the import reaches Firestore. It deliberately does **not** submit the company or policy steps: other specs in that project rewrite those same documents concurrently.
+
 ### Statutory payroll is off until the organisation declares it on
 
 India's provident fund, ESI, professional tax and TDS are computed by [src/data/statutoryRules.ts](src/data/statutoryRules.ts) — pure arithmetic, imports nothing, unit-tested — and switched on per organisation from Settings → Payroll Compliance ([src/data/statutory.ts](src/data/statutory.ts), registered in `ORG_SETTINGS` as `statutoryConfig` and `employeeTaxElections`).

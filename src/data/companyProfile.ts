@@ -26,6 +26,12 @@ export interface CompanyProfile {
   supportEmail: string;
   phone: string;
   /**
+   * Roughly how many people work here, as the guided setup asked it — one of
+   * `TEAM_SIZE_BANDS`, or '' when nobody has said. A description of the
+   * company, not a count: the directory is the count.
+   */
+  teamSize: string;
+  /**
    * Job titles that carry the HR function. Someone appointed to one of these
    * administers this organisation (see data/roleAssignments.ts) and oversees
    * every employee's records (see lib/dataScope.ts).
@@ -52,8 +58,12 @@ const emptyCompanyProfile: CompanyProfile = {
   cin: '',
   supportEmail: '',
   phone: '',
+  teamSize: '',
   hrDesignations: [],
 };
+
+/** The bands the guided setup offers. */
+export const TEAM_SIZE_BANDS = ['1–9', '10–25', '26–50', '51–100', 'More than 100'] as const;
 
 /**
  * The demo organisation's own details. These belong to ModCon Builders and are
@@ -72,6 +82,7 @@ const demoCompanyProfile: CompanyProfile = {
   cin: 'U72900KA2019PTC12345',
   supportEmail: 'hr@modcon.io',
   phone: '+91 80 4567 8900',
+  teamSize: '26–50',
   hrDesignations: ['Head of People', 'HR Business Partner', 'HR Executive', 'Talent Acquisition Lead'],
 };
 
@@ -96,6 +107,7 @@ export function getCompanyProfile(): CompanyProfile {
     return {
       ...emptyCompanyProfile,
       ...parsed,
+      teamSize: typeof parsed.teamSize === 'string' ? parsed.teamSize : '',
       // Guards against a record written before this was a list, and against a
       // hand-edited value of the wrong shape — callers iterate it.
       hrDesignations: Array.isArray(parsed.hrDesignations)

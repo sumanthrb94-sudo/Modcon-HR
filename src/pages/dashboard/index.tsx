@@ -1,6 +1,7 @@
 // ===========================================================================
 // ModCon HR — Dashboard (HR Command-Center)
 // ===========================================================================
+import { SetupPrompt } from '@/components/SetupPrompt';
 import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -527,7 +528,12 @@ function EmployeeDashboard() {
 export function DashboardPage() {
   const { profile } = useAuth();
 
-  return profile?.role === 'admin' ? <AdminDashboard /> : <EmployeeDashboard />;
+  return (
+    <>
+      <SetupPrompt />
+      {profile?.role === 'admin' ? <AdminDashboard /> : <EmployeeDashboard />}
+    </>
+  );
 }
 
 function AdminDashboard() {

@@ -12,6 +12,7 @@ import { orgScopedKey } from '@/lib/orgScope';
 import {
   getEmployeeTasks,
   getOrganisationTasks,
+  guidedSetupOutstanding,
   outstandingCount,
   type GettingStartedTask,
 } from '@/data/gettingStarted';
@@ -228,6 +229,20 @@ export function GettingStarted() {
               {tasks.filter((task) => task.done).length} of {tasks.length} done
             </span>
           </div>
+
+          {isOrgAdmin && guidedSetupOutstanding(tasks) && (
+            /* The first four of these are a sequence, not a menu — the guided
+               setup walks them in order and hands back to this list. */
+            <div className="border-2 border-ink-900 px-4 py-3">
+              <p className="text-sm font-semibold text-ink-900">New here? Take the five-minute setup.</p>
+              <p className="mt-0.5 text-xs text-ink-600">
+                Company, people, week off and leave, one step at a time. Anything already saved is filled in for you.
+              </p>
+              <Button className="mt-2" size="sm" onClick={() => go('/setup')}>
+                Start setup <ArrowRight size={12} />
+              </Button>
+            </div>
+          )}
 
           <ul>
             {tasks.map((task) => (

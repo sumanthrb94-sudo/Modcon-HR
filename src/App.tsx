@@ -30,6 +30,7 @@ const ExpensesPage = lazy(() => import('@/pages/expenses').then((m) => ({ defaul
 const AssetsPage = lazy(() => import('@/pages/assets').then((m) => ({ default: m.AssetsPage })));
 const HelpdeskPage = lazy(() => import('@/pages/helpdesk').then((m) => ({ default: m.HelpdeskPage })));
 const SupportPage = lazy(() => import('@/pages/support').then((m) => ({ default: m.SupportPage })));
+const SetupPage = lazy(() => import('@/pages/setup').then((m) => ({ default: m.SetupPage })));
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })));
 const DocumentsPage = lazy(() => import('@/pages/documents').then((m) => ({ default: m.DocumentsPage })));
 const SettingsPage = lazy(() => import('@/pages/settings').then((m) => ({ default: m.SettingsPage })));
@@ -292,6 +293,11 @@ function AppRoutes() {
         {/* HR and Administrator of an organisation, and the Super Admin, who
             answers. Managers and Employees are redirected: they use Helpdesk. */}
         <Route path="support" element={<RequireOrgAdmin><SupportPage /></RequireOrgAdmin>} />
+        {/* The guided first-run setup. An organisation's own administrators
+            only — it writes the company profile, the directory and policy —
+            and inside an organisation, so a super admin outside every company
+            is not offered one to set up. */}
+        <Route path="setup" element={<RequireOrgAdmin><RequireOrgContext><SetupPage /></RequireOrgContext></RequireOrgAdmin>} />
         <Route path="approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals" element={<RequireManager><PendingApprovalsPage /></RequireManager>} />
         <Route path="dashboard/pending-approvals/leave-requests" element={<RequireManager><LeaveRequestsApprovalsPage /></RequireManager>} />
