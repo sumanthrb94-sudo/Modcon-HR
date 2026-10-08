@@ -4,6 +4,7 @@ import {
   LayoutGrid,
   List,
   Plus,
+  KeyRound,
   Users,
   UserCheck,
   Clock,
@@ -80,6 +81,7 @@ import {
 const CUSTOM_SHIFT = '__custom__';
 import { linkAccountForEmployee } from '@/data/employeeLinks';
 import { CreateLoginButton } from './CreateLoginDialog';
+import { BulkCreateLoginsDialog } from './BulkCreateLoginsDialog';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -431,6 +433,7 @@ export function EmployeesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeTab, setActiveTab] = useState<DirectoryTab>('directory');
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [bulkLoginsOpen, setBulkLoginsOpen] = useState(false);
   // Surfaced when adding or moving someone changes their platform access —
   // a silent role grant is the kind of thing an admin should be told about.
   const [roleNotice, setRoleNotice] = useState<string | null>(null);
@@ -638,21 +641,34 @@ export function EmployeesPage() {
           </div>
         </div>
       )}
+      <BulkCreateLoginsDialog open={bulkLoginsOpen} onClose={() => setBulkLoginsOpen(false)} employees={visibleEmployeeList} />
       <PageHeader
         title="Employees"
         subtitle={isEmployeeSelfView
           ? (currentEmployee ? 'Your employee record' : 'Your employee profile is not available yet')
           : `${totalCount} people across ${deptCount} departments`}
         actions={!isEmployeeSelfView ? (
-          <Button
-            variant="primary"
-            icon={<Plus size={16} />}
-            onClick={() => setAddModalOpen(true)}
-            disabled={workspaceLocked}
-            title={workspaceLocked ? 'Paused until billing is arranged — Settings → Billing' : undefined}
-          >
-            Add Employee
-          </Button>
+          <>
+            {(isHR || isAdmin) && (
+              <Button
+                variant="secondary"
+                icon={<KeyRound size={16} />}
+                onClick={() => setBulkLoginsOpen(true)}
+                disabled={workspaceLocked}
+              >
+                Create logins
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              icon={<Plus size={16} />}
+              onClick={() => setAddModalOpen(true)}
+              disabled={workspaceLocked}
+              title={workspaceLocked ? 'Paused until billing is arranged — Settings → Billing' : undefined}
+            >
+              Add Employee
+            </Button>
+          </>
         ) : undefined}
       />
 

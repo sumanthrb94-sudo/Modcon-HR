@@ -384,3 +384,22 @@ export function useEmployeeHasLogin(
 
   return hasLogin;
 }
+
+/**
+ * Every employee id in this organisation that has a login, for the life of the
+ * component — the bulk counterpart of `useEmployeeHasLogin`, read from the
+ * same `employee_links` and nothing else. `undefined` while resolving or if
+ * the read fails, which callers treat as "unknown", never as "nobody".
+ */
+export function useEmployeeIdsWithLogin(orgId: string | undefined): Set<string> | undefined {
+  const [ids, setIds] = useState<Set<string> | undefined>(undefined);
+  useEffect(() => {
+    setIds(undefined);
+    return onSnapshot(
+      query(collection(db, 'employee_links'), where('orgId', '==', orgId || DEFAULT_ORG_KEY)),
+      (snap) => setIds(new Set(snap.docs.map((d) => String(d.data().employeeId ?? '')).filter(Boolean))),
+      () => {},
+    );
+  }, [orgId]);
+  return ids;
+}

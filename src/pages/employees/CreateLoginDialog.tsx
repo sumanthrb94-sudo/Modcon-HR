@@ -11,7 +11,7 @@ import {
 } from '@/lib/accountInvites';
 import { linkAccountForEmployee, useEmployeeHasLogin } from '@/data/employeeLinks';
 import type { Employee } from '@/types';
-import type { UserRole } from '@/lib/auth';
+import type { UserProfile, UserRole } from '@/lib/auth';
 
 /**
  * Give an employee a way to sign in — from their own record, where HR is
@@ -55,6 +55,57 @@ import type { UserRole } from '@/lib/auth';
  * by waiting rather than guessing "Reset password" for an account that may
  * not be there.
  */
+export type CreateLoginOutcome =
+  | { status: 'created'; result: InviteAccountResult }
+  | { status: 'existing'; message: string }
+  | { status: 'failed'; message: string };
+
+/**
+ * Create one employee's login — the one definition the single dialog and the
+ * bulk one both use, so "the address already has an account" is handled the
+ * same way whichever button was pressed.
+ */
+export async function createLoginForEmployee(
+  employee: Employee,
+  role: UserRole,
+  profile: UserProfile,
+): Promise<CreateLoginOutcome> {
+  try {
+    const result = await inviteAccount(
+      {
+        name: employee.fullName,
+        email: employee.email ?? '',
+        role,
+        // The inviter's own organisation, never chosen here — the same
+        // rule the Admin dashboard's form follows.
+        orgId: profile.orgId ?? '',
+      },
+      profile.uid,
+    );
+    return { status: 'created', result };
+  } catch (err) {
+    const code = (err as { code?: string })?.code ?? '';
+    if (code !== 'auth/email-already-in-use') return { status: 'failed', message: friendlyInviteError(err) };
+    // Not a failure worth stopping on: the account they need already exists,
+    // and what is almost certainly missing is the link between it and this
+    // record. Pointing it here is the useful thing to do, and it is exactly
+    // what Add Employee does for an address that already has an account.
+    const outcome = await linkAccountForEmployee({
+      employeeId: employee.id,
+      email: employee.email ?? '',
+      orgId: profile.orgId || undefined,
+      linkedBy: profile.email ?? profile.uid,
+    });
+    return {
+      status: 'existing',
+      message:
+        outcome.status === 'linked' || outcome.status === 'already-linked'
+          ? `${employee.email} already has an account, and it is now pointed at this record. They sign in with the password they already have — use “Send a set-password link” if they have forgotten it.`
+          : `${employee.email} already has an account, but it could not be linked to this record automatically (${outcome.status}). Use the identity backfill in Settings → Database.`,
+    };
+  }
+}
+
 export function CreateLoginDialog({
   employee,
   open,
@@ -95,45 +146,11 @@ export function CreateLoginDialog({
     setWorking(true);
     setError('');
     setLinkedExisting('');
-    try {
-      setResult(
-        await inviteAccount(
-          {
-            name: employee.fullName,
-            email: employee.email ?? '',
-            role,
-            // The inviter's own organisation, never chosen here — the same
-            // rule the Admin dashboard's form follows.
-            orgId: profile.orgId ?? '',
-          },
-          profile.uid,
-        ),
-      );
-    } catch (err) {
-      const code = (err as { code?: string })?.code ?? '';
-      if (code === 'auth/email-already-in-use') {
-        // Not a failure worth stopping on: the account they need already
-        // exists, and what is almost certainly missing is the link between it
-        // and this record. Pointing it here is the useful thing to do, and it
-        // is exactly what Add Employee does for an address that already has an
-        // account.
-        const outcome = await linkAccountForEmployee({
-          employeeId: employee.id,
-          email: employee.email ?? '',
-          orgId: profile.orgId || undefined,
-          linkedBy: profile.email ?? profile.uid,
-        });
-        setLinkedExisting(
-          outcome.status === 'linked' || outcome.status === 'already-linked'
-            ? `${employee.email} already has an account, and it is now pointed at this record. They sign in with the password they already have — use “Send a set-password link” if they have forgotten it.`
-            : `${employee.email} already has an account, but it could not be linked to this record automatically (${outcome.status}). Use the identity backfill in Settings → Database.`,
-        );
-      } else {
-        setError(friendlyInviteError(err));
-      }
-    } finally {
-      setWorking(false);
-    }
+    const outcome = await createLoginForEmployee(employee, role, profile);
+    if (outcome.status === 'created') setResult(outcome.result);
+    else if (outcome.status === 'existing') setLinkedExisting(outcome.message);
+    else setError(outcome.message);
+    setWorking(false);
   }
 
   async function resend() {
