@@ -11,6 +11,7 @@ import { getLeaveRequests } from '@/data/leave';
 import { normalizeLeaveTypeValue } from '@/data/leavePolicies';
 import { combineLossOfPay, lossOfPayArrears, unpaidLeaveByDate, type LopArrear, type PaidMonth } from '@/data/lossOfPay';
 import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
+import { employedDaysInMonth, monthlyCtcFor, salaryArrears, type PaidMonthBasis, type SalaryArrear } from '@/data/payChanges';
 import {
   getTaxElectionFor,
   professionalTaxScheduleForLocation,
@@ -76,6 +77,16 @@ export interface PayslipComponents {
   lossOfPay: number;
   /** Days of unpaid absence the deduction was calculated from. */
   lopDays: number;
+  /**
+   * The monthly CTC this month was priced on — CTC ÷ 12, weighted by the days
+   * each salary was in force when a revision falls inside the month.
+   */
+  ctcBasis: number;
+  /** Days of the month this person was employed — fewer than `payableDays` for a joiner or leaver. */
+  employedDays: number;
+  /** Arrears of earlier months' salary owed after a backdated revision, paid on this payslip. */
+  salaryArrears: SalaryArrear[];
+  salaryArrearsAmount: number;
   /** Working days in the month, the divisor for the per-day rate. */
   payableDays: number;
   /**
@@ -208,6 +219,26 @@ export function lossOfPayDays(
  */
 let storedPayslips: () => Payslip[] = () => [];
 
+/** Each month already paid, as `salaryArrears` needs it. */
+function paidBasesFor(employeeId: string): PaidMonthBasis[] {
+  const seen = new Set<string>();
+  const out: PaidMonthBasis[] = [];
+  for (const payslip of storedPayslips()) {
+    if (payslip.employeeId !== employeeId || seen.has(payslip.month)) continue;
+    seen.add(payslip.month);
+    out.push({
+      month: payslip.month,
+      ctcBasis: payslip.ctcBasis,
+      grossEarnings: payslip.grossEarnings,
+      employedDays: payslip.employedDays,
+      payableDays: daysInMonth(payslip.month),
+      lopDays: payslip.lopDays ?? 0,
+      salaryArrears: payslip.salaryArrears,
+    });
+  }
+  return out;
+}
+
 function paidMonthsFor(employeeId: string): PaidMonth[] {
   const seen = new Set<string>();
   const paid: PaidMonth[] = [];
@@ -238,8 +269,12 @@ function paidMonthsFor(employeeId: string): PaidMonth[] {
 export function buildPayslipComponents(
   employee: Employee,
   month: string = currentMonthIso(),
+  /** False when only this month's own figures are wanted — see salaryArrears. */
+  withSalaryArrears = true,
 ): PayslipComponents {
-  const monthlyCtc = Math.round(employee.ctc / 12);
+  // CTC ÷ 12 for a month on one salary; weighted by days when a revision
+  // falls inside it. See data/payChanges.ts.
+  const monthlyCtc = monthlyCtcFor(month, employee.ctc, employee.salaryHistory);
 
   // What this organisation has declared it is registered for. All-off for one
   // that has declared nothing, which is every organisation until an
@@ -273,14 +308,20 @@ export function buildPayslipComponents(
   const resolved = resolveMonthlyGross({ monthlyCtc, config, wagesOf: basicOf, esi: esiOptions });
   const monthly = resolved.grossEarnings;
 
-  const split = splitMonthlyGross(monthly, structure);
+  // Somebody who joined or left part-way through is paid for the days they
+  // were employed. It used to pay the whole month to everybody on the roll,
+  // which paid a joiner on the 15th for the fortnight before they arrived.
+  const { employedDays, payableDays } = employedDaysInMonth(month, employee.dateOfJoining, employee.lastWorkingDay);
+  const earned = employedDays >= payableDays ? monthly : Math.round((monthly * employedDays) / payableDays);
+
+  const split = splitMonthlyGross(earned, structure);
   const { basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance } =
     split ?? { basic: 0, hra: 0, medicalAllowance: 0, conveyanceAllowance: 0, specialAllowance: 0 };
   const bonus = 0; // no bonus in regular month
   // The month's pay, which is known whether or not the split is: the components
-  // sum to `monthly` by construction when there is a structure, and an
+  // sum to `earned` by construction when there is a structure, and an
   // unconfigured organisation still pays its people.
-  const grossEarnings = monthly + bonus;
+  const grossEarnings = earned + bonus;
 
   // ---- Statutory ----------------------------------------------------------
   //
@@ -302,7 +343,9 @@ export function buildPayslipComponents(
   // has already been withheld against the rest of the year the moment the
   // figure moves.
   const monthsRemaining = monthsLeftInFinancialYear(month);
-  const projectedAnnualSalary = grossEarnings * 12;
+  // The full monthly rate, not a joiner's part-month: their year is projected
+  // on what they will earn, not on the fortnight they happened to start with.
+  const projectedAnnualSalary = monthly * 12;
   const assessment = config.incomeTax.enabled
     ? annualIncomeTax({
       grossSalary: projectedAnnualSalary,
@@ -352,9 +395,10 @@ export function buildPayslipComponents(
       }
       : null;
 
-  const payableDays = daysInMonth(month);
   const lopDays = lossOfPayDays(employee.id, month, employee);
-  const lossOfPay = Math.round((grossEarnings / payableDays) * lopDays);
+  // Priced on the full month's rate per day, so a part-month's absences cost
+  // the same per day as a whole month's.
+  const lossOfPay = Math.round((monthly / payableDays) * lopDays);
 
   const lopArrears = lossOfPayArrears(
     month,
@@ -363,13 +407,24 @@ export function buildPayslipComponents(
   );
   const lopArrearsAmount = lopArrears.reduce((sum, arrear) => sum + arrear.amount, 0);
 
+  // Each earlier month is recomputed for its own gross only, never for its
+  // own arrears, so this does not recurse back through every month before it.
+  const arrears = withSalaryArrears
+    ? salaryArrears(month, paidBasesFor(employee.id), (earlier) => {
+      const c = buildPayslipComponents(employee, earlier, false);
+      return { ctcBasis: c.ctcBasis, grossEarnings: c.grossEarnings };
+    })
+    : [];
+  const salaryArrearsAmount = arrears.reduce((sum, arrear) => sum + arrear.amount, 0);
+
   const totalDeductions = lossOfPay + lopArrearsAmount + pf + tax + otherDeductions;
-  const netPay = grossEarnings - totalDeductions;
+  const netPay = grossEarnings + salaryArrearsAmount - totalDeductions;
 
   return {
     monthly, splitConfigured: split !== null,
     basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance, bonus,
     pf, tax, otherDeductions, lossOfPay, lopDays, payableDays, lopArrears, lopArrearsAmount,
+    ctcBasis: monthlyCtc, employedDays, salaryArrears: arrears, salaryArrearsAmount,
     statutory,
     grossEarnings, totalDeductions, netPay,
   };
@@ -402,6 +457,12 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     lopDays: c.lopDays,
     ...(c.lopArrears.length > 0
       ? { lopArrears: c.lopArrears.map(({ month: m, days, amount }) => ({ month: m, days, amount })) }
+      : {}),
+    // What a later backdated raise is measured against — see salaryArrears.
+    ctcBasis: c.ctcBasis,
+    ...(c.employedDays < c.payableDays ? { employedDays: c.employedDays } : {}),
+    ...(c.salaryArrears.length > 0
+      ? { salaryArrears: c.salaryArrears.map(({ month: m, amount }) => ({ month: m, amount })) }
       : {}),
     grossEarnings: c.grossEarnings,
     totalDeductions: c.totalDeductions,
@@ -567,15 +628,41 @@ export const savePayslips = (next: Payslip[]) => payslipStore.save(next);
  * employee can check it with a calculator rather than take it on trust.
  */
 export function lossOfPayFormula(
-  components: Pick<PayslipComponents, 'grossEarnings' | 'payableDays' | 'lopDays'>,
+  components: Pick<PayslipComponents, 'monthly' | 'payableDays' | 'lopDays'>,
 ): string {
-  const gross = `₹${components.grossEarnings.toLocaleString('en-IN')}`;
+  // The full month's rate, which is what a day is priced on — for a joiner or
+  // leaver that is more than the part-month they earned.
+  const gross = `₹${components.monthly.toLocaleString('en-IN')}`;
   return `${gross} ÷ ${components.payableDays} days × ${components.lopDays} day${components.lopDays === 1 ? '' : 's'}`;
 }
 
 function formatMonth(month: string): string {
   const [year, m] = month.split('-').map(Number);
   return new Date(Date.UTC(year, m - 1, 1)).toLocaleString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * Salary arrears paid on a payslip, one row for all the months it covers.
+ * Empty when there are none — a ₹0 arrears line every month is noise.
+ */
+export function salaryArrearsRows(
+  arrears: readonly { month: string; amount: number }[] | undefined,
+): Array<{ label: string; value: number; hint: string }> {
+  const list = arrears ?? [];
+  const total = list.reduce((sum, a) => sum + a.amount, 0);
+  if (total === 0) return [];
+  return [{
+    label: total > 0 ? 'Salary arrears (earlier months)' : 'Salary overpaid (earlier months)',
+    value: total,
+    hint: list.map((a) => `${formatMonth(a.month)}: ₹${a.amount.toLocaleString('en-IN')}`).join(', '),
+  }];
+}
+
+/** "Paid for 16 of 30 days" for a joiner's or leaver's month; null for a whole month. */
+export function partMonthNote(employedDays: number | undefined, month: string): string | null {
+  const payableDays = daysInMonth(month);
+  if (employedDays === undefined || employedDays >= payableDays) return null;
+  return `Paid for ${employedDays} of ${payableDays} days`;
 }
 
 export function deductionRows(
@@ -654,13 +741,18 @@ export function storedDeductionRows(payslip: Payslip): Array<{ label: string; va
   const rows: Array<{ label: string; value: number; hint?: string }> = [];
   if (typeof payslip.lopDays === 'number') {
     const payableDays = daysInMonth(payslip.month);
-    const lossOfPay = Math.round((payslip.grossEarnings / payableDays) * payslip.lopDays);
+    // A part-month's payslip earned less than the month's rate; a day is
+    // priced on the rate, the same as buildPayslipComponents does it.
+    const monthly = payslip.employedDays
+      ? Math.round((payslip.grossEarnings * payableDays) / payslip.employedDays)
+      : payslip.grossEarnings;
+    const lossOfPay = Math.round((monthly / payableDays) * payslip.lopDays);
     const arrears = (payslip.lopArrears ?? []).reduce((sum, a) => sum + a.amount, 0);
     rows.push({
       label: 'Loss of Pay (unpaid absence)',
       value: lossOfPay,
       hint: payslip.lopDays > 0
-        ? lossOfPayFormula({ grossEarnings: payslip.grossEarnings, payableDays, lopDays: payslip.lopDays })
+        ? lossOfPayFormula({ monthly, payableDays, lopDays: payslip.lopDays })
         : undefined,
     });
     if (arrears !== 0) {

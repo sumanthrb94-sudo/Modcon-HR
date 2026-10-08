@@ -130,6 +130,47 @@ export interface Employee {
   esicNumber?: string;
   bankAccountNumber?: string;
   bankIfsc?: string;
+
+  /**
+   * Every change to `ctc`, oldest first. `ctc` above is the latest agreed
+   * figure; payroll prices each month on the CTC in force on each of its days
+   * (`monthlyCtcFor` in data/payChanges.ts), so a raise effective in the past
+   * is paid as arrears rather than repricing months already paid.
+   */
+  salaryHistory?: SalaryRevision[];
+  /**
+   * The last day they work here, once somebody has resigned or been let go.
+   * Payroll pays their final month to this day and nobody after it.
+   */
+  lastWorkingDay?: string;
+  exitReason?: string;
+  /** The full and final settlement HR confirmed, kept as it was confirmed. */
+  finalSettlement?: ConfirmedSettlement;
+}
+
+/** A revision of somebody's annual CTC — see `Employee.salaryHistory`. */
+export interface SalaryRevision {
+  /** First day the new CTC applies, YYYY-MM-DD. */
+  readonly effectiveFrom: string;
+  /** Annual CTC from that day. */
+  readonly ctc: number;
+  /** Annual CTC before it, so one entry reads without the rest of the list. */
+  readonly previousCtc: number;
+  readonly reason?: string;
+  /** When HR recorded it, YYYY-MM-DD. */
+  readonly recordedOn: string;
+}
+
+export interface ConfirmedSettlement {
+  readonly confirmedOn: string;
+  readonly encashableDays: number;
+  readonly leaveEncashment: number;
+  readonly gratuity: number;
+  readonly noticeShortDays: number;
+  readonly noticeRecovery: number;
+  readonly otherAmount: number;
+  readonly otherNote?: string;
+  readonly net: number;
 }
 
 // `ctc` lives on `Employee` above for the in-app mock/demo dataset, which is
@@ -258,6 +299,12 @@ export interface Payslip {
   lopDays?: number;
   /** Earlier months' loss of pay recovered (or refunded, negative) on this payslip. */
   lopArrears?: { month: string; days: number; amount: number }[];
+  /** The monthly CTC this payslip was priced on — what salary arrears are measured from. */
+  ctcBasis?: number;
+  /** Days of the month the person was employed, when fewer than all of them. */
+  employedDays?: number;
+  /** Arrears of an earlier month's salary paid on this payslip, after a backdated raise. */
+  salaryArrears?: { month: string; amount: number }[];
   grossEarnings: number;
   totalDeductions: number;
   netPay: number;

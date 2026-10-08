@@ -77,3 +77,11 @@ test('a record the app invented for an administrator is excluded from a run, and
   assert.match(roll.excluded[0].reason, /never entered/);
   assert.deepEqual(payRunRoll([corrected], '2026-09').payees.map((e) => e.id), ['emp-hr-001-evDh2Y']);
 });
+
+test('a leaver is paid for their last month and not after it', () => {
+  const leaver = { status: 'Resigned' as const, dateOfJoining: '2024-01-01', lastWorkingDay: '2026-10-10' };
+  assert.equal(payeesFor([leaver], '2026-10').length, 1);
+  assert.equal(payeesFor([leaver], '2026-11').length, 0);
+  // Serving notice: still on the roll until the day.
+  assert.equal(payeesFor([{ ...leaver, status: 'Notice Period' as const }], '2026-10').length, 1);
+});

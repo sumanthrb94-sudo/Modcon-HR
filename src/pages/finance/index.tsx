@@ -26,6 +26,8 @@ import {
   buildPayslip,
   buildPayslipComponents,
   deductionRows,
+  partMonthNote,
+  salaryArrearsRows,
   employerContributionRows,
   getPayslips,
   storedDeductionRows,
@@ -317,6 +319,18 @@ function EmployeeFinancePage() {
               <span className="font-semibold text-ink-900">Gross Earnings</span>
               <span className="font-bold text-emerald-700">{formatINR(salary.grossEarnings)}</span>
             </div>
+            {partMonthNote(salary.employedDays, currentPayslip.month) && (
+              <p className="text-xs text-ink-500">{partMonthNote(salary.employedDays, currentPayslip.month)}, from your joining or last working day.</p>
+            )}
+            {salaryArrearsRows(salary.salaryArrears).map((row) => (
+              <div key={row.label} className="flex items-start justify-between text-sm">
+                <span className="text-ink-600">
+                  {row.label}
+                  <span className="block text-xs text-ink-400">{row.hint}</span>
+                </span>
+                <span className="font-medium text-ink-900">{formatINR(row.value)}</span>
+              </div>
+            ))}
           </div>
         </Card>
 

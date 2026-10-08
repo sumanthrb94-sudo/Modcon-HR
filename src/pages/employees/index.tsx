@@ -106,6 +106,7 @@ import { getEntitlements } from '@/data/leaveEntitlements';
 import { getLeavePolicies, hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents, deductionRows, employerContributionRows } from '@/data/payroll';
+import { ExitCard, SalaryRevisionCard, TaxDeclarationCard } from './PayChangesCards';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
@@ -1455,6 +1456,9 @@ function TeamTab({ emp, embeddedSelfView = false }: { emp: Employee; embeddedSel
 const PIE_COLORS = CHART_SERIES;
 
 function CompensationTab({ emp }: { emp: Employee }) {
+  const { profile: viewer } = useAuth();
+  // Revisions, tax declarations and exits are HR's to record — see PayChangesCards.
+  const viewerIsOrgAdmin = viewer?.role === 'admin' || viewer?.role === 'hr';
   // This tab stays mounted while an administrator edits the split in Settings,
   // and the cache is also hydrated from Firestore after sign-in.
   useSalaryStructureRevision();
@@ -1667,6 +1671,14 @@ function CompensationTab({ emp }: { emp: Employee }) {
           </div>
         </Card>
       </div>
+      )}
+
+      {viewerIsOrgAdmin && (
+        <>
+          <SalaryRevisionCard emp={emp} />
+          <TaxDeclarationCard emp={emp} />
+          <ExitCard emp={emp} />
+        </>
       )}
     </div>
   );

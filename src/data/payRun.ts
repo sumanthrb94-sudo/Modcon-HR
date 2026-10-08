@@ -47,7 +47,7 @@ export function isInventedAdminRecord(
  * nobody entered — until somebody corrects it on the profile, at which point
  * it stops matching and is paid like anyone else.
  */
-export function payRunRoll<T extends Pick<Employee, 'id' | 'status' | 'dateOfJoining' | 'dateOfBirth' | 'ctc'>>(
+export function payRunRoll<T extends Pick<Employee, 'id' | 'status' | 'dateOfJoining' | 'dateOfBirth' | 'ctc' | 'lastWorkingDay'>>(
   employees: readonly T[],
   month: string,
 ): { payees: T[]; excluded: { employee: T; reason: string }[] } {
@@ -94,11 +94,17 @@ function previousMonth(month: string): string {
   return new Date(Date.UTC(year, mon - 2, 1)).toISOString().slice(0, 7);
 }
 
-export function payeesFor<T extends Pick<Employee, 'status' | 'dateOfJoining'>>(employees: readonly T[], month: string): T[] {
+export function payeesFor<T extends Pick<Employee, 'status' | 'dateOfJoining' | 'lastWorkingDay'>>(employees: readonly T[], month: string): T[] {
   const end = lastDayOf(month);
-  return employees.filter(
-    (employee) => employee.status !== 'Resigned' && (!employee.dateOfJoining || employee.dateOfJoining <= end),
-  );
+  const start = `${month}-01`;
+  return employees.filter((employee) => {
+    if (employee.dateOfJoining && employee.dateOfJoining > end) return false;
+    // A leaver is paid for their last month, to their last working day, and
+    // for no month after it. Somebody marked Resigned before last working
+    // days were recorded has no such day and is not paid, as before.
+    if (employee.lastWorkingDay) return employee.lastWorkingDay >= start;
+    return employee.status !== 'Resigned';
+  });
 }
 
 export interface CarriedOverLossOfPay {

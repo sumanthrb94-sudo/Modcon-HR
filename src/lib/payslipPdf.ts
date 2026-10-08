@@ -14,7 +14,7 @@
  * sample generated for QA Zero Org showed it.
  */
 import type { Employee, Payslip } from '@/types';
-import { storedDeductionRows } from '@/data/payroll';
+import { partMonthNote, salaryArrearsRows, storedDeductionRows } from '@/data/payroll';
 import { formatDate } from '@/lib/utils';
 
 function monthLong(month: string): string {
@@ -75,6 +75,9 @@ export async function downloadPayslipPdf(
     ['Employment type', employee.employmentType],
     ['Date of joining', employee.dateOfJoining ? formatDate(employee.dateOfJoining) : '—'],
     ['Pay period', monthLong(payslip.month)],
+    ...(partMonthNote(payslip.employedDays, payslip.month)
+      ? [['Days paid', partMonthNote(payslip.employedDays, payslip.month) as string] as [string, string]]
+      : []),
   ];
   const half = Math.ceil(details.length / 2);
   details.forEach(([label, value], i) => {
@@ -101,6 +104,7 @@ export async function downloadPayslipPdf(
       ...(payslip.bonus ? [['Bonus', payslip.bonus] as [string, number]] : []),
     ]
     : [['Gross salary (no salary structure set)', payslip.grossEarnings]];
+  const arrearRows = salaryArrearsRows(payslip.salaryArrears);
   const deductions = storedDeductionRows(payslip);
 
   const header = (label: string, x: number) => {
@@ -127,10 +131,20 @@ export async function downloadPayslipPdf(
     }
     dedY += 6;
   }
+  for (const row of arrearRows) {
+    text(row.label, earnLeft + 2, earnY);
+    text(pdfAmount(row.value), earnLeft + colWidth - 2, earnY, { align: 'right' });
+    earnY += 4.5;
+    text(row.hint, earnLeft + 2, earnY, { size: 7.5, color: [110, 104, 100] });
+    earnY += 6;
+  }
   y = Math.max(earnY, dedY) + 1;
   rule(y - 4);
   text('Gross earnings', earnLeft + 2, y, { bold: true });
-  text(pdfAmount(payslip.grossEarnings), earnLeft + colWidth - 2, y, { bold: true, align: 'right' });
+  text(
+    pdfAmount(payslip.grossEarnings + arrearRows.reduce((sum, row) => sum + row.value, 0)),
+    earnLeft + colWidth - 2, y, { bold: true, align: 'right' },
+  );
   text('Total deductions', dedLeft + 2, y, { bold: true });
   text(pdfAmount(payslip.totalDeductions), dedLeft + colWidth - 2, y, { bold: true, align: 'right' });
   y += 10;

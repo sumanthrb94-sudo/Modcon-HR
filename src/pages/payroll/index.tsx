@@ -35,11 +35,12 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { buildPayslip, buildPayslipComponents, storedDeductionRows, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
+import { buildPayslip, buildPayslipComponents, storedDeductionRows, partMonthNote, salaryArrearsRows, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
 import { downloadPayslipPdf } from '@/lib/payslipPdf';
+import { BankFileButton, NotifyButton, UndoRunButton } from './RunActions';
 import { CURRENT_MONTH_RUNNABLE_FROM_DAY, carriedOverLossOfPay, payRunRoll, runnableMonths } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -254,6 +255,18 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
                 {formatINR(payslip.grossEarnings)}
               </span>
             </div>
+            {partMonthNote(payslip.employedDays, payslip.month) && (
+              <p className="text-xs text-ink-500">{partMonthNote(payslip.employedDays, payslip.month)}.</p>
+            )}
+            {salaryArrearsRows(payslip.salaryArrears).map((row) => (
+              <div key={row.label} className="flex items-start justify-between">
+                <span className="text-sm text-ink-600">
+                  {row.label}
+                  <span className="block text-xs text-ink-400">{row.hint}</span>
+                </span>
+                <span className="text-sm font-medium text-ink-900">{formatINR(row.value)}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -584,6 +597,12 @@ export function PayrollPage() {
     setActiveTab('runs');
   }
 
+  /** See UndoRunButton for why only the latest run can be undone. */
+  function undoRun(run: PayrollRun) {
+    setPayslipList((prev) => prev.filter((p) => p.month !== run.month));
+    setPayrollRunList((prev) => prev.filter((r) => r.id !== run.id));
+  }
+
   // ----- Payroll Runs columns -----
   const runColumns: Column<PayrollRun>[] = [
     {
@@ -624,6 +643,18 @@ export function PayrollPage() {
       key: 'processedOn',
       header: 'Processed On',
       render: (r) => (r.processedOn ? formatDate(r.processedOn) : <span className="text-ink-400">—</span>),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (r) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <BankFileButton run={r} payslips={payslipList} />
+          <NotifyButton run={r} payslips={payslipList} />
+          {r.id === sortedPayrollRuns[0]?.id && <UndoRunButton run={r} onUndo={() => undoRun(r)} />}
+        </div>
+      ),
     },
   ];
 
