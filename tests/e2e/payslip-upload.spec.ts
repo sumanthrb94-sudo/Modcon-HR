@@ -166,7 +166,7 @@ test.describe.serial('an administrator uploads payslips', () => {
     await expect(page.locator('#username')).toBeVisible({ timeout: 20_000 });
     await login(page, EMPLOYEE.email, EMPLOYEE.password);
 
-    await page.getByRole('link', { name: 'Finance', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Finance & Payslips', exact: true }).first().click();
     await expect(page.getByRole('heading', { name: 'Finance' })).toBeVisible();
 
     const issued = page.locator(`[data-testid="issued-payslip-download"][data-month="${MONTH}"]`);
