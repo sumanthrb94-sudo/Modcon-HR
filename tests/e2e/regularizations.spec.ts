@@ -166,14 +166,13 @@ test.describe.serial('regularizations derive from attendance', () => {
     await expect(row.first().getByText('Absent', { exact: true })).toBeVisible();
   });
 
-  test('a late check-in becomes a flagged entry quoting its own time', async () => {
+  // Product owner, 2026-10-08: arriving late is fine — what asks for a
+  // regularization is a day short of its hours, which is decided at the
+  // employee's own check-out (check-in-out.spec.ts covers that). A late time
+  // HR records here is HR's own decision about the day, so nothing is flagged.
+  test('a late check-in is recorded late, and not flagged', async () => {
     await markAttendance(page, people[1], 'Present', '09:45');
-
-    const row = regRow(page, new RegExp(nameOf(people[1])));
-    await expect(row.first()).toBeVisible();
-    await expect(row.first()).toContainText('Checked in at 09:45');
-    await expect(row.first().getByText('—', { exact: true })).toBeVisible();
-    await expect(row.first().getByText('Late', { exact: true })).toBeVisible();
+    await expect(regRow(page, new RegExp(nameOf(people[1])))).toHaveCount(0);
   });
 
   test('an on-time check-in is not flagged', async () => {
@@ -184,23 +183,14 @@ test.describe.serial('regularizations derive from attendance', () => {
     await expect(regRow(page, new RegExp(nameOf(people[2])))).toHaveCount(0);
   });
 
-  test('a late Work From Home is late too', async () => {
-    // Lateness is about when the day started, not where it was worked. Mark
-    // Attendance used to require status Present, so this day was on time here
-    // while the identical day in seed data — which derives from the check-in
-    // alone — was late. The two writers now share one rule.
+  test('a late Work From Home is not flagged either', async () => {
     await markAttendance(page, people[2], 'Work From Home', '09:52');
-
-    const row = regRow(page, new RegExp(nameOf(people[2])));
-    await expect(row.first()).toBeVisible();
-    await expect(row.first()).toContainText('Checked in at 09:52');
-    await expect(row.first().getByText('Late', { exact: true })).toBeVisible();
+    await expect(regRow(page, new RegExp(nameOf(people[2])))).toHaveCount(0);
   });
 
-  test('the flagged entries survive a reload', async () => {
+  test('the flagged entry survives a reload', async () => {
     await page.reload();
     await expect(regRow(page, new RegExp(nameOf(people[0]))).first()).toBeVisible();
-    await expect(regRow(page, new RegExp(nameOf(people[1]))).first()).toBeVisible();
   });
 });
 

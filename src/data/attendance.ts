@@ -4,7 +4,8 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 import { clockMinutes } from '@/data/shiftRules';
-import { isLateFor, shiftCaptionFor } from '@/data/shifts';
+import { isLateFor, requiredHoursFor, shiftCaptionFor } from '@/data/shifts';
+import { isShortDay } from '@/data/shiftRules';
 import type { UserProfile } from '@/lib/auth';
 import { regularizationDecisionRefusal } from '@/lib/dataScope';
 import { getLeaveRequests } from '@/data/leave';
@@ -201,6 +202,17 @@ export function regularizationId(employeeId: string, date: string): string {
   return `reg-${employeeId}-${date}`;
 }
 
+/** A day turned into a half day at check-out because its hours fell short — and still is. */
+export function isShortHalfDay(record: Pick<AttendanceRecord, 'status' | 'shortOfHours'>): boolean {
+  return record.status === 'Half Day' && Boolean(record.shortOfHours);
+}
+
+function formatHours(hours: number): string {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 /**
  * The days that actually need regularizing, read off the attendance records.
  *
@@ -246,7 +258,9 @@ export function deriveRegularizationRequests(
   }
 
   return records
-    .filter((record) => record.status === 'Absent' || record.isLate)
+    // Absent, or a day that fell short of its hours. Late on its own is not
+    // flagged any more: what matters is whether the day's hours were worked.
+    .filter((record) => record.status === 'Absent' || isShortHalfDay(record))
     .filter((record) => !isWeekOffFor(getEmployee(record.employeeId), record.date))
     .filter((record) => !activeLeaves.some((l) => l.employeeId === record.employeeId && l.startDate <= record.date && l.endDate >= record.date))
     .map((record) => ({
@@ -260,6 +274,8 @@ export function deriveRegularizationRequests(
       reason:
         record.status === 'Absent'
           ? 'Marked absent — no check-in was recorded for this day.'
+          : isShortHalfDay(record)
+            ? `Worked ${formatHours(record.shortOfHours!.worked)} of a ${formatHours(record.shortOfHours!.required)} day, so it counts as a half day.`
           : record.checkIn
             // The check-in is interpolated, so it has to be checked. A record
             // flagged late with no time rendered "Checked in at null and was
@@ -732,17 +748,23 @@ export function recordCheckOut(employeeId: string): AttendanceRecord | undefined
 
   const at = nowInstant();
   const time = currentClockTime();
+  // Measured from the instants when the check-in was captured. Otherwise
+  // computed from the two clock times, because the check-out has just been
+  // overwritten — keeping the old hours would leave the record stating a
+  // duration its own times contradict.
+  const workedHours = existing.checkInAt
+    ? hoursBetween(existing.checkInAt, at)
+    : hoursBetweenClockTimes(existing.checkIn, time);
+  // Arriving late is fine; leaving before the day's hours are in is a half
+  // day, which the employee can regularize (product owner, 2026-10-08).
+  const required = requiredHoursFor(employeeId);
+  const short = (existing.status === 'Present' || existing.status === 'Work From Home') && isShortDay(workedHours, required);
   const record: AttendanceRecord = {
     ...existing,
     checkOut: time,
     checkOutAt: at,
-    // Measured from the instants when the check-in was captured. Otherwise
-    // computed from the two clock times, because the check-out has just been
-    // overwritten — keeping the old hours would leave the record stating a
-    // duration its own times contradict.
-    workedHours: existing.checkInAt
-      ? hoursBetween(existing.checkInAt, at)
-      : hoursBetweenClockTimes(existing.checkIn, time),
+    workedHours,
+    ...(short ? { status: 'Half Day' as const, shortOfHours: { worked: workedHours, required } } : {}),
   };
 
   writeRecord(record);

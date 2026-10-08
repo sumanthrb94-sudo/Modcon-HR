@@ -200,7 +200,14 @@ test.describe.serial('check in and check out', () => {
     ).toHaveCount(0);
   });
 
-  test('a late arrival is flagged, and reaches the regularization queue', async () => {
+  // Product owner, 2026-10-08: arriving late is fine; working short of the
+  // day is not. A late arrival is marked Late but asks nothing of anybody as
+  // long as the day's hours are worked. A day short of them becomes a half
+  // day, and that is what reaches the regularization queue.
+  const regularizationQueue = (p: Page) =>
+    p.locator('table').filter({ has: p.getByRole('columnheader', { name: 'Requested' }) });
+
+  test('a late arrival who works the full day is marked late and asks nothing', async () => {
     await page.clock.setFixedTime(istToday('09:47'));
     await resetAttendance(page);
     await page.goto('/my-attendance');
@@ -211,16 +218,38 @@ test.describe.serial('check in and check out', () => {
     await expect(card.getByText('Late', { exact: true })).toBeVisible();
     expect(await stampedCheckIn(page)).toBe('09:47');
 
-    // The stamp flows straight into the approval queue with no separate step,
-    // and the reason quotes the captured time.
+    // Nine hours later: a full day on the 09:00–18:00 shift.
+    await page.clock.setFixedTime(istToday('18:47'));
+    await page.getByRole('button', { name: 'Check Out' }).click();
+    await expect(card).toContainText('Out 18:47');
+    await expect(card.getByText('Half Day', { exact: true })).toHaveCount(0);
+
     await page.goto('/attendance');
-    const queue = page
-      .locator('table')
-      .filter({ has: page.getByRole('columnheader', { name: 'Requested' }) });
-    const flagged = queue.locator('tbody tr').filter({ hasText: 'Checked in at 09:47' });
+    await expect(regularizationQueue(page).locator('tbody tr').filter({ hasText: 'Checked in at 09:47' })).toHaveCount(0);
+    await expect(regularizationQueue(page).locator('tbody tr').filter({ hasText: /Worked .* day/ })).toHaveCount(0);
+  });
+
+  test('a day short of its hours is a half day, and reaches the regularization queue', async () => {
+    await page.clock.setFixedTime(istToday('09:47'));
+    await resetAttendance(page);
+    await page.goto('/my-attendance');
+    await page.getByRole('button', { name: 'Check In' }).click();
+    await page.clock.setFixedTime(istToday('17:00'));
+    await page.getByRole('button', { name: 'Check Out' }).click();
+
+    const card = clockCard(page);
+    await expect(card).toContainText('Out 17:00');
+    await expect(card.getByText('Half Day', { exact: true })).toBeVisible();
+
+    // 09:47 → 17:00 is 7h 13m of a 9h day. It flows into the approval queue
+    // with no separate step, and the reason says why.
+    await page.goto('/attendance');
+    const flagged = regularizationQueue(page).locator('tbody tr').filter({ hasText: 'Worked 7h 13m of a 9h day' });
     await expect(flagged.first()).toBeVisible();
-    // Derived from the record, so nobody requested a status on it.
-    await expect(flagged.first().locator('td').nth(3)).toContainText('—');
+    // The day as recorded is the half day, marked late; and since it was
+    // derived from the record, nobody has requested a status on it yet.
+    await expect(flagged.first()).toContainText('Half Day');
+    await expect(flagged.first().getByTitle('Flagged from the attendance record; no status requested')).toBeVisible();
   });
 
   test('another employee\'s day offers no check-in at all', async () => {
@@ -240,18 +269,18 @@ test.describe.serial('check in and check out', () => {
     await expect(page.getByRole('button', { name: 'Check Out' })).toHaveCount(0);
   });
 
-  // The late stamp is this account's own day, and nobody decides their own
+  // The short day is this account's own day, and nobody decides their own
   // regularization — the rule leave and expenses already had, applied to
   // regularizations when QA found a manager offered other teams' requests.
   // This used to approve it, which was the account excusing its own lateness.
   // A manager approving a report's flagged day is approvals-queue-scope.spec.ts.
-  test('the late stamp raises a flag its own author cannot approve', async () => {
+  test('the half-day flag is one its own author cannot approve', async () => {
     // The previous spec left the browser on My Attendance.
     await page.goto('/attendance');
     const queue = page
       .locator('table')
       .filter({ has: page.getByRole('columnheader', { name: 'Requested' }) });
-    const flagged = queue.locator('tbody tr').filter({ hasText: 'Checked in at 09:47' }).first();
+    const flagged = queue.locator('tbody tr').filter({ hasText: 'Worked 7h 13m of a 9h day' }).first();
 
     await expect(flagged).toContainText('Pending');
     await expect(flagged.getByRole('button', { name: 'Approve' })).toHaveCount(0);
@@ -284,9 +313,13 @@ test.describe.serial('check in and check out', () => {
     // The panel now offers a fresh day, which is right — so the closed shift is
     // asserted where it lives, in the records table.
     await expect(card).toContainText('Not checked in yet today.');
+    // The page opens on the calendar; the records table is the Table view.
+    await page.getByRole('button', { name: 'Table', exact: true }).click();
+    // By its Check-Out column: a fifteen-minute shift is short of the day, so
+    // the page now also lists it as a half day in the requests table above.
     const closed = page
       .getByRole('table')
-      .first()
+      .filter({ has: page.getByRole('columnheader', { name: 'Check-Out' }) })
       .locator('tbody tr')
       .filter({ hasText: '23:50' });
     await expect(closed.first()).toContainText('00:05');

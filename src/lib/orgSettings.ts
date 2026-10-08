@@ -115,6 +115,8 @@ export const ORG_SETTINGS = {
   // Same event as the weekly day: together they are one answer. See
   // data/weekOffRules.ts.
   weekOffRules: setting('weekOffRules', 'modcon.hr.weekOffRules', 'modcon-hr-week-off-changed'),
+  // Specific dates HR has rostered one person off — see data/rosterDays.ts.
+  rosteredDaysOff: setting('rosteredDaysOff', 'modcon.hr.rosteredDaysOff', 'modcon-hr-week-off-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it

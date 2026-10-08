@@ -196,3 +196,39 @@ export function ownHoursAsShift(
     graceMinutes: Number.isFinite(grace) ? Math.max(0, Math.round(grace)) : 0,
   };
 }
+
+/**
+ * The hours a full day is, when the organisation has said nothing else.
+ *
+ * Product owner, 2026-10-08: arriving late is fine; working less than the day
+ * is not. A day short of its hours is a half day, and the employee can
+ * regularize it. Nine is the figure they gave, and the length of the demo's
+ * 09:00–18:00 shift.
+ */
+export const DEFAULT_REQUIRED_HOURS = 9;
+
+/** How long a shift is, start to end, in hours — across midnight where it runs past it. */
+export function shiftHours(shift: Shift | null | undefined): number | null {
+  if (!shift) return null;
+  const start = clockMinutes(shift.start);
+  const end = clockMinutes(shift.end);
+  if (start === null || end === null || start === end) return null;
+  const minutes = end > start ? end - start : end + MINUTES_PER_DAY - start;
+  return minutes / 60;
+}
+
+/** The hours somebody on this shift has to work for a full day. */
+export function requiredHours(shift: Shift | null | undefined): number {
+  return shiftHours(shift) ?? DEFAULT_REQUIRED_HOURS;
+}
+
+/**
+ * True when a day's worked hours fall short of a full day.
+ *
+ * A minute's tolerance: hours are measured from two instants and stored to
+ * two decimals, and somebody who checks out at 18:00 having checked in at
+ * 09:00 must not lose half a day to rounding.
+ */
+export function isShortDay(workedHours: number, required: number): boolean {
+  return workedHours + 1 / 60 < required;
+}

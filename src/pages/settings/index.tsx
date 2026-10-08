@@ -45,6 +45,8 @@ import {
 } from '@/data/leavePolicies';
 import { getLeaveRequests } from '@/data/leave';
 import { getOpeningLeaveTaken, saveOpeningLeaveTaken } from '@/data/openingLeave';
+import { addRosteredDaysOff, getRosteredDaysOff } from '@/data/rosterDays';
+import { ROSTER_DAYS_CSV_HEADER, parseRosterDaysCsv, type RosterDaysMatch, type RosterDaysMiss } from '@/data/rosterDaysCsv';
 import { OPENING_LEAVE_CSV_HEADER, parseOpeningLeaveCsv, type OpeningLeaveMatch, type OpeningLeaveMiss } from '@/data/openingLeaveCsv';
 import { financialYearLabel, financialYearOf } from '@/lib/financialYear';
 import {
@@ -2505,6 +2507,130 @@ function WeekOffSection() {
               ))}
             </ul>
           )}
+        </div>
+      </Card>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Rostered days off, in bulk — the roster sheet a rotating team already keeps.
+ * Uploading adds to each person's rostered days; one is taken off from that
+ * person's profile. See data/rosterDays.ts.
+ */
+function RosteredDaysSection() {
+  const save = useSaveIndicator();
+  const weekOffRevision = useWeekOffRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [result, setResult] = useState<{ matched: RosterDaysMatch[]; unmatched: RosterDaysMiss[] } | null>(null);
+  const [applied, setApplied] = useState<number | null>(null);
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
+  const byId = useMemo(() => new Map(directory.map((e) => [e.id, e])), [directory]);
+  const today = todayIso();
+  const upcoming = useMemo(
+    () => Object.entries(getRosteredDaysOff())
+      .map(([id, dates]) => [id, dates.filter((d) => d >= today)] as const)
+      .filter(([, dates]) => dates.length > 0),
+    [weekOffRevision, today],
+  );
+
+  function reset() {
+    setResult(null);
+    if (fileInput.current) fileInput.current.value = '';
+  }
+
+  async function handleFile(file: File | undefined) {
+    setApplied(null);
+    if (!file) { reset(); return; }
+    setResult(parseRosterDaysCsv(await file.text(), getEmployeeDirectory()));
+  }
+
+  function handleApply() {
+    if (!result || result.matched.length === 0) return;
+    const additions: Record<string, string[]> = {};
+    for (const match of result.matched) additions[match.employee.id] = [...(additions[match.employee.id] ?? []), ...match.dates];
+    setApplied(Object.values(additions).reduce((n, d) => n + d.length, 0));
+    save.track(addRosteredDaysOff(additions));
+    reset();
+  }
+
+  return (
+    <SettingsSection
+      title="Rostered days off"
+      subtitle="Specific dates off for people on a rotating roster, beyond the weekly week-off above"
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-500">
+            A rostered day off counts exactly like a week-off: it is never marked absent, never offered for
+            regularization, never charged as leave and never deducted from pay. Upload one row per person and day,
+            or a run of days with <span className="font-mono">date_to</span>. Single days can be added or removed on
+            the person&rsquo;s profile.
+          </p>
+          <div>
+            <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="roster-days-csv">Roster CSV</label>
+            <input
+              id="roster-days-csv"
+              ref={fileInput}
+              type="file"
+              accept=".csv,text/csv"
+              className="input"
+              onChange={(event) => { void handleFile(event.target.files?.[0]); }}
+            />
+            <p className="mt-1 text-xs text-ink-400">Columns: <span className="font-mono">{ROSTER_DAYS_CSV_HEADER}</span> — dates as DD/MM/YYYY or YYYY-MM-DD.</p>
+          </div>
+          {applied !== null && (
+            <div className="bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              {applied} rostered day{applied === 1 ? '' : 's'} off saved.
+            </div>
+          )}
+          {result && (
+            <div className="space-y-3" data-testid="roster-days-preview">
+              {result.matched.length > 0 && (
+                <ul className="divide-y divide-ink-100 border border-ink-200 text-sm">
+                  {result.matched.map((match) => (
+                    <li key={match.line} className="flex justify-between gap-3 px-3 py-2">
+                      <span>{match.employee.fullName} <span className="text-ink-400">{match.employee.employeeCode}</span></span>
+                      <span>{match.dates.length === 1 ? formatDate(match.dates[0]) : `${formatDate(match.dates[0])} – ${formatDate(match.dates[match.dates.length - 1])}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {result.unmatched.length > 0 && (
+                <ul className="space-y-1 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {result.unmatched.map((miss) => (
+                    <li key={miss.line}><strong>Line {miss.line}:</strong> {miss.reason}</li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <Button variant="primary" onClick={handleApply} disabled={result.matched.length === 0}>
+                  <Upload size={14} /> Save {result.matched.length} row{result.matched.length === 1 ? '' : 's'}
+                </Button>
+                <Button variant="secondary" onClick={reset}>Cancel</Button>
+              </div>
+            </div>
+          )}
+          <div className="border border-ink-100">
+            <div className="flex justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+              <span>People with upcoming rostered days off</span>
+              <span>{upcoming.length}</span>
+            </div>
+            {upcoming.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-ink-400">Nobody — everyone follows the weekly week-off only.</p>
+            ) : (
+              <ul className="divide-y divide-ink-50">
+                {upcoming.map(([id, dates]) => (
+                  <li key={id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                    <span className="min-w-0 truncate">{byId.get(id)?.fullName ?? id}</span>
+                    <span className="ml-auto text-xs text-ink-500">{dates.map((d) => formatDate(d)).join(', ')}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </Card>
     </SettingsSection>
@@ -5362,7 +5488,7 @@ export function SettingsPage() {
       );
       case 'checkins': return <CheckinPolicySection />;
       case 'shifts': return <ShiftsSection />;
-      case 'weekoff': return <WeekOffSection />;
+      case 'weekoff': return <><WeekOffSection /><RosteredDaysSection /></>;
       case 'geofence': return <AttendanceLocationsSection />;
       case 'salary': return (
         <>

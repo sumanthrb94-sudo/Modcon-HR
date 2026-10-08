@@ -2,6 +2,7 @@ import type { Employee, Department, EmploymentType, EmployeeStatus, Gender, Week
 import { WEEK_OFF_DAY_INDEX } from '@/types';
 import { getOrganisationWeekOff, getOrganisationWeekOffRules } from '@/data/weekOff';
 import { describeOrganisationWeekOff, isOrganisationWeekOffDate } from '@/data/weekOffRules';
+import { isRosteredOff } from '@/data/rosterDays';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
 import { mergeLocations, LOCATION_DIRECTORY_CHANGED_EVENT } from '@/data/locations';
@@ -206,15 +207,19 @@ export function hasOwnWeekOff(employee: Pick<Employee, 'weekOff' | 'weekOff2'> |
 /**
  * True when `isoDate` is this employee's week-off.
  *
- * Somebody with a week-off of their own is off on exactly those days.
+ * A date HR rostered them off (data/rosterDays.ts) always is. Otherwise,
+ * somebody with a week-off of their own is off on exactly those days.
  * Everybody else follows the organisation's: its weekly day, plus any second
  * day or alternate-week day it has declared (data/weekOffRules.ts). Every
  * "is this a working day" question in the app comes through here.
  */
 export function isWeekOffFor(
-  employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined,
+  employee: (Pick<Employee, 'weekOff' | 'weekOff2'> & { id?: string }) | null | undefined,
   isoDate: string,
 ): boolean {
+  // A date HR rostered this person off is a day off, whichever weekly pattern
+  // they follow — see data/rosterDays.ts.
+  if (isRosteredOff(employee?.id, isoDate)) return true;
   if (!hasOwnWeekOff(employee)) {
     return isOrganisationWeekOffDate(isoDate, getOrganisationWeekOff(), getOrganisationWeekOffRules());
   }

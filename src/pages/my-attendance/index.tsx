@@ -32,6 +32,7 @@ import {
   recordCheckIn,
   recordCheckOut,
   addRegularizationRequest,
+  isShortHalfDay,
   addBulkRegularizationRequests,
   REGULARIZATIONS_CHANGED_EVENT,
   ATTENDANCE_CHANGED_EVENT,
@@ -218,9 +219,10 @@ export function MyAttendancePage() {
         else if (record.status === 'Work From Home') status = 'WFH';
         else if (record.status === 'On Leave') status = 'Leave';
         else if (record.status === 'Half Day') status = 'HalfDay';
-        // Late on a day leave covers (a half day, say) is not an anomaly to
-        // regularize — the leave already accounts for it.
-        if (record.isLate && !activeLeave) {
+        // A day short of its hours is a half day the employee can regularize.
+        // Late on its own is not: arriving late is fine if the hours are
+        // worked (product owner, 2026-10-08). Leave covering the day wins.
+        if (isShortHalfDay(record) && !activeLeave) {
           isAttentionItem = true;
           isActionable = true;
         }
@@ -287,11 +289,12 @@ export function MyAttendancePage() {
     const pendingRegs = realDays.filter((d) => d.status === 'PendingReg').length;
     const absentOrMissing = realDays.filter((d) => d.status === 'Absent').length;
     const late = realDays.filter((d) => Boolean(d.record?.isLate)).length;
+    const shortDays = realDays.filter((d) => d.isActionable && d.record && isShortHalfDay(d.record)).length;
     const attentionCount = actionableDays.length;
     const weekOffs = realDays.filter((d) => d.status === 'WeekOff').length;
     const holidayCount = realDays.filter((d) => d.status === 'Holiday').length;
 
-    return { present, wfh, leave, halfDay, pendingRegs, absentOrMissing, late, attentionCount, weekOffs, holidayCount };
+    return { present, wfh, leave, halfDay, pendingRegs, absentOrMissing, late, shortDays, attentionCount, weekOffs, holidayCount };
   }, [calendarDays, actionableDays]);
 
   const monthTitle = useMemo(() => {
@@ -955,9 +958,9 @@ export function MyAttendancePage() {
                     </span>{' '}
                     <span className="text-rose-700 text-xs sm:text-sm">
                       {monthStats.absentOrMissing > 0 ? `${monthStats.absentOrMissing} missing punch / absent day${monthStats.absentOrMissing > 1 ? 's' : ''}` : ''}
-                      {monthStats.absentOrMissing > 0 && monthStats.late > 0 ? ' · ' : ''}
-                      {monthStats.late > 0 ? `${monthStats.late} late arrival${monthStats.late > 1 ? 's' : ''}` : ''}
-                      . Unregularized absences result in Loss of Pay (LOP) during payroll.
+                      {monthStats.absentOrMissing > 0 && monthStats.shortDays > 0 ? ' · ' : ''}
+                      {monthStats.shortDays > 0 ? `${monthStats.shortDays} short day${monthStats.shortDays > 1 ? 's' : ''} counted as half day${monthStats.shortDays > 1 ? 's' : ''}` : ''}
+                      . Unregularized absences and half days result in Loss of Pay (LOP) during payroll.
                     </span>
                   </div>
                 </div>

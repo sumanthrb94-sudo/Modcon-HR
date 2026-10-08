@@ -82,6 +82,7 @@ const CUSTOM_SHIFT = '__custom__';
 import { linkAccountForEmployee } from '@/data/employeeLinks';
 import { CreateLoginButton } from './CreateLoginDialog';
 import { BulkCreateLoginsDialog } from './BulkCreateLoginsDialog';
+import { RosteredDaysCard } from './RosteredDaysCard';
 import { reportingLineChanged, syncManagerChains } from '@/lib/reportingChains';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -1304,6 +1305,8 @@ function OverviewTab({
           </div>
         </div>
       </Card>
+
+      <RosteredDaysCard employeeId={emp.id} />
 
       {/* Job Info */}
       <Card>

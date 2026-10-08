@@ -24,6 +24,7 @@ import {
   clockMinutes,
   isLateForShift,
   ownHoursAsShift,
+  requiredHours,
   resolveShift,
   shiftCaption,
   type EmployeeShift,
@@ -242,6 +243,11 @@ export function hasOwnShift(employeeId: string): boolean {
  */
 export function isLateFor(employeeId: string | null | undefined, checkIn: string | null | undefined): boolean {
   return isLateForShift(getShiftFor(employeeId), checkIn);
+}
+
+/** The hours a full day is for this person — their shift's length, or 9 with none. */
+export function requiredHoursFor(employeeId: string | null | undefined): number {
+  return requiredHours(getShiftFor(employeeId));
 }
 
 /** The caption an attendance record carries for this person's hours. */

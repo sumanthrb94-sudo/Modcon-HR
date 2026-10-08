@@ -181,6 +181,12 @@ export interface AttendanceRecord {
   workedHours: number;
   shift: string;
   isLate: boolean;
+  /**
+   * Set at check-out when the day fell short of its hours: worked against
+   * required, both in hours. The day is then a Half Day the employee can
+   * regularize — arriving late is fine, working less than the day is not.
+   */
+  shortOfHours?: { worked: number; required: number };
 }
 
 // ---- Leave ---------------------------------------------------------------
