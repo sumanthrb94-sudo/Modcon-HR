@@ -32,7 +32,16 @@ export interface RoleAssignment {
   /** Organisation the assignment belongs to; absent for the default/legacy org. */
   orgId?: string;
   assignedBy: string;
+  /**
+   * Why the role was granted. `designation` is a grant `syncHrRoleForEmployee`
+   * made because somebody was filed under an HR title in the HR department,
+   * and only that kind is withdrawn when they stop being one. Absent on grants
+   * written before the field existed.
+   */
+  source?: RoleAssignmentSource | null;
 }
+
+export type RoleAssignmentSource = 'designation' | 'provisioned' | 'invited';
 
 /** Firestore document id for an email. Emails contain no '/' so they are
  *  already valid ids; this only normalises case and whitespace so a lookup at
@@ -59,6 +68,7 @@ export async function assignRole(params: {
   role: UserRole;
   orgId?: string;
   assignedBy: string;
+  source?: RoleAssignmentSource;
 }): Promise<void> {
   const id = roleAssignmentId(params.email);
   if (!id) return;
@@ -74,6 +84,10 @@ export async function assignRole(params: {
       // docs/tenant-isolation-spec.md.
       orgId: params.orgId || DEFAULT_ORG_KEY,
       assignedBy: params.assignedBy,
+      // Written every time, null included: the document is merged, and a stale
+      // 'designation' left on a grant re-made for another reason would make it
+      // revocable by a directory edit.
+      source: params.source ?? null,
       assignedAt: serverTimestamp(),
     },
     { merge: true },
@@ -144,14 +158,22 @@ export async function syncHrRoleForEmployee(
         role: 'hr',
         orgId: actor?.orgId || DEFAULT_ORG_KEY,
         assignedBy: actor?.uid ?? 'unknown',
+        source: 'designation',
       });
       await applyRoleToExistingAccount(email, 'hr');
       return 'granted';
     }
 
-    // Only an HR grant made by this mechanism is withdrawn — a manager role
-    // assigned for some other reason is not ours to clear.
+    // Only an HR grant made by this mechanism is withdrawn. An organisation's
+    // first HR account holds a grant made when the organisation was created,
+    // not because of any job title — and before grants carried a source, HR
+    // filing themselves under Human Resources with a title nobody had
+    // nominated yet revoked their own administrator access. Grants older than
+    // the field keep the old behaviour, except that nobody's own directory
+    // edit withdraws their own access.
     if (existing?.role !== 'hr') return 'unchanged';
+    if (existing.source && existing.source !== 'designation') return 'unchanged';
+    if (!existing.source && actor?.email && roleAssignmentId(actor.email) === email) return 'unchanged';
     await clearRoleAssignment(email);
     await applyRoleToExistingAccount(email, 'employee');
     return 'revoked';

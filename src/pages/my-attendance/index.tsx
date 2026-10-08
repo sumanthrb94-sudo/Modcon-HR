@@ -38,8 +38,10 @@ import {
   type RegularizationRequest,
 } from '@/data/attendance';
 import { getLeaveRequests, LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
-import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor, employeeWeekOffs } from '@/data/employees';
+import { getEmployeeDirectory, getEmployeeName, weekOffOf, isWeekOffFor, employeeWeekOffs, describeWeekOff } from '@/data/employees';
 import { getHolidayDirectory } from '@/data/holidays';
+import { isBeforeAttendanceTracking } from '@/data/goLive';
+import { useCompanyProfileRevision } from '@/lib/useCompanyProfileRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -134,6 +136,7 @@ export function MyAttendancePage() {
   const [viewMode, setViewMode] = useState<'calendar' | 'table'>('calendar');
   const [calendarMonth, setCalendarMonth] = useState(() => todayIso().slice(0, 7)); // 'YYYY-MM'
   const holidayRevision = useHolidayDirectoryRevision();
+  const companyProfileRevision = useCompanyProfileRevision();
   const holidays = useMemo(() => getHolidayDirectory(), [holidayRevision]);
 
   function prevMonth() {
@@ -196,7 +199,10 @@ export function MyAttendancePage() {
       const holiday = holidays.find((h) => h.date === isoDate);
       const isWeekOff = isWeekOffFor(targetEmployee, isoDate);
       const isToday = isoDate === today;
-      const isFuture = isoDate > today;
+      // A day before tracking began here — the company's go-live, or this
+      // person's joining — with nothing recorded is not an absence; it reads
+      // and counts like a day that has not happened. See data/goLive.ts.
+      const isFuture = isoDate > today || (!record && isBeforeAttendanceTracking(targetEmployee, isoDate));
       const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending');
       const activeLeave = ownLeaves.find((l) => l.startDate <= isoDate && l.endDate >= isoDate);
 
@@ -262,7 +268,7 @@ export function MyAttendancePage() {
     }
 
     return days;
-  }, [calendarMonth, records, targetEmployee, holidays, ownRequests, ownLeaves]);
+  }, [calendarMonth, records, targetEmployee, holidays, ownRequests, ownLeaves, companyProfileRevision]);
 
   const actionableDays = useMemo(() => {
     return calendarDays
@@ -670,8 +676,8 @@ export function MyAttendancePage() {
         title={isOwnRecord ? 'My Attendance' : 'Employee Attendance'}
         subtitle={
           isOwnRecord
-            ? `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${employeeWeekOffs(targetEmployee).join(' & ')}`
-            : `Viewing ${targetEmployee?.fullName ?? 'colleague'} · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${employeeWeekOffs(targetEmployee).join(' & ')}`
+            ? `Your attendance · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${describeWeekOff(targetEmployee)}`
+            : `Viewing ${targetEmployee?.fullName ?? 'colleague'} · Week of ${formatDate(weekDates[0])} – ${formatDate(weekDates[6])} · week off ${describeWeekOff(targetEmployee)}`
         }
         actions={
           <div className="flex items-center gap-2">

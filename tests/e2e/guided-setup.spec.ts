@@ -41,6 +41,7 @@ interface StoredEmployee {
   location: string;
   ctc: number;
   dateOfJoining: string;
+  reportingManagerId: string | null;
 }
 
 async function login(page: Page) {
@@ -91,7 +92,27 @@ test.describe.serial('guided setup imports a team from a spreadsheet', () => {
     await page.goto('/setup');
     await expect(page.getByRole('heading', { name: 'Set up your workspace' })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel('Company name')).not.toHaveValue('');
+    // The go-live date defaults to today; cleared back to the demo
+    // organisation's stored '' so this step stays a no-op write (see above).
+    await page.getByLabel('Start recording attendance from').fill('');
     await page.getByRole('button', { name: /Continue/ }).click();
+    await expect(page.getByRole('heading', { name: 'About you' })).toBeVisible();
+  });
+
+  test('HR is asked for their own details rather than given invented ones', async () => {
+    // Whether the admin persona has a record depends on what other specs have
+    // linked it to, so both states are accepted — but neither may carry the
+    // figures an earlier version invented for an administrator with none.
+    const step = page.locator('main');
+    await expect(step.getByRole('heading', { name: 'About you' })).toBeVisible();
+    if (await page.getByLabel('Your first name').isVisible()) {
+      await expect(page.getByLabel('Your ctc')).toHaveValue('');
+      await expect(page.getByLabel('Your date of birth')).toHaveValue('');
+      await page.getByRole('button', { name: /Skip/ }).click();
+    } else {
+      await expect(step).toContainText('Nothing to do here');
+      await page.getByRole('button', { name: /Continue/ }).click();
+    }
     await expect(page.getByRole('heading', { name: 'Bring in your people' })).toBeVisible();
   });
 
@@ -99,10 +120,10 @@ test.describe.serial('guided setup imports a team from a spreadsheet', () => {
     // Columns in an order of their own, and an alias or two — the file is
     // whatever HR exported, not our template.
     const csv = [
-      'Work Email,First Name,Last Name,Designation,Department,Location,DOB,DOJ,Annual CTC,Employee Code',
-      `${GOOD[0]},Asha,Rao,Analyst,Finance,Bengaluru,12/03/1994,01/06/2023,"6,50,000",E2E-SU-${RUN}-1`,
-      `${GOOD[1]},Kiran,Das,Engineer,Engineering,Hyderabad,1990-11-05,2024-01-15,900000,E2E-SU-${RUN}-2`,
-      `${BAD},Nobody,Atall,Engineer,Engineering,Hyderabad,1990-11-05,2024-01-15,0,E2E-SU-${RUN}-3`,
+      'Work Email,First Name,Last Name,Designation,Department,Location,DOB,DOJ,Annual CTC,Employee Code,Reporting Manager',
+      `${GOOD[0]},Asha,Rao,Analyst,Finance,Bengaluru,12/03/1994,01/06/2023,"6,50,000",E2E-SU-${RUN}-1,`,
+      `${GOOD[1]},Kiran,Das,Engineer,Engineering,Hyderabad,1990-11-05,2024-01-15,9 LPA,E2E-SU-${RUN}-2,${GOOD[0]}`,
+      `${BAD},Nobody,Atall,Engineer,Engineering,Hyderabad,1990-11-05,2024-01-15,0,E2E-SU-${RUN}-3,`,
     ].join('\n');
 
     await page.getByText('Or paste the rows instead').click();
@@ -130,6 +151,11 @@ test.describe.serial('guided setup imports a team from a spreadsheet', () => {
       employeeCode: `E2E-SU-${RUN}-1`,
     });
     expect(people.some((person) => person.email === BAD)).toBe(false);
+    // The Reporting Manager column is read — Kiran's manager is Asha, who was
+    // created by the same upload a line earlier — and "9 LPA" is ₹9,00,000.
+    await expect.poll(async () => (await imported()).find((person) => person.email === GOOD[1])?.reportingManagerId, { timeout: 15_000 })
+      .toBe(asha?.id);
+    expect((await imported()).find((person) => person.email === GOOD[1])?.ctc).toBe(900000);
   });
 
   test('the policy step offers the templates with their figures', async () => {

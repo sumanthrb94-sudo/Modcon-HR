@@ -44,6 +44,9 @@ import {
   type LeavePolicyCsvUpload,
 } from '@/data/leavePolicies';
 import { getLeaveRequests } from '@/data/leave';
+import { getOpeningLeaveTaken, saveOpeningLeaveTaken } from '@/data/openingLeave';
+import { OPENING_LEAVE_CSV_HEADER, parseOpeningLeaveCsv, type OpeningLeaveMatch, type OpeningLeaveMiss } from '@/data/openingLeaveCsv';
+import { financialYearLabel, financialYearOf } from '@/lib/financialYear';
 import {
   addLocationToDirectory,
   buildLocationDirectory,
@@ -58,6 +61,8 @@ import {
   FALLBACK_WEEK_OFF,
   getDeclaredOrganisationWeekOff,
   saveOrganisationWeekOff,
+  getOrganisationWeekOffRules,
+  saveOrganisationWeekOffRules,
 } from '@/data/weekOff';
 import { useWeekOffRevision } from '@/lib/useWeekOffRevision';
 import {
@@ -78,6 +83,7 @@ import {
 import { useAttendanceGeofenceRevision } from '@/lib/useAttendanceGeofenceRevision';
 import { captureLocationFix, describeGeolocationFailure } from '@/lib/geolocation';
 import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
+import { describeOrganisationWeekOff, type WeekOffRules } from '@/data/weekOffRules';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
 import {
   getSalaryStructure,
@@ -476,6 +482,13 @@ function CompanyProfile() {
           <Field label="Employee Count" value={String(employees.length)} onChange={() => {}} disabled />
           <Field label="Support Email" value={form.supportEmail} onChange={update('supportEmail')} type="email" />
           <Field label="Contact Phone" value={form.phone} onChange={update('phone')} />
+          <Field
+            label="Started using Modcon HR on"
+            type="date"
+            value={form.goLiveDate}
+            onChange={update('goLiveDate')}
+            hint="Days before this were recorded elsewhere, so they are never shown as absences."
+          />
         </div>
 
         {/* Chosen from the titles actually in use rather than typed: a
@@ -2052,6 +2065,166 @@ function EmployeeLeavePoliciesSection() {
   );
 }
 
+/**
+ * Leave already taken this year, before the organisation used this app.
+ *
+ * Without it every balance opens as though nobody had taken a day since
+ * April. A file is a statement about the people in it: their rows replace
+ * what was stored for them and everybody else is left alone. See
+ * data/openingLeaveCsv.ts.
+ */
+function OpeningLeaveSection() {
+  const save = useSaveIndicator();
+  const revision = useLeavePoliciesRevision();
+  const directoryRevision = useEmployeeDirectoryRevision();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [result, setResult] = useState<{ matched: OpeningLeaveMatch[]; unmatched: OpeningLeaveMiss[] } | null>(null);
+  const [applied, setApplied] = useState<number | null>(null);
+
+  const stored = useMemo(() => getOpeningLeaveTaken(), [revision]);
+  const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
+  const byId = useMemo(() => new Map(directory.map((emp) => [emp.id, emp])), [directory]);
+  const thisYear = financialYearOf();
+  const current = stored && stored.financialYear === thisYear ? stored.byEmployee : {};
+  const rows = Object.entries(current);
+
+  function reset() {
+    setResult(null);
+    if (fileInput.current) fileInput.current.value = '';
+  }
+
+  async function handleFile(file: File | undefined) {
+    setApplied(null);
+    if (!file) { reset(); return; }
+    const typeKeys = getLeavePolicies().map((policy) => normalizeLeaveTypeValue(policy.type));
+    setResult(parseOpeningLeaveCsv(await file.text(), getEmployeeDirectory(), typeKeys, normalizeLeaveTypeValue));
+  }
+
+  function handleApply() {
+    if (!result || result.matched.length === 0) return;
+    const next: Record<string, Record<string, number>> = { ...current };
+    for (const match of result.matched) {
+      next[match.employee.id] = { ...next[match.employee.id], [match.typeKey]: match.days };
+    }
+    setApplied(result.matched.length);
+    save.track(saveOpeningLeaveTaken({ financialYear: thisYear, byEmployee: next }));
+    reset();
+  }
+
+  function handleTemplate() {
+    const code = directory[0]?.employeeCode ?? 'MC-001';
+    const types = getLeavePolicies().slice(0, 2).map((policy) => normalizeLeaveTypeValue(policy.type));
+    const body = [OPENING_LEAVE_CSV_HEADER, ...types.map((type) => `${code},${type},0`)].join('\n');
+    const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'leave-taken-before-go-live.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <SettingsSection
+      title="Leave taken before you started using Modcon HR"
+      subtitle={`Days each person already took in ${financialYearLabel()}, so their balance starts right`}
+      action={<SaveIndicator state={save.state} />}
+    >
+      <Card>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-500">
+            Upload one row per person and leave type with the days they have taken since 1 April, from your
+            register or spreadsheet. They count as used, and accrual goes on as configured. Nothing is saved
+            until you have seen the match list.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-ink-600 mb-1.5" htmlFor="opening-leave-csv">Leave taken CSV</label>
+              <input
+                id="opening-leave-csv"
+                ref={fileInput}
+                type="file"
+                accept=".csv,text/csv"
+                className="input"
+                onChange={(event) => { void handleFile(event.target.files?.[0]); }}
+              />
+              <p className="mt-1 text-xs text-ink-400">Columns: <span className="font-mono">{OPENING_LEAVE_CSV_HEADER}</span></p>
+            </div>
+            <Button variant="secondary" onClick={handleTemplate}><Download size={14} /> Download template</Button>
+          </div>
+
+          {applied !== null && (
+            <div className="bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              {applied} opening figure{applied === 1 ? '' : 's'} saved for your organisation.
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-3" data-testid="opening-leave-preview">
+              <p className="text-sm font-semibold text-ink-900">{result.matched.length} ready to save</p>
+              {result.matched.length > 0 && (
+                <ul className="divide-y divide-ink-100 border border-ink-200 text-sm">
+                  {result.matched.map((match) => (
+                    <li key={match.line} className="flex justify-between gap-3 px-3 py-2">
+                      <span>{match.employee.fullName} <span className="text-ink-400">{match.employee.employeeCode}</span></span>
+                      <span>{match.typeKey}: {match.days} day{match.days === 1 ? '' : 's'} taken</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {result.unmatched.length > 0 && (
+                <ul className="space-y-1 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {result.unmatched.map((miss) => (
+                    <li key={miss.line}><strong>Line {miss.line}:</strong> {miss.reason}</li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <Button variant="primary" onClick={handleApply} disabled={result.matched.length === 0}>
+                  <Upload size={14} /> Save {result.matched.length}
+                </Button>
+                <Button variant="secondary" onClick={reset}>Cancel</Button>
+              </div>
+            </div>
+          )}
+
+          <div className="border border-ink-100">
+            <div className="flex justify-between border-b border-ink-100 px-4 py-2 text-xs font-semibold text-ink-600">
+              <span>Opening figures for {financialYearLabel()}</span>
+              <span>{rows.length}</span>
+            </div>
+            {rows.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-ink-400">None — balances count only leave approved in this app.</p>
+            ) : (
+              <ul className="divide-y divide-ink-50">
+                {rows.map(([employeeId, byType]) => (
+                  <li key={employeeId} className="flex items-center gap-3 px-4 py-2 text-sm">
+                    <span className="min-w-0 truncate">{byId.get(employeeId)?.fullName ?? employeeId}</span>
+                    <span className="ml-auto text-xs text-ink-500">
+                      {Object.entries(byType).map(([type, days]) => `${type} ${days}`).join(' · ')}
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1 text-ink-400 hover:text-rose-600"
+                      aria-label={`Remove opening figures for ${byId.get(employeeId)?.fullName ?? employeeId}`}
+                      onClick={() => {
+                        const next = { ...current };
+                        delete next[employeeId];
+                        save.track(saveOpeningLeaveTaken({ financialYear: thisYear, byEmployee: next }));
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Card>
+    </SettingsSection>
+  );
+}
+
 // ===========================================================================
 // Section: Roles & Permissions
 // ===========================================================================
@@ -2203,10 +2376,23 @@ function WeekOffSection() {
   const weekOffRevision = useWeekOffRevision();
   const directoryRevision = useEmployeeDirectoryRevision();
   const [declared, setDeclared] = useState(() => getDeclaredOrganisationWeekOff());
+  const [rules, setRules] = useState<WeekOffRules>(() => getOrganisationWeekOffRules());
 
   useEffect(() => {
     setDeclared(getDeclaredOrganisationWeekOff());
+    setRules(getOrganisationWeekOffRules());
   }, [weekOffRevision]);
+
+  function changeRules(next: WeekOffRules) {
+    setRules(next);
+    save.track(saveOrganisationWeekOffRules(next));
+  }
+
+  const ALTERNATE_PATTERNS: { label: string; weeks: number[] }[] = [
+    { label: '2nd and 4th', weeks: [2, 4] },
+    { label: '1st and 3rd', weeks: [1, 3] },
+    { label: '1st, 3rd and 5th', weeks: [1, 3, 5] },
+  ];
 
   // Who this setting does *not* reach. An administrator changing the company's
   // week-off is entitled to know it will not move these people, because their
@@ -2246,6 +2432,56 @@ function WeekOffSection() {
             {declared
               ? `Everybody without a week-off of their own does not work on ${declared}.`
               : `Not set — ${FALLBACK_WEEK_OFF} is assumed until somebody chooses. Attendance, leave charges and unpaid-absence deductions are all computed against this day.`}
+          </p>
+        </div>
+
+        {/* Which other days a company closes depends on the company, so both
+            are optional and both are its own choice. See data/weekOffRules.ts. */}
+        <div className="mt-5 grid max-w-xl gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Second day off every week</label>
+            <Select
+              ariaLabel="Second weekly day off"
+              value={rules.secondDay ?? ''}
+              onChange={(value) => changeRules({ ...rules, secondDay: (value || null) as WeekOffDay | null })}
+              options={[
+                { label: 'None', value: '' },
+                ...WEEK_OFF_DAYS.filter((day) => day !== (declared ?? FALLBACK_WEEK_OFF)).map((day) => ({ label: day, value: day })),
+              ]}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Some weeks only</label>
+            <Select
+              ariaLabel="Alternate-week day off"
+              value={rules.nthDays ? rules.nthDays.weeks.join(',') : ''}
+              onChange={(value) => changeRules({
+                ...rules,
+                nthDays: value
+                  ? { day: rules.nthDays?.day ?? 'Saturday', weeks: value.split(',').map(Number) }
+                  : null,
+              })}
+              options={[
+                { label: 'None', value: '' },
+                ...ALTERNATE_PATTERNS.map((pattern) => ({
+                  label: `${pattern.label} ${rules.nthDays?.day ?? 'Saturday'}`,
+                  value: pattern.weeks.join(','),
+                })),
+              ]}
+            />
+            {rules.nthDays && (
+              <Select
+                ariaLabel="Alternate-week day"
+                className="mt-2"
+                value={rules.nthDays.day}
+                onChange={(value) => changeRules({ ...rules, nthDays: { ...rules.nthDays!, day: value as WeekOffDay } })}
+                options={WEEK_OFF_DAYS.map((day) => ({ label: day, value: day }))}
+              />
+            )}
+          </div>
+          <p className="sm:col-span-2 text-xs text-ink-500">
+            In full: <strong>{describeOrganisationWeekOff(declared ?? FALLBACK_WEEK_OFF, rules)}</strong>. Week 1 is the
+            1st–7th of the month, so the 5th covers the 29th onward.
           </p>
         </div>
 
@@ -5121,6 +5357,7 @@ export function SettingsPage() {
         <>
           <LeavePolicies />
           <EmployeeLeavePoliciesSection />
+          <OpeningLeaveSection />
         </>
       );
       case 'checkins': return <CheckinPolicySection />;

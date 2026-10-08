@@ -191,7 +191,7 @@ export async function inviteAccount(
     // Durability, not authorization: if the profile document is ever deleted
     // and rebuilt by a later sign-in, the role is restored from here. The
     // profile above is what actually grants access, so a failure is swallowed.
-    await assignRole({ email, role, orgId: input.orgId, assignedBy: invitedByUid }).catch(() => {});
+    await assignRole({ email, role, orgId: input.orgId, source: 'invited', assignedBy: invitedByUid }).catch(() => {});
 
     const link = await linkToEmployeeRecord(uid, email, input.orgId, invitedByUid);
 

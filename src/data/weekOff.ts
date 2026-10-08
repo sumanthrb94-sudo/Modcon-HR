@@ -33,6 +33,7 @@
 import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
 import { orgScopedKey } from '@/lib/orgScope';
 import { ORG_SETTINGS, publishOrgSetting } from '@/lib/orgSettings';
+import { NO_EXTRA_WEEK_OFF, normalizeWeekOffRules, type WeekOffRules } from '@/data/weekOffRules';
 
 const STORAGE_KEY = ORG_SETTINGS.weekOff.storageKey;
 export const WEEK_OFF_CHANGED_EVENT = ORG_SETTINGS.weekOff.changedEvent;
@@ -87,6 +88,28 @@ export function saveOrganisationWeekOff(day: WeekOffDay): Promise<boolean> {
   notifyWeekOffChanged();
   // The calendar attendance and unpaid-absence deductions are computed against.
   return publishOrgSetting(ORG_SETTINGS.weekOff, day);
+}
+
+const RULES_STORAGE_KEY = ORG_SETTINGS.weekOffRules.storageKey;
+
+/** The organisation's days off beyond its weekly one — see data/weekOffRules.ts. */
+export function getOrganisationWeekOffRules(): WeekOffRules {
+  if (typeof window === 'undefined') return NO_EXTRA_WEEK_OFF;
+  try {
+    const raw = window.localStorage.getItem(orgScopedKey(RULES_STORAGE_KEY));
+    return raw ? normalizeWeekOffRules(JSON.parse(raw)) : NO_EXTRA_WEEK_OFF;
+  } catch {
+    return NO_EXTRA_WEEK_OFF;
+  }
+}
+
+/** Resolves once the organisation's copy has caught up — see publishOrgSetting. */
+export function saveOrganisationWeekOffRules(rules: WeekOffRules): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  const normalized = normalizeWeekOffRules(rules);
+  window.localStorage.setItem(orgScopedKey(RULES_STORAGE_KEY), JSON.stringify(normalized));
+  notifyWeekOffChanged();
+  return publishOrgSetting(ORG_SETTINGS.weekOffRules, normalized);
 }
 
 if (typeof window !== 'undefined') {

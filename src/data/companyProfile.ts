@@ -32,6 +32,14 @@ export interface CompanyProfile {
    */
   teamSize: string;
   /**
+   * The day this organisation started recording attendance here, `YYYY-MM-DD`,
+   * or '' when nobody has said. Days before it were worked somewhere else —
+   * a register, a spreadsheet, a biometric box — and this app has no record
+   * of them, which is not the same thing as somebody having been absent. See
+   * data/goLive.ts.
+   */
+  goLiveDate: string;
+  /**
    * Job titles that carry the HR function. Someone appointed to one of these
    * administers this organisation (see data/roleAssignments.ts) and oversees
    * every employee's records (see lib/dataScope.ts).
@@ -59,6 +67,7 @@ const emptyCompanyProfile: CompanyProfile = {
   supportEmail: '',
   phone: '',
   teamSize: '',
+  goLiveDate: '',
   hrDesignations: [],
 };
 
@@ -83,6 +92,7 @@ const demoCompanyProfile: CompanyProfile = {
   supportEmail: 'hr@modcon.io',
   phone: '+91 80 4567 8900',
   teamSize: '26–50',
+  goLiveDate: '',
   hrDesignations: ['Head of People', 'HR Business Partner', 'HR Executive', 'Talent Acquisition Lead'],
 };
 
@@ -108,6 +118,7 @@ export function getCompanyProfile(): CompanyProfile {
       ...emptyCompanyProfile,
       ...parsed,
       teamSize: typeof parsed.teamSize === 'string' ? parsed.teamSize : '',
+      goLiveDate: typeof parsed.goLiveDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.goLiveDate) ? parsed.goLiveDate : '',
       // Guards against a record written before this was a list, and against a
       // hand-edited value of the wrong shape — callers iterate it.
       hrDesignations: Array.isArray(parsed.hrDesignations)

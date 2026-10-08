@@ -1,6 +1,7 @@
 import type { Employee, Department, EmploymentType, EmployeeStatus, Gender, WeekOffDay } from '@/types';
 import { WEEK_OFF_DAY_INDEX } from '@/types';
-import { getOrganisationWeekOff } from '@/data/weekOff';
+import { getOrganisationWeekOff, getOrganisationWeekOffRules } from '@/data/weekOff';
+import { describeOrganisationWeekOff, isOrganisationWeekOffDate } from '@/data/weekOffRules';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
 import { mergeLocations, LOCATION_DIRECTORY_CHANGED_EVENT } from '@/data/locations';
@@ -203,16 +204,30 @@ export function hasOwnWeekOff(employee: Pick<Employee, 'weekOff' | 'weekOff2'> |
 }
 
 /**
- * True when `isoDate` is this employee's week-off (matches primary or secondary week-off).
+ * True when `isoDate` is this employee's week-off.
+ *
+ * Somebody with a week-off of their own is off on exactly those days.
+ * Everybody else follows the organisation's: its weekly day, plus any second
+ * day or alternate-week day it has declared (data/weekOffRules.ts). Every
+ * "is this a working day" question in the app comes through here.
  */
 export function isWeekOffFor(
   employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined,
   isoDate: string,
 ): boolean {
+  if (!hasOwnWeekOff(employee)) {
+    return isOrganisationWeekOffDate(isoDate, getOrganisationWeekOff(), getOrganisationWeekOffRules());
+  }
   const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number);
   const dayIndex = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  const allDays = employeeWeekOffs(employee);
-  return allDays.some((day) => WEEK_OFF_DAY_INDEX[day] === dayIndex);
+  return employeeWeekOffs(employee).some((day) => WEEK_OFF_DAY_INDEX[day] === dayIndex);
+}
+
+/** This person's week-off in words: their own days, or the organisation's whole policy. */
+export function describeWeekOff(employee: Pick<Employee, 'weekOff' | 'weekOff2'> | null | undefined): string {
+  return hasOwnWeekOff(employee)
+    ? employeeWeekOffs(employee).join(' & ')
+    : describeOrganisationWeekOff(getOrganisationWeekOff(), getOrganisationWeekOffRules());
 }
 
 const CUSTOM_EMPLOYEE_STORAGE_KEY = 'modcon.hr.customEmployees';

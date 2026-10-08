@@ -9,6 +9,17 @@ import { cn } from '@/lib/utils';
 import { getCompanyProfile, saveCompanyProfile, TEAM_SIZE_BANDS } from '@/data/companyProfile';
 import { getEmployeeDirectory, suggestEmployeeCode } from '@/data/employees';
 import { createEmployeeFromDetails } from '@/data/createEmployee';
+import { HR_DEPARTMENT } from '@/data/companyProfile';
+import { updateEmployeeInDirectory } from '@/data/employees';
+import { isInventedAdminRecord } from '@/data/payRun';
+import { resolveEmployeeForAccount } from '@/lib/currentEmployee';
+import {
+  EmployeeDetailsFields,
+  emptyDetailsDraft,
+  toEmployeeDetails,
+  useEmployeeDetailsForm,
+  type EmployeeDetailsDraft,
+} from '@/components/EmployeeDetailsForm';
 import {
   EMPLOYEE_IMPORT_CSV_EXAMPLE,
   EMPLOYEE_IMPORT_CSV_HEADER,
@@ -17,13 +28,21 @@ import {
 } from '@/data/employeeImport';
 import { getLeavePolicies, inheritedDemoPolicies, saveLeavePolicies } from '@/data/leavePolicies';
 import { describeGrant, LEAVE_POLICY_TEMPLATES } from '@/data/leavePolicyTemplates';
-import { getDeclaredOrganisationWeekOff, saveOrganisationWeekOff } from '@/data/weekOff';
+import {
+  getDeclaredOrganisationWeekOff,
+  getOrganisationWeekOffRules,
+  saveOrganisationWeekOff,
+  saveOrganisationWeekOffRules,
+} from '@/data/weekOff';
+import type { WeekOffRules } from '@/data/weekOffRules';
 import { getOrganisationTasks } from '@/data/gettingStarted';
+import { syncManagerChains } from '@/lib/reportingChains';
+import type { Employee } from '@/types';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
 
 /**
- * The guided setup: company → people → policy → live.
+ * The guided setup: company → you → people → policy → live.
  *
  * ## Why a sequence, when the checklist already exists
  *
@@ -49,14 +68,40 @@ import { WEEK_OFF_DAYS, type WeekOffDay } from '@/types';
  * just as finished. Same reasoning as `data/gettingStarted.ts`.
  */
 
-type StepId = 'company' | 'people' | 'policy' | 'live';
+type StepId = 'company' | 'you' | 'people' | 'policy' | 'live';
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: 'company', label: 'Company' },
+  { id: 'you', label: 'You' },
   { id: 'people', label: 'People' },
   { id: 'policy', label: 'Week off & leave' },
   { id: 'live', label: 'Live' },
 ];
+
+/** How an office treats Saturdays — the question most Indian offices answer differently. */
+type SaturdayChoice = 'worked' | 'all' | '2,4' | '1,3' | 'custom';
+const SATURDAY_CHOICES: { id: SaturdayChoice; label: string }[] = [
+  { id: 'worked', label: 'Working day' },
+  { id: 'all', label: 'Every Saturday off' },
+  { id: '2,4', label: '2nd and 4th Saturday off' },
+  { id: '1,3', label: '1st and 3rd Saturday off' },
+];
+
+function saturdayChoiceOf(rules: WeekOffRules): SaturdayChoice {
+  if (rules.secondDay === 'Saturday' && !rules.nthDays) return 'all';
+  if (!rules.secondDay && rules.nthDays?.day === 'Saturday') {
+    const key = rules.nthDays.weeks.join(',');
+    if (key === '2,4' || key === '1,3') return key;
+  }
+  return rules.secondDay || rules.nthDays ? 'custom' : 'worked';
+}
+
+function saturdayRules(choice: SaturdayChoice, current: WeekOffRules): WeekOffRules {
+  if (choice === 'custom') return current;
+  if (choice === 'worked') return { secondDay: null, nthDays: null };
+  if (choice === 'all') return { secondDay: 'Saturday', nthDays: null };
+  return { secondDay: null, nthDays: { day: 'Saturday', weeks: choice.split(',').map(Number) } };
+}
 
 /** The leave choice: a template, what the organisation already has, or nothing yet. */
 type LeaveChoice = string | 'keep' | 'later';
@@ -64,7 +109,7 @@ type LeaveChoice = string | 'keep' | 'later';
 function StepRail({ current }: { current: StepId }) {
   const index = STEPS.findIndex((step) => step.id === current);
   return (
-    <ol className="mb-6 grid grid-cols-4 border-2 border-ink-900" aria-label="Setup progress">
+    <ol className="mb-6 grid grid-cols-5 border-2 border-ink-900" aria-label="Setup progress">
       {STEPS.map((step, i) => (
         <li
           key={step.id}
@@ -106,6 +151,35 @@ export function SetupPage() {
   const [companyName, setCompanyName] = useState(initialCompany.name);
   const [legalName, setLegalName] = useState(initialCompany.legalName);
   const [teamSize, setTeamSize] = useState(initialCompany.teamSize);
+  // Defaults to today: the day somebody runs the setup is, nearly always, the
+  // day the company starts recording here. See data/goLive.ts.
+  const [goLiveDate, setGoLiveDate] = useState(initialCompany.goLiveDate || todayIso());
+
+  // ---- step 2: you ----------------------------------------------------------
+  // Who this account already is in the directory, if anybody. A record an
+  // earlier version invented is not anybody: its figures are offered for
+  // correction, never kept — see isInventedAdminRecord.
+  const me = useMemo(
+    () => resolveEmployeeForAccount(profile, getEmployeeDirectory()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profile, directoryRevision],
+  );
+  const meInvented = isInventedAdminRecord(me);
+  const meForm = useEmployeeDetailsForm((): EmployeeDetailsDraft => {
+    const draft = emptyDetailsDraft();
+    const nameParts = (profile?.displayName ?? '').trim().split(/\s+/).filter(Boolean);
+    return {
+      ...draft,
+      employeeCode: me?.employeeCode ?? draft.employeeCode,
+      firstName: me?.firstName ?? nameParts[0] ?? '',
+      lastName: me?.lastName ?? nameParts.slice(1).join(' '),
+      email: profile?.email ?? '',
+      designation: me?.designation ?? '',
+      department: HR_DEPARTMENT,
+    };
+  });
+  const [showMeErrors, setShowMeErrors] = useState(false);
+  const [meNotice, setMeNotice] = useState<string | null>(null);
 
   // ---- step 2: people -------------------------------------------------------
   const directory = useMemo(() => getEmployeeDirectory(), [directoryRevision]);
@@ -119,7 +193,12 @@ export function SetupPage() {
     if (!csvText.trim()) return null;
     return parseEmployeeImportCsv(
       csvText,
-      directory.map((employee) => ({ email: employee.email, employeeCode: employee.employeeCode })),
+      directory.map((employee) => ({
+        id: employee.id,
+        email: employee.email,
+        employeeCode: employee.employeeCode,
+        fullName: employee.fullName,
+      })),
       (ahead) => suggestEmployeeCode(directory, ahead),
       todayIso(),
     );
@@ -127,6 +206,8 @@ export function SetupPage() {
 
   // ---- step 3: week off & leave ---------------------------------------------
   const [weekOff, setWeekOff] = useState<WeekOffDay>(() => getDeclaredOrganisationWeekOff() ?? 'Sunday');
+  const initialRules = useMemo(() => getOrganisationWeekOffRules(), []);
+  const [saturdays, setSaturdays] = useState<SaturdayChoice>(() => saturdayChoiceOf(initialRules));
   const existingPolicies = useMemo(() => {
     const policies = getLeavePolicies();
     // Borrowed demo copies are not this organisation's policy, so they are not
@@ -161,8 +242,13 @@ export function SetupPage() {
     // Nothing changed is nothing to write. Coming back through the setup to
     // reach a later step should not re-publish a profile somebody else may
     // have edited in Settings since this page loaded.
-    if (current.name === companyName.trim() && current.legalName === nextLegalName && current.teamSize === teamSize) {
-      go('people');
+    if (
+      current.name === companyName.trim() &&
+      current.legalName === nextLegalName &&
+      current.teamSize === teamSize &&
+      current.goLiveDate === goLiveDate
+    ) {
+      go('you');
       return;
     }
     setSaving(true);
@@ -174,11 +260,36 @@ export function SetupPage() {
       // rather than leaving the payslip blank. Settings can correct it.
       legalName: nextLegalName,
       teamSize,
+      goLiveDate,
     });
     setSaving(false);
     if (!published) {
       setError('This was saved in this browser but not to your organisation. Check your connection and press Continue again.');
       return;
+    }
+    go('you');
+  }
+
+  /**
+   * HR's own record: created from what they typed, or — where an earlier
+   * version invented one — the invented figures replaced in place, keeping the
+   * id so their account link and any history stay attached.
+   */
+  function saveMe() {
+    if (meForm.hasErrors) {
+      setShowMeErrors(true);
+      return;
+    }
+    const details = toEmployeeDetails(meForm.draft);
+    if (me && meInvented) {
+      updateEmployeeInDirectory({
+        ...me,
+        ...details,
+        fullName: [details.firstName, details.lastName].filter(Boolean).join(' '),
+        reportingManagerId: details.reportingManagerId,
+      });
+    } else if (!me) {
+      createEmployeeFromDetails(details, { profile, notify: setMeNotice });
     }
     go('people');
   }
@@ -206,10 +317,26 @@ export function SetupPage() {
       collected.push(message);
       setNotices([...collected]);
     };
-    for (const { employee } of preview.rows) {
+    // Two passes, because a manager may be further down the file than the
+    // people who report to them: everybody is created first, then the lines
+    // the spreadsheet drew between them.
+    const createdByLine = new Map<number, Employee>();
+    for (const { line, employee, manager } of preview.rows) {
       const { codeSuggested: _codeSuggested, ...details } = employee;
-      createEmployeeFromDetails({ ...details, reportingManagerId: null }, { profile, notify });
+      const reportingManagerId = manager?.kind === 'directory' ? manager.id : null;
+      createdByLine.set(line, createEmployeeFromDetails({ ...details, reportingManagerId }, { profile, notify }));
     }
+    let linked = false;
+    for (const { line, manager } of preview.rows) {
+      if (manager?.kind !== 'file') continue;
+      const person = createdByLine.get(line);
+      const boss = createdByLine.get(manager.line);
+      if (!person || !boss) continue;
+      updateEmployeeInDirectory({ ...person, reportingManagerId: boss.id, reportingManagerName: boss.fullName });
+      linked = true;
+    }
+    // The chains stamped on leave documents describe the reporting tree.
+    if (linked) void syncManagerChains();
     setImported(preview.rows.length);
     setCsvText('');
     setFileName(null);
@@ -221,6 +348,11 @@ export function SetupPage() {
     // Pressing Continue on an undeclared week-off *is* the declaration, so
     // only an unchanged, already-declared day is skipped.
     if (getDeclaredOrganisationWeekOff() !== weekOff) writes.push(saveOrganisationWeekOff(weekOff));
+    // A pattern set in Settings that this question cannot express is 'custom'
+    // and left exactly as it is.
+    const currentRules = getOrganisationWeekOffRules();
+    const nextRules = saturdayRules(saturdays, currentRules);
+    if (JSON.stringify(nextRules) !== JSON.stringify(currentRules)) writes.push(saveOrganisationWeekOffRules(nextRules));
     const template = LEAVE_POLICY_TEMPLATES.find((item) => item.id === leaveChoice);
     if (template) writes.push(saveLeavePolicies(template.policies));
     const results = await Promise.all(writes);
@@ -253,7 +385,7 @@ export function SetupPage() {
     <div className="mx-auto max-w-3xl">
       <PageHeader
         title="Set up your workspace"
-        subtitle="Four steps, about five minutes. Everything here can be changed later in Settings."
+        subtitle="Five steps, about five minutes. Everything here can be changed later in Settings."
       />
       <StepRail current={step} />
 
@@ -303,6 +435,19 @@ export function SetupPage() {
                 ))}
               </div>
             </div>
+            <div>
+              <label htmlFor="setup-go-live" className="label">Start recording attendance from</label>
+              <input
+                id="setup-go-live"
+                type="date"
+                className="input max-w-xs"
+                value={goLiveDate}
+                onChange={(event) => setGoLiveDate(event.target.value)}
+              />
+              <p className="mt-1 text-xs text-ink-500">
+                Days before this were recorded somewhere else, so nobody is shown as absent for them.
+              </p>
+            </div>
           </div>
           <SaveError message={error} />
           <div className="mt-6 flex justify-end">
@@ -310,6 +455,50 @@ export function SetupPage() {
               Continue <ArrowRight size={14} />
             </Button>
           </div>
+        </Card>
+      )}
+
+      {step === 'you' && (
+        <Card>
+          <h2 className="font-display text-lg font-extrabold text-ink-900">About you</h2>
+          {me && !meInvented ? (
+            <>
+              <p className="mt-1 text-sm text-ink-600">
+                You are on the directory as <strong>{me.fullName}</strong> ({me.employeeCode}, {me.designation}). Nothing to do here.
+              </p>
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <Button variant="ghost" onClick={() => go('company')} icon={<ArrowLeft size={14} />}>Back</Button>
+                <Button onClick={() => go('people')}>Continue <ArrowRight size={14} /></Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-ink-600">
+                {meInvented
+                  ? 'An earlier version of Modcon HR filled in your record by itself — a date of birth, a joining date and a ₹36 lakh CTC nobody entered. It is left out of payroll until you put your real details here.'
+                  : 'If you are on this company’s payroll, add yourself the way you would add anyone: your attendance, leave and payslips depend on it. If you are in the staff spreadsheet you are about to upload, or not on the payroll at all, skip this.'}
+              </p>
+              <div className="mt-5">
+                <EmployeeDetailsFields
+                  form={meForm}
+                  showErrors={showMeErrors}
+                  fieldPrefix="Your"
+                  canEditEmployeeCode
+                  managerControl={<p className="text-xs text-ink-500">Set it later from your profile, once your managers are in.</p>}
+                />
+              </div>
+              {meNotice && <p className="mt-3 text-xs text-amber-800">{meNotice}</p>}
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                <Button variant="ghost" onClick={() => go('company')} icon={<ArrowLeft size={14} />}>Back</Button>
+                <div className="flex flex-wrap gap-2">
+                  {!meInvented && (
+                    <Button variant="secondary" onClick={() => go('people')}>Skip — I’m in the spreadsheet</Button>
+                  )}
+                  <Button onClick={saveMe}>{meInvented ? 'Save my details' : 'Add me'} <ArrowRight size={14} /></Button>
+                </div>
+              </div>
+            </>
+          )}
         </Card>
       )}
 
@@ -332,9 +521,10 @@ export function SetupPage() {
 
           <div className="mt-4 border border-ink-300 bg-ink-100 px-4 py-3 text-xs leading-relaxed text-ink-700">
             <p>
-              <strong>Needed for everyone:</strong> first and last name, work email, designation, department, location,
-              date of birth, date of joining and annual CTC. Optional: employment type, gender, phone, employee code
-              (one is suggested if blank). Dates as YYYY-MM-DD or DD/MM/YYYY.
+              <strong>Needed for everyone:</strong> name, designation, department, location, date of joining and
+              annual CTC (480000 or 4.8 LPA). <strong>Optional:</strong> last name, work email (no email means no
+              login), date of birth, reporting manager, employment type, gender, phone, employee code (suggested if
+              blank), PAN, UAN, bank account and IFSC. Dates as DD/MM/YYYY, YYYY-MM-DD or 12-Mar-1993.
             </p>
             <button type="button" onClick={downloadTemplate} className="mt-2 inline-flex items-center gap-1 font-semibold text-brand-700 hover:underline">
               <Download size={12} /> Download a template
@@ -395,13 +585,18 @@ export function SetupPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {preview.rows.map(({ line, employee }) => (
-                          <tr key={line} className="border-t border-ink-200">
+                        {preview.rows.map(({ line, employee, notes }) => (
+                          <tr key={line} className="border-t border-ink-200 align-top">
                             <td className="px-2 py-1.5 tabular-nums">
                               {employee.employeeCode}
                               {employee.codeSuggested && <span className="ml-1 text-ink-400">(suggested)</span>}
                             </td>
-                            <td className="px-2 py-1.5">{employee.firstName} {employee.lastName}</td>
+                            <td className="px-2 py-1.5">
+                              {employee.firstName} {employee.lastName}
+                              {notes.map((note) => (
+                                <p key={note} className="mt-0.5 text-[11px] text-amber-800">{note}</p>
+                              ))}
+                            </td>
                             <td className="px-2 py-1.5 break-all">{employee.email}</td>
                             <td className="px-2 py-1.5">{employee.department}</td>
                             <td className="px-2 py-1.5">{employee.designation}</td>
@@ -439,7 +634,7 @@ export function SetupPage() {
 
           {imported !== null && (
             <p role="status" className="mt-4 border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Added {imported} {imported === 1 ? 'person' : 'people'}. Reporting managers are set from each person&rsquo;s profile.
+              Added {imported} {imported === 1 ? 'person' : 'people'}. Anyone whose reporting manager the file did not settle can be given one from their profile.
             </p>
           )}
           {notices.length > 0 && (
@@ -451,7 +646,7 @@ export function SetupPage() {
           )}
 
           <div className="mt-6 flex items-center justify-between gap-3">
-            <Button variant="ghost" onClick={() => go('company')} icon={<ArrowLeft size={14} />}>
+            <Button variant="ghost" onClick={() => go('you')} icon={<ArrowLeft size={14} />}>
               Back
             </Button>
             <Button variant={directory.length > 0 ? 'primary' : 'secondary'} onClick={() => go('policy')}>
@@ -476,7 +671,22 @@ export function SetupPage() {
               onChange={(value) => setWeekOff(value as WeekOffDay)}
               options={WEEK_OFF_DAYS.map((day) => ({ label: day, value: day }))}
             />
-            <p className="mt-1 text-xs text-ink-500">Anyone with a different day can be given their own on their profile.</p>
+          </div>
+          <div className="mt-4 max-w-xs">
+            <span className="label">Saturdays</span>
+            <Select
+              ariaLabel="Saturdays"
+              value={saturdays}
+              onChange={(value) => setSaturdays(value as SaturdayChoice)}
+              options={[
+                ...SATURDAY_CHOICES.map((choice) => ({ label: choice.label, value: choice.id })),
+                ...(saturdays === 'custom' ? [{ label: 'As set in Settings → Week Off', value: 'custom' }] : []),
+              ]}
+            />
+            <p className="mt-1 text-xs text-ink-500">
+              Anyone with a different arrangement can be given their own day on their profile. Settings → Week Off has
+              every other pattern.
+            </p>
           </div>
 
           <fieldset className="mt-6">
@@ -520,6 +730,15 @@ export function SetupPage() {
               </p>
             )}
           </fieldset>
+
+          <p className="mt-4 text-xs text-ink-600">
+            Starting part-way through the year? Balances count from 1 April, so record the leave people have
+            already taken in{' '}
+            <Link to="/settings?tab=leave" className="font-semibold text-brand-700 hover:underline">
+              Settings → Leave Policies → Leave taken before you started
+            </Link>{' '}
+            once you finish here.
+          </p>
 
           <SaveError message={error} />
           <div className="mt-6 flex items-center justify-between gap-3">

@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { carriedOverLossOfPay, lastDayOf, payeesFor } from '../../src/data/payRun.ts';
+import { carriedOverLossOfPay, isInventedAdminRecord, lastDayOf, payRunRoll, payeesFor, runnableMonths } from '../../src/data/payRun.ts';
 
 const people = [
   { id: 'joined-april', status: 'Active', dateOfJoining: '2026-04-01' },
@@ -50,4 +50,30 @@ test('a run lists every earlier month it corrects, deductions and refunds alike'
 
 test('a run with no corrections lists nothing', () => {
   assert.deepEqual(carriedOverLossOfPay([{ employeeId: 'emp-1', lopArrears: [] }, { employeeId: 'emp-2' }]), []);
+});
+
+test('the current month cannot be run until the 25th', () => {
+  assert.deepEqual(runnableMonths('2026-10-08'), ['2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04']);
+  assert.deepEqual(runnableMonths('2026-10-24'), runnableMonths('2026-10-08'));
+  assert.deepEqual(runnableMonths('2026-10-25'), ['2026-10', '2026-09', '2026-08', '2026-07', '2026-06', '2026-05']);
+  // Across a year end, in both directions.
+  assert.deepEqual(runnableMonths('2027-01-03').slice(0, 2), ['2026-12', '2026-11']);
+  assert.deepEqual(runnableMonths('2026-12-31')[0], '2026-12');
+});
+
+test('a record the app invented for an administrator is excluded from a run, and named', () => {
+  const invented = { id: 'emp-hr-001-evDh2Y', status: 'Active', dateOfJoining: '2023-01-01', dateOfBirth: '1992-05-15', ctc: 3600000 };
+  const corrected = { ...invented, dateOfBirth: '1986-07-22', ctc: 960000 };
+  const ordinary = { id: 'emp-001', status: 'Active', dateOfJoining: '2020-01-01', dateOfBirth: '1992-05-15', ctc: 3600000 };
+  assert.equal(isInventedAdminRecord(invented), true);
+  assert.equal(isInventedAdminRecord({ ...invented, id: 'emp-adm-001-abc123' }), true);
+  // Somebody genuinely born that day on that salary is not mistaken for one.
+  assert.equal(isInventedAdminRecord(ordinary), false);
+  assert.equal(isInventedAdminRecord(corrected), false);
+
+  const roll = payRunRoll([invented, ordinary], '2026-09');
+  assert.deepEqual(roll.payees.map((e) => e.id), ['emp-001']);
+  assert.equal(roll.excluded.length, 1);
+  assert.match(roll.excluded[0].reason, /never entered/);
+  assert.deepEqual(payRunRoll([corrected], '2026-09').payees.map((e) => e.id), ['emp-hr-001-evDh2Y']);
 });

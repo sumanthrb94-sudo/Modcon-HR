@@ -28,6 +28,7 @@ import type { Employee, Gender, LeaveBalance, LeaveRequest, LeaveType } from '@/
 import { getLeavePoliciesFor, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy } from './leavePolicies';
 import { accrualMonthsElapsed, financialYearEnd, financialYearOf, financialYearStart, monthsBetween } from '@/lib/financialYear';
 import { todayIso } from '@/lib/today';
+import { openingLeaveTakenFor } from './openingLeave';
 
 export interface Entitlement {
   type: LeaveType;
@@ -224,7 +225,9 @@ export function getApplicableEntitlements(
     .map((policy) => {
       const type = normalizeLeaveTypeValue(policy.type);
       const { granted, withheldReason } = grantedDays(policy, employee, asOf);
-      const used = daysAtStatus(employee.id, type, 'Approved', requests, asOf);
+      // Leave taken this year before the organisation started using this app
+      // counts as used like any approved here — see data/openingLeave.ts.
+      const used = daysAtStatus(employee.id, type, 'Approved', requests, asOf) + openingLeaveTakenFor(employee.id, type, asOf);
       const pending = daysAtStatus(employee.id, type, 'Pending', requests, asOf);
       const available = Math.max(0, granted - used);
       return {

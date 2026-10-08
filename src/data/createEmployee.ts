@@ -32,6 +32,11 @@ export interface EmployeeDetails {
   dateOfJoining: string;
   ctc: number;
   reportingManagerId: string | null;
+  /** Statutory identifiers, when the source had them — see Employee.pan. */
+  pan?: string;
+  uan?: string;
+  bankAccountNumber?: string;
+  bankIfsc?: string;
 }
 
 export type Notify = (message: string) => void;
@@ -97,7 +102,8 @@ export function createEmployeeFromDetails(
 ): Employee {
   const directory = getEmployeeDirectory();
   const nextIndex = getNextEmployeeSequence(directory);
-  const fullName = `${details.firstName} ${details.lastName}`;
+  // Somebody known by one name has no last name, and no trailing space either.
+  const fullName = [details.firstName, details.lastName].filter(Boolean).join(' ');
   const manager = directory.find((candidate) => candidate.id === details.reportingManagerId);
 
   const employee: Employee = {
@@ -128,6 +134,10 @@ export function createEmployeeFromDetails(
     // Profile. Address was previously the work location restated as though it
     // were a home address.
     skills: [],
+    ...(details.pan ? { pan: details.pan } : {}),
+    ...(details.uan ? { uan: details.uan } : {}),
+    ...(details.bankAccountNumber ? { bankAccountNumber: details.bankAccountNumber } : {}),
+    ...(details.bankIfsc ? { bankIfsc: details.bankIfsc } : {}),
   };
 
   addEmployeeToDirectory(employee);

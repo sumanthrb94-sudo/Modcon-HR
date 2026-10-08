@@ -32,16 +32,21 @@ async function login(page: Page) {
   await expect(page.getByRole('link', { name: 'People & Documents' })).toBeVisible({ timeout: 20_000 });
 }
 
-/** Current IST month, `YYYY-MM` — mirrors src/lib/today.ts currentMonthIso(). */
-function currentMonthIso(): string {
+/**
+ * The latest month Run Payroll offers, `YYYY-MM` — mirrors `runnableMonths` in
+ * src/data/payRun.ts: this IST month from the 25th, the one before until then.
+ */
+function latestRunnableMonth(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
     month: '2-digit',
+    day: '2-digit',
   }).formatToParts(new Date());
-  const year = parts.find((p) => p.type === 'year')!.value;
-  const month = parts.find((p) => p.type === 'month')!.value;
-  return `${year}-${month}`;
+  const year = Number(parts.find((p) => p.type === 'year')!.value);
+  const month = Number(parts.find((p) => p.type === 'month')!.value);
+  const day = Number(parts.find((p) => p.type === 'day')!.value);
+  return new Date(Date.UTC(year, month - 1 - (day >= 25 ? 0 : 1), 1)).toISOString().slice(0, 7);
 }
 
 /** Mirrors src/pages/payroll/index.tsx monthLabel(). */
@@ -52,7 +57,7 @@ function monthLabel(iso: string): string {
 
 test.describe.serial('payroll run guardrails', () => {
   let page: Page;
-  const month = currentMonthIso();
+  const month = latestRunnableMonth();
   const label = monthLabel(month);
 
   test.beforeAll(async ({ browser }) => {

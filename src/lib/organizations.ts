@@ -120,6 +120,7 @@ export async function createOrganization(
             email,
             role: 'hr',
             orgId,
+            source: 'provisioned',
             assignedBy: createdByUid,
         }).catch(() => {});
 
@@ -245,6 +246,7 @@ export async function migrateOrgAdminsToHr(
                 email: candidate.email,
                 role: 'hr',
                 orgId: candidate.orgId,
+                source: 'provisioned',
                 assignedBy: actedByUid,
             }).catch(() => {
                 // The profile write above is what changes access; the
@@ -305,7 +307,7 @@ export async function setOrgHrAdministrator(
     }
 
     await updateDoc(doc(db, 'users', snap.id), { role: 'hr', orgId: params.orgId });
-    await assignRole({ email, role: 'hr', orgId: params.orgId, assignedBy: actedByUid }).catch(() => {
+    await assignRole({ email, role: 'hr', orgId: params.orgId, source: 'provisioned', assignedBy: actedByUid }).catch(() => {
         // The profile write above is what grants access; this is durability only.
     });
 

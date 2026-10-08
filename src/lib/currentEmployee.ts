@@ -20,11 +20,9 @@
  * than a guess.
  */
 import {
-  addEmployeeToDirectory,
   getEmployeeByAuthUid,
   getEmployeeByEmail,
   getEmployeeDirectory,
-  linkEmployeeToAuthAccount,
 } from '@/data/employees';
 import { getLinkedEmployeeId } from '@/data/employeeLinks';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -38,65 +36,6 @@ function normalize(value: string): string {
 export function getCurrentEmployee(profile: UserProfile | null) {
   if (!profile || resolveAppRole(profile) !== 'Employee') return undefined;
   return resolveEmployeeForAccount(profile, getEmployeeDirectory());
-}
-
-/**
- * Ensure an organization administrator or HR manager has an active employee
- * profile in the directory so they can punch in, record personal attendance,
- * and manage their own leave balances and requests.
- */
-export function ensureAdminEmployeeRecord(
-  profile: UserProfile,
-  directory: Employee[] = getEmployeeDirectory(),
-): Employee {
-  const byEmail = directory.find((e) => e.email.toLowerCase() === profile.email.toLowerCase());
-  if (byEmail) {
-    if (!byEmail.authUid && profile.uid) {
-      linkEmployeeToAuthAccount(byEmail.id, profile.uid);
-    }
-    return byEmail;
-  }
-
-  const rawName = profile.displayName?.trim() || profile.email.split('@')[0] || 'Admin';
-  const nameParts = rawName.split(/\s+/);
-  const firstName = nameParts[0] || 'Admin';
-  const lastName = nameParts.slice(1).join(' ') || (profile.role === 'admin' ? 'Administrator' : 'HR');
-  const fullName = profile.displayName?.trim() || `${firstName} ${lastName}`;
-  const code = profile.role === 'admin' ? 'ADM-001' : 'HR-001';
-  const id = `emp-${code.toLowerCase()}-${profile.uid ? profile.uid.slice(0, 6) : '01'}`;
-
-  const adminEmployee: Employee = {
-    id,
-    employeeCode: code,
-    firstName,
-    lastName,
-    fullName,
-    email: profile.email,
-    authUid: profile.uid,
-    phone: '',
-    avatar: fullName,
-    gender: 'Female',
-    dateOfBirth: '1992-05-15',
-    designation: profile.role === 'admin' ? 'HR Administrator' : 'HR Manager',
-    department: 'Human Resources',
-    location: 'Headquarters',
-    employmentType: 'Full-time',
-    status: 'Active',
-    dateOfJoining: '2023-01-01',
-    reportingManagerId: null,
-    ctc: 3600000,
-    skills: ['People Operations', 'HR Administration', 'Talent Strategy'],
-  };
-
-  try {
-    addEmployeeToDirectory(adminEmployee);
-    if (profile.uid) {
-      linkEmployeeToAuthAccount(adminEmployee.id, profile.uid);
-    }
-  } catch {
-    // Graceful fallback in read-only test environments
-  }
-  return adminEmployee;
 }
 
 /**
@@ -130,12 +69,8 @@ export function resolveEmployeeForAccount(
     if (byName) return byName;
   }
 
-  // If this account is an administrator or HR manager and has no employee record yet,
-  // ensure an active employee record exists so they can punch in, track attendance,
-  // and manage their personal workspace.
-  if (profile.role === 'admin' || profile.role === 'hr' || profile.superAdmin) {
-    return ensureAdminEmployeeRecord(profile, directory);
-  }
+  // An administrator with no record of their own is nobody here, like anyone
+  // else — one used to be invented for them; see isInventedAdminRecord in data/payRun.ts.
 
   return undefined;
 }

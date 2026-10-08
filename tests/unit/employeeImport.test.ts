@@ -169,3 +169,98 @@ test('describeGrant reads as a sentence', () => {
   assert.equal(describeGrant(monthly[2]), '15 days a year, after 12 months');
   assert.equal(describeGrant(monthly[3]), 'Unpaid — deducted from pay');
 });
+
+// The rows a simulated 22-person Pune contractor lost on its first upload.
+// Each is ordinary in an Indian office; each is now imported with a note, or
+// refused only where payroll would otherwise pay the wrong amount.
+test("an office's real spreadsheet: mononyms, no email, Excel dates, blank DOB, LPA", () => {
+  const csv = [
+    'Emp ID,Name,Email ID,Designation,Department,Location,DOB,DOJ,CTC (Annual),Reporting Manager',
+    'SE007,Raju,raju@example.com,Site Supervisor,Projects,Hinjewadi Site,01/01/1985,01/03/2016,"3,60,000",',
+    'SE008,Ganesh Kale,,Helper,Projects,Hinjewadi Site,15/06/1990,01/09/2023,"1,80,000",',
+    'SE009,Kavita Rao,kavita@example.com,Draughtsman,Design,Pune,12-Mar-1993,02/05/2020,"4,20,000",',
+    'SE010,Sameer Khan,sameer@example.com,Purchase Officer,Purchase,Pune,,14/10/2018,"5,00,000",',
+    'SE011,Neha Gupta,neha@example.com,Architect,Design,Pune,30/04/1992,01/12/2019,4.2 LPA,',
+    'SE020,Snehal Jadhav,snehal@example.com,Intern,Projects,Pune,14/01/2004,01/09/2026,15000,',
+  ].join('\n');
+  const result = parse(csv);
+  assert.equal(result.fileError, null);
+  const byCode = new Map(result.rows.map((r) => [r.employee.employeeCode, r]));
+
+  assert.equal(byCode.get('SE007')?.employee.lastName, '');
+  assert.equal(byCode.get('SE008')?.employee.email, '');
+  assert.match(byCode.get('SE008')!.notes.join(' '), /not have a login/);
+  assert.equal(byCode.get('SE009')?.employee.dateOfBirth, '1993-03-12');
+  assert.equal(byCode.get('SE010')?.employee.dateOfBirth, '');
+  assert.match(byCode.get('SE010')!.notes.join(' '), /date of birth/i);
+  assert.equal(byCode.get('SE011')?.employee.ctc, 420000);
+
+  // The intern's monthly stipend in the annual column is refused, not paid at a twelfth.
+  assert.equal(byCode.has('SE020'), false);
+  assert.match(result.unmatched[0].reason, /looks like a monthly figure/);
+  assert.match(result.unmatched[0].reason, /1,80,000/);
+});
+
+test('a shared email gives one person the login and says how to add the other', () => {
+  const csv = [HEADER, row({ email: 'info@example.com' }), row({ email: 'info@example.com', first_name: 'Rohit' })].join('\n');
+  const result = parse(csv);
+  assert.equal(result.rows.length, 1);
+  assert.match(result.unmatched[0].reason, /leave it blank/);
+  // Two people with no email at all are not a duplicate.
+  const blank = parse([HEADER, row({ email: '' }), row({ email: '', first_name: 'Rohit' })].join('\n'));
+  assert.equal(blank.rows.length, 2);
+});
+
+test('reporting managers are resolved from the file and the directory, never guessed', () => {
+  const csv = [
+    'name,email,designation,department,location,doj,ctc,code,reporting manager',
+    'Anil Deshpande,anil@example.com,Project Manager,Projects,Pune,2012-01-10,1800000,SE003,Rajesh Sharma',
+    'Vikram Joshi,vikram@example.com,Site Engineer,Projects,Pune,2021-02-05,600000,SE005,Anil Deshpande',
+    'Pooja Iyer,pooja@example.com,Site Engineer,Projects,Pune,2022-07-11,540000,SE006,anil@example.com',
+    'Imran Q,imran@example.com,Electrician,Projects,Pune,2020-11-20,288000,SE019,SE005',
+    'Somebody,some@example.com,Clerk,Admin,Pune,2020-11-20,288000,SE030,Nobody Known',
+    'Twin A,twa@example.com,Clerk,Admin,Pune,2020-11-20,288000,SE031,Ravi Kumar',
+    'Self,self@example.com,Clerk,Admin,Pune,2020-11-20,288000,SE032,SE032',
+  ].join('\n');
+  const existing = [
+    { id: 'emp-001', email: 'rajesh@example.com', employeeCode: 'SE001', fullName: 'Rajesh Sharma' },
+    { id: 'emp-050', email: 'r1@example.com', employeeCode: 'X1', fullName: 'Ravi Kumar' },
+    { id: 'emp-051', email: 'r2@example.com', employeeCode: 'X2', fullName: 'Ravi Kumar' },
+  ];
+  const result = parse(csv, existing);
+  const byCode = new Map(result.rows.map((r) => [r.employee.employeeCode, r]));
+  assert.deepEqual(byCode.get('SE003')?.manager, { kind: 'directory', id: 'emp-001' });
+  assert.deepEqual(byCode.get('SE005')?.manager, { kind: 'file', line: 2 });
+  assert.deepEqual(byCode.get('SE006')?.manager, { kind: 'file', line: 2 });
+  assert.deepEqual(byCode.get('SE019')?.manager, { kind: 'file', line: 3 });
+  assert.equal(byCode.get('SE030')?.manager, undefined);
+  assert.match(byCode.get('SE030')!.notes.join(' '), /not among the people/);
+  assert.match(byCode.get('SE031')!.notes.join(' '), /more than one person/);
+  assert.match(byCode.get('SE032')!.notes.join(' '), /own reporting manager/);
+});
+
+test('statutory identifiers are kept when valid and left off, with a note, when not', () => {
+  const csv = [
+    'name,email,designation,department,location,doj,ctc,pan,uan,bank a/c no,ifsc code',
+    'Asha Rao,asha@example.com,Clerk,Admin,Pune,2020-01-01,300000,abcde1234f,1001 2345 6789,1234-5678-9012,sbin0001234',
+    'Bad Ids,bad@example.com,Clerk,Admin,Pune,2020-01-01,300000,ABC123,99,12,SBIN1234',
+  ].join('\n');
+  const [good, bad] = parse(csv).rows;
+  assert.deepEqual(
+    [good.employee.pan, good.employee.uan, good.employee.bankAccountNumber, good.employee.bankIfsc],
+    ['ABCDE1234F', '100123456789', '123456789012', 'SBIN0001234'],
+  );
+  assert.equal(bad.employee.pan, undefined);
+  assert.equal(bad.employee.bankIfsc, undefined);
+  assert.equal(bad.notes.filter((note) => /PAN|UAN|Bank account|IFSC/.test(note)).length, 4);
+});
+
+test('lakh shorthand and Excel month names', () => {
+  assert.equal(parseImportAmount('4.2 LPA'), 420000);
+  assert.equal(parseImportAmount('12 lakhs'), 1200000);
+  assert.equal(parseImportAmount('₹ 3.5L'), 350000);
+  assert.equal(parseImportDate('12-Mar-1993'), '1993-03-12');
+  assert.equal(parseImportDate('5 September 2024'), '2024-09-05');
+  assert.equal(parseImportDate('31-Feb-2024'), null);
+  assert.equal(parseImportDate('12-Mar-93'), null);
+});

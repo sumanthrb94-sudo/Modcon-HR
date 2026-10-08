@@ -72,6 +72,9 @@ export const ORG_SETTINGS = {
   // organisation's quota moves has to re-render when an individual's does too,
   // and entitlement is what unpaid-absence deductions are computed from.
   employeeLeavePolicies: setting('employeeLeavePolicies', 'modcon.hr.employeeLeavePolicies', 'modcon-hr-leave-policies-changed'),
+  // Leave each person took this financial year before the organisation started
+  // using this app. Same change event as the policies: it changes every balance.
+  openingLeaveTaken: setting('openingLeaveTaken', 'modcon.hr.openingLeaveTaken', 'modcon-hr-leave-policies-changed'),
   companyProfile: setting('companyProfile', 'modcon.hr.companyProfile', 'modcon-hr-company-profile-changed'),
   holidays: setting('holidays', 'modcon.hr.holidays', 'modcon-hr-holidays-changed'),
   customDepartments: setting('customDepartments', 'modcon.hr.customDepartments', 'modcon-hr-department-directory-changed'),
@@ -108,6 +111,10 @@ export const ORG_SETTINGS = {
   // overrides, and it replaced a `?? 'Sunday'` literal no organisation could
   // change. See data/weekOff.ts.
   weekOff: setting('weekOff', 'modcon.hr.weekOff', 'modcon-hr-week-off-changed'),
+  // Days off beyond the weekly one — a second weekly day, alternate Saturdays.
+  // Same event as the weekly day: together they are one answer. See
+  // data/weekOffRules.ts.
+  weekOffRules: setting('weekOffRules', 'modcon.hr.weekOffRules', 'modcon-hr-week-off-changed'),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it

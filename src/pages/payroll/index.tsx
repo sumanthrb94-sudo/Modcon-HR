@@ -40,7 +40,7 @@ import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
 import { downloadPayslipPdf } from '@/lib/payslipPdf';
-import { carriedOverLossOfPay, payeesFor } from '@/data/payRun';
+import { CURRENT_MONTH_RUNNABLE_FROM_DAY, carriedOverLossOfPay, payRunRoll, runnableMonths } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -139,6 +139,8 @@ interface PendingPayrollRun {
    * for anybody already paid.
    */
   topUpOf?: PayrollRun;
+  /** On roll but deliberately not paid, each with why — see payRunRoll. */
+  excluded?: { name: string; reason: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -156,19 +158,6 @@ interface PendingPayrollRun {
 function withPayslips(existing: Payslip[], added: Payslip[]): Payslip[] {
   const ids = new Set(added.map((p) => p.id));
   return [...added, ...existing.filter((p) => !ids.has(p.id))];
-}
-
-/**
- * The months a run may be for: this one and the five before it. A payroll for
- * a month that has not happened is refused by being absent; one further back
- * than six months is a correction, not a run, and belongs to whoever files.
- */
-function runnableMonths(current: string): string[] {
-  const [year, mon] = current.split('-').map(Number);
-  return Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(Date.UTC(year, mon - 1 - i, 1));
-    return d.toISOString().slice(0, 7);
-  });
 }
 
 interface PayslipModalProps {
@@ -354,9 +343,10 @@ export function PayrollPage() {
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
-  // Which month Run Payroll is for. This month by default; up to five back, so
-  // a month missed or run late can still be paid — each month once.
-  const [runMonth, setRunMonth] = useState(() => currentMonthIso());
+  // Which month Run Payroll is for: the latest that may be run — this month
+  // from the 25th, the month before until then — and up to five back, so a
+  // month missed or run late can still be paid, each month once.
+  const [runMonth, setRunMonth] = useState(() => runnableMonths(todayIso())[0]);
   // The PDFs payroll actually issued, keyed by the payslip they document, so
   // the list below can say which months are covered and which are not.
   const { documents: uploadedPayslips } = usePayslipDocuments(profile);
@@ -475,10 +465,10 @@ export function PayrollPage() {
   /** On roll for the month, and holding no payslip for it yet. */
   function unpaidFor(month: string): Employee[] {
     const paid = new Set(payslipList.filter((p) => p.month === month).map((p) => p.employeeId));
-    return payeesFor(employees, month).filter((employee) => !paid.has(employee.id));
+    return payRunRoll(employees, month).payees.filter((employee) => !paid.has(employee.id));
   }
 
-  function openRunPayrollConfirm(month: string = currentMonthIso()) {
+  function openRunPayrollConfirm(month: string = runnableMonths(todayIso())[0]) {
     const existing = alreadyRunFor(month);
     // Already run, but not for everybody on roll: somebody added after the run,
     // or a run made while the directory was still loading. The month is locked
@@ -515,7 +505,7 @@ export function PayrollPage() {
     // Who is on roll for THIS month: joined by its last day and not resigned.
     // Every directory entry used to be paid, so a resigned employee kept
     // receiving payslips, and a month run late paid people who joined after it.
-    const onRoll = payeesFor(employees, month);
+    const { payees: onRoll, excluded } = payRunRoll(employees, month);
     const payslips = onRoll.map((employee) => buildPayslip(employee, month, 'Paid'));
     const grossTotal = payslips.reduce((sum, payslip) => sum + payslip.grossEarnings, 0);
     const netTotal = payslips.reduce((sum, payslip) => sum + payslip.netPay, 0);
@@ -525,7 +515,15 @@ export function PayrollPage() {
     const unconfiguredCount = onRoll.filter(
       (employee) => !buildPayslipComponents(employee, month).splitConfigured,
     ).length;
-    setPendingRun({ month, employeeCount: onRoll.length, grossTotal, netTotal, unconfiguredCount, payslips });
+    setPendingRun({
+      month,
+      employeeCount: onRoll.length,
+      grossTotal,
+      netTotal,
+      unconfiguredCount,
+      payslips,
+      excluded: excluded.map(({ employee, reason }) => ({ name: employee.fullName, reason })),
+    });
   }
 
   function closeRunPayrollConfirm() {
@@ -735,7 +733,7 @@ export function PayrollPage() {
               ariaLabel="Payroll month"
               value={runMonth}
               onChange={setRunMonth}
-              options={runnableMonths(currentMonthIso()).map((m) => ({
+              options={runnableMonths(todayIso()).map((m) => ({
                 label: `${monthLabel(m)}${alreadyRunFor(m) ? ' (run)' : ''}`,
                 value: m,
               }))}
@@ -935,7 +933,7 @@ export function PayrollPage() {
                 ariaLabel="Pay month"
                 value={pendingRun.month}
                 onChange={(month) => { setRunMonth(month); openRunPayrollConfirm(month); }}
-                options={runnableMonths(currentMonthIso()).map((m) => ({
+                options={runnableMonths(todayIso()).map((m) => ({
                   label: `${monthLabel(m)}${alreadyRunFor(m) ? ' — already run' : ''}`,
                   value: m,
                 }))}
@@ -955,6 +953,12 @@ export function PayrollPage() {
               end and not resigned — and records the run. Once
               confirmed, this cycle cannot be run again — a second attempt will be refused.
             </p>
+            {!runnableMonths(todayIso()).includes(currentMonthIso()) && (
+              <p className="text-xs text-ink-500" data-testid="run-payroll-current-month-note">
+                {monthLabel(currentMonthIso())} can be run from the {CURRENT_MONTH_RUNNABLE_FROM_DAY}th, once most of it
+                has been worked. Absences after a run are charged to the next month.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-lg border border-ink-200 p-3">
                 <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Headcount</p>
@@ -984,6 +988,16 @@ export function PayrollPage() {
                 {monthLabel(pendingRun.month)} or has resigned, so there is nothing to pay and this run cannot be
                 confirmed. If someone&rsquo;s joining date is wrong, correct it on their profile first.
               </p>
+            )}
+            {pendingRun.excluded && pendingRun.excluded.length > 0 && (
+              <div role="alert" className="border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="run-payroll-excluded">
+                <p className="font-semibold">Not paid in this run</p>
+                <ul className="mt-1 space-y-1 text-xs">
+                  {pendingRun.excluded.map((row) => (
+                    <li key={row.name}><strong>{row.name}</strong> — {row.reason}</li>
+                  ))}
+                </ul>
+              </div>
             )}
             <CarriedOverLossOfPaySection payslips={pendingRun.payslips} />
             {pendingRun.unconfiguredCount > 0 && (
