@@ -52,6 +52,7 @@ import { useAuth } from '@/lib/auth';
 import { LocationReviewQueue } from './LocationReviewQueue';
 import { canDecideRegularization, getApprovableEmployeeIds, getVisibleEmployeeIds, regularizationChangesTheDay } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
+import { LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
@@ -99,6 +100,8 @@ export function AttendancePage() {
   // after a refresh — and re-read when another tab changes it.
   const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
   const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
+  // Leave covering a day sets its pending request aside — see data/regularizationLeave.ts.
+  const leaveRevision = useCollectionRevision(LEAVE_REQUESTS_CHANGED_EVENT);
   const attendanceState = useMemo(() => getAttendanceRecords(), [attendanceRevision]);
   const [markEmployeeId, setMarkEmployeeId] = useState('');
   const [markStatus, setMarkStatus] = useState<AttendanceStatus>('Present');
@@ -110,7 +113,7 @@ export function AttendancePage() {
   // Absent invisible in this queue until the page was reloaded.
   const regRequests = useMemo<RegularizationRequest[]>(
     () => getRegularizationRequests(),
-    [regularizationRevision, attendanceRevision],
+    [regularizationRevision, attendanceRevision, leaveRevision],
   );
 
   // Seeing a regularization and deciding it are different permissions: a

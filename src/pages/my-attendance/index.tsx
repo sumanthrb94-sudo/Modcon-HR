@@ -218,7 +218,9 @@ export function MyAttendancePage() {
         else if (record.status === 'Work From Home') status = 'WFH';
         else if (record.status === 'On Leave') status = 'Leave';
         else if (record.status === 'Half Day') status = 'HalfDay';
-        if (record.isLate) {
+        // Late on a day leave covers (a half day, say) is not an anomaly to
+        // regularize — the leave already accounts for it.
+        if (record.isLate && !activeLeave) {
           isAttentionItem = true;
           isActionable = true;
         }
@@ -481,14 +483,22 @@ export function MyAttendancePage() {
     const dates: string[] = [];
     for (let d = 1; d <= totalDays; d++) {
       const iso = `${calendarMonth}-${String(d).padStart(2, '0')}`;
-      if (iso <= today && !isWeekOffFor(targetEmployee, iso)) {
+      // Only days that could need correcting: worked days, not covered by
+      // leave, not a holiday, and after tracking began here.
+      if (
+        iso <= today &&
+        !isWeekOffFor(targetEmployee, iso) &&
+        !holidays.some((h) => h.date === iso) &&
+        !ownLeaves.some((l) => l.startDate <= iso && l.endDate >= iso) &&
+        !isBeforeAttendanceTracking(targetEmployee, iso)
+      ) {
         dates.push(iso);
       }
     }
     return dates
       .sort((a, b) => b.localeCompare(a))
       .map((date) => ({ label: `${formatDate(date)} · ${formatWeekdayLong(date)}`, value: date }));
-  }, [calendarMonth, targetEmployee]);
+  }, [calendarMonth, targetEmployee, holidays, ownLeaves, companyProfileRevision]);
 
   function openRaise() {
     if (actionableDays.length > 0) {

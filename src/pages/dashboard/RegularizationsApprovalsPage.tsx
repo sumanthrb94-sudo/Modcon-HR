@@ -13,6 +13,7 @@ import { getEmployeeDirectory } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { canDecideRegularization, getApprovableEmployeeIds } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
+import { LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { formatDate } from '@/lib/utils';
 
@@ -44,6 +45,8 @@ export function RegularizationsApprovalsPage() {
     const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
     // Entries derived from attendance appear and disappear as records change.
     const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
+    // Leave covering a day sets its pending request aside — see data/regularizationLeave.ts.
+    const leaveRevision = useCollectionRevision(LEAVE_REQUESTS_CHANGED_EVENT);
 
     function updateRequestStatus(requestId: string, status: 'Approved' | 'Rejected') {
         const result = decideRegularization(requestId, status, { profile });
@@ -59,7 +62,7 @@ export function RegularizationsApprovalsPage() {
         () => getRegularizationRequests()
             .filter((r) => r.status === 'Pending' && canDecideRegularization(profile, r, approvableEmployeeIds))
             .sort((a, b) => b.date.localeCompare(a.date)),
-        [regularizationRevision, attendanceRevision, approvableEmployeeIds, profile],
+        [regularizationRevision, attendanceRevision, leaveRevision, approvableEmployeeIds, profile],
     );
 
     const employees = useMemo(() => getEmployeeDirectory(), [regularizationRevision, directoryRevision]);

@@ -1,4 +1,4 @@
-import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, Employee, LeaveRequest } from '@/types';
 import { isWeekOffFor, getEmployee } from '@/data/employees';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@/lib/today';
@@ -8,6 +8,7 @@ import { isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { UserProfile } from '@/lib/auth';
 import { regularizationDecisionRefusal } from '@/lib/dataScope';
 import { getLeaveRequests } from '@/data/leave';
+import { withoutRequestsCoveredByLeave } from '@/data/regularizationLeave';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
 export const WEEK_DATES = [
@@ -388,10 +389,20 @@ export function getRegularizationRequests(): RegularizationRequest[] {
   // A derived day a person has touched shows their version; the rest show the
   // record's. Overrides whose day is no longer flagged — because approving the
   // request corrected it — stay, so the decision does not vanish from history.
-  return [
+  const all = [
     ...overrides.filter((override) => !derivedIds.has(override.id)),
     ...derived.map((entry) => byId.get(entry.id) ?? entry),
-  ].sort((a, b) => b.date.localeCompare(a.date) || a.employeeId.localeCompare(b.employeeId));
+  ];
+  // A pending request on a day leave now covers is set aside while it does —
+  // see data/regularizationLeave.ts.
+  let leaves: LeaveRequest[] = [];
+  try {
+    leaves = getLeaveRequests();
+  } catch {
+    // Leave store uninitialized fallback, as in deriveRegularizationRequests.
+  }
+  return withoutRequestsCoveredByLeave(all, leaves)
+    .sort((a, b) => b.date.localeCompare(a.date) || a.employeeId.localeCompare(b.employeeId));
 }
 
 /**
