@@ -103,14 +103,14 @@ export function LandingPage() {
       legacy:
         'Biometric hardware causes bottlenecks at office doors and frequently breaks, while generic mobile apps are vulnerable to GPS mock-location spoofing.',
       modcon:
-        'Cryptographic mobile geofencing paired with office Wi-Fi perimeter verification. Mock locations are blocked and check-ins are verified instantly.',
+        'Phone check-ins judged against the sites HR draws, time-stamped by the server and locked against their author editing them. Signs of mock locations or impossible travel are flagged for HR to review — start in advisory mode, where nobody is refused.',
     },
     {
       title: 'Disconnected Attendance & Payroll Silos',
       legacy:
         'Attendance records sit in one system while payroll sits in Excel spreadsheets. Manual exports create calculation errors and statutory compliance risks.',
       modcon:
-        'Direct synchronization between approved attendance and payroll. Automatic computation of EPF, ESI, Professional Tax, and TDS with instant PDF payslips.',
+        'Approved attendance flows straight into the pay run. Once you declare your registrations, EPF, ESI, Professional Tax and TDS are calculated and explained line by line — ready for your accountant to review and file.',
     },
   ];
 
@@ -162,7 +162,7 @@ export function LandingPage() {
         'All Growth features included',
         'Flat rate: no maximum cap, pay only for active staff',
         'Multi-branch office geofencing',
-        'Bank salary transfer file export (NEFT/RTGS)',
+        'EPFO ECR file & TDS deductee schedule',
         'Custom shift policies & dedicated engineer',
       ],
       ctaText: 'Call us',
@@ -175,12 +175,12 @@ export function LandingPage() {
     {
       icon: Workflow,
       title: 'Exceptions, not just attendance',
-      body: 'Biometric, GPS, web punch, night shifts, missed punches and multiple sites — one workflow for the messy middle.',
+      body: 'GPS check-in, web punch, night shifts, missed punches and multiple sites — one workflow for the messy middle.',
     },
     {
       icon: FileCheck2,
       title: 'Payroll people can trust',
-      body: 'PF, ESI, PT, TDS, gratuity and leave encashment connected to the attendance decisions behind every payslip.',
+      body: 'PF, ESI, PT, TDS and gratuity worked out from the attendance decisions behind every payslip — prepared for your accountant, never filed on your behalf.',
     },
     {
       icon: Smartphone,
@@ -308,7 +308,7 @@ export function LandingPage() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 bg-ink-100 border border-ink-300 font-mono text-[11px] font-bold uppercase tracking-wider text-ink-800">
               <span className="w-1.5 h-1.5 bg-brand-600" />
-              India-first Human Resource Operating System
+              The simple HR workspace for Indian teams
             </div>
 
             <h1 className="text-[2.35rem] sm:text-5xl lg:text-6xl font-display font-extrabold text-ink-900 tracking-tight leading-[1.04]">
@@ -316,7 +316,7 @@ export function LandingPage() {
             </h1>
 
             <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg text-ink-600 leading-relaxed font-sans">
-              Modcon HR connects attendance, leave, payroll preparation, onboarding and people operations around the realities Indian companies actually face — from missed punches and branch transfers to statutory deadlines.
+              Employee records, attendance, leave and payroll preparation in one place for teams of 10 to 100 — built around the realities Indian companies actually face, from missed punches and night shifts to week-offs. Your accountant files; we hand them inputs they can trust.
             </p>
 
             {/* Single restrained CTA — no funnel stack on mobile */}
@@ -374,7 +374,7 @@ export function LandingPage() {
             <div className="grid grid-cols-2 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm lg:grid-cols-4">
               {[
                 ['Attendance', 'Protected week-offs'],
-                ['Payroll', 'Statutory by default'],
+                ['Payroll', 'Prepared, explained'],
                 ['People Ops', 'One shared record'],
                 ['Field Teams', 'Verified check-ins'],
               ].map(([label, detail], index) => (
