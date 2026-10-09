@@ -31,7 +31,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-3xl' };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 whitespace-normal text-left">
       <div className="absolute inset-0 bg-ink-900/50 animate-fade-in" onClick={onClose} />
       {/* Announced as a dialog and labelled by its own heading. Without this a
           screen reader met the contents as loose page text, and a button inside

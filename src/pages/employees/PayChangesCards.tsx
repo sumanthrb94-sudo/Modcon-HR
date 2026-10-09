@@ -29,6 +29,12 @@ function monthOf(date: string): string {
   return date.slice(0, 7);
 }
 
+/** "2026-10" → "October 2026", for sentences a person reads. */
+function monthName(month: string): string {
+  const [year, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, m - 1, 1)).toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
 // ---------------------------------------------------------------------------
 // Salary revisions
 // ---------------------------------------------------------------------------
@@ -356,7 +362,7 @@ export function ExitCard({ emp }: { emp: Employee }) {
     : [];
   const notes = assessment
     ? [
-      `The salary for ${assessment.lastMonth} up to the last working day is paid in that month's payroll run, prorated, and is not part of this statement.`,
+      `The salary for ${monthName(assessment.lastMonth)} up to the last working day is paid in that month's payroll run, prorated, and is not part of this statement.`,
       assessment.settlement.encashmentBasis === 'basic'
         ? 'Leave encashment is Basic / 30 per unused day of leave types marked encashable.'
         : 'No salary structure is set, so leave encashment is priced on gross / 30 per day.',
@@ -406,7 +412,7 @@ export function ExitCard({ emp }: { emp: Employee }) {
       ) : (
         <div className="space-y-3 text-sm">
           <p className="text-ink-700">
-            {emp.exitReason ?? 'Leaving'} · paid to {formatDate(leaving)} in the {assessment?.lastMonth} payroll.
+            {emp.exitReason ?? 'Leaving'} · paid to {formatDate(leaving)} in the {assessment ? monthName(assessment.lastMonth) : ''} payroll.
           </p>
           {emp.finalSettlement ? (
             <div className="flex flex-wrap items-center gap-2">
