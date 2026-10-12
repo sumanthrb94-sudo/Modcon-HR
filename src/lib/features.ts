@@ -43,6 +43,7 @@ import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getActiveOrgKey, orgScopedKey, resolveOrgKeyForProfile } from '@/lib/orgScope';
+import { rememberOrganisationName } from '@/data/companyProfile';
 
 export interface FeatureFlag {
   /** Stored key on `organizations/{orgId}.features`. */
@@ -169,6 +170,9 @@ export function startOrgFeatureSync(
     doc(db, 'organizations', orgKey),
     (snap) => {
       setCurrent(snap.exists() ? normalize(snap.data().features) : {});
+      // The same record carries the name the organisation was created under,
+      // which the company profile falls back to until it saves its own.
+      if (snap.exists()) rememberOrganisationName(snap.data().name);
     },
     (err) => {
       console.warn('[features] could not subscribe to organisation flags:', err);

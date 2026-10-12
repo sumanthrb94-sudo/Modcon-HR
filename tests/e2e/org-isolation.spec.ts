@@ -214,7 +214,7 @@ test.describe.serial('a second organisation shares no salary structure with the 
       // Provisioning mints an Auth account, so this is slower than a Firestore write.
       await expect(dialog.getByText('Organization created')).toBeVisible({ timeout: 30_000 });
       newAdminPassword = (
-        await dialog.getByText('Temporary password', { exact: true }).locator('xpath=following-sibling::p').textContent()
+        await dialog.getByText(/^Temporary password/).locator('xpath=following-sibling::p').textContent()
       )?.trim() ?? '';
       expect(newAdminPassword, 'the dialog showed no temporary password').not.toBe('');
       await dialog.getByRole('button', { name: 'Done' }).click();

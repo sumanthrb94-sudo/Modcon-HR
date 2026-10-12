@@ -84,7 +84,46 @@ function defaultCompanyProfile(): CompanyProfile {
   return isMockDataCleared() ? { ...emptyCompanyProfile } : { ...demoCompanyProfile };
 }
 
+const ORGANISATION_NAME_KEY = 'modcon.hr.organisationName';
+
+/**
+ * The name the organisation was created under (its `organizations/{orgId}`
+ * record), cached so `getCompanyProfile` can read it synchronously.
+ *
+ * The super admin types a company name when creating an organisation, but the
+ * company profile lives in `org_settings`, which only that organisation's own
+ * administrators may write — so a new tenant opened Settings on "Unnamed
+ * company" and every surface that names the company showed nothing. Until the
+ * organisation saves a name of its own, this is the name it has.
+ */
+export function rememberOrganisationName(name: unknown) {
+  if (typeof window === 'undefined' || typeof name !== 'string') return;
+  const trimmed = name.trim();
+  try {
+    const key = orgScopedKey(ORGANISATION_NAME_KEY);
+    if (!trimmed || window.localStorage.getItem(key) === trimmed) return;
+    window.localStorage.setItem(key, trimmed);
+  } catch {
+    return;
+  }
+  notifyCompanyProfileChanged();
+}
+
+function organisationName(): string {
+  try {
+    return window.localStorage.getItem(orgScopedKey(ORGANISATION_NAME_KEY)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export function getCompanyProfile(): CompanyProfile {
+  const profile = readCompanyProfile();
+  if (profile.name.trim() || typeof window === 'undefined') return profile;
+  return { ...profile, name: organisationName() };
+}
+
+function readCompanyProfile(): CompanyProfile {
   if (typeof window === 'undefined') return defaultCompanyProfile();
   try {
     const raw = window.localStorage.getItem(orgScopedKey(COMPANY_PROFILE_STORAGE_KEY));
