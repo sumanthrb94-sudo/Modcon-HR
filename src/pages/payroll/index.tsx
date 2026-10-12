@@ -406,11 +406,16 @@ export function PayrollPage() {
 
   // ----- Aggregates -----
   const totalNetPay = useMemo(() => payslipList.reduce((s, p) => s + p.netPay, 0), [payslipList]);
+  // The people this month's run would pay — the same rule Run Payroll uses.
+  // Counting the whole directory included everyone who had resigned, so the
+  // card disagreed with the run beside it and the average CTC never moved
+  // when somebody left.
+  const onPayroll = useMemo(() => payeesFor(employees, currentMonthIso()), [directoryRevision]);
   const avgCTC = useMemo(() => {
-    if (employees.length === 0) return 0;
-    const total = employees.reduce((s, e) => s + e.ctc, 0);
-    return Math.round(total / employees.length);
-  }, [directoryRevision]);
+    if (onPayroll.length === 0) return 0;
+    const total = onPayroll.reduce((s, e) => s + e.ctc, 0);
+    return Math.round(total / onPayroll.length);
+  }, [onPayroll]);
 
   // ----- Chart data -----
   const chartData = useMemo(
@@ -777,7 +782,7 @@ export function PayrollPage() {
         />
         <StatCard
           label="Employees on Payroll"
-          value={employees.length}
+          value={onPayroll.length}
           icon={<Users size={22} />}
         />
         <StatCard

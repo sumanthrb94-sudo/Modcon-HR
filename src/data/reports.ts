@@ -17,6 +17,16 @@ import { headcountTrend, noticePeriodRate, openPositionsCount } from './dashboar
 // ---------------------------------------------------------------------------
 
 
+/**
+ * The people who work here now. Every workforce figure on the Reports page is
+ * about them — a resigned employee in the headcount, the payroll total or the
+ * diversity ratio made each disagree with the payroll run, which stops paying
+ * them the month they leave.
+ */
+function workforce() {
+  return employees.filter((e) => e.status !== 'Resigned');
+}
+
 function yearsFromDOJ(doj: string): number {
   const d = new Date(doj);
   const ms = todayDate().getTime() - d.getTime();
@@ -37,7 +47,7 @@ export function headcountByDepartment(): { department: string; count: number }[]
 // ---------------------------------------------------------------------------
 export function genderDiversity(): { name: string; value: number }[] {
   const map: Record<string, number> = {};
-  employees.forEach((e) => {
+  workforce().forEach((e) => {
     // Someone whose gender nobody recorded is not a category — leave them out
     // rather than charting an "undefined" slice.
     if (!e.gender) return;
@@ -51,7 +61,7 @@ export function genderDiversity(): { name: string; value: number }[] {
 // ---------------------------------------------------------------------------
 export function tenureDistribution(): { bucket: string; count: number }[] {
   const buckets = { '<1 yr': 0, '1–2 yrs': 0, '2–3 yrs': 0, '3+ yrs': 0 };
-  employees.forEach((e) => {
+  workforce().forEach((e) => {
     const yr = yearsFromDOJ(e.dateOfJoining);
     if (yr < 1) buckets['<1 yr']++;
     else if (yr < 2) buckets['1–2 yrs']++;
@@ -76,7 +86,7 @@ export function salaryByDepartment(): { department: string; cost: number }[] {
   return getDepartmentDirectory()
     .map((department) => ({
       department: department.name,
-      cost: employees
+      cost: workforce()
         .filter((employee) => employee.department === department.name)
         .reduce((sum, employee) => sum + Math.round(employee.ctc / 12), 0),
     }))
@@ -123,7 +133,7 @@ export function attendanceTrend(): { period: string; rate: number }[] {
 // ---------------------------------------------------------------------------
 export function employmentTypeSplit(): { name: string; value: number }[] {
   const map: Record<string, number> = {};
-  employees.forEach((e) => {
+  workforce().forEach((e) => {
     map[e.employmentType] = (map[e.employmentType] ?? 0) + 1;
   });
   return Object.entries(map).map(([name, value]) => ({ name, value }));
@@ -133,27 +143,31 @@ export function employmentTypeSplit(): { name: string; value: number }[] {
 // Derived KPIs
 // ---------------------------------------------------------------------------
 export function totalHeadcount(): number {
-  return employees.length;
+  return workforce().length;
 }
 
 export function activeHeadcount(): number {
-  return employees.filter((e) => e.status === 'Active').length;
+  return workforce().filter((e) => e.status === 'Active').length;
 }
 
 export function avgTenureYears(): number {
-  if (!employees.length) return 0;
-  const sum = employees.reduce((acc, e) => acc + yearsFromDOJ(e.dateOfJoining), 0);
-  return Math.round((sum / employees.length) * 10) / 10;
+  const people = workforce();
+  if (!people.length) return 0;
+  const sum = people.reduce((acc, e) => acc + yearsFromDOJ(e.dateOfJoining), 0);
+  return Math.round((sum / people.length) * 10) / 10;
 }
 
 export function totalAnnualPayroll(): number {
-  return employees.reduce((acc, e) => acc + e.ctc, 0);
+  return workforce().reduce((acc, e) => acc + e.ctc, 0);
 }
 
 export function diversityRatio(): number {
-  if (!employees.length) return 0;
-  const female = employees.filter((e) => e.gender === 'Female').length;
-  return Math.round((female / employees.length) * 100);
+  // Of the people whose gender is recorded: someone nobody asked is not
+  // evidence either way, and counting them in the denominator understated it.
+  const recorded = workforce().filter((e) => e.gender);
+  if (!recorded.length) return 0;
+  const female = recorded.filter((e) => e.gender === 'Female').length;
+  return Math.round((female / recorded.length) * 100);
 }
 
 /**
