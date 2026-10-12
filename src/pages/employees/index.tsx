@@ -60,6 +60,7 @@ import type { Employee, EmployeeStatus, EmploymentType, Gender, WeekOffDay } fro
 import { WEEK_OFF_DAYS } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
 import { isValidPan, isValidUan } from '@/data/returnFiles';
+import { getTaxElectionFor, saveTaxElections } from '@/data/statutory';
 import { OrgChart } from './OrgChart';
 import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -2767,6 +2768,10 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editCtc, setEditCtc] = useState('');
   const [editPan, setEditPan] = useState('');
   const [editUan, setEditUan] = useState('');
+  // Tax withheld this financial year outside this payroll — by a previous
+  // employer, or before the organisation ran payroll here. Credited against
+  // the year's TDS so a mid-year joiner or go-live is not taxed twice.
+  const [editTaxWithheld, setEditTaxWithheld] = useState('');
   const [editDepartment, setEditDepartment] = useState<Employee['department']>(departments[0] as Employee['department']);
   const [editLocation, setEditLocation] = useState(locations[0] ?? '');
   const [editGender, setEditGender] = useState<Gender | ''>('');
@@ -3111,6 +3116,7 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditCtc(String(emp.ctc ?? ''));
     setEditPan(emp.pan ?? '');
     setEditUan(emp.uan ?? '');
+    setEditTaxWithheld(String(getTaxElectionFor(emp.id).taxDeductedSoFar ?? ''));
     setEditDepartment(emp.department);
     setEditLocation(emp.location);
     setEditGender(emp.gender ?? '');
@@ -3184,6 +3190,11 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       setEditError('UAN must be 12 digits.');
       return;
     }
+    const taxWithheld = editTaxWithheld.trim() === '' ? undefined : Number(editTaxWithheld);
+    if (canEditPay && taxWithheld !== undefined && (!Number.isFinite(taxWithheld) || taxWithheld < 0)) {
+      setEditError('Tax already withheld must be zero or a positive amount.');
+      return;
+    }
 
     // A department typed rather than picked has to exist before someone is
     // filed under it. Matching an existing name case-insensitively means
@@ -3230,6 +3241,13 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     };
 
     updateEmployeeInDirectory(updatedEmployee);
+    if (canEditPay) {
+      const election = getTaxElectionFor(updatedEmployee.id);
+      const rounded = taxWithheld === undefined ? undefined : Math.round(taxWithheld);
+      if ((election.taxDeductedSoFar ?? undefined) !== rounded) {
+        void saveTaxElections({ [updatedEmployee.id]: { ...election, taxDeductedSoFar: rounded } });
+      }
+    }
     // Written separately, and deliberately not onto the employee record: the
     // directory is localStorage-backed and client-controlled, so an assignment
     // held there would never reach the organisation's other administrators.
@@ -3669,6 +3687,18 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
                   className="input w-full"
                   maxLength={12}
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Tax withheld elsewhere this year (₹)</label>
+                <input
+                  type="number"
+                  min={0}
+                  aria-label="Tax already withheld this financial year outside this payroll"
+                  value={editTaxWithheld}
+                  onChange={(event) => setEditTaxWithheld(event.target.value)}
+                  className="input w-full"
+                />
+                <p className="text-xs text-ink-400 mt-1">By a previous employer, or before you ran payroll here. Tax on payslips issued here is credited automatically.</p>
               </div>
             </>
           )}
