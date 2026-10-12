@@ -201,7 +201,11 @@ export function MyAttendancePage() {
       const isWeekOff = isWeekOffFor(targetEmployee, isoDate);
       const isToday = isoDate === today;
       const isFuture = isoDate > today;
-      const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending');
+      // A request somebody raised — it carries the status they asked for. The
+      // app's own flags (absent, late, missing check-out) are Pending too but
+      // ask for nothing, and treating them as "already requested" hid exactly
+      // the days that still needed the employee to act.
+      const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending' && r.requestedStatus !== null);
       const activeLeave = ownLeaves.find((l) => l.startDate <= isoDate && l.endDate >= isoDate);
 
       let status: 'Present' | 'WFH' | 'Leave' | 'HalfDay' | 'Absent' | 'WeekOff' | 'Holiday' | 'Future' | 'PendingReg' = 'Future';
