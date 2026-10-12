@@ -59,6 +59,7 @@ import { addLocationToDirectory, normalizeLocation } from '@/data/locations';
 import type { Employee, EmployeeStatus, EmploymentType, Gender, WeekOffDay } from '@/types';
 import { WEEK_OFF_DAYS } from '@/types';
 import { cn, formatINR, formatDate, pct } from '@/lib/utils';
+import { isValidPan, isValidUan } from '@/data/returnFiles';
 import { OrgChart } from './OrgChart';
 import { EmployeeCard } from './EmployeeCard';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -2734,6 +2735,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
    * from is the organisation's record of their employment, not their manager's.
    */
   const canEditJoiningDate = isHR || isAdmin;
+  // What someone is paid and the identifiers they are filed under are HR's to
+  // change — never the employee's own, and not a manager's.
+  const canEditPay = isHR || isAdmin;
 
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const profilePictureInputRef = useRef<HTMLInputElement | null>(null);
@@ -2757,6 +2761,12 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
+  // Pay and statutory identifiers. A promotion without a pay change was the
+  // only kind this form could record, and without a PAN or UAN nobody could
+  // ever be filed on a TDS schedule or an EPFO ECR.
+  const [editCtc, setEditCtc] = useState('');
+  const [editPan, setEditPan] = useState('');
+  const [editUan, setEditUan] = useState('');
   const [editDepartment, setEditDepartment] = useState<Employee['department']>(departments[0] as Employee['department']);
   const [editLocation, setEditLocation] = useState(locations[0] ?? '');
   const [editGender, setEditGender] = useState<Gender | ''>('');
@@ -3098,6 +3108,9 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
     setEditEmail(emp.email);
     setEditPhone(emp.phone);
     setEditDesignation(emp.designation);
+    setEditCtc(String(emp.ctc ?? ''));
+    setEditPan(emp.pan ?? '');
+    setEditUan(emp.uan ?? '');
     setEditDepartment(emp.department);
     setEditLocation(emp.location);
     setEditGender(emp.gender ?? '');
@@ -3156,6 +3169,21 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       setEditError('Date of birth cannot be in the future.');
       return;
     }
+    const ctc = canEditPay ? Number(editCtc) : emp.ctc;
+    if (canEditPay && (!Number.isFinite(ctc) || ctc <= 0)) {
+      setEditError('Annual CTC must be a positive amount.');
+      return;
+    }
+    const pan = editPan.trim().toUpperCase();
+    const uan = editUan.trim();
+    if (canEditPay && pan && !isValidPan(pan)) {
+      setEditError('PAN must be five letters, four digits and a letter, e.g. ABCPK1234F.');
+      return;
+    }
+    if (canEditPay && uan && !isValidUan(uan)) {
+      setEditError('UAN must be 12 digits.');
+      return;
+    }
 
     // A department typed rather than picked has to exist before someone is
     // filed under it. Matching an existing name case-insensitively means
@@ -3175,6 +3203,11 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
       designation,
       department: knownDepartment ?? department,
       location,
+      // From the month it is saved, payroll pays on the new figure; payslips
+      // already issued keep what they paid.
+      ctc: Math.round(ctc),
+      pan: canEditPay ? (pan || undefined) : emp.pan,
+      uan: canEditPay ? (uan || undefined) : emp.uan,
       gender: editGender || undefined,
       employmentType: editEmploymentType,
       status: editStatus,
@@ -3598,6 +3631,47 @@ function EmployeeProfileExperience({ employeeId, embeddedSelfView = false }: { e
               disabled={isEmployee}
             />
           </div>
+          {canEditPay && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Annual CTC (₹)</label>
+                <input
+                  type="number"
+                  min={1}
+                  aria-label="Annual CTC"
+                  value={editCtc}
+                  onChange={(event) => setEditCtc(event.target.value)}
+                  className="input w-full"
+                />
+                <p className="text-xs text-ink-400 mt-1">Payroll pays the new figure from the next run. Issued payslips are not changed.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">PAN</label>
+                <input
+                  type="text"
+                  aria-label="PAN"
+                  placeholder="ABCPK1234F"
+                  value={editPan}
+                  onChange={(event) => setEditPan(event.target.value.toUpperCase())}
+                  className="input w-full"
+                  maxLength={10}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">UAN</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="UAN"
+                  placeholder="12-digit Universal Account Number"
+                  value={editUan}
+                  onChange={(event) => setEditUan(event.target.value.replace(/\D/g, ''))}
+                  className="input w-full"
+                  maxLength={12}
+                />
+              </div>
+            </>
+          )}
           <div>
             <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">Department</label>
             <SelectOrCreate
