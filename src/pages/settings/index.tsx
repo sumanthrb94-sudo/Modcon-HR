@@ -1473,7 +1473,7 @@ function LeavePolicies() {
                 onChange={(event) => { void handlePolicyFile(event.target.files?.[0]); }}
               />
               <p className="mt-1.5 text-xs text-ink-500 break-words leading-relaxed">
-                Columns: <span className="font-mono text-[11px] bg-ink-100/70 text-ink-800 px-1.5 py-0.5 rounded border border-ink-200 inline-block mt-0.5">{LEAVE_POLICY_CSV_HEADER}</span>
+                Columns: <span className="font-mono text-[11px] bg-ink-100/70 text-ink-800 px-1.5 py-0.5 rounded border border-ink-200 inline-block mt-0.5 max-w-full break-all">{LEAVE_POLICY_CSV_HEADER}</span>
               </p>
             </div>
             <div className="shrink-0 pt-1 sm:pt-0">
@@ -1896,7 +1896,7 @@ function EmployeeLeavePoliciesSection() {
                 onChange={(event) => { void handleFile(event.target.files?.[0]); }}
               />
               <p className="mt-1 text-xs text-ink-400">
-                Columns: <span className="font-mono">{EMPLOYEE_LEAVE_POLICY_CSV_HEADER}</span>
+                Columns: <span className="font-mono break-all">{EMPLOYEE_LEAVE_POLICY_CSV_HEADER}</span>
               </p>
             </div>
             <div className="flex items-end">
@@ -4187,7 +4187,7 @@ function SalaryStructureSection() {
                 onChange={(event) => { void handleStructureFile(event.target.files?.[0]); }}
               />
               <p className="mt-1 text-xs text-ink-400">
-                One row. Columns: <span className="font-mono">{SALARY_STRUCTURE_CSV_HEADER}</span>
+                One row. Columns: <span className="font-mono break-all">{SALARY_STRUCTURE_CSV_HEADER}</span>
               </p>
             </div>
             <div className="flex items-end">
@@ -4513,7 +4513,7 @@ function EmployeeSalaryStructuresSection() {
                 onChange={(event) => { void handleFile(event.target.files?.[0]); }}
               />
               <p className="mt-1 text-xs text-ink-400">
-                Columns: <span className="font-mono">{EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER}</span>
+                Columns: <span className="font-mono break-all">{EMPLOYEE_SALARY_STRUCTURE_CSV_HEADER}</span>
               </p>
             </div>
             <div className="flex items-end">
