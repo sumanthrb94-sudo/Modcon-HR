@@ -262,7 +262,7 @@ const MONDAY = { instant: '2026-07-27T03:30:00Z', iso: '2026-07-27' };
 async function setWeekOff(page: Page, day: 'Tuesday' | '') {
   await page.getByRole('button', { name: /Edit Profile/i }).first().click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Week Off').selectOption(day);
+  await dialog.getByLabel('Primary Week Off').selectOption(day);
   await dialog.getByRole('button', { name: /^Save/i }).click();
   await expect(dialog).toBeHidden();
 }

@@ -565,6 +565,7 @@ export function LandingPage() {
                       <input
                         type="text"
                         required
+                        aria-label="Full name"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         placeholder="e.g. Rahul Sharma"
@@ -582,6 +583,7 @@ export function LandingPage() {
                       <input
                         type="text"
                         required
+                        aria-label="Company or organisation name"
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
                         placeholder="e.g. Acme Tech Pvt Ltd"
@@ -599,6 +601,7 @@ export function LandingPage() {
                       <input
                         type="email"
                         required
+                        aria-label="Work email address"
                         value={workEmail}
                         onChange={(e) => setWorkEmail(e.target.value)}
                         placeholder="rahul@company.com"
@@ -616,6 +619,7 @@ export function LandingPage() {
                       <input
                         type="tel"
                         required
+                        aria-label="Phone or WhatsApp number"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder="+91 98765 43210"
@@ -630,7 +634,8 @@ export function LandingPage() {
                       Estimated Team Headcount
                     </label>
                     <select
-                      value={teamSize}
+                      aria-label="Estimated team headcount"
+                        value={teamSize}
                       onChange={(e) => setTeamSize(e.target.value)}
                       className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
                     >
@@ -647,7 +652,8 @@ export function LandingPage() {
                       Preferred Demo Time
                     </label>
                     <select
-                      value={preferredSlot}
+                      aria-label="Preferred demo time"
+                        value={preferredSlot}
                       onChange={(e) => setPreferredSlot(e.target.value)}
                       className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
                     >
@@ -666,7 +672,8 @@ export function LandingPage() {
                   </label>
                   <textarea
                     rows={3}
-                    value={message}
+                    aria-label="Message"
+                        value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Tell us about your shift rosters, current biometric setup, or payroll challenges..."
                     className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
