@@ -13,6 +13,9 @@
  */
 import type { UserProfile } from '@/lib/auth';
 import { pendingApprovalsSummary } from '@/data/dashboard';
+import { getMyUpdates } from '@/data/myUpdates';
+import { getSeenUpdates } from '@/lib/seenUpdates';
+import { getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { announcements } from '@/data/common';
 import { getNotificationPreferences } from '@/data/notificationPreferences';
 import { getIntegrationPreferences } from '@/data/integrations';
@@ -21,7 +24,7 @@ import { todayDate } from '@/lib/today';
 
 /** Which lucide icon the menu should render. Kept as a key so this module
  *  stays free of React/JSX imports. */
-export type NotificationIcon = 'leave' | 'expense' | 'announcement' | 'task' | 'clock';
+export type NotificationIcon = 'leave' | 'expense' | 'announcement' | 'task' | 'clock' | 'approved' | 'rejected';
 
 export interface NotificationItem {
   /** Matches a NotificationPreference id, so the Settings toggles govern it. */
@@ -31,6 +34,11 @@ export interface NotificationItem {
   path: string;
   icon: NotificationIcon;
   count: number;
+  /**
+   * Set on a decision about the viewer's own request (data/myUpdates.ts):
+   * one entry per decision, unique per outcome, and opening it marks it read.
+   */
+  updateId?: string;
 }
 
 /** Announcements newer than this are "new" enough to notify about. */
@@ -130,7 +138,23 @@ export function getNotifications(profile: UserProfile | null): NotificationItem[
     getNotificationPreferences().filter((preference) => preference.inApp).map((p) => p.id),
   );
 
-  return buildCandidates(profile).filter((item) => item.count > 0 && enabled.has(item.id));
+  // Decisions on the viewer's own requests come first: they are addressed to
+  // this person by name, where everything below is a queue they might act on.
+  // Every role applies for leave, so this is not limited to employees.
+  const seen = getSeenUpdates(profile?.uid);
+  const mine: NotificationItem[] = getMyUpdates(getCurrentEmployeeRecord(profile)?.id)
+    .filter((update) => !seen.has(update.id) && enabled.has(update.preferenceId))
+    .map((update) => ({
+      id: update.preferenceId,
+      updateId: update.id,
+      title: update.title,
+      subtitle: `${update.detail}${update.decidedByName ? ` · by ${update.decidedByName}` : ''}`,
+      path: update.path,
+      icon: update.outcome === 'Rejected' ? 'rejected' : 'approved',
+      count: 1,
+    }));
+
+  return [...mine, ...buildCandidates(profile).filter((item) => item.count > 0 && enabled.has(item.id))];
 }
 
 /** Connected-integration tally shown at the foot of the menu. */

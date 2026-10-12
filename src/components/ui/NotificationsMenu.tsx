@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarOff, CheckSquare, Clock, Loader2, Megaphone, Receipt, Settings } from 'lucide-react';
+import { Bell, CalendarOff, CheckCircle2, CheckSquare, Clock, Loader2, Megaphone, Receipt, Settings, XCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from './Button';
 import { getNotifications, getIntegrationSummary, type NotificationIcon } from '@/data/notifications';
@@ -15,6 +15,27 @@ import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision
 // freshness is maintained by the three focused revision hooks below instead.
 import { useAuth } from '@/lib/auth';
 import { resolveAppRole } from '@/lib/accessControl';
+import { markUpdatesSeen, useSeenUpdatesRevision } from '@/lib/seenUpdates';
+import { LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
+import { EXPENSES_CHANGED_EVENT } from '@/data/expenses';
+import { REGULARIZATIONS_CHANGED_EVENT } from '@/data/attendance';
+
+/**
+ * Re-render when a leave request, expense claim or regularization changes —
+ * including a colleague's decision arriving through the Firestore
+ * subscription. Only these specific events, never the window 'storage' event
+ * (see the note on useDashboardDataRevision below).
+ */
+function useRequestsRevision(): number {
+    const [revision, setRevision] = useState(0);
+    useEffect(() => {
+        const bump = () => setRevision((r) => r + 1);
+        const events = [LEAVE_REQUESTS_CHANGED_EVENT, EXPENSES_CHANGED_EVENT, REGULARIZATIONS_CHANGED_EVENT];
+        events.forEach((e) => window.addEventListener(e, bump));
+        return () => events.forEach((e) => window.removeEventListener(e, bump));
+    }, []);
+    return revision;
+}
 
 interface NotificationsMenuProps {
     compact?: boolean;
@@ -27,6 +48,8 @@ const ICONS: Record<NotificationIcon, LucideIcon> = {
     announcement: Megaphone,
     task: CheckSquare,
     clock: Clock,
+    approved: CheckCircle2,
+    rejected: XCircle,
 };
 
 export function NotificationsMenu({ compact = false, className }: NotificationsMenuProps) {
@@ -39,6 +62,8 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const notificationRevision = useNotificationPreferencesRevision();
     const integrationRevision = useIntegrationPreferencesRevision();
     const directoryRevision = useEmployeeDirectoryRevision();
+    const requestsRevision = useRequestsRevision();
+    const seenRevision = useSeenUpdatesRevision();
     // Note: useDashboardDataRevision is intentionally excluded — see import
     // comment above. Notifications stay fresh via the three focused hooks.
 
@@ -47,7 +72,8 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     // and each revision hook re-runs it when its specific data source changes.
     const visibleNotifications = useMemo(
         () => getNotifications(profile),
-        [profile, notificationRevision, directoryRevision],
+        // `open` too: opening the bell always shows the current state.
+        [profile, notificationRevision, directoryRevision, requestsRevision, seenRevision, open],
     );
     const { connected: connectedIntegrations, total: totalIntegrations } = useMemo(
         () => getIntegrationSummary(),
@@ -128,9 +154,10 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                             const Icon = ICONS[item.icon];
                             return (
                                 <button
-                                    key={item.id}
+                                    key={item.updateId ?? item.id}
                                     className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-ink-50"
                                     onClick={() => {
+                                        if (item.updateId) markUpdatesSeen(profile?.uid, [item.updateId]);
                                         setOpen(false);
                                         navigate(item.path);
                                     }}

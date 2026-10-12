@@ -304,6 +304,13 @@ function settledLossOfPayDays(request: LeaveRequest, requests: LeaveRequest[]): 
  * optional, every existing call site would have kept compiling and kept
  * approving everybody.
  */
+/** `decidedAt`/`decidedByName` for a decision; cleared when a request goes back to Pending. */
+function decisionStamp(status: LeaveStatus, name: string | null | undefined) {
+  return status === 'Approved' || status === 'Rejected'
+    ? { decidedAt: new Date().toISOString(), decidedByName: name || undefined }
+    : { decidedAt: undefined, decidedByName: undefined };
+}
+
 export function updateLeaveRequestStatus(
   requestId: string,
   nextStatus: LeaveStatus,
@@ -329,6 +336,9 @@ export function updateLeaveRequestStatus(
           lossOfPayDays,
           approverId: nextStatus === 'Approved' ? (decider.approverId ?? r.approverId) : null,
           approverName: nextStatus === 'Approved' ? (decider.approverName ?? r.approverName) : undefined,
+          // Stamped so the applicant can be told — "your leave was approved"
+          // needs a when and a who, and a rejection kept neither.
+          ...decisionStamp(nextStatus, decider.approverName ?? decider.profile?.displayName),
         }
       : r,
   );

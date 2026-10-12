@@ -206,6 +206,9 @@ export interface LeaveRequest {
   appliedOn: string;
   approverId: ID | null;
   approverName?: string;
+  /** When the request was approved or rejected, and by whom. Absent until then (and on records decided before this existed). */
+  decidedAt?: string;
+  decidedByName?: string;
 }
 
 export interface LeaveBalance {
@@ -427,6 +430,9 @@ export interface ExpenseClaim {
   submittedOn: string;
   description: string;
   receiptImage?: string;
+  /** When the request was approved or rejected, and by whom. Absent until then (and on records decided before this existed). */
+  decidedAt?: string;
+  decidedByName?: string;
 }
 
 // ---- Assets --------------------------------------------------------------
@@ -493,6 +499,9 @@ export interface RegularizationRequest {
    */
   requestedStatus: AttendanceStatus | null;
   status: 'Pending' | 'Approved' | 'Rejected';
+  /** When the request was approved or rejected, and by whom. Absent until then (and on records decided before this existed). */
+  decidedAt?: string;
+  decidedByName?: string;
 }
 
 // ---- Employee handbook (document management) ------------------------------------

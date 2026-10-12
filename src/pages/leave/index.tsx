@@ -37,7 +37,7 @@ import { useAuth } from '@/lib/auth';
 import { getApplicableEntitlements, getEntitlements, type Entitlement } from '@/data/leaveEntitlements';
 import { backdatedByDays, checkLeaveApplication, policySummary } from '@/data/leaveApplication';
 import { financialYearLabel } from '@/lib/financialYear';
-import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
+import { deciderDisplayName, getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -230,7 +230,7 @@ export function LeavePage() {
     const result = updateLeaveRequestStatus(id, nextStatus, {
       profile,
       approverId: currentEmployee?.id ?? null,
-      approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
+      approverName: deciderDisplayName(profile) ?? 'Unknown approver',
     });
     // A refusal is reported, not swallowed: the buttons are hidden where the
     // viewer has no authority, so reaching this means the two disagree and

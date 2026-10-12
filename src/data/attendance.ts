@@ -6,7 +6,7 @@ import { persistentCollection } from '@/data/persistence';
 import { clockMinutes } from '@/data/shiftRules';
 import { crossesMidnight, getShiftFor, isLateFor, shiftCaptionFor } from '@/data/shifts';
 import type { UserProfile } from '@/lib/auth';
-import { regularizationDecisionRefusal } from '@/lib/dataScope';
+import { deciderDisplayName, regularizationDecisionRefusal } from '@/lib/dataScope';
 import { getLeaveRequests } from '@/data/leave';
 
 // Work week: Mon 2026-06-08 .. Fri 2026-06-12  (today = Wed 2026-06-10)
@@ -193,6 +193,9 @@ export interface RegularizationRequest {
    */
   requestedStatus: AttendanceStatus | null;
   status: 'Pending' | 'Approved' | 'Rejected';
+  /** When it was decided, and by whom — so the employee can be told. */
+  decidedAt?: string;
+  decidedByName?: string;
 }
 
 /** Stable id for the request covering one employee's one day. */
@@ -546,7 +549,13 @@ export function decideRegularization(
   if (status === 'Approved' && current.requestedStatus) {
     applyRequestedStatus(current.employeeId, current.date, current.requestedStatus);
   }
-  writeOverride({ ...current, status });
+  writeOverride({
+    ...current,
+    status,
+    // So the employee can be told who decided their day, and when.
+    decidedAt: new Date().toISOString(),
+    decidedByName: deciderDisplayName(decider.profile),
+  });
   return { ok: true };
 }
 

@@ -8,7 +8,7 @@ import { backdatedByDays } from '@/data/leaveApplication';
 import { employees } from '@/data/employees';
 import { resolveAppRole } from '@/lib/accessControl';
 import { useAuth } from '@/lib/auth';
-import { getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
+import { deciderDisplayName, getApprovableEmployeeIds, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { formatDate } from '@/lib/utils';
@@ -40,7 +40,7 @@ export function LeaveRequestsApprovalsPage() {
             // Record whoever is signed in, not a fixed name. This previously
             // credited 'Ananya Reddy' with every approval in the system.
             approverId: currentEmployee?.id ?? null,
-            approverName: currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown approver',
+            approverName: deciderDisplayName(profile) ?? 'Unknown approver',
         });
         setDecisionNotice(result.ok ? null : result.reason);
         setLeaveRequests(result.requests);

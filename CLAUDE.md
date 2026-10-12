@@ -298,6 +298,17 @@ The account salary is paid into: Firestore `employee_bank_details/<orgId>__<empl
 - **Reads are queries on `orgId` + `employeeId`, never a get by id** — the rule reads `resource.data`, and "nothing submitted yet" is the normal starting state.
 - The account number is typed twice (paste blocked on the confirmation): one wrong digit pays somebody else.
 
+### The person who asked is told the answer
+
+An employee applied for leave, it was approved, and nothing told them: the bell only counted approvers' queues and the dashboard had nothing. Now every decision on leave (`updateLeaveRequestStatus`), an expense claim (`updateExpenseClaimStatus`) and a regularization (`decideRegularization`) stamps `decidedAt` and `decidedByName` (`deciderDisplayName` in `src/lib/dataScope.ts` — the decider's directory name, any role), and `buildMyUpdates` ([src/data/myUpdatesRules.ts](src/data/myUpdatesRules.ts), pure, `tests/unit/myUpdates.test.ts`) turns the viewer's own decided requests from the last 30 days into updates.
+
+- **Every role gets them**, in the bell (one entry per decision, ahead of the queues) and in the dashboard's *Recent updates* card (`src/components/dashboard/MyUpdatesCard.tsx`). Opening one marks it read in both.
+- **Derived, never stored** — the decision is the notification, so it cannot disagree with the request. Only *which ones were opened* is stored, per account in localStorage (`src/lib/seenUpdates.ts`): a convenience, so read state is per device.
+- **An update's id includes the outcome and time**, so a re-decided request is new again rather than inheriting "read".
+- Governed by `n2` (Leave Approved / Rejected — a preference that existed in Settings with nothing behind it until now), `n15` (expenses) and `n16` (regularizations). App-flagged regularizations nobody raised are not anybody's request and are excluded.
+- **Decisions made before the stamp existed carry no date and are not shown** — there is no honest "when" to put on them.
+- The bell recomputes on the leave, expense and regularization change events and whenever it opens. Never on the window `storage` event (see the note in `NotificationsMenu.tsx`).
+
 ### The bell counts what the queue lists
 
 `src/data/notifications.ts` takes its approval counts from `pendingApprovalsSummary(profile)` — the same figures as the Pending Approvals card, computed by the rules each queue lists with (`getApprovableEmployeeIds`, `canDecideRegularization`). It used to count everything the viewer could *see*, so a manager's bell said 3 regularizations and the queue held 1. `tests/e2e/notification-counts.spec.ts` (role projects) pins it per persona.

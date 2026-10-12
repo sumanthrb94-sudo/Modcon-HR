@@ -31,6 +31,8 @@ const defaultNotificationPreferences: NotificationPreference[] = [
   // borrowed unrelated ids — "Expense claims need review" was governed by the
   // Leave Approved toggle, and announcements by whether Slack was connected.
   { id: 'n13', category: 'Expenses', label: 'Expense Claim Submitted', description: 'Notify approvers when a claim is waiting for review', email: true, inApp: true },
+  { id: 'n15', category: 'Expenses', label: 'Expense Claim Approved / Rejected', description: 'Notify employee when their claim is decided', email: false, inApp: true },
+  { id: 'n16', category: 'Attendance', label: 'Regularization Approved / Rejected', description: 'Notify employee when their regularization is decided', email: false, inApp: true },
   { id: 'n14', category: 'Announcements', label: 'New Announcement Posted', description: 'Notify everyone when a company announcement is published', email: false, inApp: true },
 ];
 

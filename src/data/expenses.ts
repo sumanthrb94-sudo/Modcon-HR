@@ -1,7 +1,7 @@
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { persistentCollection } from '@/data/persistence';
-import { expenseApprovalRefusal } from '@/lib/dataScope';
+import { deciderDisplayName, expenseApprovalRefusal } from '@/lib/dataScope';
 import type { UserProfile } from '@/lib/auth';
 
 // ---------------------------------------------------------------------------
@@ -319,7 +319,11 @@ export function updateExpenseClaimStatus(
     if (refusal) return { ok: false, reason: refusal, claims: current };
   }
 
-  const updated = current.map((c) => (c.id === claimId ? { ...c, status: nextStatus } : c));
+  // A decision is stamped so the claimant can be told who decided and when.
+  const stamp = isDecision
+    ? { decidedAt: new Date().toISOString(), decidedByName: deciderDisplayName(decider.profile) }
+    : { decidedAt: undefined, decidedByName: undefined };
+  const updated = current.map((c) => (c.id === claimId ? { ...c, status: nextStatus, ...stamp } : c));
   saveExpenseClaims(updated);
   return { ok: true, claims: updated };
 }

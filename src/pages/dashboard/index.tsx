@@ -30,6 +30,7 @@ import { getHolidayDirectory } from '@/data/holidays';
 import { dayOfMonth, formatDate, formatDateShort, formatMonthShort, formatMonthYearLong, monthIndexOf, pct, timeAgo, yearOf } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { getCurrentEmployeeRecord } from '@/lib/dataScope';
+import { MyUpdatesCard } from '@/components/dashboard/MyUpdatesCard';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
 import { useHolidayDirectoryRevision } from '@/lib/useHolidayDirectoryRevision';
@@ -260,6 +261,9 @@ function EmployeeDashboard() {
         isManager={isManager}
         pendingApprovalsCount={leaveApprovalsWaiting ?? 0}
       />
+
+      {/* Decisions on this person's own requests — the reply to what they asked for. */}
+      <MyUpdatesCard employeeId={currentEmployee?.id} uid={profile?.uid} />
 
       <div className="grid grid-cols-1 gap-4">
         <Card>

@@ -297,6 +297,16 @@ export function getCurrentEmployeeRecord(
 }
 
 /**
+ * The name a decision is signed with — "approved by Aarav Sharma", not by the
+ * sign-in account's display name, which for an administrator-created account
+ * is often just the part of the address before the @. Any role: HR and
+ * managers decide, and they are people in the directory too.
+ */
+export function deciderDisplayName(profile: UserProfile | null): string | undefined {
+  return getCurrentEmployeeRecord(profile)?.fullName || profile?.displayName || profile?.email || undefined;
+}
+
+/**
  * Why a regularization decision is refused, phrased for the person who cannot
  * make it.
  *
