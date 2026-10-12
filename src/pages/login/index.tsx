@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Phone, ShieldCheck, Sparkles } from 'lucide-react';
 import { BrandLockup, Button } from '@/components/ui';
+import { FadeIn, TextEffect } from '@/components/ui/motion';
 import { useAuth } from '@/lib/auth';
 import { getLastSignedInOrgKey } from '@/lib/orgScope';
 import { careersPath } from '@/lib/publishedJobs';
@@ -108,12 +109,14 @@ export function LoginPage() {
                                 <span className="h-1.5 w-1.5 bg-brand-500" />
                                 Human resource operating system
                             </span>
-                            <h1 className="mt-5 text-5xl font-display font-extrabold leading-[1.02] tracking-tight">
+                            <TextEffect className="mt-5 text-5xl font-display font-extrabold leading-[1.02] tracking-tight" delay={0.1}>
                                 Make the workday feel more human.
-                            </h1>
-                            <p className="mt-6 max-w-md text-sm leading-relaxed text-ink-200">
-                                Attendance, payroll, leave, and people operations in one calm, accountable workspace.
-                            </p>
+                            </TextEffect>
+                            <FadeIn onView={false} delay={0.45}>
+                                <p className="mt-6 max-w-md text-sm leading-relaxed text-ink-200">
+                                    Attendance, payroll, leave, and people operations in one calm, accountable workspace.
+                                </p>
+                            </FadeIn>
                         </div>
                     </div>
                     <div className="relative z-10 grid grid-cols-2 gap-3 border-t border-white/20 p-10 text-xs">
@@ -140,6 +143,7 @@ export function LoginPage() {
                                 <span className="sr-only">Call helpline</span>
                             </a>
                         </div>
+                <FadeIn onView={false} delay={0.05}>
                 <section className="card w-full border-2 border-ink-900 bg-white p-5 shadow-[8px_8px_0_theme(colors.ink.900)] sm:p-8">
                     <div className="mb-4">
                         <BrandLockup size={40} />
@@ -326,6 +330,7 @@ export function LoginPage() {
                     </>
                     )}
                 </section>
+                </FadeIn>
                     </div>
                 </div>
             </div>

@@ -30,6 +30,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Badge, BrandMark, Button, EmptyState } from '@/components/ui';
+import { Stagger, StaggerItem, TextEffect } from '@/components/ui/motion';
 import { formatDate, timeAgo } from '@/lib/utils';
 import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
 import { careersJobPath, careersPath, usePublicJobOpenings } from '@/lib/publishedJobs';
@@ -100,7 +101,7 @@ export function CareersPage() {
 
   return (
     <CareersShell>
-      <h1 className="text-2xl font-bold text-ink-900">Open roles</h1>
+      <TextEffect className="text-2xl font-bold text-ink-900">Open roles</TextEffect>
       <p className="mt-1 text-sm text-ink-500">
         {loading
           ? 'Loading open roles…'
@@ -149,11 +150,11 @@ export function CareersPage() {
           />
         )}
 
-        {!loading &&
-          !error &&
-          filtered.map((job) => (
+        {!loading && !error && filtered.length > 0 && (
+          <Stagger className="space-y-3" onView={false}>
+          {filtered.map((job) => (
+            <StaggerItem key={job.id}>
             <Link
-              key={job.id}
               to={careersJobPath(org, job.id)}
               className="card block transition-shadow hover:shadow-card-hover"
             >
@@ -182,7 +183,10 @@ export function CareersPage() {
                 <p className="mt-3 line-clamp-2 text-sm text-ink-500">{job.description}</p>
               )}
             </Link>
+            </StaggerItem>
           ))}
+          </Stagger>
+        )}
       </div>
     </CareersShell>
   );

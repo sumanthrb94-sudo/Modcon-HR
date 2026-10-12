@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "ModCon HR \u2014 a modern HRMS platform (investor demo)",
+  "description": "ModCon HR — a modern HRMS platform (investor demo)",
   "engines": {
     "node": ">=18"
   },
@@ -31,6 +31,7 @@
     "firebase": "^12.16.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.408.0",
+    "motion": "^12.43.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { PageTransition } from '@/components/ui/motion';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { SubscriptionBanner } from './SubscriptionBanner';
@@ -8,6 +9,7 @@ import { SuperAdminScopeBanner } from './SuperAdminScopeBanner';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { pathname } = useLocation();
 
   return (
     <div className="min-h-screen bg-ink-50">
@@ -26,8 +28,12 @@ export function AppLayout() {
             person is standing wherever they were. Renders nothing until
             something fails. */}
         <SaveFailureBanner />
-        <main className="p-4 lg:p-6 max-w-[1600px] mx-auto animate-fade-in">
-          <Outlet />
+        {/* Keyed by path so each route settles in; a ?tab= change keeps the
+            page mounted. No exit animation — leaving never waits. */}
+        <main className="p-4 lg:p-6 max-w-[1600px] mx-auto">
+          <PageTransition key={pathname}>
+            <Outlet />
+          </PageTransition>
         </main>
       </div>
     </div>

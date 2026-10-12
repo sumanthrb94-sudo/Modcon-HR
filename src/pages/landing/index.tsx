@@ -21,6 +21,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { BrandLockup, BrandMark } from '@/components/ui';
+import { FadeIn, Stagger, StaggerItem, TextEffect } from '@/components/ui/motion';
 import { submitDemoRequest, getWhatsAppDemoLink } from '@/lib/demoRequests';
 import { useAuth } from '@/lib/auth';
 
@@ -311,15 +312,18 @@ export function LandingPage() {
               India-first Human Resource Operating System
             </div>
 
-            <h1 className="text-[2.35rem] sm:text-5xl lg:text-6xl font-display font-extrabold text-ink-900 tracking-tight leading-[1.04]">
+            <TextEffect className="text-[2.35rem] sm:text-5xl lg:text-6xl font-display font-extrabold text-ink-900 tracking-tight leading-[1.04]" delay={0.05}>
               Indian HR, built for the exceptions.
-            </h1>
+            </TextEffect>
 
+            <FadeIn onView={false} delay={0.35}>
             <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg text-ink-600 leading-relaxed font-sans">
               Modcon HR connects attendance, leave, payroll preparation, onboarding and people operations around the realities Indian companies actually face — from missed punches and branch transfers to statutory deadlines.
             </p>
+            </FadeIn>
 
             {/* Single restrained CTA — no funnel stack on mobile */}
+            <FadeIn onView={false} delay={0.5}>
             <div className="mt-7 sm:mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
               <a
                 href="#book-demo"
@@ -345,6 +349,7 @@ export function LandingPage() {
                 <span>Why India-first</span>
               </Link>
             </div>
+            </FadeIn>
 
             {/* Mobile editorial image stamp — intentionally distinct from the main hero plate */}
             <div className="sm:hidden mt-6 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
@@ -371,26 +376,26 @@ export function LandingPage() {
               </div>
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.13em] text-ink-500">Capabilities, not vanity metrics</span>
             </div>
-            <div className="grid grid-cols-2 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm lg:grid-cols-4">
+            <Stagger className="grid grid-cols-2 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm lg:grid-cols-4">
               {[
                 ['Attendance', 'Protected week-offs'],
                 ['Payroll', 'Statutory by default'],
                 ['People Ops', 'One shared record'],
                 ['Field Teams', 'Verified check-ins'],
               ].map(([label, detail], index) => (
-                <div key={label} className={`group flex min-w-0 items-center gap-2.5 p-3.5 sm:gap-3 sm:p-5 ${['border-r-2 border-b-2 lg:border-b-0 lg:border-r-2', 'border-b-2 lg:border-b-0', 'border-r-2 lg:border-r-2', ''][index]} border-ink-900`}>
+                <StaggerItem key={label} className={`group flex min-w-0 items-center gap-2.5 p-3.5 sm:gap-3 sm:p-5 ${['border-r-2 border-b-2 lg:border-b-0 lg:border-r-2', 'border-b-2 lg:border-b-0', 'border-r-2 lg:border-r-2', ''][index]} border-ink-900`}>
                   <BrandMark size={26} className="transition-transform duration-200 group-hover:-translate-y-0.5" />
                   <div className="min-w-0">
                     <div className="font-display text-xs sm:text-sm font-extrabold uppercase tracking-wide text-ink-900">{label}</div>
                     <div className="mt-1 text-[10px] leading-tight text-ink-500">{detail}</div>
                   </div>
-                </div>
+                </StaggerItem>
               ))}
-            </div>
+            </Stagger>
           </div>
 
           {/* Figure 01: Hero High-Resolution Authentic Editorial Photograph with Responsive Mobile Crop */}
-          <div className="mt-12 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
+          <FadeIn className="mt-12 overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
             <div className="landing-image-frame relative aspect-[4/3] sm:aspect-[16/9] w-full overflow-hidden bg-ink-200">
               <picture>
                 <source media="(max-width: 640px)" srcSet={heroMobileImg} />
@@ -409,7 +414,7 @@ export function LandingPage() {
               <span className="flex items-start gap-2 leading-relaxed"><BrandMark size={16} /> <span>Editorial field note · Collaborative workforce operations in an architecture &amp; engineering studio.</span></span>
               <span className="text-ink-500 font-bold uppercase text-[10px]">Built for Bangalore &amp; Hyderabad teams</span>
             </div>
-          </div>
+          </FadeIn>
         </div>
       </section>
 
@@ -419,7 +424,7 @@ export function LandingPage() {
       <section id="india-first" className="bg-ink-900 py-14 text-white sm:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
-            <div>
+            <FadeIn>
               <span className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-brand-400">Built for the Indian exception</span>
               <h2 className="mt-3 text-3xl font-display font-extrabold leading-tight tracking-tight sm:text-5xl">
                 The normal case is easy. Your workday is not.
@@ -431,16 +436,16 @@ export function LandingPage() {
                 Explore the India-first model
                 <ArrowUpRight size={14} className="text-brand-400" />
               </Link>
-            </div>
-            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-white/20 bg-white/20 sm:grid-cols-2">
+            </FadeIn>
+            <Stagger className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-white/20 bg-white/20 sm:grid-cols-2">
               {indiaFirstCards.map(({ icon: Icon, title, body }) => (
-                <article key={title} className="bg-ink-900 p-5 sm:p-6">
+                <StaggerItem as="article" key={title} className="bg-ink-900 p-5 sm:p-6">
                   <Icon size={20} className="text-brand-400" />
                   <h3 className="mt-5 text-base font-display font-extrabold text-white">{title}</h3>
                   <p className="mt-2 text-xs leading-relaxed text-ink-300">{body}</p>
-                </article>
+                </StaggerItem>
               ))}
-            </div>
+            </Stagger>
           </div>
         </div>
       </section>
@@ -723,7 +728,7 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="comparison" className="py-16 sm:py-20 bg-ink-50 border-b-2 border-ink-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="mb-12 max-w-2xl">
+          <FadeIn className="mb-12 max-w-2xl">
             <span className="font-mono text-xs font-bold uppercase tracking-wider text-brand-600 block mb-1">
               System Audit
             </span>
@@ -733,7 +738,7 @@ export function LandingPage() {
             <p className="mt-2 text-sm text-ink-600 leading-relaxed">
               Why traditional HR systems cause payroll disputes, employee frustration, and unnecessary administrative overhead.
             </p>
-          </div>
+          </FadeIn>
 
           <div className="overflow-hidden rounded-2xl border-2 border-ink-900 bg-white shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-2 bg-ink-100 border-b-2 border-ink-900 text-xs font-display font-extrabold uppercase tracking-wider">
@@ -808,7 +813,7 @@ export function LandingPage() {
       {/* ───────────────────────────────────────────────────────────────── */}
       <section id="pricing" className="py-16 sm:py-20 bg-white border-b-2 border-ink-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="mb-12 max-w-2xl">
+          <FadeIn className="mb-12 max-w-2xl">
             <span className="font-mono text-xs font-bold uppercase tracking-wider text-brand-600 block mb-1">
               Commercial Terms
             </span>
@@ -818,11 +823,11 @@ export function LandingPage() {
             <p className="mt-2 text-sm text-ink-600">
               No hidden setup fees, no per-module add-ons, and no restrictive lock-in contracts.
             </p>
-          </div>
+          </FadeIn>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Stagger className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {pricingTiers.map((tier) => (
-              <div
+              <StaggerItem
                 key={tier.tier}
                 className={`p-6 sm:p-8 flex flex-col justify-between border-2 ${
                   tier.highlight ? 'border-brand-600 bg-white' : 'border-ink-900 bg-ink-50'
@@ -901,9 +906,9 @@ export function LandingPage() {
                     </Link>
                   )}
                 </div>
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </Stagger>
         </div>
       </section>
 

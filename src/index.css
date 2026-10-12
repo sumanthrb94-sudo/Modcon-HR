@@ -70,7 +70,7 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-display font-extrabold transition-colors duration-150 focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-display font-extrabold transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.97] disabled:active:scale-100 focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed;
   }
   .btn-primary {
     @apply btn bg-brand-600 text-ink-50 hover:bg-brand-700 active:bg-brand-800;
@@ -163,4 +163,18 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #7d7979;
+}
+
+/* Reduced motion: the Tailwind keyframes (fade-in, the mark's build) and any
+   CSS transition collapse to an instant change. The motion primitives follow
+   the same setting through <MotionConfig reducedMotion="user">. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

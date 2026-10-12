@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from './Card';
+import { SlidingNumber } from './motion';
 
 interface StatCardProps {
   label: string;
@@ -41,7 +42,9 @@ export function StatCard({
             Organizations page to 613px on a 390px phone. */}
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-600">{label}</p>
-          <p className="font-display text-2xl font-extrabold text-ink-900 mt-1 break-words">{value}</p>
+          <p className="font-display text-2xl font-extrabold text-ink-900 mt-1 break-words">
+            <SlidingNumber value={typeof value === 'number' ? value.toLocaleString('en-IN') : value} />
+          </p>
         </div>
         {/* One ink tile for every stat card. The icon is a label, not a
             status — sixty-two of these carried six unrelated hues, which is
