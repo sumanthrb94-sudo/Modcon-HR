@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { carriedOverLossOfPay, lastDayOf, payeesFor } from '../../src/data/payRun.ts';
+import { carriedOverLossOfPay, lastDayOf, payeesFor, runnableMonths } from '../../src/data/payRun.ts';
 
 const people = [
   { id: 'joined-april', status: 'Active', dateOfJoining: '2026-04-01' },
@@ -50,4 +50,19 @@ test('a run lists every earlier month it corrects, deductions and refunds alike'
 
 test('a run with no corrections lists nothing', () => {
   assert.deepEqual(carriedOverLossOfPay([{ employeeId: 'emp-1', lopArrears: [] }, { employeeId: 'emp-2' }]), []);
+});
+
+test('runnableMonths reaches back to April once that is more than six months', () => {
+  const october = runnableMonths('2026-10');
+  assert.equal(october.length, 7);
+  assert.equal(october[0], '2026-10');
+  assert.equal(october.at(-1), '2026-04');
+  const march = runnableMonths('2027-03');
+  assert.equal(march.length, 12);
+  assert.equal(march.at(-1), '2026-04');
+});
+
+test('runnableMonths keeps six months early in the year, across the year boundary', () => {
+  assert.deepEqual(runnableMonths('2026-05'), ['2026-05', '2026-04', '2026-03', '2026-02', '2026-01', '2025-12']);
+  assert.equal(runnableMonths('2026-09').length, 6);
 });

@@ -40,7 +40,7 @@ import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
 import { downloadPayslipPdf } from '@/lib/payslipPdf';
-import { carriedOverLossOfPay, payeesFor } from '@/data/payRun';
+import { carriedOverLossOfPay, payeesFor, runnableMonths } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useDepartmentDirectoryRevision } from '@/lib/useDepartmentDirectoryRevision';
@@ -156,19 +156,6 @@ interface PendingPayrollRun {
 function withPayslips(existing: Payslip[], added: Payslip[]): Payslip[] {
   const ids = new Set(added.map((p) => p.id));
   return [...added, ...existing.filter((p) => !ids.has(p.id))];
-}
-
-/**
- * The months a run may be for: this one and the five before it. A payroll for
- * a month that has not happened is refused by being absent; one further back
- * than six months is a correction, not a run, and belongs to whoever files.
- */
-function runnableMonths(current: string): string[] {
-  const [year, mon] = current.split('-').map(Number);
-  return Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(Date.UTC(year, mon - 1 - i, 1));
-    return d.toISOString().slice(0, 7);
-  });
 }
 
 interface PayslipModalProps {
@@ -354,8 +341,9 @@ export function PayrollPage() {
   const [activeTab, setActiveTab] = useState<string>('runs');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
-  // Which month Run Payroll is for. This month by default; up to five back, so
-  // a month missed or run late can still be paid — each month once.
+  // Which month Run Payroll is for. This month by default; back to April or six
+  // months, whichever is further (`runnableMonths`), so a month missed or run
+  // late can still be paid — each month once.
   const [runMonth, setRunMonth] = useState(() => currentMonthIso());
   // The PDFs payroll actually issued, keyed by the payslip they document, so
   // the list below can say which months are covered and which are not.

@@ -7,6 +7,26 @@
  */
 import type { Employee } from '@/types';
 
+/**
+ * The months a run may be for, newest first: this one back to April (the start
+ * of the financial year), or back six months, whichever reaches further — so
+ * never more than twelve.
+ *
+ * It was always six. A company that went live in October with its people on
+ * the roll since April could pay April only by hand outside the app, which left
+ * the first half of the year missing from every payslip-derived figure — the
+ * TDS credit included, so the rest of the year was taxed as though nothing had
+ * been withheld. Reaching back to April lets the whole year be paid here, and
+ * stopping there keeps a catch-up inside one financial year. A month that has
+ * not happened is refused by being absent.
+ */
+export function runnableMonths(current: string): string[] {
+  const [year, mon] = current.split('-').map(Number);
+  const sinceApril = mon >= 4 ? mon - 4 : mon + 8;
+  const length = Math.max(6, sinceApril + 1);
+  return Array.from({ length }, (_, i) => new Date(Date.UTC(year, mon - 1 - i, 1)).toISOString().slice(0, 7));
+}
+
 /** The last calendar day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
 export function lastDayOf(month: string): string {
   const [year, mon] = month.split('-').map(Number);
