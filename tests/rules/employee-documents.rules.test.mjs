@@ -20,6 +20,8 @@
  *      a way to move a document across the primary/secondary line and file
  *      whatever the rule above refuses.
  *   5. The filer cannot be forged.
+ *   6. HR or an administrator verifies, and once verified the employee can no
+ *      longer replace it — they ask HR.
  *
  * "The person it belongs to" means the `employee_links/{uid}` document, which
  * only an administrator can write — the client's claim about who it is carries
@@ -285,12 +287,43 @@ describe('employee documents — verifying one', () => {
     );
   });
 
-  it('nor can HR verify one — administering people is not attesting to their papers', async () => {
+  // Product owner, 2026-10-12: HR approves an employee's documents. This
+  // used to be administrators only, which left an organisation's HR — the
+  // account it actually runs itself with — unable to verify anybody.
+  it('HR verifies a document, and the filer keeps their name on it', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'employee_documents', PAN), record({ status: 'Verified' })),
+    );
+  });
+
+  it('HR cannot take credit for filing it while verifying it', async () => {
     await assertFails(
       setDoc(
         doc(as(USERS.hrA), 'employee_documents', PAN),
         record({ status: 'Verified', uploadedByUid: USERS.hrA.uid }),
       ),
+    );
+  });
+
+  it('once verified, the employee cannot re-file over it — they ask HR', async () => {
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'employee_documents', PAN), record({ status: 'Verified' })));
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'employee_documents', PAN), record()),
+    );
+  });
+
+  it('once verified, HR can still replace it', async () => {
+    await testEnv.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'employee_documents', PAN), record({ status: 'Verified' })));
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'employee_documents', PAN), record({ uploadedByUid: USERS.hrA.uid })),
+    );
+  });
+
+  it('a manager still cannot verify one', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.managerA), 'employee_documents', PAN), record({ status: 'Verified' })),
     );
   });
 

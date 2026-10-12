@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from './Card';
@@ -12,6 +13,8 @@ interface StatCardProps {
   deltaLabel?: string;
   footer?: ReactNode;
   onClick?: () => void;
+  /** Where tapping the tile goes. A tile showing a count of something should open that something. */
+  to?: string;
   active?: boolean;
 }
 
@@ -23,15 +26,16 @@ export function StatCard({
   deltaLabel,
   footer,
   onClick,
+  to,
   active,
 }: StatCardProps) {
   const positive = (delta ?? 0) >= 0;
-  return (
+  const card = (
     <Card
       className={cn(
         'transition-colors duration-150',
-        onClick && 'hover:border-ink-900',
-        onClick && 'cursor-pointer select-none',
+        (onClick || to) && 'hover:border-ink-900',
+        (onClick || to) && 'cursor-pointer select-none',
         active && 'border-brand-600 bg-brand-100'
       )}
       onClick={onClick}
@@ -69,4 +73,6 @@ export function StatCard({
       )}
     </Card>
   );
+  // A real link, so it is reachable by keyboard and opens in a new tab like any other.
+  return to ? <Link to={to} className="block" aria-label={`${label}: ${value}`}>{card}</Link> : card;
 }

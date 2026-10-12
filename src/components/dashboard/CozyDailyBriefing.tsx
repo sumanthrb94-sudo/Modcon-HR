@@ -85,8 +85,11 @@ export function CozyDailyBriefing({
       return { total: 0, present: 0, wfh: 0, onLeave: [] };
     }
     const dir = getEmployeeDirectory();
+    // The whole department, you included: somebody who has checked in from
+    // home and reads "0 Remote/WFH" under their own team's name has been told
+    // they are not there. Resigned people are not on the team.
     const deptPeers = dir.filter(
-      (e) => e.department === currentEmployee.department && e.id !== currentEmployee.id,
+      (e) => e.department === currentEmployee.department && e.status !== 'Resigned',
     );
     const peerIds = new Set(deptPeers.map((p) => p.id));
     const allAttendance = getAttendanceRecords().filter((r) => r.date === today && peerIds.has(r.employeeId));
@@ -238,7 +241,7 @@ export function CozyDailyBriefing({
               Team Pulse · {currentEmployee?.department ?? 'My Team'}
             </span>
             <Badge tone="blue">
-              {teamPulse.total} {teamPulse.total === 1 ? 'Colleague' : 'Colleagues'}
+              {teamPulse.total} {teamPulse.total === 1 ? 'person' : 'people'}
             </Badge>
           </div>
 
@@ -246,10 +249,10 @@ export function CozyDailyBriefing({
               is available": with nobody checked in, or nobody else in the
               department at all, that claim was simply untrue. */}
           {teamPulse.onLeave.length === 0 ? (
-            teamPulse.total === 0 ? (
+            teamPulse.total <= 1 ? (
               <div className="flex items-center gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg p-2.5">
                 <Users size={16} className="text-ink-400 shrink-0" />
-                <span>Nobody else is in {currentEmployee?.department ?? 'your team'} on the directory yet.</span>
+                <span>You are the only person in {currentEmployee?.department ?? 'your team'} so far.</span>
               </div>
             ) : teamPulse.present + teamPulse.wfh === 0 ? (
               <div className="flex items-center gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg p-2.5">

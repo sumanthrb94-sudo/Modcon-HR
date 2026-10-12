@@ -226,7 +226,7 @@ const ORG_SETTINGS_ENABLED =
 // lib/dataScope.ts — a per-persona rule, not engine behaviour.
 // accessibility.spec.ts and mobile-layout.spec.ts walk the pages each role
 // actually sees (G11, G12), so they run once per persona.
-const ROLE_SPECS = /(roles|documents|leave-policy|leave-approval-scope|expense-approval-scope|joining-date|employee-self-scope|accessibility|mobile-layout)\.spec\.ts$/;
+const ROLE_SPECS = /(roles|notification-counts|documents|leave-policy|leave-approval-scope|expense-approval-scope|joining-date|employee-self-scope|accessibility|mobile-layout)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests/e2e',

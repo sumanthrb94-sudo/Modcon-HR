@@ -121,9 +121,19 @@ export function canFileDocuments(
   return getCurrentEmployee(profile)?.id === employeeId;
 }
 
-/** Whether this account may change a document's verification status. */
+/** Whether this account may change a document's verification status: HR or an administrator. */
 export function canVerifyDocuments(profile: UserProfile | null): boolean {
-  return resolveAppRole(profile) === 'Admin';
+  const role = resolveAppRole(profile);
+  return role === 'HR Manager' || role === 'Admin';
+}
+
+/**
+ * Whether this account may file over an existing document of the same name.
+ * Once HR has verified a document, only HR or an administrator replaces it —
+ * the employee asks HR. Mirrored in the employee_documents update rule.
+ */
+export function canReplaceDocument(profile: UserProfile | null, existing: EmployeeDocument | undefined): boolean {
+  return !existing || existing.status !== 'Verified' || canVerifyDocuments(profile);
 }
 
 function sortDocuments(documents: EmployeeDocument[]): EmployeeDocument[] {

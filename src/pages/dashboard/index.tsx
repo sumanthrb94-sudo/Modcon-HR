@@ -318,14 +318,14 @@ function EmployeeDashboard() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="My Leave Requests" value={String(leaveRequests.length)} icon={<CalendarOff size={18} />} />
+        <StatCard label="My Leave Requests" value={String(leaveRequests.length)} icon={<CalendarOff size={18} />} to="/leave" />
         {leaveApprovalsWaiting !== null ? (
-          <StatCard label="Leave Awaiting Your Approval" value={String(leaveApprovalsWaiting)} icon={<Clock size={18} />} />
+          <StatCard label="Leave Awaiting Your Approval" value={String(leaveApprovalsWaiting)} icon={<Clock size={18} />} to="/dashboard/pending-approvals/leave-requests" />
         ) : (
-          <StatCard label="My Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} />
+          <StatCard label="My Pending Leaves" value={String(leaveSummary.pending)} icon={<Clock size={18} />} to="/leave" />
         )}
-        <StatCard label="Expense Claims" value={String(employeeExpenses.length)} icon={<IndianRupee size={18} />} />
-        <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} />
+        <StatCard label="Expense Claims" value={String(employeeExpenses.length)} icon={<IndianRupee size={18} />} to="/expenses" />
+        <StatCard label="Open Tickets" value={String(openTickets)} icon={<Bell size={18} />} to="/helpdesk" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -669,11 +669,13 @@ function AdminDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard
           label="Total Employees"
+          to="/employees"
           value={stats.total}
           icon={<Users size={20} />}
         />
         <StatCard
           label="Present Today"
+          to="/attendance"
           value={stats.attendanceMarked === 0 ? '—' : stats.presentToday}
           icon={<CalendarCheck size={20} />}
           footer={
@@ -684,11 +686,13 @@ function AdminDashboard() {
         />
         <StatCard
           label="On Leave"
+          to="/leave"
           value={stats.onLeave}
           icon={<CalendarOff size={20} />}
         />
         <StatCard
           label="Open Positions"
+          to="/recruitment"
           value={stats.openPositions}
           icon={<Briefcase size={20} />}
         />

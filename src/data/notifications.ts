@@ -12,14 +12,10 @@
  * told about their own reporting line rather than the whole company's queue.
  */
 import type { UserProfile } from '@/lib/auth';
-import { getLeaveRequests } from '@/data/leave';
-import { getExpenseClaims } from '@/data/expenses';
-import { getRegularizationRequests } from '@/data/attendance';
-import { getOnboardings } from '@/data/onboarding';
+import { pendingApprovalsSummary } from '@/data/dashboard';
 import { announcements } from '@/data/common';
 import { getNotificationPreferences } from '@/data/notificationPreferences';
 import { getIntegrationPreferences } from '@/data/integrations';
-import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { todayDate } from '@/lib/today';
 
@@ -55,25 +51,20 @@ function plural(count: number, singular: string, pluralForm = `${singular}s`): s
  * applied. Entries with a zero count are dropped by `getNotifications`.
  */
 function buildCandidates(profile: UserProfile | null): NotificationItem[] {
-  const visible = getVisibleEmployeeIds(profile);
   const isEmployee = resolveAppRole(profile) === 'Employee';
 
-  const pendingLeave = getLeaveRequests().filter(
-    (request) => request.status === 'Pending' && visible.has(request.employeeId),
-  ).length;
-
-  const pendingExpenses = getExpenseClaims().filter(
-    (claim) => claim.status === 'Submitted' && visible.has(claim.employeeId),
-  ).length;
-
-  const pendingRegularizations = getRegularizationRequests().filter(
-    (request) => request.status === 'Pending' && visible.has(request.employeeId),
-  ).length;
-
-  const openOnboardingTasks = getOnboardings()
-    .filter((onboarding) => visible.has(onboarding.employeeId))
-    .flatMap((onboarding) => onboarding.tasks)
-    .filter((task) => task.status !== 'Completed').length;
+  // The same counts the Pending Approvals card shows, computed by the same
+  // rules each queue lists with — whose leave and claims this account may
+  // decide, and which regularizations (a manager decides only the app-flagged
+  // ones; a request that changes the day is HR's). These used to count every
+  // pending record the viewer could *see*, so the bell said 3 and the queue it
+  // opened held 1.
+  const summary = pendingApprovalsSummary(profile);
+  const countOf = (type: string) => summary.find((item) => item.type === type)?.count ?? 0;
+  const pendingLeave = countOf('Leave Requests');
+  const pendingExpenses = countOf('Expense Claims');
+  const pendingRegularizations = countOf('Regularizations');
+  const openOnboardingTasks = countOf('Onboarding Tasks');
 
   const recentAnnouncements = announcements.filter(
     (announcement) => daysSince(announcement.date) <= ANNOUNCEMENT_WINDOW_DAYS,

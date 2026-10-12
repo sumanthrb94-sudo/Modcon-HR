@@ -2035,9 +2035,14 @@ service cloud.firestore {
         (
           (mayFileEmployeeDocument(request.resource.data) &&
             request.resource.data.uploadedByUid == request.auth.uid &&
-            request.resource.data.status == 'Pending')
+            request.resource.data.status == 'Pending' &&
+            // Once HR has verified a document, only HR or an administrator
+            // replaces it. The employee asks HR rather than re-filing over a
+            // record somebody already checked.
+            (isOrgAdmin() || resource.data.status != 'Verified'))
           ||
-          (isAdmin() &&
+          // Verifying is HR's or an administrator's call.
+          (isOrgAdmin() &&
             request.resource.data.uploadedByUid == resource.data.uploadedByUid)
         );
 
@@ -2066,6 +2071,88 @@ service cloud.firestore {
      * a platform admin — filing somebody else's PAN card is not their job.
      * Secondary: an administrator or HR, and not the employee.
      */
+    /**
+     * Bank account details: the account salary is paid into.
+     *
+     * Their own collection rather than fields on the employee record, because
+     * the directory is readable by everyone in the organisation and an account
+     * number is not. Read by the employee themselves and by HR/Admin only.
+     *
+     * The employee submits (always `Pending`); HR verifies or rejects. Once
+     * `Verified` the employee can no longer change it — a changed salary
+     * account is exactly the edit a payroll fraud needs, so it goes through
+     * HR. HR may still correct it.
+     *
+     * Reads are list queries filtered on orgId (and employeeId for an
+     * employee), never a `get` by id: a rule reading `resource.data` denies a
+     * get on a document that does not exist yet, which is the normal state
+     * before anybody has submitted.
+     */
+    match /employee_bank_details/{docId} {
+      allow get, list: if isSignedIn() && inMyOrg() &&
+        (isOrgAdmin() || isSelf(resource.data.employeeId));
+
+      allow create: if writingToMyOrg() && validBankDetails(docId) &&
+        request.resource.data.submittedByUid == request.auth.uid &&
+        (
+          (isSelf(request.resource.data.employeeId) && bankDetailsSubmission())
+          ||
+          (isOrgAdmin() && bankDetailsByAdmin())
+        );
+
+      allow update: if inMyOrg() && writingToMyOrg() && validBankDetails(docId) &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        (
+          (isSelf(resource.data.employeeId) &&
+            resource.data.status != 'Verified' &&
+            request.resource.data.submittedByUid == request.auth.uid &&
+            bankDetailsSubmission())
+          ||
+          // Who submitted stays who submitted, unless HR re-enters it.
+          (isOrgAdmin() && bankDetailsByAdmin() &&
+            (request.resource.data.submittedByUid == resource.data.submittedByUid ||
+              request.resource.data.submittedByUid == request.auth.uid))
+        );
+
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
+    function validBankDetails(docId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['orgId', 'employeeId', 'accountHolderName', 'accountNumber', 'ifsc',
+          'bankName', 'status', 'submittedByUid', 'submittedAt', 'reviewedByUid', 'reviewedAt',
+          'reviewNote']) &&
+        d.keys().hasAll(['orgId', 'employeeId', 'accountHolderName', 'accountNumber', 'ifsc',
+          'status', 'submittedByUid', 'submittedAt']) &&
+        // One record per employee per organisation, at an id the rules rebuild.
+        docId == d.orgId + '__' + d.employeeId &&
+        d.employeeId is string && d.employeeId.size() > 0 &&
+        d.accountHolderName is string && d.accountHolderName.size() > 0 &&
+        d.accountHolderName.size() <= 120 &&
+        // Indian account numbers are 9 to 18 digits; IFSC is 4 letters, a
+        // zero, then 6 letters or digits. Mirrored in src/lib/bankDetails.ts.
+        d.accountNumber is string && d.accountNumber.matches('^[0-9]{9,18}$') &&
+        d.ifsc is string && d.ifsc.matches('^[A-Z]{4}0[A-Z0-9]{6}$') &&
+        (!('bankName' in d) || (d.bankName is string && d.bankName.size() <= 120)) &&
+        d.status in ['Pending', 'Verified', 'Rejected'] &&
+        d.submittedAt is string && d.submittedAt.size() <= 40 &&
+        (!('reviewNote' in d) || (d.reviewNote is string && d.reviewNote.size() <= 300));
+    }
+
+    // What an employee may write: a fresh submission, unreviewed.
+    function bankDetailsSubmission() {
+      let d = request.resource.data;
+      return d.status == 'Pending' &&
+        !('reviewedByUid' in d) && !('reviewedAt' in d) && !('reviewNote' in d);
+    }
+
+    // HR or an administrator: may set any status, and a review is signed by
+    // whoever made it.
+    function bankDetailsByAdmin() {
+      let d = request.resource.data;
+      return d.status == 'Pending' || (d.reviewedByUid == request.auth.uid && d.reviewedAt is string);
+    }
+
     function mayFileEmployeeDocument(data) {
       return isPrimaryDocumentName(data.name)
         ? (isHR() || isSelf(data.employeeId))

@@ -690,3 +690,25 @@ export interface AttendanceStampReview {
   reviewedByUid: ID;
   reviewedByName: string;
 }
+
+/**
+ * The bank account an employee's salary is paid into. Firestore
+ * `employee_bank_details`, one per employee per organisation, readable by the
+ * employee and HR/Admin only — see src/lib/bankDetails.ts.
+ */
+export type BankDetailsStatus = 'Pending' | 'Verified' | 'Rejected';
+
+export interface BankDetails {
+  orgId: string;
+  employeeId: string;
+  accountHolderName: string;
+  accountNumber: string;
+  ifsc: string;
+  bankName?: string;
+  status: BankDetailsStatus;
+  submittedByUid: string;
+  submittedAt: string;
+  reviewedByUid?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+}

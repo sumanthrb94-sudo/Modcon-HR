@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
+    BankDetails,
     Employee,
     EmployeeCompensation,
     AttendanceRecord,
@@ -91,6 +92,10 @@ export const Collections = {
     // localStorage because who may file which kind is a rule, and a rule needs
     // a server to refuse the write. See src/lib/employeeDocuments.ts.
     employeeDocuments: col<EmployeeDocument>('employee_documents'),
+    // The account salary is paid into. Its own collection because the
+    // directory is readable by everyone in the organisation and an account
+    // number is not. See src/lib/bankDetails.ts.
+    employeeBankDetails: col<BankDetails>('employee_bank_details'),
     // Applications submitted against a published job opening. The only
     // collection in this file an unauthenticated caller can write to — a
     // candidate applying from the public careers page has no account here.

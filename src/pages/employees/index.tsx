@@ -47,6 +47,7 @@ import {
   EmployeeDocumentError,
   canFileDocuments,
   canVerifyDocuments,
+  canReplaceDocument,
   documentCategory,
   fileEmployeeDocument,
   setEmployeeDocumentStatus,
@@ -102,6 +103,7 @@ import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
 import { useWorkspaceLocked } from '@/lib/subscription';
 import { CHART_SERIES } from '@/lib/chartTheme';
+import { BankDetailsCard } from '@/components/BankDetailsCard';
 
 const EMPLOYEE_PROFILE_PICTURE_STORAGE_KEY = 'modcon.hr.employeeProfilePictures';
 
@@ -2292,6 +2294,13 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
   const canUploadPrimary = canFileDocuments(profile, 'primary', employeeId);
   const canUploadSecondary = canFileDocuments(profile, 'secondary', employeeId);
   const primaryDocuments = documents.filter((document) => documentCategory(document.name) === 'primary');
+  // A compulsory document HR has verified is no longer the employee's to
+  // replace; it drops out of what they are offered, and the page says why.
+  const existingByName = (name: string) =>
+    documents.find((document) => document.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const replaceablePrimaryOptions = PRIMARY_DOCUMENT_OPTIONS.filter((option) =>
+    canReplaceDocument(profile, existingByName(option.value)));
+  const allPrimaryLocked = canUploadPrimary && replaceablePrimaryOptions.length === 0;
   const secondaryDocuments = documents.filter((document) => documentCategory(document.name) === 'secondary');
   const [uploadCategory, setUploadCategory] = useState<DocumentUploadCategory>('primary');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -2315,7 +2324,7 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
 
   function resetUploadForm(category: DocumentUploadCategory) {
     setUploadCategory(category);
-    setPrimaryDocumentName('Aadhaar Card');
+    setPrimaryDocumentName(replaceablePrimaryOptions[0]?.value ?? 'Aadhaar Card');
     setSecondaryDocumentName('');
     setSelectedUploadFile(null);
     setUploadError('');
@@ -2355,6 +2364,11 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
       setUploadError(uploadCategory === 'primary'
         ? 'Select a compulsory document type.'
         : 'Enter a document name for the optional submission.');
+      return;
+    }
+
+    if (!canReplaceDocument(profile, existingByName(documentName))) {
+      setUploadError(`HR has verified your ${documentName}. Contact HR to change it.`);
       return;
     }
 
@@ -2483,6 +2497,8 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
   }
 
   return (
+    <div className="space-y-5">
+    <BankDetailsCard employeeId={employeeId} />
     <Card padding={false}>
       <div className="p-5 border-b border-ink-100 space-y-4">
         <CardHeader
@@ -2509,8 +2525,10 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
           'Primary documents pending upload',
           'Upload Compulsory',
           () => openUploadModal('primary'),
-          canUploadPrimary,
-          'Uploaded by the employee themselves or by HR.',
+          canUploadPrimary && !allPrimaryLocked,
+          allPrimaryLocked
+            ? 'All verified by HR. Contact HR to change any of them.'
+            : 'Uploaded by the employee themselves or by HR.',
         )}
         {renderDocumentSection(
           'Secondary Documents',
@@ -2546,7 +2564,7 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
               <Select
                 value={primaryDocumentName}
                 onChange={setPrimaryDocumentName}
-                options={PRIMARY_DOCUMENT_OPTIONS}
+                options={replaceablePrimaryOptions}
               />
             </div>
           ) : (
@@ -2582,6 +2600,7 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
         </div>
       </Modal>
     </Card>
+    </div>
   );
 }
 

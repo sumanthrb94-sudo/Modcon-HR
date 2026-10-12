@@ -286,7 +286,21 @@ The documents filed against an employee live in the Firestore collection `employ
 - **Which kind a document is follows from its *name*, never a stored field** — a category on the document would be a claim the writer makes about their own write. The list is matched exactly in both places (`PRIMARY_DOCUMENT_NAMES` and `isPrimaryDocumentName`); a substring test would catch "Aadhaar Card Verification Note", which is the company's paperwork and somebody else's job to file.
 - **A filed document always arrives `Pending`, including a re-file**, or an employee re-files their own PAN card as `Verified` and has verified themselves. Verifying is `isAdmin()`, and it may not change the name or the employee — otherwise "verify" is a rename, and a rename across the primary boundary undoes the whole rule.
 - **`isSelf()` needs `employee_links/{uid}`, and both hiring orders now write it.** Admin → Create account links the new account to an employee record already carrying the address (`src/lib/accountInvites.ts`); Employees → Add Employee links an account that already exists (`linkAccountForEmployee` in `src/data/employeeLinks.ts`). Only the first half existed, so anyone hired in the other order stayed unlinked and read none of their own salary or leave — failing closed, silently, on the ordinary path. Both are conservative in the same way: exactly one account in this organisation carrying the address, never over a link that already points elsewhere; anything else is reported for a human. The identity backfill (Settings → Database) remains for records that predate this.
+- **HR or an administrator verifies, and a verified document is locked to the employee** (product owner, 2026-10-12). `canVerifyDocuments` is HR Manager or Admin; the update rule's re-file branch adds `isOrgAdmin() || resource.data.status != 'Verified'`, so an employee asks HR to change a document HR already checked. The upload dialog stops offering verified compulsory documents (`canReplaceDocument`) and says why when all three are verified.
 - `tests/rules/employee-documents.rules.test.mjs` is the enforcement test. `tests/e2e/document-upload-access.spec.ts` is the UI half and can only ever prove what the client chose to do.
+
+### Bank account details
+
+The account salary is paid into: Firestore `employee_bank_details/<orgId>__<employeeId>` ([src/lib/bankDetails.ts](src/lib/bankDetails.ts), format checks in [src/data/bankDetailsRules.ts](src/data/bankDetailsRules.ts)), shown as the Bank Account card on the profile's Documents tab ([src/components/BankDetailsCard.tsx](src/components/BankDetailsCard.tsx)).
+
+- **Its own collection, not fields on the employee record.** The directory is `org_records`, readable by everyone in the organisation; an account number is readable by the employee and HR/Admin only. `Employee.bankAccountNumber`/`bankIfsc` still exist and nothing writes them.
+- **The employee submits (`Pending`), HR verifies or rejects with a note, and once `Verified` only HR changes it.** A changed salary account is the edit a payroll fraud needs, so it goes through HR. HR entering or correcting details saves them as verified by that HR account. All of it is in the rules (`validBankDetails`, `bankDetailsSubmission`, `bankDetailsByAdmin`), proven by `tests/rules/bank-details.rules.test.mjs`.
+- **Reads are queries on `orgId` + `employeeId`, never a get by id** — the rule reads `resource.data`, and "nothing submitted yet" is the normal starting state.
+- The account number is typed twice (paste blocked on the confirmation): one wrong digit pays somebody else.
+
+### The bell counts what the queue lists
+
+`src/data/notifications.ts` takes its approval counts from `pendingApprovalsSummary(profile)` — the same figures as the Pending Approvals card, computed by the rules each queue lists with (`getApprovableEmployeeIds`, `canDecideRegularization`). It used to count everything the viewer could *see*, so a manager's bell said 3 regularizations and the queue held 1. `tests/e2e/notification-counts.spec.ts` (role projects) pins it per persona.
 
 ### Candidates applying — the careers page
 
