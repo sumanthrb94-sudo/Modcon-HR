@@ -34,6 +34,8 @@ import { getHolidayDirectory } from '@/data/holidays';
 import { currentHour, todayIso } from '@/lib/today';
 import { formatDate, formatDateShort, formatWeekdayLong } from '@/lib/utils';
 import { resolveAppRole } from '@/lib/accessControl';
+import { careersPath } from '@/lib/publishedJobs';
+import { getActiveOrgKey } from '@/lib/orgScope';
 
 interface CozyDailyBriefingProps {
   currentEmployee?: Employee | null;
@@ -235,14 +237,33 @@ export function CozyDailyBriefing({
               <Users size={14} className="text-brand-600" />
               Team Pulse · {currentEmployee?.department ?? 'My Team'}
             </span>
-            <Badge tone="blue">{teamPulse.total} Colleagues</Badge>
+            <Badge tone="blue">
+              {teamPulse.total} {teamPulse.total === 1 ? 'Colleague' : 'Colleagues'}
+            </Badge>
           </div>
 
+          {/* Only what the records say. "No approved leave" is not "everyone
+              is available": with nobody checked in, or nobody else in the
+              department at all, that claim was simply untrue. */}
           {teamPulse.onLeave.length === 0 ? (
-            <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50/70 rounded-lg p-2.5">
-              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-              <span>All team members are available today. No one is on leave.</span>
-            </div>
+            teamPulse.total === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg p-2.5">
+                <Users size={16} className="text-ink-400 shrink-0" />
+                <span>Nobody else is in {currentEmployee?.department ?? 'your team'} on the directory yet.</span>
+              </div>
+            ) : teamPulse.present + teamPulse.wfh === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg p-2.5">
+                <Clock size={16} className="text-ink-400 shrink-0" />
+                <span>Nobody in your team has checked in yet today. No one is on approved leave.</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50/70 rounded-lg p-2.5">
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                <span>
+                  {teamPulse.present + teamPulse.wfh} of {teamPulse.total} checked in today. No one is on approved leave.
+                </span>
+              </div>
+            )
           ) : (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-700">
@@ -270,6 +291,11 @@ export function CozyDailyBriefing({
           <div className="flex items-center gap-3 text-[11px] text-ink-500 pt-1 border-t border-ink-50">
             <span>🟢 {teamPulse.present} Present</span>
             <span>🔵 {teamPulse.wfh} Remote/WFH</span>
+            {teamPulse.total > 0 && (
+              <span>
+                ⚪ {Math.max(0, teamPulse.total - teamPulse.present - teamPulse.wfh - teamPulse.onLeave.length)} Not checked in
+              </span>
+            )}
           </div>
         </div>
 
@@ -363,9 +389,10 @@ export function CozyDailyBriefing({
             <p className="text-xs text-ink-500">No company holidays scheduled in the coming weeks.</p>
           )}
 
-          <div className="pt-1 border-t border-ink-50 flex items-center justify-between text-[11px] text-ink-500">
-            <span>🎉 Next month cycle is active</span>
-            <Link to="/careers" className="text-brand-600 hover:underline">Internal Openings</Link>
+          {/* The link goes to this organisation's own careers page — bare
+              /careers is the default organisation's. */}
+          <div className="pt-1 border-t border-ink-50 flex items-center justify-end text-[11px] text-ink-500">
+            <Link to={careersPath(getActiveOrgKey())} className="text-brand-600 hover:underline">Internal Openings</Link>
           </div>
         </div>
       </div>
