@@ -22,9 +22,11 @@ import {
   epfContribution,
   esiContribution,
   monthlyTds,
+  monthsEmployedInFinancialYear,
   monthsLeftInFinancialYear,
   professionalTax,
   resolveMonthlyGross,
+  taxWithheldEarlierInYear,
   wageFloorFinding,
   type EpfContribution,
   type EsiContribution,
@@ -297,12 +299,13 @@ export function buildPayslipComponents(
 
   // TDS is a year's liability spread over the months that remain, so it needs a
   // projection of the year rather than this month alone. The projection is this
-  // month's gross annualised: the honest estimate an employer can make in
-  // month one, and it self-corrects, because `taxDeductedSoFar` credits what
-  // has already been withheld against the rest of the year the moment the
-  // figure moves.
+  // month's gross over the months this employer pays them this year — twelve
+  // for anyone on the roll since April, fewer for a mid-year joiner — and it
+  // self-corrects, because what has already been withheld (on payslips issued
+  // earlier this year, plus anything declared from before this payroll) is
+  // credited against the rest of the year.
   const monthsRemaining = monthsLeftInFinancialYear(month);
-  const projectedAnnualSalary = grossEarnings * 12;
+  const projectedAnnualSalary = grossEarnings * monthsEmployedInFinancialYear(month, employee.dateOfJoining);
   const assessment = config.incomeTax.enabled
     ? annualIncomeTax({
       grossSalary: projectedAnnualSalary,
@@ -310,7 +313,9 @@ export function buildPayslipComponents(
       otherDeductions: election.declaredDeductions ?? 0,
     })
     : null;
-  const alreadyDeducted = election.taxDeductedSoFar ?? 0;
+  const alreadyDeducted =
+    (election.taxDeductedSoFar ?? 0) +
+    taxWithheldEarlierInYear(storedPayslips().filter((payslip) => payslip.employeeId === employee.id), month);
   const tds = assessment
     ? monthlyTds({ annualTax: assessment.annualTax, monthsRemaining, alreadyDeducted })
     : null;

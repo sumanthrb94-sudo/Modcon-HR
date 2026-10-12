@@ -269,7 +269,12 @@ export interface TaxElection {
    * just looks it.
    */
   readonly declaredDeductions?: number;
-  /** Tax already withheld this financial year, so a mid-year change corrects. */
+  /**
+   * Tax withheld this financial year *outside this payroll* — by a previous
+   * employer, or in months paid before the organisation ran payroll here.
+   * Tax on payslips this app issued is credited on its own (see
+   * `taxWithheldEarlierInYear`); entering it here as well would count it twice.
+   */
   readonly taxDeductedSoFar?: number;
   /** Raises the ESI coverage threshold. Recorded by HR, not self-declared. */
   readonly hasDisability?: boolean;
