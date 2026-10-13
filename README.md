@@ -19,6 +19,16 @@ Advanced modules remain available without overwhelming the default experience.
 
 ![Stack](https://img.shields.io/badge/React-18-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Vite](https://img.shields.io/badge/Vite-5-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 
+## 📚 Documentation
+
+| | |
+| --- | --- |
+| [User guide](docs/user-guide.md) | Employees and managers: attendance, leave, expenses, payslips, documents, approvals |
+| [HR & admin guide](docs/hr-admin-guide.md) | Setting up an organisation, Settings, payroll, statutory compliance, documents, trial |
+| [Developer guide](docs/developer-guide.md) | Architecture, data sources, rules, testing, deployment, known gaps |
+| [Reference](docs/reference.md) | Permission matrix, routes, Firestore collections, settings keys |
+| [Index of all docs](docs/README.md) | Including the design specs |
+
 ## ✨ Modules
 
 | Module | Highlights |
@@ -50,7 +60,8 @@ Advanced modules remain available without overwhelming the default experience.
 
 ```bash
 npm install      # install dependencies
-npm run dev      # start dev server → http://localhost:5173
+npm run sandbox  # emulators + seeded accounts + dev server → http://localhost:5173 (use this)
+npm run dev      # dev server against the LIVE Firebase project — needs real credentials
 npm run build    # type-check + production build
 npm run verify:launch # lint, build, unit tests, data integrity, production audit
 npm run preview  # preview the production build
@@ -130,7 +141,10 @@ src/
 ```
 
 Every module reads people data from a single master employee directory
-(`src/data/employees.ts`), keeping cross-module references consistent.
+(`src/data/employees.ts`), keeping cross-module references consistent. Shared
+records are Firestore-backed with `localStorage` as a synchronous cache; see the
+[developer guide](docs/developer-guide.md) for the four data sources and why
+they are kept apart.
 
 ---
 
