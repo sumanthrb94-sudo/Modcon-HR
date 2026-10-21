@@ -38,7 +38,7 @@
  * components re-render. Saves are optimistic: the local write is synchronous
  * and immediate, and the Firestore write follows.
  */
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getActiveOrgKey, orgScopedKey, resolveOrgKeyForProfile } from '@/lib/orgScope';
 
@@ -49,10 +49,15 @@ export interface OrgSetting {
   readonly storageKey: string;
   /** Window event the owning data module dispatches on change. */
   readonly changedEvent: string;
+  /**
+   * A map keyed by employee id, published as a patch rather than a whole
+   * document — see `publishPerEmployeeSetting`.
+   */
+  readonly perEmployee?: boolean;
 }
 
-function setting(key: string, storageKey: string, changedEvent: string): OrgSetting {
-  return { key, storageKey, changedEvent };
+function setting(key: string, storageKey: string, changedEvent: string, perEmployee = false): OrgSetting {
+  return perEmployee ? { key, storageKey, changedEvent, perEmployee } : { key, storageKey, changedEvent };
 }
 
 /**
@@ -71,7 +76,7 @@ export const ORG_SETTINGS = {
   // policy change event on purpose: every surface that re-renders when the
   // organisation's quota moves has to re-render when an individual's does too,
   // and entitlement is what unpaid-absence deductions are computed from.
-  employeeLeavePolicies: setting('employeeLeavePolicies', 'modcon.hr.employeeLeavePolicies', 'modcon-hr-leave-policies-changed'),
+  employeeLeavePolicies: setting('employeeLeavePolicies', 'modcon.hr.employeeLeavePolicies', 'modcon-hr-leave-policies-changed', true),
   // Leave each person took this financial year before the organisation started
   // using this app. Same change event as the policies: it changes every balance.
   openingLeaveTaken: setting('openingLeaveTaken', 'modcon.hr.openingLeaveTaken', 'modcon-hr-leave-policies-changed'),
@@ -90,7 +95,7 @@ export const ORG_SETTINGS = {
   // structure change event on purpose: every surface that re-renders when the
   // organisation's split moves has to re-render when an individual's does too,
   // and a breakdown left stale is a wrong statement about somebody's pay.
-  employeeSalaryStructures: setting('employeeSalaryStructures', 'modcon.hr.employeeSalaryStructures', 'modcon-hr-salary-structure-changed'),
+  employeeSalaryStructures: setting('employeeSalaryStructures', 'modcon.hr.employeeSalaryStructures', 'modcon-hr-salary-structure-changed', true),
   // The hours the organisation runs. Replaced two platform constants — a
   // display string and an unrelated 09:15 grace literal — so lateness is
   // judged against the hours somebody actually works. See data/shifts.ts.
@@ -100,12 +105,12 @@ export const ORG_SETTINGS = {
   // salary pairs do — every surface that re-renders when the organisation's
   // hours move has to re-render when one person's do, or the two drift on
   // screen because only one of them published.
-  employeeShifts: setting('employeeShifts', 'modcon.hr.employeeShifts', 'modcon-hr-shifts-changed'),
+  employeeShifts: setting('employeeShifts', 'modcon.hr.employeeShifts', 'modcon-hr-shifts-changed', true),
   // Hours belonging to one person rather than to the organisation — somebody
   // who starts at 10:00 when nobody else does. Kept apart from the shift list
   // on purpose: declaring a company shift for them would offer their hours to
   // everybody in Settings. Same change event again, for the same reason.
-  employeeShiftOverrides: setting('employeeShiftOverrides', 'modcon.hr.employeeShiftOverrides', 'modcon-hr-shifts-changed'),
+  employeeShiftOverrides: setting('employeeShiftOverrides', 'modcon.hr.employeeShiftOverrides', 'modcon-hr-shifts-changed', true),
   // The day the organisation is closed. The per-employee half already existed
   // as `weekOff` on the employee record; this is the policy that record
   // overrides, and it replaced a `?? 'Sunday'` literal no organisation could
@@ -116,7 +121,7 @@ export const ORG_SETTINGS = {
   // data/weekOffRules.ts.
   weekOffRules: setting('weekOffRules', 'modcon.hr.weekOffRules', 'modcon-hr-week-off-changed'),
   // Specific dates HR has rostered one person off — see data/rosterDays.ts.
-  rosteredDaysOff: setting('rosteredDaysOff', 'modcon.hr.rosteredDaysOff', 'modcon-hr-week-off-changed'),
+  rosteredDaysOff: setting('rosteredDaysOff', 'modcon.hr.rosteredDaysOff', 'modcon-hr-week-off-changed', true),
   integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it
@@ -149,7 +154,7 @@ export const ORG_SETTINGS = {
   // Shares the statutory change event, the same reason every other pair here
   // does: a payslip showing an old regime beside a new deduction is two
   // statements about one person's pay that disagree.
-  employeeTaxElections: setting('employeeTaxElections', 'modcon.hr.employeeTaxElections', 'modcon-hr-statutory-changed'),
+  employeeTaxElections: setting('employeeTaxElections', 'modcon.hr.employeeTaxElections', 'modcon-hr-statutory-changed', true),
 } as const;
 
 export const ALL_ORG_SETTINGS: OrgSetting[] = Object.values(ORG_SETTINGS);
@@ -165,6 +170,78 @@ export function orgSettingDocId(orgKey: string, key: string): string {
 
 /** Set by `startOrgSettingsSync` so a save can record who made it. */
 let currentAuthorUid: string | null = null;
+
+/** What the server last said for each setting, so a save can say what it changed. */
+const lastSynced = new Map<string, string>();
+
+function asPlainMap(json: string | undefined | null): Record<string, unknown> | null {
+  if (!json) return {};
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Publish a per-employee map as the change this browser made, not as the map.
+ *
+ * These documents hold one entry per person — tax declarations, custom
+ * entitlements and salary splits, shifts, rostered days — and were written
+ * whole from this browser's cache. Two administrators recording declarations
+ * in the same hour: the second save dropped the first's rows, and a lost tax
+ * election silently changes TDS for the rest of the year. So the save is
+ * diffed against what the server last said, and only those people's entries
+ * are applied to the server's current copy, inside a transaction.
+ */
+function publishPerEmployeeSetting(target: OrgSetting, value: Record<string, unknown>): Promise<boolean> {
+  const orgKey = getActiveOrgKey();
+  const ref = doc(db, 'org_settings', orgSettingDocId(orgKey, target.key));
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const serverJson = snap.exists() ? (snap.data().valueJson as string | undefined) : undefined;
+    const server = asPlainMap(serverJson) ?? {};
+    const base = asPlainMap(lastSynced.get(target.key) ?? serverJson) ?? server;
+    const merged: Record<string, unknown> = { ...server };
+    for (const id of new Set([...Object.keys(base), ...Object.keys(value)])) {
+      if (!(id in value)) {
+        if (id in base) delete merged[id];
+      } else if (JSON.stringify(value[id]) !== JSON.stringify(base[id])) {
+        merged[id] = value[id];
+      }
+    }
+    const json = JSON.stringify(merged);
+    tx.set(
+      ref,
+      {
+        orgId: orgKey,
+        key: target.key,
+        valueJson: json,
+        updatedAt: serverTimestamp(),
+        ...(currentAuthorUid ? { updatedByUid: currentAuthorUid } : {}),
+      },
+      { merge: true },
+    );
+    return json;
+  })
+    .then((json) => {
+      lastSynced.set(target.key, json);
+      try {
+        if (window.localStorage.getItem(orgScopedKey(target.storageKey)) !== json) {
+          window.localStorage.setItem(orgScopedKey(target.storageKey), json);
+          window.dispatchEvent(new Event(target.changedEvent));
+        }
+      } catch {
+        // the subscription brings it on the next snapshot
+      }
+      return true;
+    })
+    .catch((err) => {
+      console.warn(`[org-settings] could not publish "${target.key}":`, err);
+      return false;
+    });
+}
 
 /**
  * Push a setting to Firestore. Fire-and-forget by design.
@@ -183,6 +260,9 @@ let currentAuthorUid: string | null = null;
  */
 export function publishOrgSetting(target: OrgSetting, value: unknown): Promise<boolean> {
   if (typeof window === 'undefined') return Promise.resolve(false);
+  if (target.perEmployee && value && typeof value === 'object' && !Array.isArray(value)) {
+    return publishPerEmployeeSetting(target, value as Record<string, unknown>);
+  }
   const orgKey = getActiveOrgKey();
   return setDoc(
     doc(db, 'org_settings', orgSettingDocId(orgKey, target.key)),
@@ -243,6 +323,7 @@ export function startOrgSettingsSync(
         if (!snap.exists()) return;
         const incoming = snap.data().valueJson;
         if (typeof incoming !== 'string') return;
+        lastSynced.set(target.key, incoming);
         try {
           if (window.localStorage.getItem(orgScopedKey(target.storageKey)) === incoming) return;
           window.localStorage.setItem(orgScopedKey(target.storageKey), incoming);
