@@ -941,7 +941,7 @@ describe('stores added by the audit fixes', () => {
   });
 });
 
-describe('ticket replies and comp-off credits', () => {
+describe('ticket replies', () => {
   it('the raiser and HR reply; nobody edits a reply; a colleague cannot reply', async () => {
     const id = docId({ store: 'ticketReplies', id: 'rep-1' });
     const body = record({ store: 'ticketReplies', id: 'rep-1', employeeId: 'emp-a1', readableBy: ['emp-a1'] });
@@ -956,12 +956,6 @@ describe('ticket replies and comp-off credits', () => {
     );
   });
 
-  it('a comp-off credit is decided by someone above the person, never the person', async () => {
-    const id = docId({ store: 'compOffCredits', id: 'co-emp-a1-2026-10-18' });
-    const body = record({ store: 'compOffCredits', id: 'co-emp-a1-2026-10-18', employeeId: 'emp-a1', status: 'Approved', readableBy: ['emp-a1', 'emp-a2'] });
-    await assertFails(setDoc(doc(as(USERS.employeeA), 'org_records', id), body));
-    await assertSucceeds(setDoc(doc(as(USERS.managerLinkedA), 'org_records', id), body));
-  });
 });
 
 describe('pay and identity details are the subject’s and HR’s', () => {

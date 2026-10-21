@@ -70,29 +70,32 @@ export function payRunRoll<T extends Pick<Employee, 'id' | 'status' | 'dateOfJoi
 export const CURRENT_MONTH_RUNNABLE_FROM_DAY = 25;
 
 /**
- * The months a run may be for, on `today` (`YYYY-MM-DD`): the five before
- * this one, and this one too once it is nearly over.
+ * The months a run may be for, on `today` (`YYYY-MM-DD`), newest first.
  *
- * It used to offer the current month from its first day, so October could be
- * confirmed on the 8th — full pay for three weeks nobody had worked yet, and a
- * cycle the page then refuses to run again. From the 25th a company can still
- * pay on the last working day; an absence after the run is charged to the next
- * month as arrears, which `lossOfPayArrears` already does. Further back than
- * six months is a correction, not a run.
+ * The newest is this month once it is nearly over — from the 25th — and the
+ * month before until then. It used to offer the current month from its first
+ * day, so October could be confirmed on the 8th: full pay for three weeks
+ * nobody had worked yet, and a cycle the page then refuses to run again. From
+ * the 25th a company can still pay on the last working day; an absence after
+ * the run is charged to the next month as arrears (`lossOfPayArrears`).
+ *
+ * The oldest is April — the start of the financial year — or six months back,
+ * whichever reaches further, so never more than twelve. It was always six, and
+ * a company that went live in October with people on the roll since April
+ * could pay April only by hand outside the app, which left the first half of
+ * the year missing from every payslip-derived figure, the TDS credit included.
  */
 export function runnableMonths(today: string): string[] {
-  const [year, mon, day] = today.split('-').map(Number);
-  const months = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(Date.UTC(year, mon - 1 - i, 1));
-    return d.toISOString().slice(0, 7);
-  });
-  return day >= CURRENT_MONTH_RUNNABLE_FROM_DAY ? months : [...months.slice(1), previousMonth(months[5])];
+  const [year, mon, day = 1] = today.split('-').map(Number);
+  const latest = new Date(Date.UTC(year, mon - 1 - (day >= CURRENT_MONTH_RUNNABLE_FROM_DAY ? 0 : 1), 1));
+  const latestMonth = latest.getUTCMonth() + 1;
+  const sinceApril = latestMonth >= 4 ? latestMonth - 4 : latestMonth + 8;
+  const length = Math.max(6, sinceApril + 1);
+  return Array.from({ length }, (_, i) =>
+    new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth() - i, 1)).toISOString().slice(0, 7),
+  );
 }
 
-function previousMonth(month: string): string {
-  const [year, mon] = month.split('-').map(Number);
-  return new Date(Date.UTC(year, mon - 2, 1)).toISOString().slice(0, 7);
-}
 
 export function payeesFor<T extends Pick<Employee, 'status' | 'dateOfJoining' | 'lastWorkingDay'>>(employees: readonly T[], month: string): T[] {
   const end = lastDayOf(month);

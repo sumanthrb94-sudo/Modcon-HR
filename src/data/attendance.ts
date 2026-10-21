@@ -4,7 +4,7 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { todayDate, todayIso, isoDaysAgo, currentClockTime, nowInstant } from '@/lib/today';
 import { persistentCollection } from '@/data/persistence';
 import { clockMinutes } from '@/data/shiftRules';
-import { isLateFor, requiredHoursFor, shiftCaptionFor } from '@/data/shifts';
+import { crossesMidnight, getShiftFor, isLateFor, requiredHoursFor, shiftCaptionFor } from '@/data/shifts';
 import { isShortDay } from '@/data/shiftRules';
 import type { UserProfile } from '@/lib/auth';
 import { regularizationDecisionRefusal } from '@/lib/dataScope';
@@ -222,10 +222,13 @@ function formatHours(hours: number): string {
  * else entirely. A regularization is raised against a specific day that is
  * wrong, so the queue is derived from the days that *are* wrong.
  *
- * Two signals, both directly present on the record:
+ * Three signals, all directly present on the record:
  *   - `Absent`   nothing was recorded, so there is a day to account for.
  *   - `isLate`   a check-in after the grace period, which is what an employee
  *                would ask to have excused.
+ *   - a check-in with no check-out on a day that can no longer be closed
+ *                (`isMissingCheckOut`) — a forgotten check-out, whose hours
+ *                nothing else will ever settle.
  *
  * Deliberately *not* derived:
  *   - A missing record is not treated as an anomaly. Every employee is missing
@@ -258,9 +261,10 @@ export function deriveRegularizationRequests(
   }
 
   return records
-    // Absent, or a day that fell short of its hours. Late on its own is not
-    // flagged any more: what matters is whether the day's hours were worked.
-    .filter((record) => record.status === 'Absent' || isShortHalfDay(record))
+    // Absent, a day that fell short of its hours, or a check-in never
+    // closed. Late on its own is not flagged (product owner, 2026-10-08): what
+    // matters is whether the day's hours were worked.
+    .filter((record) => record.status === 'Absent' || isShortHalfDay(record) || isMissingCheckOut(record))
     .filter((record) => !isWeekOffFor(getEmployee(record.employeeId), record.date))
     .filter((record) => !activeLeaves.some((l) => l.employeeId === record.employeeId && l.startDate <= record.date && l.endDate >= record.date))
     .map((record) => ({
@@ -274,6 +278,8 @@ export function deriveRegularizationRequests(
       reason:
         record.status === 'Absent'
           ? 'Marked absent — no check-in was recorded for this day.'
+          : isMissingCheckOut(record)
+            ? `Checked in at ${record.checkIn} but never checked out, so the hours for this day are unknown.`
           : isShortHalfDay(record)
             ? `Worked ${formatHours(record.shortOfHours!.worked)} of a ${formatHours(record.shortOfHours!.required)} day, so it counts as a half day.`
           : record.checkIn
@@ -662,26 +668,48 @@ export function getTodayRecord(employeeId: string): AttendanceRecord | undefined
 }
 
 /**
- * A shift this employee has started and not closed.
+ * Whether a shift left open on this record's day can still be closed now.
+ *
+ * Today's always can. Yesterday's only when the employee's shift runs past
+ * midnight — a night shift begun at 22:00 closes at 06:00 the next morning.
+ * For a day shift, yesterday left open is a forgotten check-out, and treating
+ * it as still running held the next morning's check-in hostage: the panel
+ * offered only "Check Out", which would have stamped this morning's time onto
+ * yesterday. That is what regularization is for, so it is flagged instead
+ * (see `isMissingCheckOut`).
+ */
+function mayStillClose(record: AttendanceRecord): boolean {
+  if (record.date === todayIso()) return true;
+  if (record.date !== isoDaysAgo(1)) return false;
+  const shift = getShiftFor(record.employeeId);
+  return Boolean(shift && crossesMidnight(shift));
+}
+
+/**
+ * A day the employee checked into and never checked out of, and which can no
+ * longer be closed by checking out. It needs regularizing: the hours are
+ * unknown, and nothing else will ever settle them.
+ */
+export function isMissingCheckOut(record: AttendanceRecord): boolean {
+  return Boolean(record.checkIn) && !record.checkOut && record.status !== 'Absent' && !mayStillClose(record);
+}
+
+/**
+ * A shift this employee has started and can still close.
  *
  * Check-out used to key on `todayIso()` alone, so a shift begun at 23:50 could
  * never be closed: by 00:05 the date had rolled, there was no record for the
- * new day, and the old one stayed open forever at 0h — still flagged as a late
- * arrival nobody could resolve.
- *
- * Yesterday is as far back as this looks. A day left open a week ago is not
- * something to silently close with today's clock; it is what regularization is
- * for.
+ * new day, and the old one stayed open forever at 0h. Yesterday is considered
+ * only for a shift that crosses midnight — see `mayStillClose`.
  */
 export function getOpenShift(employeeId: string): AttendanceRecord | undefined {
-  const eligible = new Set([todayIso(), isoDaysAgo(1)]);
   return getAttendanceRecords()
     .filter(
       (record) =>
         record.employeeId === employeeId &&
-        eligible.has(record.date) &&
         record.checkIn &&
-        !record.checkOut,
+        !record.checkOut &&
+        mayStillClose(record),
     )
     .sort((a, b) => b.date.localeCompare(a.date))[0];
 }

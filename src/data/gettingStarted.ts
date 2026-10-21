@@ -35,6 +35,7 @@ import { getCustomLocations } from '@/data/locations';
 import { getEmployeeDirectory } from '@/data/employees';
 import { getHolidayDirectory } from '@/data/holidays';
 import { getDeclaredOrganisationWeekOff } from '@/data/weekOff';
+import { hasShifts } from '@/data/shifts';
 import { getLeavePolicies } from '@/data/leavePolicies';
 import { getSalaryStructure } from '@/data/salaryStructure';
 import { getStatutoryConfig } from '@/data/statutory';
@@ -111,6 +112,13 @@ export function getOrganisationTasks(): GettingStartedTask[] {
       why: 'It decides which day may go unworked without being marked absent. Undeclared, the company falls back to Sunday whether or not that is its day.',
       href: '/settings?tab=weekoff',
       done: getDeclaredOrganisationWeekOff() !== null,
+    },
+    {
+      id: 'working-hours',
+      title: 'Set working hours',
+      why: 'Lateness is judged against a shift start and its grace period. With no shift declared, nobody is ever flagged late — the count reads 0 whatever time people arrive.',
+      href: '/settings?tab=shifts',
+      done: hasShifts(),
     },
     {
       id: 'holidays',

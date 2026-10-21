@@ -34,6 +34,8 @@ import { getHolidayDirectory } from '@/data/holidays';
 import { currentHour, todayIso } from '@/lib/today';
 import { formatDate, formatDateShort, formatWeekdayLong } from '@/lib/utils';
 import { resolveAppRole } from '@/lib/accessControl';
+import { careersPath } from '@/lib/publishedJobs';
+import { getActiveOrgKey } from '@/lib/orgScope';
 
 interface CozyDailyBriefingProps {
   currentEmployee?: Employee | null;
@@ -233,14 +235,29 @@ export function CozyDailyBriefing({
               <Users size={14} className="text-brand-600" />
               Team Pulse · {currentEmployee?.department ?? 'My Team'}
             </span>
-            <Badge tone="blue">{teamPulse.total} Colleagues</Badge>
+            <Badge tone="blue">
+              {teamPulse.total} {teamPulse.total === 1 ? 'Colleague' : 'Colleagues'}
+            </Badge>
           </div>
 
+          {/* Only what the records say. "No approved leave" is not "everyone
+              is available": with nobody checked in, or nobody else in the
+              department at all, that claim was simply untrue. */}
           {teamPulse.onLeave.length === 0 ? (
-            <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50/70 rounded-lg p-2.5">
-              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-              <span>All team members are available today. No one is on leave.</span>
-            </div>
+            teamPulse.total === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg p-2.5">
+                <Users size={16} className="text-ink-400 shrink-0" />
+                <span>Nobody else is in {currentEmployee?.department ?? 'your team'} on the directory yet.</span>
+              </div>
+            ) : (
+              // Leave is all this card can know: a colleague's check-in is
+              // theirs and their line's to read (firestore.rules), so it says
+              // nothing about who is in.
+              <div className="flex items-center gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg p-2.5">
+                <CheckCircle2 size={16} className="text-ink-400 shrink-0" />
+                <span>No one in {currentEmployee?.department ?? 'your team'} is on approved leave today.</span>
+              </div>
+            )
           ) : (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-700">
@@ -357,9 +374,10 @@ export function CozyDailyBriefing({
             <p className="text-xs text-ink-500">No company holidays scheduled in the coming weeks.</p>
           )}
 
-          <div className="pt-1 border-t border-ink-50 flex items-center justify-between text-[11px] text-ink-500">
-            <span>🎉 Next month cycle is active</span>
-            <Link to="/careers" className="text-brand-600 hover:underline">Internal Openings</Link>
+          {/* The link goes to this organisation's own careers page — bare
+              /careers is the default organisation's. */}
+          <div className="pt-1 border-t border-ink-50 flex items-center justify-end text-[11px] text-ink-500">
+            <Link to={careersPath(getActiveOrgKey())} className="text-brand-600 hover:underline">Internal Openings</Link>
           </div>
         </div>
       </div>

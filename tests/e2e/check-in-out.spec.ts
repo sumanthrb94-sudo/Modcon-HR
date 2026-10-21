@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
 import { istDay, istToday } from './clock';
-import { clearOrgRecords, listOrgRecords, waitForOrgRecordsQuiet } from './firestore';
+import { clearOrgRecords, waitForOrgRecordsQuiet } from './firestore';
 
 /**
  * Check in, check out, and what the captured times then drive.
@@ -294,57 +294,38 @@ test.describe.serial('check in and check out', () => {
     await expect(flagged.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(flagged).toContainText('Decided by their manager or HR');
   });
-  test('a shift running past midnight can still be closed', async () => {
-    // Check in at 23:50, then let the date roll over before checking out.
+  // A day shift left open at midnight is a forgotten check-out, not a shift
+  // still running: only a shift that itself crosses midnight may close
+  // yesterday's day (`mayStillClose` in src/data/attendance.ts). Treating every
+  // open day as closable held the next morning's check-in hostage — the panel
+  // offered only "Check Out", which stamped this morning's time onto yesterday.
+  test('a day shift left open at midnight is flagged, not held open', async () => {
     await page.clock.setFixedTime(istDay(0, '23:50'));
     await resetAttendance(page);
     await page.goto('/my-attendance');
     await page.getByRole('button', { name: 'Check In' }).click();
     await expect(clockCard(page)).toContainText('In 23:50');
 
-    // Midnight passes. Keyed on today alone, the shift became unreachable here:
-    // the panel offered a fresh check-in while the real day stayed open at 0h.
     await page.clock.setFixedTime(istDay(1, '00:05'));
-    // Same reason as above: the 23:50 stamp has to have reached the server, or
-    // the reload below discards it and the shift this test is about never
-    // existed.
+    // The 23:50 stamp has to have reached the server, or the reload below
+    // discards it and the day this test is about never existed.
     await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
     await page.reload();
 
+    // A fresh day, free to check into.
     const card = clockCard(page);
-    await expect(card).toContainText('Open shift');
-    await expect(card).toContainText('In 23:50');
-    await expect(page.getByRole('button', { name: 'Check Out' })).toBeEnabled();
-
-    await page.getByRole('button', { name: 'Check Out' }).click();
-
-    // The panel now offers a fresh day, which is right — so the closed shift is
-    // asserted where it lives, in the records table.
     await expect(card).toContainText('Not checked in yet today.');
-    // The page opens on the calendar; the records table is the Table view.
-    await page.getByRole('button', { name: 'Table', exact: true }).click();
-    // By its Check-Out column: a fifteen-minute shift is short of the day, so
-    // the page now also lists it as a half day in the requests table above.
-    const closed = page
-      .getByRole('table')
-      .filter({ has: page.getByRole('columnheader', { name: 'Check-Out' }) })
-      .locator('tbody tr')
-      .filter({ hasText: '23:50' });
-    await expect(closed.first()).toContainText('00:05');
+    await expect(page.getByRole('button', { name: 'Check In' })).toBeEnabled();
 
-    // 23:50 -> 00:05 is fifteen minutes, measured across the date boundary.
-    // Asserted against the organisation's copy rather than by reaching into
-    // localStorage: the cache holds an *overlay* now (`{ id, record }` entries,
-    // not records), so the old reach-in found no `checkIn` on anything and
-    // reported `undefined` — a shape change reading as a broken calculation.
-    await expect
-      .poll(async () => {
-        const stored = await listOrgRecords<{ checkIn?: string; workedHours?: number }>(
-          'attendanceRecords',
-          { employeeId: linkedEmployeeId },
-        );
-        return stored.find((record) => record.checkIn === '23:50')?.workedHours;
-      }, { timeout: 15_000 })
-      .toBe(0.25);
+    // Yesterday is a missing check-out, which reaches the regularization queue.
+    await page.goto('/attendance');
+    await expect(
+      page
+        .locator('table')
+        .filter({ has: page.getByRole('columnheader', { name: 'Requested' }) })
+        .locator('tbody tr')
+        .filter({ hasText: 'Checked in at 23:50 but never checked out' })
+        .first(),
+    ).toBeVisible();
   });
 });

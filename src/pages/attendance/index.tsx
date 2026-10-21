@@ -54,7 +54,7 @@ import { LocationReviewQueue } from './LocationReviewQueue';
 import { canDecideRegularization, getApprovableEmployeeIds, getVisibleEmployeeIds, regularizationChangesTheDay } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
-import { isLateFor, shiftCaptionFor } from '@/data/shifts';
+import { hasShifts, isLateFor, shiftCaptionFor, SHIFTS_CHANGED_EVENT } from '@/data/shifts';
 import { ImportAttendanceDialog } from './ImportAttendanceDialog';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
@@ -101,6 +101,10 @@ export function AttendancePage() {
   // Read from the store rather than the seed, so a marked day is still there
   // after a refresh — and re-read when another tab changes it.
   const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
+  // Without declared hours nobody can be late, so a zero here would read as
+  // "everyone was on time" when nothing was measured at all.
+  const shiftsRevision = useCollectionRevision(SHIFTS_CHANGED_EVENT);
+  const lateMeasured = useMemo(() => hasShifts(), [shiftsRevision]);
   const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
   // Leave covering a day sets its pending request aside — see data/regularizationLeave.ts.
   const leaveRevision = useCollectionRevision(LEAVE_REQUESTS_CHANGED_EVENT);
@@ -630,8 +634,11 @@ export function AttendancePage() {
         />
         <StatCard
           label="Late Arrivals"
-          value={todayStats.late}
+          value={lateMeasured ? todayStats.late : '—'}
           icon={<Clock size={20} />}
+          footer={lateMeasured ? undefined : (
+            <span className="text-xs text-amber-700">Not measured: no working hours are set. Add a shift in Settings → Shifts.</span>
+          )}
         />
       </div>
 

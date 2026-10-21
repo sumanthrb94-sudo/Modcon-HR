@@ -14,3 +14,4 @@ export { Select } from './Select';
 export { QuickAddMenu } from './QuickAddMenu';
 export { NotificationsMenu } from './NotificationsMenu';
 export { BrandMark, Wordmark, BrandLockup } from './BrandMark';
+export { FadeIn, Stagger, StaggerItem, StaggerList, TextEffect, SlidingNumber, PageTransition, formatIndian, spring } from './motion';

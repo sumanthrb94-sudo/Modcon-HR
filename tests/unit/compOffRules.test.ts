@@ -1,39 +1,47 @@
+// Unit tests for how comp off is earned, src/data/compOffRules.ts.
+//
+// Run: npm run test:unit
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compOffCandidates, compOffDaysGranted, compOffId, type CompOffCredit } from '../../src/data/compOffRules.ts';
 
-const sundays = (_e: string, d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
-const diwali = (d: string) => d === '2026-11-08';
+import { compOffDaysEarned, FULL_DAY_HOURS } from '../../src/data/compOffRules.ts';
 
-test('a day worked on a week-off or a holiday is a candidate; an ordinary day is not', () => {
-  const out = compOffCandidates(
-    [
-      { employeeId: 'e1', date: '2026-10-18', status: 'Present' }, // Sunday
-      { employeeId: 'e1', date: '2026-10-19', status: 'Present' }, // Monday
-      { employeeId: 'e2', date: '2026-11-08', status: 'Half Day' }, // holiday (also Sunday)
-      { employeeId: 'e3', date: '2026-10-18', status: 'Absent' },
-    ],
-    sundays,
-    diwali,
-    new Set(),
-  );
-  assert.deepEqual(out.map((c) => [c.employeeId, c.date, c.days, c.why]), [
-    ['e2', '2026-11-08', 0.5, 'holiday'],
-    ['e1', '2026-10-18', 1, 'week-off'],
-  ]);
+// 2026-01-11 and 2026-01-18 are Sundays (the week-off); 2026-01-26 is a holiday.
+const dayOff = (date: string) => ['2026-01-11', '2026-01-18', '2026-01-26'].includes(date);
+const FROM = '2026-01-01';
+const TO = '2026-01-31';
+
+test('a worked Sunday earns one day back', () => {
+  assert.equal(compOffDaysEarned([{ date: '2026-01-11', checkIn: '10:00', workedHours: 5.5 }], dayOff, FROM, TO), 1);
 });
 
-test('a decided day is not offered again', () => {
-  const out = compOffCandidates([{ employeeId: 'e1', date: '2026-10-18', status: 'Present' }], sundays, diwali, new Set([compOffId('e1', '2026-10-18')]));
-  assert.equal(out.length, 0);
+test('working an ordinary day earns nothing', () => {
+  assert.equal(compOffDaysEarned([{ date: '2026-01-12', checkIn: '09:00', workedHours: 9 }], dayOff, FROM, TO), 0);
 });
 
-test('only approved, unexpired credits count', () => {
-  const credits: CompOffCredit[] = [
-    { id: 'a', employeeId: 'e1', date: '2026-10-18', days: 1, status: 'Approved', expiresOn: '2027-01-16' },
-    { id: 'b', employeeId: 'e1', date: '2026-06-07', days: 1, status: 'Approved', expiresOn: '2026-09-05' },
-    { id: 'c', employeeId: 'e1', date: '2026-10-11', days: 1, status: 'Rejected', expiresOn: '2027-01-09' },
+test('a short day off worked earns half a day; the threshold is a full day', () => {
+  assert.equal(compOffDaysEarned([{ date: '2026-01-18', checkIn: '10:00', workedHours: 2 }], dayOff, FROM, TO), 0.5);
+  assert.equal(compOffDaysEarned([{ date: '2026-01-18', checkIn: '10:00', workedHours: FULL_DAY_HOURS }], dayOff, FROM, TO), 1);
+});
+
+test('an open shift on a day off earns nothing until it has a length', () => {
+  assert.equal(compOffDaysEarned([{ date: '2026-01-26', checkIn: '10:00', workedHours: 0 }], dayOff, FROM, TO), 0);
+});
+
+test('no check-in, no comp off — an administrator marking the day does not count', () => {
+  assert.equal(compOffDaysEarned([{ date: '2026-01-26', checkIn: null, workedHours: 8 }], dayOff, FROM, TO), 0);
+});
+
+test('only days inside the window count, and holidays count like week-offs', () => {
+  const days = [
+    { date: '2025-12-28', checkIn: '10:00', workedHours: 6 }, // outside
+    { date: '2026-01-11', checkIn: '10:00', workedHours: 6 },
+    { date: '2026-01-26', checkIn: '10:00', workedHours: 6 },
   ];
-  assert.equal(compOffDaysGranted(credits, 'e1', '2026-10-21'), 1);
-  assert.equal(compOffDaysGranted(credits, 'e1', '2027-02-01'), 0);
+  assert.equal(compOffDaysEarned(days, (d) => d === '2025-12-28' || dayOff(d), FROM, TO), 2);
+});
+
+test('a non-finite hours value is treated as no hours', () => {
+  assert.equal(compOffDaysEarned([{ date: '2026-01-11', checkIn: '10:00', workedHours: Number.NaN }], dayOff, FROM, TO), 0);
 });

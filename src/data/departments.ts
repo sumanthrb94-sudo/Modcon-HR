@@ -173,6 +173,8 @@ export function getDepartmentDirectory(): DepartmentRecord[] {
   // row. A stored figure on a custom row would go stale the moment somebody
   // joined, left or was reassigned.
   const liveCount = employees.reduce<Record<string, number>>((acc, employee) => {
+    // People who have left are no longer in any department.
+    if (employee.status === 'Resigned') return acc;
     acc[employee.department] = (acc[employee.department] ?? 0) + 1;
     return acc;
   }, {});

@@ -71,7 +71,16 @@ export function LocationReviewQueue() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const queue = useMemo(() => stamps.filter(needsReview), [stamps]);
+  // A stamp from outside every attendance area leads, then the newest first.
+  // A queue of heuristic flags on positions inside the office buried the one
+  // stamp somebody actually made from 22 km away.
+  const queue = useMemo(
+    () =>
+      stamps
+        .filter(needsReview)
+        .sort((a, b) => Number(b.outcome === 'outside') - Number(a.outcome === 'outside')),
+    [stamps],
+  );
   const confirmedFalsified = useMemo(
     () => stamps.filter((s) => s.review?.verdict === 'falsified'),
     [stamps],

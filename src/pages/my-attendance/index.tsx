@@ -29,6 +29,7 @@ import {
   getCurrentWeekDates,
   getRegularizationRequestsFor,
   getActiveRecord,
+  isMissingCheckOut,
   recordCheckIn,
   recordCheckOut,
   addRegularizationRequest,
@@ -52,6 +53,7 @@ import { todayIso } from '@/lib/today';
 import { useAuth } from '@/lib/auth';
 import { getVisibleEmployees, getCurrentEmployeeRecord } from '@/lib/dataScope';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
+import { hasShifts, SHIFTS_CHANGED_EVENT } from '@/data/shifts';
 import { CHART_GRID, CHART_PRIMARY, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
 import { getGeofenceConfigFor } from '@/data/attendanceGeofence';
 import { useAttendanceGeofenceRevision } from '@/lib/useAttendanceGeofenceRevision';
@@ -75,6 +77,8 @@ export function MyAttendancePage() {
   // the records and the flagged entries as they were at mount.
   const attendanceRevision = useCollectionRevision(ATTENDANCE_CHANGED_EVENT);
   const regularizationRevision = useCollectionRevision(REGULARIZATIONS_CHANGED_EVENT);
+  const shiftsRevision = useCollectionRevision(SHIFTS_CHANGED_EVENT);
+  const lateMeasured = useMemo(() => hasShifts(), [shiftsRevision]);
   const leaveRevision = useCollectionRevision(LEAVE_REQUESTS_CHANGED_EVENT);
   // The directory changes under this page — an account being linked to a
   // record, a rename, a deletion — and every identity decision below reads it.
@@ -204,7 +208,11 @@ export function MyAttendancePage() {
       // person's joining — with nothing recorded is not an absence; it reads
       // and counts like a day that has not happened. See data/goLive.ts.
       const isFuture = isoDate > today || (!record && isBeforeAttendanceTracking(targetEmployee, isoDate));
-      const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending');
+      // A request somebody raised — it carries the status they asked for. The
+      // app's own flags (absent, short day, missing check-out) are Pending too
+      // but ask for nothing, and treating them as "already requested" hid
+      // exactly the days that still needed the employee to act.
+      const pendingReq = ownRequests.find((r) => r.date === isoDate && r.status === 'Pending' && r.requestedStatus !== null);
       const activeLeave = ownLeaves.find((l) => l.startDate <= isoDate && l.endDate >= isoDate);
 
       let status: 'Present' | 'WFH' | 'Leave' | 'HalfDay' | 'Absent' | 'WeekOff' | 'Holiday' | 'Future' | 'PendingReg' = 'Future';
@@ -219,10 +227,11 @@ export function MyAttendancePage() {
         else if (record.status === 'Work From Home') status = 'WFH';
         else if (record.status === 'On Leave') status = 'Leave';
         else if (record.status === 'Half Day') status = 'HalfDay';
-        // A day short of its hours is a half day the employee can regularize.
-        // Late on its own is not: arriving late is fine if the hours are
-        // worked (product owner, 2026-10-08). Leave covering the day wins.
-        if (isShortHalfDay(record) && !activeLeave) {
+        // A day short of its hours is a half day the employee can regularize,
+        // and a forgotten check-out leaves the hours unknown. Late on its own
+        // is not: arriving late is fine if the hours are worked (product
+        // owner, 2026-10-08). Leave covering the day wins.
+        if ((isShortHalfDay(record) || isMissingCheckOut(record)) && !activeLeave) {
           isAttentionItem = true;
           isActionable = true;
         }
@@ -290,11 +299,12 @@ export function MyAttendancePage() {
     const absentOrMissing = realDays.filter((d) => d.status === 'Absent').length;
     const late = realDays.filter((d) => Boolean(d.record?.isLate)).length;
     const shortDays = realDays.filter((d) => d.isActionable && d.record && isShortHalfDay(d.record)).length;
+    const missingCheckOut = realDays.filter((d) => d.status !== 'PendingReg' && Boolean(d.record && isMissingCheckOut(d.record))).length;
     const attentionCount = actionableDays.length;
     const weekOffs = realDays.filter((d) => d.status === 'WeekOff').length;
     const holidayCount = realDays.filter((d) => d.status === 'Holiday').length;
 
-    return { present, wfh, leave, halfDay, pendingRegs, absentOrMissing, late, shortDays, attentionCount, weekOffs, holidayCount };
+    return { present, wfh, leave, halfDay, pendingRegs, absentOrMissing, late, shortDays, missingCheckOut, attentionCount, weekOffs, holidayCount };
   }, [calendarDays, actionableDays]);
 
   const monthTitle = useMemo(() => {
@@ -856,7 +866,12 @@ export function MyAttendancePage() {
             <StatCard label="Work From Home" value={stats.wfh} icon={<Monitor size={20} />} />
             <StatCard label="On Leave" value={stats.onLeave} icon={<Calendar size={20} />} />
             <StatCard label="Absent" value={stats.absent} icon={<UserX size={20} />} />
-            <StatCard label="Late Arrivals" value={stats.late} icon={<Clock size={20} />} />
+            <StatCard
+              label="Late Arrivals"
+              value={lateMeasured ? stats.late : '—'}
+              icon={<Clock size={20} />}
+              footer={lateMeasured ? undefined : <span className="text-xs text-amber-700">Not measured: your organisation has not set working hours yet.</span>}
+            />
           </div>
 
           {/* Status Badge Legend Bar - Responsive & Minimal */}
@@ -956,9 +971,11 @@ export function MyAttendancePage() {
                       {actionableDays.length} Red Flag{actionableDays.length > 1 ? 's' : ''} in {monthTitle}:
                     </span>{' '}
                     <span className="text-rose-700 text-xs sm:text-sm">
-                      {monthStats.absentOrMissing > 0 ? `${monthStats.absentOrMissing} missing punch / absent day${monthStats.absentOrMissing > 1 ? 's' : ''}` : ''}
-                      {monthStats.absentOrMissing > 0 && monthStats.shortDays > 0 ? ' · ' : ''}
-                      {monthStats.shortDays > 0 ? `${monthStats.shortDays} short day${monthStats.shortDays > 1 ? 's' : ''} counted as half day${monthStats.shortDays > 1 ? 's' : ''}` : ''}
+                      {[
+                        monthStats.absentOrMissing > 0 ? `${monthStats.absentOrMissing} missing punch / absent day${monthStats.absentOrMissing > 1 ? 's' : ''}` : '',
+                        monthStats.missingCheckOut > 0 ? `${monthStats.missingCheckOut} missing check-out${monthStats.missingCheckOut > 1 ? 's' : ''}` : '',
+                        monthStats.shortDays > 0 ? `${monthStats.shortDays} short day${monthStats.shortDays > 1 ? 's' : ''} counted as half day${monthStats.shortDays > 1 ? 's' : ''}` : '',
+                      ].filter(Boolean).join(' · ')}
                       . Unregularized absences and half days result in Loss of Pay (LOP) during payroll.
                     </span>
                   </div>

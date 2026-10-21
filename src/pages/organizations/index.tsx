@@ -592,7 +592,11 @@ export function OrganizationsPage() {
                             </div>
                             <div className="flex items-center justify-between gap-3 border-t border-ink-200 pt-2">
                                 <div className="min-w-0">
-                                    <p className="text-xs text-ink-400">Temporary password</p>
+                                    <p className="text-xs text-ink-400">
+                                        {result.emailSent
+                                            ? 'Temporary password — only if the email does not arrive'
+                                            : 'Temporary password'}
+                                    </p>
                                     <p className="font-mono text-ink-900 break-all">{result.tempPassword}</p>
                                 </div>
                                 <button

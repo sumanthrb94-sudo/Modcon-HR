@@ -280,9 +280,10 @@ export interface TaxElection {
    */
   readonly declaredDeductions?: number;
   /**
-   * Tax withheld this financial year for months paid *before* payroll ran in
-   * this app. Months this app paid are credited from their own payslips, so
-   * this is not re-typed every month — see data/tdsProjection.ts.
+   * Tax withheld this financial year *outside this payroll* — by a previous
+   * employer, or in months paid before the organisation ran payroll here.
+   * Months this app paid are credited from their own payslips (see
+   * data/tdsProjection.ts); entering them here as well would count them twice.
    */
   readonly taxDeductedSoFar?: number;
   /** Raises the ESI coverage threshold. Recorded by HR, not self-declared. */

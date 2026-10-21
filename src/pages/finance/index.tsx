@@ -437,16 +437,46 @@ function EmployeeFinancePage() {
 }
 
 export function FinancePage() {
-  const { profile } = useAuth();
+  const { profile, linkedEmployeeId } = useAuth();
   const role = resolveAppRole(profile);
+  const runsPayroll = role === 'HR Manager' || role === 'Admin';
+  // HR and Admin are employees too, and are paid by the payroll they run. This
+  // page used to send them straight to the organisation's payroll, so the one
+  // person who issues everybody's payslip had nowhere to read their own.
+  const ownRecord = useMemo(() => getCurrentEmployeeRecord(profile), [profile, linkedEmployeeId]);
+  const [view, setView] = useState<'organisation' | 'mine'>('organisation');
 
-  // The organisation's payroll is HR's and the Administrator's. Everyone else —
-  // Employees, and now Managers — sees their own payslips here. A Manager used
-  // to be sent to the Payroll page, which is why the module was switched off
-  // for them and they could not see their own pay at all.
-  if (role === 'HR Manager' || role === 'Admin') {
-    return <PayrollPage />;
-  }
+  // Everyone else — Employees and Managers — sees their own payslips here. A
+  // Manager used to be sent to the Payroll page, which is why the module was
+  // switched off for them and they could not see their own pay at all.
+  if (!runsPayroll) return <EmployeeFinancePage />;
+  // An administrator who is not on the payroll (no employee record) has no
+  // payslips, so there is nothing to switch to.
+  if (!ownRecord) return <PayrollPage />;
 
-  return <EmployeeFinancePage />;
+  const tab = (key: 'organisation' | 'mine', label: string) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={view === key}
+      onClick={() => setView(key)}
+      className={
+        view === key
+          ? 'px-4 py-2 text-sm font-semibold text-ink-900 border-b-2 border-brand-600 -mb-[2px]'
+          : 'px-4 py-2 text-sm font-medium text-ink-500 hover:text-ink-900 border-b-2 border-transparent -mb-[2px]'
+      }
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div>
+      <div role="tablist" aria-label="Finance view" className="flex border-b-2 border-ink-200 mx-4 lg:mx-6 mt-4">
+        {tab('organisation', 'Organisation payroll')}
+        {tab('mine', 'My payslips')}
+      </div>
+      {view === 'organisation' ? <PayrollPage /> : <EmployeeFinancePage />}
+    </div>
+  );
 }

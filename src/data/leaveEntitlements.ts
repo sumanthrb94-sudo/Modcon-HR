@@ -33,8 +33,6 @@ import { accrualMonthsElapsed, financialYearEnd, financialYearOf, financialYearS
 import { todayIso } from '@/lib/today';
 import { openingCarriedFor, openingFinancialYear, openingLeaveTakenFor } from './openingLeave';
 import { carriedInto } from './leaveCarry';
-import { compOffDaysGranted } from './compOffRules';
-import { getCompOffCredits } from './compOff';
 import { getGoLiveDate } from './goLive';
 
 /**
@@ -60,6 +58,10 @@ function firstTrackedYear(
   if (employee.dateOfJoining) first = Math.max(first, financialYearOf(employee.dateOfJoining));
   return Math.min(first, current);
 }
+import { getAttendanceRecords } from '@/data/attendance';
+import { getEmployee, isWeekOffFor } from '@/data/employees';
+import { getHolidayDirectory } from '@/data/holidays';
+import { compOffDaysEarned } from '@/data/compOffRules';
 
 export interface Entitlement {
   type: LeaveType;
@@ -146,6 +148,25 @@ export function grantedDays(
   const from = joined && joined > yearStart ? joined : yearStart;
   const months = accrualMonthsElapsed(asOf, from);
   return { granted: months * policy.monthlyAccrual };
+}
+
+/**
+ * Comp off earned so far this financial year: days this employee worked on
+ * their own week-off or on a declared holiday (see data/compOffRules.ts).
+ *
+ * Read at call time from the attendance store. data/attendance.ts imports
+ * data/leave.ts, which imports this module, so the cycle is real — and safe,
+ * because nothing here touches attendance until a function is called.
+ */
+export function compOffEarned(employeeId: string, asOf: string = todayIso()): number {
+  const employee = getEmployee(employeeId);
+  const holidays = new Set(getHolidayDirectory().map((holiday) => holiday.date));
+  return compOffDaysEarned(
+    getAttendanceRecords().filter((record) => record.employeeId === employeeId),
+    (date) => holidays.has(date) || isWeekOffFor(employee, date),
+    financialYearStart(asOf),
+    asOf,
+  );
 }
 
 /**
@@ -257,13 +278,12 @@ export function getApplicableEntitlements(
     .filter((policy) => appliesToEmployee(policy, employee.gender))
     .map((policy) => {
       const type = normalizeLeaveTypeValue(policy.type);
-      const accrued = grantedDays(policy, employee, asOf);
-      const withheldReason = accrued.withheldReason;
-      // Comp Off is earned, not accrued: approved days worked on a day off,
-      // within this financial year and not yet expired (data/compOffRules.ts).
-      const granted = accrued.granted + (type === 'Comp Off'
-        ? compOffDaysGranted(getCompOffCredits(), employee.id, asOf, financialYearStart(asOf))
-        : 0);
+      const quota = grantedDays(policy, employee, asOf);
+      // Comp Off is earned by working a day off, on top of whatever quota the
+      // organisation set for it (usually none).
+      const earned = type === 'Comp Off' && !quota.withheldReason ? compOffEarned(employee.id, asOf) : 0;
+      const granted = quota.granted + earned;
+      const withheldReason = quota.withheldReason;
       // Leave taken this year before the organisation started using this app
       // counts as used like any approved here — see data/openingLeave.ts.
       const used = daysAtStatus(employee.id, type, 'Approved', requests, asOf) + openingLeaveTakenFor(employee.id, type, asOf);
@@ -284,7 +304,8 @@ export function getApplicableEntitlements(
         policy,
         granted,
         carried,
-        fullYear: grantedDays(policy, employee, financialYearEnd(asOf)).granted,
+        // Earned comp off is what has been worked so far; nothing projects it.
+        fullYear: grantedDays(policy, employee, financialYearEnd(asOf)).granted + earned,
         used,
         pending,
         available,

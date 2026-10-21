@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { spring } from './motion';
 
 interface ModalProps {
   open: boolean;
@@ -37,11 +39,14 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
           screen reader met the contents as loose page text, and a button inside
           the modal was indistinguishable from an identically-named one behind
           it — which is also what made these dialogs awkward to target in tests. */}
-      <div
+      <motion.div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={cn('relative w-full card elev-lg animate-fade-in max-h-[90vh] flex flex-col', sizes[size])}
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={spring}
+        className={cn('relative w-full card elev-lg max-h-[90vh] flex flex-col', sizes[size])}
       >
         <div className="flex items-start justify-between gap-4 border-b-2 border-ink-900/40 p-5">
           <div>
@@ -54,7 +59,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
         </div>
         <div className="p-5 overflow-y-auto">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-ink-200 p-4">{footer}</div>}
-      </div>
+      </motion.div>
     </div>
   );
 }

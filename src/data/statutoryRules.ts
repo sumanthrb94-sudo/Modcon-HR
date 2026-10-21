@@ -830,6 +830,65 @@ export function monthsLeftInFinancialYear(month: string): number {
   return 13 - position;
 }
 
+/** The financial year (its starting calendar year) a `YYYY-MM` month belongs to. */
+function financialYearOfMonth(month: string): number {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  return m >= 4 ? y : y - 1;
+}
+
+/**
+ * How many months of the financial year containing `month` this person is
+ * paid for by this employer: twelve for anybody on the roll since April,
+ * fewer for somebody who joined during the year.
+ *
+ * TDS projects the year's salary from this. Annualising a January joiner's
+ * monthly gross over twelve months taxed them on nine months' salary nobody
+ * paid them — and because the tax is then spread over the three months left,
+ * it landed as a multiple of their real liability. Income from a previous
+ * employer is declared separately (`TaxElection.taxDeductedSoFar` carries the
+ * tax already withheld on it), not assumed.
+ */
+export function monthsEmployedInFinancialYear(month: string, joinedIso: string | null | undefined): number {
+  if (!joinedIso || !/^\d{4}-\d{2}/.test(joinedIso)) return 12;
+  const joinedMonth = joinedIso.slice(0, 7);
+  const fy = financialYearOfMonth(month);
+  if (financialYearOfMonth(joinedMonth) < fy) return 12;
+  // A joining date after the month being paid cannot reduce it below the
+  // months that remain; the month is being paid, so it counts.
+  const from = joinedMonth > month ? month : joinedMonth;
+  return monthsLeftInFinancialYear(from);
+}
+
+/** The parts of an issued payslip the TDS credit reads. */
+export interface WithheldMonth {
+  readonly month: string;
+  readonly tax: number;
+}
+
+/**
+ * Tax withheld on payslips already issued earlier in the same financial year
+ * as `month`. The month itself is excluded, so re-running it does not credit
+ * the payslip against itself; a month with two payslips counts once.
+ *
+ * This is what `monthlyTds` needs as `alreadyDeducted`. Without it every month
+ * recomputed the whole year's tax over the months left as though nothing had
+ * been withheld — January took a third of the year's tax, February half,
+ * March all of it — and a high earner's March payslip went negative.
+ */
+export function taxWithheldEarlierInYear(payslips: readonly WithheldMonth[], month: string): number {
+  const fy = financialYearOfMonth(month);
+  const seen = new Set<string>();
+  let total = 0;
+  for (const payslip of payslips) {
+    if (payslip.month >= month || financialYearOfMonth(payslip.month) !== fy) continue;
+    if (seen.has(payslip.month)) continue;
+    seen.add(payslip.month);
+    total += safe(payslip.tax);
+  }
+  return total;
+}
+
 // ---------------------------------------------------------------------------
 // Gratuity
 // ---------------------------------------------------------------------------

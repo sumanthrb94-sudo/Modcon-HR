@@ -40,7 +40,6 @@ import { backdatedByDays, checkLeaveApplication, policySummary } from '@/data/le
 import { financialYearLabel } from '@/lib/financialYear';
 import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
-import { CompOffDecisions } from './CompOffDecisions';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { useLeavePoliciesRevision } from '@/lib/useLeavePoliciesRevision';
@@ -490,13 +489,6 @@ export function LeavePage() {
         subtitle="Manage leave requests, balances, and upcoming holidays"
         actions={<Button variant="primary" icon={<Plus size={16} />} onClick={() => setApplyOpen(true)}>Apply Leave</Button>}
       />
-
-      {!isEmployee && approvableEmployeeIds.size > 0 && (
-        <CompOffDecisions
-          decidable={approvableEmployeeIds}
-          decidedBy={currentEmployee?.fullName ?? profile?.displayName ?? profile?.email ?? 'Unknown'}
-        />
-      )}
 
       {decisionNotice && (
         <div

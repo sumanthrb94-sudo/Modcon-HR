@@ -55,7 +55,8 @@ test('a run with no corrections lists nothing', () => {
 test('the current month cannot be run until the 25th', () => {
   assert.deepEqual(runnableMonths('2026-10-08'), ['2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04']);
   assert.deepEqual(runnableMonths('2026-10-24'), runnableMonths('2026-10-08'));
-  assert.deepEqual(runnableMonths('2026-10-25'), ['2026-10', '2026-09', '2026-08', '2026-07', '2026-06', '2026-05']);
+  // From the 25th October is runnable, and the list still reaches back to April.
+  assert.deepEqual(runnableMonths('2026-10-25'), ['2026-10', '2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04']);
   // Across a year end, in both directions.
   assert.deepEqual(runnableMonths('2027-01-03').slice(0, 2), ['2026-12', '2026-11']);
   assert.deepEqual(runnableMonths('2026-12-31')[0], '2026-12');
@@ -84,4 +85,14 @@ test('a leaver is paid for their last month and not after it', () => {
   assert.equal(payeesFor([leaver], '2026-11').length, 0);
   // Serving notice: still on the roll until the day.
   assert.equal(payeesFor([{ ...leaver, status: 'Notice Period' as const }], '2026-10').length, 1);
+});
+
+test('runnableMonths reaches back to April once that is more than six months', () => {
+  const march = runnableMonths('2027-03-28');
+  assert.equal(march.length, 12);
+  assert.equal(march.at(-1), '2026-04');
+});
+
+test('runnableMonths keeps six months early in the year, across the year boundary', () => {
+  assert.deepEqual(runnableMonths('2026-05-26'), ['2026-05', '2026-04', '2026-03', '2026-02', '2026-01', '2025-12']);
 });

@@ -1,85 +1,49 @@
 /**
- * Comp-off: a day off earned by working a day off.
+ * How comp off is earned. Pure arithmetic — imports nothing — so the rule can be
+ * unit-tested; which records, week-offs and holidays feed it is
+ * `compOffEarned` in ./leaveEntitlements.ts.
  *
- * Comp Off was a leave type nobody could earn — granted zero days, so a
- * request for one was simply loss of pay — while retail, clinics and
- * construction (three of the industry presets) work holidays and week-offs as
- * a matter of course. Staff lost the day, or took it unpaid.
+ * Comp Off used to grant nothing at all: the policy's quota is zero and nothing
+ * ever added to it, so an employee who worked their Sunday and then asked for
+ * the day back was charged a day of loss of pay for it. The day off they had
+ * given up became a deduction.
  *
- * A day worked (Present, Work From Home or Half Day) on the person's own
- * week-off or an organisation holiday is a credit to be decided — a whole day,
- * or half for a half day. Approved, it adds to their Comp Off balance until it
- * expires; nobody is credited automatically, because whether working a Sunday
- * earns a day off or overtime is the company's call each time.
- *
- * Pure, imports types only, unit-tested (tests/unit/compOffRules.test.ts).
+ * The rule is deliberately the simple one a small company runs by hand: a day
+ * worked on your own week-off or on a declared holiday earns a day back. Half a
+ * day's work earns half a day. No approval step, because the evidence is the
+ * attendance record itself — the same check-in an employee cannot backdate.
  */
-import type { AttendanceRecord } from '@/types';
 
-/** How long an approved credit may be taken, from the day worked. */
-export const COMP_OFF_VALID_DAYS = 90;
-
-export interface CompOffCredit {
-  /** `co-<employeeId>-<date>` — one per day worked. */
-  id: string;
-  employeeId: string;
-  /** The day worked, YYYY-MM-DD. */
-  date: string;
-  days: number;
-  status: 'Approved' | 'Rejected';
-  decidedBy?: string;
-  decidedOn?: string;
-  /** Last day it may be taken, YYYY-MM-DD. */
-  expiresOn: string;
+/** The parts of an attendance record the rule reads. */
+export interface WorkedDay {
+  readonly date: string;
+  readonly checkIn: string | null;
+  readonly workedHours: number;
 }
 
-export interface CompOffCandidate {
-  id: string;
-  employeeId: string;
-  date: string;
-  days: number;
-  why: 'week-off' | 'holiday';
-}
+/** Hours from which a worked day off counts as a full day earned. */
+export const FULL_DAY_HOURS = 4;
 
-const WORKED = new Set(['Present', 'Work From Home', 'Half Day']);
-
-export function compOffId(employeeId: string, date: string): string {
-  return `co-${employeeId}-${date}`;
-}
-
-export function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Days worked on a day off that nobody has decided yet. */
-export function compOffCandidates(
-  records: readonly Pick<AttendanceRecord, 'employeeId' | 'date' | 'status'>[],
-  isWeekOff: (employeeId: string, date: string) => boolean,
-  isHoliday: (date: string) => boolean,
-  decided: ReadonlySet<string>,
-): CompOffCandidate[] {
-  const out: CompOffCandidate[] = [];
-  for (const r of records) {
-    if (!WORKED.has(r.status)) continue;
-    const id = compOffId(r.employeeId, r.date);
-    if (decided.has(id)) continue;
-    const holiday = isHoliday(r.date);
-    if (!holiday && !isWeekOff(r.employeeId, r.date)) continue;
-    out.push({ id, employeeId: r.employeeId, date: r.date, days: r.status === 'Half Day' ? 0.5 : 1, why: holiday ? 'holiday' : 'week-off' });
-  }
-  return out.sort((a, b) => b.date.localeCompare(a.date));
-}
-
-/** Approved, unexpired days credited to someone as of `asOf`, within [from, asOf]. */
-export function compOffDaysGranted(
-  credits: readonly CompOffCredit[],
-  employeeId: string,
-  asOf: string,
-  from = '0000-00-00',
+/**
+ * Comp off days earned in `[from, to]` (inclusive ISO dates).
+ *
+ * A day counts only when somebody checked in on it and it was a day off for
+ * them. A shift still open (no hours yet) earns nothing until it is closed or
+ * regularized — an open shift has no length to judge.
+ */
+export function compOffDaysEarned(
+  days: readonly WorkedDay[],
+  isDayOff: (date: string) => boolean,
+  from: string,
+  to: string,
 ): number {
-  return credits
-    .filter((c) => c.employeeId === employeeId && c.status === 'Approved' && c.date >= from && c.date <= asOf && c.expiresOn >= asOf)
-    .reduce((sum, c) => sum + c.days, 0);
+  let earned = 0;
+  for (const day of days) {
+    if (!day.checkIn || day.date < from || day.date > to) continue;
+    if (!isDayOff(day.date)) continue;
+    const hours = Number.isFinite(day.workedHours) ? day.workedHours : 0;
+    if (hours >= FULL_DAY_HOURS) earned += 1;
+    else if (hours > 0) earned += 0.5;
+  }
+  return earned;
 }
