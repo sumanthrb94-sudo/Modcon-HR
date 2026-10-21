@@ -315,6 +315,16 @@ service cloud.firestore {
     // and every org-scoped rule compares against that and misses. The account
     // becomes real only when an administrator sets its orgId, and the /users
     // update rules let an HR manager do that solely for their own org.
+    // A profile's `email` is what role grants are matched against
+    // (applyRoleToExistingAccount in src/data/roleAssignments.ts), so on a
+    // self-write it is the signed-in token's address and nothing else.
+    // Writing a colleague's address onto your own profile would otherwise
+    // collect the HR role the next time an administrator granted it to them.
+    function selfWriteKeepsOwnEmail() {
+      return !('email' in request.resource.data) ||
+        request.resource.data.email == request.auth.token.email.lower();
+    }
+
     function selfCreateRoleIsValid(data) {
       let email = request.auth.token.email.lower();
       return (data.role == fixedRoleForEmail(email) ||
@@ -363,14 +373,21 @@ service cloud.firestore {
       //
       // Rule-internal get()s (myProfile, assignedRoleFor) are unaffected —
       // rule evaluation is not subject to the caller's read permission.
+      //
+      // `admin` is a tenant role like `hr` (see the Administrator in
+      // src/lib/accessControl.ts and the audit-log rule), so it is org-scoped
+      // here too; only a super admin reaches across organisations. It was
+      // `isAdmin()` with no org test, which let a legacy organisation's admin
+      // read — and through the write branches below, re-role or re-home —
+      // any account on the platform.
       allow get: if isSignedIn() && (
         request.auth.uid == uid ||
-        isAdmin() || isSuperAdmin() ||
-        (isHR() && orgKeyOf(resource.data) == myOrgKey())
+        callerIsSuperAdmin() ||
+        (isOrgAdmin() && resource != null && orgKeyOf(resource.data) == myOrgKey())
       );
       allow list: if isSignedIn() && (
-        isAdmin() || isSuperAdmin() ||
-        (isHR() && orgKeyOf(resource.data) == myOrgKey())
+        callerIsSuperAdmin() ||
+        (isOrgAdmin() && orgKeyOf(resource.data) == myOrgKey())
       );
       // Users may create/update their own profile (first login upsert), but
       // never with a self-granted role/superAdmin, and never a self-assigned
@@ -397,10 +414,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && (
         (request.auth.uid == uid &&
           selfCreateRoleIsValid(request.resource.data) &&
+          selfWriteKeepsOwnEmail() &&
           !('orgId' in request.resource.data)) ||
         (isAdmin() &&
           (request.resource.data.get('superAdmin', false) == false || isSuperAdmin()) &&
           request.resource.data.orgId is string &&
+          (callerIsSuperAdmin() || request.resource.data.orgId == myOrgKey()) &&
+          (callerIsSuperAdmin() || request.resource.data.role != 'admin') &&
           request.resource.data.orgId.size() > 0 &&
           // A super admin seeds an organisation's *first* account and nothing
           // after it. Without this, closing the tenant boundary achieved very
@@ -426,11 +446,19 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         (request.auth.uid == uid &&
           selfUpdateRoleIsValid(request.resource.data) &&
+          selfWriteKeepsOwnEmail() &&
           request.resource.data.get('orgId', null) == resource.data.get('orgId', null)) ||
         (isAdmin() && (
           request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) ||
           isSuperAdmin()
         ) &&
+          // Inside my organisation, and staying there, unless I administer
+          // the platform. Moving an account between organisations is
+          // Organizations → Set HR admin, which is the super admin's.
+          (callerIsSuperAdmin() ||
+            (orgKeyOf(resource.data) == myOrgKey() && orgKeyOf(request.resource.data) == myOrgKey())) &&
+          // Only the platform mints the Admin role.
+          (callerIsSuperAdmin() || request.resource.data.role != 'admin' || resource.data.role == 'admin') &&
           // An administrator acting on *their own* profile through this branch
           // may not move themselves between organisations.
           //
@@ -462,7 +490,8 @@ service cloud.firestore {
       // Admins can delete anyone. An HR manager may remove a user from their own
       // organisation, but never an admin. Profiles whose email is a fixed admin
       // are additionally protected in-app.
-      allow delete: if isAdmin() ||
+      allow delete: if callerIsSuperAdmin() ||
+        (isAdmin() && orgKeyOf(resource.data) == myOrgKey()) ||
         (isHR() && resource.data.role != 'admin' && resource.data.get('orgId', null) == myOrgId());
     }
 
@@ -510,9 +539,9 @@ service cloud.firestore {
         // the same one every other collection compares, so a legacy assignment
         // and a stamped 'default' one are the same tenant. See G4 in
         // docs/tenant-isolation-spec.md.
-        (isAdmin() || orgKeyOf(request.resource.data) == myOrgKey());
+        (callerIsSuperAdmin() || orgKeyOf(request.resource.data) == myOrgKey());
       allow delete: if isOrgAdmin() &&
-        (isAdmin() || orgKeyOf(resource.data) == myOrgKey());
+        (callerIsSuperAdmin() || orgKeyOf(resource.data) == myOrgKey());
     }
 
     // -------------------------------------------------------------------
@@ -540,7 +569,7 @@ service cloud.firestore {
         request.resource.data.employeeId is string &&
         request.resource.data.employeeId.size() > 0 &&
         // Same sentinel as everywhere else — see the role_assignments note.
-        (isAdmin() || orgKeyOf(request.resource.data) == myOrgKey()) &&
+        (callerIsSuperAdmin() || orgKeyOf(request.resource.data) == myOrgKey()) &&
         // ...and the account being linked is one of mine.
         //
         // Stamping the incoming document is not enough on its own, and this is
@@ -558,9 +587,9 @@ service cloud.firestore {
         // deliberate — it is the same question `create` and `update` both need
         // answered, and a link whose stored orgId disagrees with its account's
         // is exactly the damage this repairs.
-        (isAdmin() || linkTargetInMyOrg(uid));
+        (callerIsSuperAdmin() || linkTargetInMyOrg(uid));
       allow delete: if isOrgAdmin() &&
-        (isAdmin() || orgKeyOf(resource.data) == myOrgKey());
+        (callerIsSuperAdmin() || orgKeyOf(resource.data) == myOrgKey());
     }
 
     // -------------------------------------------------------------------
@@ -989,10 +1018,13 @@ service cloud.firestore {
 
     match /expenses/{docId} {
       allow get, list: if isSignedIn() && inMyOrg();
-      // Employees can submit/edit their own expense claims; admins manage all.
-      allow create: if isSignedIn() && writingToMyOrg();
-      allow update: if isSignedIn() && inMyOrg() && writingToMyOrg() &&
-        (isSelf(resource.data.employeeId) || isManager());
+      // Legacy. Claims live in `org_records` (store `expenseClaims`), where
+      // expenseDecisionIsAuthorised() decides who may approve. This
+      // collection had no such rule — anyone could create a claim already
+      // `Approved` — and the Expenses page merged it into the real store.
+      // The merge is gone; only the demo seed (an administrator) writes here.
+      allow create: if isOrgAdmin() && writingToMyOrg();
+      allow update: if isOrgAdmin() && inMyOrg() && writingToMyOrg();
       allow delete: if isOrgAdmin() && inMyOrg();
     }
 
@@ -1092,18 +1124,46 @@ service cloud.firestore {
       // removable by the person who wrote it or by an administrator — not by
       // the post's author, who does not get to edit the conversation under
       // their own post.
+      // Every path goes through the parent post's organisation. This
+      // subcollection had none, so a collectionGroup('comments') query from
+      // any account — another tenant's, or one minted with the public API
+      // key — read every organisation's replies and could post into them.
       match /comments/{commentId} {
-        allow get, list: if isSignedIn();
-        allow create: if isSignedIn() &&
+        allow get, list: if isSignedIn() && commentParentInMyOrg(postId);
+        allow create: if isSignedIn() && commentParentInMyOrg(postId) &&
           request.resource.data.authorUid == request.auth.uid &&
           request.resource.data.createdAt == request.time &&
           request.resource.data.body is string &&
           request.resource.data.body.size() > 0 &&
           request.resource.data.body.size() <= 1000;
         allow update: if false;
-        allow delete: if isSignedIn() &&
+        allow delete: if isSignedIn() && commentParentInMyOrg(postId) &&
           (resource.data.authorUid == request.auth.uid || isOrgAdmin());
       }
+    }
+
+    function boundedString(data, key, min, max) {
+      return data[key] is string && data[key].size() >= min && data[key].size() <= max;
+    }
+
+    function validDemoRequest() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['fullName', 'companyName', 'workEmail', 'phone', 'teamSize', 'status', 'createdAt']) &&
+        d.keys().hasOnly(['fullName', 'companyName', 'workEmail', 'phone', 'teamSize', 'preferredSlot', 'message', 'status', 'createdAt', 'createdAtIso']) &&
+        boundedString(d, 'fullName', 1, 120) &&
+        boundedString(d, 'companyName', 1, 160) &&
+        boundedString(d, 'workEmail', 3, 254) &&
+        boundedString(d, 'phone', 0, 40) &&
+        boundedString(d, 'teamSize', 0, 40) &&
+        (!('preferredSlot' in d) || boundedString(d, 'preferredSlot', 0, 120)) &&
+        (!('message' in d) || boundedString(d, 'message', 0, 2000)) &&
+        (!('createdAtIso' in d) || boundedString(d, 'createdAtIso', 0, 40)) &&
+        d.status == 'New' &&
+        d.createdAt == request.time;
+    }
+
+    function commentParentInMyOrg(postId) {
+      return orgKeyOf(get(/databases/$(database)/documents/org_posts/$(postId)).data) == myOrgKey();
     }
 
     /** Only the caller's own key in the reactions map moved. */
@@ -1209,7 +1269,8 @@ service cloud.firestore {
         directoryWriteIsAuthorised() &&
         attendanceWriteIsAuthorised() &&
         regularizationDecisionIsAuthorised() &&
-        payrollWriteIsAuthorised();
+        payrollWriteIsAuthorised() &&
+        adminStoreWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
       // administrator clearing data, which is what this allows.
@@ -1310,15 +1371,50 @@ service cloud.firestore {
     function attendanceWriteIsAuthorised() {
       return request.resource.data.store != 'attendanceRecords' ||
         isOrgAdmin() ||
-        isSelf(request.resource.data.get('employeeId', ''));
+        (isSelf(request.resource.data.get('employeeId', '')) && selfAttendanceWriteIsBounded());
+    }
+
+    /**
+     * Checking yourself in is self-service; rewriting your own history is not.
+     *
+     * `isSelf` alone let an employee post any day of any month as `Present`
+     * — over an Absent HR had marked, months back, or a tombstone that erased
+     * it — and payroll deducts from exactly those days. Self-service is a
+     * check-in and a check-out, so the self path is bounded to what those
+     * write:
+     *
+     *   - no tombstone or revert: removing a day is HR's;
+     *   - the record's `date` (lifted by src/data/persistence.ts) is near
+     *     today — a day back for a night shift checking out after midnight,
+     *     a few ahead for clock skew, nothing further;
+     *   - only the statuses a check-in or check-out produces;
+     *   - never over a day whose stored status is HR's to give (Absent,
+     *     Leave, Holiday, …). A day HR decided stays decided.
+     */
+    function selfAttendanceWriteIsBounded() {
+      let d = request.resource.data.get('date', '');
+      let selfStatuses = ['Present', 'Half Day', 'Work From Home'];
+      return !isTombstone() &&
+        d is string && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        timestamp.date(int(d.split('-')[0]), int(d.split('-')[1]), int(d.split('-')[2])) > request.time - duration.value(2, 'd') &&
+        timestamp.date(int(d.split('-')[0]), int(d.split('-')[1]), int(d.split('-')[2])) < request.time + duration.value(2, 'd') &&
+        request.resource.data.get('status', '') in selfStatuses &&
+        (resource == null || resource.data.get('data', '') == '' || resource.data.get('status', '') in selfStatuses);
     }
 
     function leaveDecisionIsAuthorised() {
       return request.resource.data.store != 'leaveRequests' ||
-        isTombstone() ||
+        // Removing a request is the administrators', or its own subject's
+        // while it is still undecided. It was anybody's: a tombstone skipped
+        // every check, so an employee could erase an approved leave — or a
+        // colleague's — and the loss of pay settled against it with it.
+        (isTombstone() && (isOrgAdmin() || ownUndecidedLeave())) ||
         (declaresItsStatus() && (
-        request.resource.data.status == 'Pending' ||
-        request.resource.data.status == 'Cancelled' ||
+        // Raising and withdrawing are self-service, and only self-service:
+        // writing Pending over somebody's Approved request reopened it, and
+        // over a colleague's let anyone rewrite their dates.
+        ((request.resource.data.status == 'Pending' || request.resource.data.status == 'Cancelled') &&
+          (isOrgAdmin() || ownUndecidedLeave())) ||
         // Nobody decides their own leave, at any level. `isManager()` alone
         // let a manager — or HR, or an admin — approve the request they
         // raised themselves, which is the one case where authority and
@@ -1335,7 +1431,20 @@ service cloud.firestore {
         // as before. That is the honest limit — self-approval can only be
         // recognised for accounts an administrator has linked — and it fails
         // in the direction that refuses nobody who could act yesterday.
-        (isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
+        ((request.resource.data.status == 'Approved' || request.resource.data.status == 'Rejected') &&
+          isManager() && !isSelf(request.resource.data.get('employeeId', '')))));
+    }
+
+    /**
+     * The caller's own leave request, new or still Pending. Taken from the
+     * stored record where there is one — a tombstone carries no employee.
+     */
+    function ownUndecidedLeave() {
+      return resource == null || resource.data.get('data', '') == ''
+        ? isSelf(request.resource.data.get('employeeId', ''))
+        : (isSelf(resource.data.get('employeeId', '')) &&
+           resource.data.get('status', '') == 'Pending' &&
+           isSelf(request.resource.data.get('employeeId', resource.data.get('employeeId', ''))));
     }
 
     /**
@@ -1494,8 +1603,33 @@ service cloud.firestore {
      * The READ side is deliberately NOT narrowed here, and that is not an
      * oversight — see the note on the get/list rule above.
      */
+    /**
+     * Stores the administrators keep, and the one thing anybody else may add.
+     *
+     * Assets and onboarding are HR's records (Manager has `view`, Employee
+     * `none`, in src/lib/accessControl.ts) — yet with no clause here any
+     * member could remove the laptop assigned to them from the register, or
+     * tick their own checklist complete. A helpdesk ticket is raised by
+     * anyone, so a NEW ticket arriving `Open` is everybody's to write; every
+     * later change, and every removal, is HR's — or the person a grievance
+     * is about could close it.
+     */
+    function adminStoreWriteIsAuthorised() {
+      let store = request.resource.data.store;
+      return !(store in ['assets', 'onboarding', 'tickets']) ||
+        isOrgAdmin() ||
+        (store == 'tickets' && !isTombstone() && resource == null &&
+          request.resource.data.get('status', '') == 'Open');
+    }
+
     function payrollWriteIsAuthorised() {
-      return request.resource.data.store != 'payrollRuns' || isOrgAdmin();
+      // Payslips as well as runs. A payslip is narrowed for READ to its
+      // subject, and narrowedRecordWriteIsAuthorised() used to let that same
+      // subject write it — so an employee could post a payslip for an earlier
+      // month carrying a lower `ctcBasis` or more `lopDays`, and the next run
+      // would pay them the "arrears" against it. Payroll writes payslips and
+      // payroll is the administrators'.
+      return !(request.resource.data.store in ['payrollRuns', 'payslips']) || isOrgAdmin();
     }
 
     /**
@@ -1537,7 +1671,7 @@ service cloud.firestore {
       let store = resource.data.get('store', '');
       return store == 'payrollRuns'
         ? isOrgAdmin()
-        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides']) || recordIsMineToRead());
+        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords']) || recordIsMineToRead());
     }
 
     /**
@@ -1603,7 +1737,14 @@ service cloud.firestore {
              (myEmployeeId() != null &&
                myEmployeeId() in resource.data.get('readableBy', [])))
           : (isSelf(request.resource.data.get('employeeId', null)) ||
-             (myEmployeeId() != null &&
+             // On a create `readableBy` is the writer's own claim, so it may
+             // only admit them where a record is legitimately created by
+             // somebody above its subject — a manager's first decision on an
+             // app-flagged regularization. An expense claim is raised by its
+             // claimant; one filed in a colleague's name for a manager to
+             // approve is refused.
+             (request.resource.data.store == 'regularizationOverrides' &&
+               myEmployeeId() != null &&
                myEmployeeId() in request.resource.data.get('readableBy', []))));
     }
 
@@ -2264,7 +2405,12 @@ service cloud.firestore {
     // Inbound Demo Requests & Sales Leads from Public Landing Page
     // -------------------------------------------------------------------
     match /demo_requests/{requestId} {
-      allow create: if true;
+      // Public — the landing page's form — so, like job_applications, what
+      // keeps it safe is its size: one shape, bounded strings, status pinned.
+      // It was `if true`, which accepted a 1 MiB document of anything, and a
+      // script doing that in a loop spends the project's daily quota for
+      // every tenant.
+      allow create: if validDemoRequest();
       allow read, update, delete: if isSignedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         myProfile().get('superAdmin', false) == true;

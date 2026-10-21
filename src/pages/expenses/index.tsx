@@ -55,7 +55,6 @@ import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 import { Collections, patch, upsert } from '@/lib/db';
-import { useExpenses } from '@/lib/useFirestore';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { currentMonthIso, todayIso } from '@/lib/today';
 import { CHART_AXIS, CHART_GRID, CHART_PRIMARY, CHART_SERIES, CHART_TICK_FILL, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
@@ -630,15 +629,18 @@ export function ExpensesPage() {
   const isEmployee = role === 'Employee';
   const currentEmployee = getCurrentEmployee(profile);
   const directoryRevision = useEmployeeDirectoryRevision();
-  const { data: liveExpenses, loading: liveLoading } = useExpenses();
   // Seeded from the store and written through on every change, so an edit
   // is still there after a refresh.
   const [claims, setClaimsRaw] = useState(() => getExpenseClaims());
   // See the note in assets/index.tsx.
   const claimsRevision = useCollectionRevision(EXPENSES_CHANGED_EVENT);
   useEffect(() => { setClaimsRaw(getExpenseClaims()); }, [claimsRevision]);
-  const setClaims = (updater: Parameters<typeof setClaimsRaw>[0]) =>
-    setClaimsRaw((prev) => saveExpenseClaims(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+  const setClaims = (updater: Parameters<typeof setClaimsRaw>[0]) => {
+    // From the store, not this page's copy: a colleague's write may have
+    // landed since it was taken, and saving without it would remove it.
+    const latest = getExpenseClaims();
+    setClaimsRaw(saveExpenseClaims(typeof updater === 'function' ? (updater as (p: typeof latest) => typeof latest)(latest) : updater));
+  };
   const [activeTab, setActiveTab] = useState<TabId>('all');
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [activeView, setActiveView] = useState<ViewTab>('claims');
@@ -679,25 +681,6 @@ export function ExpensesPage() {
 
   /** True when this account may approve, reject or reimburse this claim. */
   const canDecide = (claim: ExpenseClaim) => approvableEmployeeIds.has(claim.employeeId);
-
-  // Keep local state in sync with Firestore and preserve static demo data if the DB is partial.
-  useEffect(() => {
-    if (liveLoading) return;
-
-    const mergedMap = new Map<string, ExpenseClaim>();
-    setClaims((prev) => {
-      // `prev` already starts from the store, which falls back to the seed
-      // when a company has none of its own. Layering the raw seed underneath
-      // as well would resurrect any claim that had been removed from the
-      // stored set.
-      for (const claim of prev) mergedMap.set(claim.id, claim);
-      for (const claim of liveExpenses) mergedMap.set(claim.id, claim);
-
-      return Array.from(mergedMap.values()).sort((a, b) =>
-        b.submittedOn.localeCompare(a.submittedOn),
-      );
-    });
-  }, [liveExpenses, liveLoading]);
 
   // ----- Actions -----
   // No `ownerUid` here any more. The claim used to be stamped with one because

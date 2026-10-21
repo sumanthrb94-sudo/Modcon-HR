@@ -111,10 +111,15 @@ export async function clearRoleAssignment(email: string): Promise<void> {
  * Never touches a profile holding `admin`: a platform admin who happens to sit
  * in the HR department is not demoted by an edit to the employee directory.
  */
-async function applyRoleToExistingAccount(email: string, role: UserRole): Promise<void> {
+async function applyRoleToExistingAccount(email: string, role: UserRole, orgId: string): Promise<void> {
   const id = roleAssignmentId(email);
   if (!id) return;
-  const matches = await getDocs(query(collection(db, 'users'), where('email', '==', id)));
+  // Only this organisation's account with the address. Across organisations
+  // an address is not an identity: the same query unfiltered handed HR's
+  // grant to whichever account anywhere carried it.
+  const matches = await getDocs(
+    query(collection(db, 'users'), where('email', '==', id), where('orgId', '==', orgId)),
+  );
   await Promise.all(
     matches.docs
       .filter((snap) => snap.data().role !== 'admin' && snap.data().role !== role)
@@ -160,7 +165,7 @@ export async function syncHrRoleForEmployee(
         assignedBy: actor?.uid ?? 'unknown',
         source: 'designation',
       });
-      await applyRoleToExistingAccount(email, 'hr');
+      await applyRoleToExistingAccount(email, 'hr', actor?.orgId || DEFAULT_ORG_KEY);
       return 'granted';
     }
 
@@ -175,7 +180,7 @@ export async function syncHrRoleForEmployee(
     if (existing.source && existing.source !== 'designation') return 'unchanged';
     if (!existing.source && actor?.email && roleAssignmentId(actor.email) === email) return 'unchanged';
     await clearRoleAssignment(email);
-    await applyRoleToExistingAccount(email, 'employee');
+    await applyRoleToExistingAccount(email, 'employee', actor?.orgId || DEFAULT_ORG_KEY);
     return 'revoked';
   } catch {
     return 'failed';

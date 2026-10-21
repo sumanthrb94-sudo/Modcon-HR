@@ -35,7 +35,7 @@ import {
 } from '@/components/ui';
 import { statusTone } from '@/components/ui';
 import { formatINR, formatDate } from '@/lib/utils';
-import { buildPayslip, buildPayslipComponents, storedDeductionRows, partMonthNote, salaryArrearsRows, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips } from '@/data/payroll';
+import { buildPayslip, buildPayslipComponents, storedDeductionRows, partMonthNote, salaryArrearsRows, salaryByDepartment, getPayrollRuns, savePayrollRuns, getPayslips, savePayslips, PAYROLL_RUNS_CHANGED_EVENT, PAYSLIPS_CHANGED_EVENT } from '@/data/payroll';
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
@@ -50,6 +50,7 @@ import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
 import { useWorkspaceLocked } from '@/lib/subscription';
 import StatutoryReturnsPanel from './StatutoryReturnsPanel';
 import { useAuth } from '@/lib/auth';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import {
   canUploadPayslips,
   payslipBlobUrl,
@@ -379,12 +380,25 @@ export function PayrollPage() {
   const [runNotice, setRunNotice] = useState<string | null>(null);
   // Seeded from the store and written through, so a processed run does not
   // revert to Draft on the next refresh.
+  //
+  // Every write starts from the store as it stands, never from this page's
+  // copy. Another administrator's run reaches the store through the
+  // subscription, and a save computed from the copy taken at mount — which
+  // does not hold it — tombstoned it: their run and its payslips, gone.
   const [payrollRunList, setPayrollRunListRaw] = useState(() => getPayrollRuns());
-  const setPayrollRunList = (updater: Parameters<typeof setPayrollRunListRaw>[0]) =>
-    setPayrollRunListRaw((prev) => savePayrollRuns(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+  const setPayrollRunList = (updater: Parameters<typeof setPayrollRunListRaw>[0]) => {
+    const latest = getPayrollRuns();
+    setPayrollRunListRaw(savePayrollRuns(typeof updater === 'function' ? (updater as (p: typeof latest) => typeof latest)(latest) : updater));
+  };
   const [payslipList, setPayslipListRaw] = useState(() => getPayslips());
-  const setPayslipList = (updater: Parameters<typeof setPayslipListRaw>[0]) =>
-    setPayslipListRaw((prev) => savePayslips(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+  const setPayslipList = (updater: Parameters<typeof setPayslipListRaw>[0]) => {
+    const latest = getPayslips();
+    setPayslipListRaw(savePayslips(typeof updater === 'function' ? (updater as (p: typeof latest) => typeof latest)(latest) : updater));
+  };
+  const payrollRunsRevision = useCollectionRevision(PAYROLL_RUNS_CHANGED_EVENT);
+  const payslipsRevision = useCollectionRevision(PAYSLIPS_CHANGED_EVENT);
+  useEffect(() => { setPayrollRunListRaw(getPayrollRuns()); }, [payrollRunsRevision]);
+  useEffect(() => { setPayslipListRaw(getPayslips()); }, [payslipsRevision]);
 
   // Re-read the store when the organisation's split changes. Re-rendering alone
   // is not enough: this list is state seeded once, so without this the modal

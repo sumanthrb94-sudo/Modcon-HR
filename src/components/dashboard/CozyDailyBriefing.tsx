@@ -27,7 +27,7 @@ import {
 import { Badge, Avatar, Button } from '@/components/ui';
 import type { Employee } from '@/types';
 import type { UserProfile } from '@/lib/auth';
-import { getAttendanceRecordFor, getAttendanceRecords } from '@/data/attendance';
+import { getAttendanceRecordFor } from '@/data/attendance';
 import { getEmployeeDirectory } from '@/data/employees';
 import { getOnLeaveToday, getLeaveRequests } from '@/data/leave';
 import { getHolidayDirectory } from '@/data/holidays';
@@ -87,7 +87,6 @@ export function CozyDailyBriefing({
       (e) => e.department === currentEmployee.department && e.id !== currentEmployee.id,
     );
     const peerIds = new Set(deptPeers.map((p) => p.id));
-    const allAttendance = getAttendanceRecords().filter((r) => r.date === today && peerIds.has(r.employeeId));
 
     const onLeavePeers = getOnLeaveToday(today)
       .filter((r) => peerIds.has(r.employeeId))
@@ -97,13 +96,12 @@ export function CozyDailyBriefing({
         designation: dir.find((e) => e.id === r.employeeId)?.designation ?? '',
       }));
 
-    const presentCount = allAttendance.filter((r) => r.status === 'Present').length;
-    const wfhCount = allAttendance.filter((r) => r.status === 'Work From Home').length;
 
     return {
+      // No present/remote counts: a colleague's attendance is theirs and
+      // their reporting line's to read (firestore.rules narrows the store),
+      // so an employee's browser does not hold it to count.
       total: deptPeers.length,
-      present: presentCount,
-      wfh: wfhCount,
       onLeave: onLeavePeers,
     };
   }, [currentEmployee?.department, currentEmployee?.id, today]);
@@ -267,10 +265,6 @@ export function CozyDailyBriefing({
             </div>
           )}
 
-          <div className="flex items-center gap-3 text-[11px] text-ink-500 pt-1 border-t border-ink-50">
-            <span>🟢 {teamPulse.present} Present</span>
-            <span>🔵 {teamPulse.wfh} Remote/WFH</span>
-          </div>
         </div>
 
         {/* Card 2: Action Required / Approvals Digest */}

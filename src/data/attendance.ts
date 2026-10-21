@@ -359,6 +359,11 @@ const attendanceStore = persistentCollection<AttendanceRecord>(
   'modcon-hr-attendance-changed',
   () => attendanceRecords,
   'attendanceRecords',
+  // Narrowed to the subject and their reporting line. Organisation-wide, every
+  // sign-in streamed every day anybody ever worked — a hundred people for a
+  // year is 25,000 reads per session against a daily quota of 50,000 — and
+  // handed each employee their colleagues' check-in times besides.
+  'self',
 );
 
 export const ATTENDANCE_CHANGED_EVENT = attendanceStore.changedEvent;

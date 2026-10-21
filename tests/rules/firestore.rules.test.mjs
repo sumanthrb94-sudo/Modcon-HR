@@ -183,9 +183,14 @@ describe('users/{uid} — what an HR manager must still be able to do', () => {
 describe('users/{uid} — admin behaviour is unchanged', () => {
   beforeEach(seed);
 
-  it('an admin can still grant the admin role', async () => {
-    await assertSucceeds(
+  it('an organisation admin can no longer mint the admin role', async () => {
+    // Admin is a tenant role like HR; only the platform hands it out. An
+    // organisation admin who could grant it could grant it anywhere.
+    await assertFails(
       updateDoc(doc(as(USERS.adminA), 'users', USERS.employeeA.uid), { role: 'admin' }),
+    );
+    await assertSucceeds(
+      updateDoc(doc(as(USERS.adminA), 'users', USERS.employeeA.uid), { role: 'manager' }),
     );
   });
 

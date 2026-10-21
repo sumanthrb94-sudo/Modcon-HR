@@ -139,7 +139,7 @@ describe('the tenant boundary', () => {
     // The whole point of the move: an employee raising a ticket or checking in
     // has to be able to write, or the collection is read-only and useless.
     await assertSucceeds(
-      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-new' })), record({ id: 'tkt-new' })),
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-new' })), record({ id: 'tkt-new', status: 'Open' })),
     );
   });
 
@@ -257,6 +257,36 @@ describe('leave decisions need authority', () => {
     );
   });
 
+  it('nobody but its subject or HR removes, reopens or cancels a request', async () => {
+    // A tombstone skipped every check, and Pending/Cancelled were anybody's:
+    // an employee could erase a colleague's request, or their own approved
+    // one along with the loss of pay settled against it.
+    await assertFails(
+      setDoc(doc(as(USERS.managerLinkedA), 'org_records', leaveDoc), record({ store: 'leaveRequests', id: 'lv-1', deleted: true, data: '' })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.managerLinkedA), 'org_records', leaveDoc), leave('Cancelled')),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'org_records', leaveDoc), leave('Approved')),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', leaveDoc), leave('Pending')),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', leaveDoc), record({ store: 'leaveRequests', id: 'lv-1', deleted: true, data: '' })),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'org_records', leaveDoc), leave('Cancelled')),
+    );
+  });
+
+  it('the subject withdraws their own while it is still pending', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', leaveDoc), record({ store: 'leaveRequests', id: 'lv-1', deleted: true, data: '' })),
+    );
+  });
+
   it('a manager approves', async () => {
     await assertSucceeds(
       setDoc(doc(as(USERS.managerA), 'org_records', leaveDoc), leave('Approved')),
@@ -336,10 +366,13 @@ describe('leave decisions need authority', () => {
     // describe block below — so the claim would now be refused for a reason
     // that has nothing to do with leak-through, and the test would pass while
     // proving nothing. Moved to a store that is still genuinely ungoverned.
+    //
+    // Tickets are governed now too (adminStoreWriteIsAuthorised), so the
+    // point is made with a store that still has no clause of its own.
     await assertSucceeds(
       setDoc(
-        doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-9' })),
-        record({ id: 'tkt-9', status: 'Resolved' }),
+        doc(as(USERS.employeeA), 'org_records', docId({ store: 'notes', id: 'note-9' })),
+        record({ store: 'notes', id: 'note-9', status: 'Resolved' }),
       ),
     );
   });
@@ -395,9 +428,24 @@ describe('expense decisions need authority', () => {
   it('a manager decides somebody else’s', async () => {
     // The ordinary path, and the one the QA pass confirmed working
     // (a Manager approving a report's claim). `isManager()` rather than
-    // `isOrgAdmin()` for exactly that reason.
+    // `isOrgAdmin()` for exactly that reason. The claim exists first — it is
+    // raised by its claimant; a manager cannot create one in their name.
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', expenseDoc), claim('Submitted')),
+    );
     await assertSucceeds(
       setDoc(doc(as(USERS.managerLinkedA), 'org_records', expenseDoc), claim('Approved')),
+    );
+  });
+
+  it('nobody files a claim in a colleague’s name', async () => {
+    // readableBy on a create is the writer's own claim. An employee naming a
+    // colleague as claimant and themselves as a reader is refused.
+    await assertFails(
+      setDoc(
+        doc(as(USERS.employeeA), 'org_records', expenseDoc),
+        record({ store: 'expenseClaims', id: 'exp-1', status: 'Submitted', employeeId: 'emp-a2', readableBy: ['emp-a2', 'emp-a1'] }),
+      ),
     );
   });
 
@@ -475,8 +523,8 @@ describe('a decision status must be declared where the rules can read it', () =>
     // would be a rule about a store nobody asked for.
     await assertSucceeds(
       setDoc(
-        doc(as(USERS.employeeA), 'org_records', smuggledDoc('tickets')),
-        smuggled('tickets', 'Resolved'),
+        doc(as(USERS.employeeA), 'org_records', smuggledDoc('notes')),
+        smuggled('notes', 'Resolved'),
       ),
     );
   });
@@ -565,12 +613,49 @@ describe('deletion', () => {
     );
   });
 
-  it('a tombstone is an ordinary write anybody in the org can make', async () => {
+  it('a tombstone on an ungoverned store is an ordinary write anybody in the org can make', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'org_records', docId({ store: 'notes', id: 'n-1' })), record({ store: 'notes', id: 'n-1' }));
+    });
     await assertSucceeds(
       setDoc(
-        doc(as(USERS.employeeA), 'org_records', docId()),
-        record({ deleted: true, data: '' }),
+        doc(as(USERS.employeeA), 'org_records', docId({ store: 'notes', id: 'n-1' })),
+        record({ store: 'notes', id: 'n-1', deleted: true, data: '' }),
       ),
+    );
+  });
+
+  it('but a ticket, an asset or an onboarding record is HR’s to remove', async () => {
+    // A grievance ticket closed or erased by the person it is about; a
+    // laptop removed from the register by the person holding it.
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId()), record({ deleted: true, data: '' })),
+    );
+    for (const store of ['assets', 'onboarding']) {
+      await assertFails(
+        setDoc(
+          doc(as(USERS.employeeA), 'org_records', docId({ store, id: 'x-1' })),
+          record({ store, id: 'x-1' }),
+        ),
+      );
+      await assertSucceeds(
+        setDoc(doc(as(USERS.hrA), 'org_records', docId({ store, id: 'x-1' })), record({ store, id: 'x-1' })),
+      );
+    }
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'org_records', docId()), record({ status: 'Resolved' })),
+    );
+  });
+
+  it('an employee raises a ticket but cannot change one that exists', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-7' })), record({ id: 'tkt-7', status: 'Open' })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-7' })), record({ id: 'tkt-7', status: 'Closed' })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-8' })), record({ id: 'tkt-8', status: 'Resolved' })),
     );
   });
 });
@@ -659,8 +744,9 @@ describe('only an administrator writes the employee directory', () => {
 });
 
 describe('attendance is written by its subject, or by HR and Admin', () => {
+  const isoDay = (offsetDays = 0) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
   function attendance({ employeeId = 'emp-a1', id = 'att-1', ...rest } = {}) {
-    return record({ store: 'attendanceRecords', id, employeeId, ...rest });
+    return record({ store: 'attendanceRecords', id, employeeId, date: isoDay(), status: 'Present', ...rest });
   }
   const attDoc = (id = 'att-1') => docId({ store: 'attendanceRecords', id });
 
@@ -782,7 +868,42 @@ describe('attendance is written by its subject, or by HR and Admin', () => {
     // An employee raising a ticket has no employeeId on it and must stay
     // able to write — the clause is keyed on the store name for that reason.
     await assertSucceeds(
-      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-x' })), record({ id: 'tkt-x' })),
+      setDoc(doc(as(USERS.employeeA), 'org_records', docId({ id: 'tkt-x' })), record({ id: 'tkt-x', status: 'Open' })),
+    );
+  });
+
+  it('an employee writes only today’s day, and only as a check-in records it', async () => {
+    // Self-service is checking in and out. Rewriting a day months back —
+    // over an Absent HR marked — moved what payroll deducts.
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-old')), attendance({ id: 'att-old', date: isoDay(-40) })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-fut')), attendance({ id: 'att-fut', date: isoDay(10) })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-nodate')), record({ store: 'attendanceRecords', id: 'att-nodate', employeeId: 'emp-a1', status: 'Present' })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-hol')), attendance({ id: 'att-hol', status: 'Holiday' })),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-half')), attendance({ id: 'att-half', status: 'Half Day' })),
+    );
+  });
+
+  it('an employee cannot overwrite a day HR decided, nor erase their own', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'org_records', attDoc('att-hr')), attendance({ id: 'att-hr', status: 'Absent' })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-hr')), attendance({ id: 'att-hr', status: 'Present' })),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-own')), attendance({ id: 'att-own' })),
+    );
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'org_records', attDoc('att-own')), record({ store: 'attendanceRecords', id: 'att-own', deleted: true, data: '' })),
     );
   });
 });

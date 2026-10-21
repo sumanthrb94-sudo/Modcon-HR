@@ -208,14 +208,19 @@ function authoritativeJson(data: {
   data?: string;
   employeeId?: string;
   status?: string;
+  date?: string;
 }): string | null {
   if (!data.data) return null;
-  if (data.employeeId === undefined && data.status === undefined) return data.data;
+  if (data.employeeId === undefined && data.status === undefined && data.date === undefined) return data.data;
   try {
     const record = JSON.parse(data.data) as Record<string, unknown>;
     if (typeof record !== 'object' || record === null || Array.isArray(record)) return data.data;
     if (data.employeeId !== undefined) record.employeeId = data.employeeId;
     if (data.status !== undefined) record.status = data.status;
+    // The attendance self-write rule judges the lifted `date`, so it is the
+    // one rendered — otherwise a check-in dated today could carry a JSON
+    // date months back.
+    if (data.date !== undefined) record.date = data.date;
     return JSON.stringify(record);
   } catch {
     return data.data;
@@ -268,6 +273,7 @@ function subscribeStore(store: RegisteredStore, orgKey: string) {
               deleted?: boolean;
               employeeId?: string;
               status?: string;
+              date?: string;
             };
             return {
               id: data.recordId ?? '',
@@ -495,7 +501,7 @@ export function persistentCollection<T extends Identified>(
       const batch = writeBatch(db);
       for (const [id] of changed) {
         const entry = overlay.find((item) => item.id === id) as OverlayEntry<T>;
-        const record = entry.record as (T & { employeeId?: string; status?: string }) | undefined;
+        const record = entry.record as (T & { employeeId?: string; status?: string; date?: string }) | undefined;
         batch.set(doc(db, ORG_RECORDS_COLLECTION, `${orgKey}__${storeKey}__${id}`), {
           orgId: orgKey,
           store: storeKey,
@@ -507,6 +513,8 @@ export function persistentCollection<T extends Identified>(
           // rules can test presence.
           ...(record?.employeeId ? { employeeId: record.employeeId } : {}),
           ...(record?.status ? { status: record.status } : {}),
+          // Attendance only: the self check-in rule bounds the day it is for.
+          ...(storeKey === 'attendanceRecords' && typeof record?.date === 'string' ? { date: record.date } : {}),
           // Who may read this record: its subject, plus everyone above them in
           // the reporting tree. Denormalised because rules cannot walk
           // `reportingManagerId` — the directory it lives in is

@@ -372,6 +372,9 @@ export function HelpdeskPage() {
   const { profile } = useAuth();
   const role = resolveAppRole(profile);
   const isEmployee = role === 'Employee';
+  // Resolving a ticket is HR's. A Manager has `view` on Helpdesk, and
+  // firestore.rules refuses anyone else's change to a ticket that exists.
+  const canManageTickets = role === 'Admin' || role === 'HR Manager';
   const currentEmployee = getCurrentEmployee(profile);
   const directoryRevision = useEmployeeDirectoryRevision();
   // Seeded from the store and written through on every change, so an edit
@@ -381,8 +384,12 @@ export function HelpdeskPage() {
   // store, so the page has to re-read rather than trust its mount snapshot.
   const ticketsRevision = useCollectionRevision(TICKETS_CHANGED_EVENT);
   useEffect(() => { setTicketListRaw(getTickets()); }, [ticketsRevision]);
-  const setTicketList = (updater: Parameters<typeof setTicketListRaw>[0]) =>
-    setTicketListRaw((prev) => saveTickets(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+  const setTicketList = (updater: Parameters<typeof setTicketListRaw>[0]) => {
+    // From the store, not this page's copy: a colleague's write may have
+    // landed since it was taken, and saving without it would remove it.
+    const latest = getTickets();
+    setTicketListRaw(saveTickets(typeof updater === 'function' ? (updater as (p: typeof latest) => typeof latest)(latest) : updater));
+  };
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [showRaise, setShowRaise] = useState(false);
@@ -443,7 +450,7 @@ export function HelpdeskPage() {
   };
 
   const handleStatusChange = (id: string, status: TicketStatus) => {
-    if (isEmployee) return;
+    if (!canManageTickets) return;
     setTicketList((prev) => prev.map((t) => (t.id === id ? { ...t, status } : t)));
     setSelectedTicket((prev) => (prev?.id === id ? { ...prev, status } : prev));
   };
@@ -592,7 +599,7 @@ export function HelpdeskPage() {
           ticket={selectedTicket}
           onClose={() => setSelectedTicket(null)}
           onStatusChange={handleStatusChange}
-          canManage={!isEmployee}
+          canManage={canManageTickets}
         />
       )}
     </div>

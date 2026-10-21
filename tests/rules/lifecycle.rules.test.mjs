@@ -196,7 +196,14 @@ async function monthOfWork(t, m, h) {
     employeeId: h.employeeId, orgId: h.orgId, month, status: 'Pending',
     managerChainIds: [mgrEmp(t)],
   }));
-  await assertSucceeds(setDoc(doc(as(h), 'expenses', `exp-${suffix}`), {
+  // The legacy `expenses` collection is the administrators' now — claims are
+  // filed through org_records, where the approval rule lives. An employee's
+  // write here is refused, and HR's seed of it still lands.
+  await assertFails(setDoc(doc(as(h), 'expenses', `exp-${suffix}`), {
+    employeeId: h.employeeId, orgId: h.orgId, month, amount: 1200,
+    submittedBy: h.uid, status: 'Pending',
+  }));
+  await assertSucceeds(setDoc(doc(as(hr), 'expenses', `exp-${suffix}`), {
     employeeId: h.employeeId, orgId: h.orgId, month, amount: 1200,
     submittedBy: h.uid, status: 'Pending',
   }));
@@ -451,8 +458,10 @@ describe('after four months — an employee edits their own pending records', ()
     }));
   });
 
-  it('the expense claim they filed is theirs to correct', async () => {
-    await assertSucceeds(setDoc(doc(as(h), 'expenses', `exp-${t}-3`), {
+  it('the legacy expense collection is not theirs to correct', async () => {
+    // Claims are corrected in org_records (expenseClaims); this collection
+    // had no approval rule, so it is closed to everybody but HR.
+    await assertFails(setDoc(doc(as(h), 'expenses', `exp-${t}-3`), {
       employeeId: h.employeeId, orgId: h.orgId, month: MONTHS[3],
       amount: 1350, submittedBy: h.uid, status: 'Pending',
     }));

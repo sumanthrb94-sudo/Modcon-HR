@@ -321,8 +321,12 @@ export function AssetsPage() {
   // write arrives through the Firestore subscription and has to land here.
   const assetsRevision = useCollectionRevision(ASSETS_CHANGED_EVENT);
   useEffect(() => { setAssetListRaw(getAssets()); }, [assetsRevision]);
-  const setAssetList = (updater: Parameters<typeof setAssetListRaw>[0]) =>
-    setAssetListRaw((prev) => saveAssets(typeof updater === 'function' ? (updater as (p: typeof prev) => typeof prev)(prev) : updater));
+  const setAssetList = (updater: Parameters<typeof setAssetListRaw>[0]) => {
+    // From the store, not this page's copy: a colleague's write may have
+    // landed since it was taken, and saving without it would remove it.
+    const latest = getAssets();
+    setAssetListRaw(saveAssets(typeof updater === 'function' ? (updater as (p: typeof latest) => typeof latest)(latest) : updater));
+  };
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

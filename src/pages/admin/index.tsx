@@ -298,7 +298,9 @@ export function AdminDashboardPage() {
     // An HR Manager administers their own company but is not a platform admin,
     // so Admin is not theirs to hand out — including to themselves, which is
     // what makes this a privilege boundary rather than a UI nicety.
-    const assignableRoles: UserRole[] = isAdmin
+    // Nor is it an organisation Administrator's: the rules let only a super
+    // admin mint it, so offering it here would only produce a refusal.
+    const assignableRoles: UserRole[] = isAdmin && profile?.superAdmin
         ? ['employee', 'manager', 'hr', 'admin']
         : ['employee', 'manager', 'hr'];
 

@@ -243,9 +243,17 @@ describe('multi-tenancy — writes cannot cross organisations', () => {
     );
   });
 
-  it('an employee files an expense into their own organisation', async () => {
-    await assertSucceeds(
+  it('the legacy expenses collection is HR’s, even in their own organisation', async () => {
+    // Claims live in org_records, where expenseDecisionIsAuthorised() rules
+    // who approves. This collection had no such rule — a claim could be
+    // created already Approved — so only an administrator writes it.
+    await assertFails(
       setDoc(doc(as(USERS.employeeA), 'expenses', 'new-exp'), {
+        id: 'new-exp', orgId: 'org-a', employeeId: USERS.employeeA.uid,
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(as(USERS.hrA), 'expenses', 'new-exp'), {
         id: 'new-exp', orgId: 'org-a', employeeId: USERS.employeeA.uid,
       }),
     );
