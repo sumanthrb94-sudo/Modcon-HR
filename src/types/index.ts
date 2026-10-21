@@ -307,6 +307,8 @@ export interface Payslip {
   employedDays?: number;
   /** Arrears of an earlier month's salary paid on this payslip, after a backdated raise. */
   salaryArrears?: { month: string; amount: number }[];
+  /** One-off earnings and deductions this payslip carried. */
+  adjustments?: { label: string; amount: number; kind: 'earning' | 'deduction'; taxable: boolean }[];
   /**
    * The statutory heads as this payslip deducted them, so a return is filed on
    * what was withheld rather than on today's recomputation. Absent on payslips
@@ -329,6 +331,21 @@ export interface Payslip {
   totalDeductions: number;
   netPay: number;
   status: PayrollRunStatus;
+}
+
+/** A one-off earning or deduction on one person's pay for one month — see data/payAdjustments.ts. */
+export interface PayAdjustment {
+  id: ID;
+  employeeId: ID;
+  /** YYYY-MM. */
+  month: string;
+  /** What the payslip calls it: "Diwali bonus", "Advance recovery". */
+  label: string;
+  /** Rupees, positive. */
+  amount: number;
+  kind: 'earning' | 'deduction';
+  /** Earnings only: counted as income for TDS and ESI. */
+  taxable: boolean;
 }
 
 export interface PayrollRun {

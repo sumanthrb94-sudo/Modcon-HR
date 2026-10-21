@@ -1270,7 +1270,8 @@ service cloud.firestore {
         attendanceWriteIsAuthorised() &&
         regularizationDecisionIsAuthorised() &&
         payrollWriteIsAuthorised() &&
-        adminStoreWriteIsAuthorised();
+        adminStoreWriteIsAuthorised() &&
+        performanceWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
       // administrator clearing data, which is what this allows.
@@ -1619,10 +1620,28 @@ service cloud.firestore {
      */
     function adminStoreWriteIsAuthorised() {
       let store = request.resource.data.store;
-      return !(store in ['assets', 'onboarding', 'tickets']) ||
+      return !(store in ['assets', 'onboarding', 'tickets', 'jobOpenings', 'candidates']) ||
         isOrgAdmin() ||
         (store == 'tickets' && !isTombstone() && resource == null &&
           request.resource.data.get('status', '') == 'Open');
+    }
+
+    /**
+     * Goals and reviews are set by HR, or by a manager above the person —
+     * never by the person themselves (Performance is `none` for Employee), or
+     * an employee could rate their own review. "Above" is `readableBy`,
+     * taken from the stored record where there is one.
+     */
+    function performanceWriteIsAuthorised() {
+      let subject = resource != null && resource.data.get('data', '') != ''
+        ? resource.data.get('employeeId', '')
+        : request.resource.data.get('employeeId', '');
+      let line = resource != null && resource.data.get('data', '') != ''
+        ? resource.data.get('readableBy', [])
+        : request.resource.data.get('readableBy', []);
+      return !(request.resource.data.store in ['goals', 'performanceReviews']) ||
+        isOrgAdmin() ||
+        (isManager() && !isSelf(subject) && myEmployeeId() != null && myEmployeeId() in line);
     }
 
     function payrollWriteIsAuthorised() {
@@ -1632,7 +1651,7 @@ service cloud.firestore {
       // month carrying a lower `ctcBasis` or more `lopDays`, and the next run
       // would pay them the "arrears" against it. Payroll writes payslips and
       // payroll is the administrators'.
-      return !(request.resource.data.store in ['payrollRuns', 'payslips']) || isOrgAdmin();
+      return !(request.resource.data.store in ['payrollRuns', 'payslips', 'payAdjustments']) || isOrgAdmin();
     }
 
     /**
@@ -1672,9 +1691,9 @@ service cloud.firestore {
      */
     function orgRecordReadIsAuthorised() {
       let store = resource.data.get('store', '');
-      return store == 'payrollRuns'
+      return store in ['payrollRuns', 'payAdjustments', 'candidates']
         ? isOrgAdmin()
-        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords']) || recordIsMineToRead());
+        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords', 'goals', 'performanceReviews']) || recordIsMineToRead());
     }
 
     /**

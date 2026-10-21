@@ -1,6 +1,6 @@
+import { persistentCollection } from '@/data/persistence';
 import type { JobOpening, Candidate, CandidateStage } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
-import { orgScopedKey } from '@/lib/orgScope';
 
 // ---------------------------------------------------------------------------
 // Job Openings
@@ -159,41 +159,15 @@ export const jobOpenings: JobOpening[] = isMockDataCleared() ? [] : [
   },
 ];
 
-const JOB_OPENINGS_STORAGE_KEY = 'modcon.hr.jobOpenings';
 export const JOB_OPENINGS_CHANGED_EVENT = 'modcon-hr-job-openings-changed';
-
-const CANDIDATES_STORAGE_KEY = 'modcon.hr.candidates';
 export const CANDIDATES_CHANGED_EVENT = 'modcon-hr-candidates-changed';
 
-function readStoredJobOpenings(): JobOpening[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(JOB_OPENINGS_STORAGE_KEY));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as JobOpening[];
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredJobOpenings(items: JobOpening[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(JOB_OPENINGS_STORAGE_KEY), JSON.stringify(items));
-}
-
-function notifyJobOpeningsChanged() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(JOB_OPENINGS_CHANGED_EVENT));
-}
-
 export function getJobOpenings(): JobOpening[] {
-  return readStoredJobOpenings() ?? jobOpenings;
+  return jobOpeningStore.get();
 }
 
 export function saveJobOpenings(items: JobOpening[]) {
-  writeStoredJobOpenings(items);
-  notifyJobOpeningsChanged();
+  jobOpeningStore.save(items);
 }
 
 export function addJobOpening(job: JobOpening) {
@@ -212,35 +186,12 @@ export function deleteJobOpening(jobId: string) {
 // Candidates persistence
 // ---------------------------------------------------------------------------
 
-function readStoredCandidates(): Candidate[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(CANDIDATES_STORAGE_KEY));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Candidate[];
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredCandidates(items: Candidate[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(CANDIDATES_STORAGE_KEY), JSON.stringify(items));
-}
-
-function notifyCandidatesChanged() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(CANDIDATES_CHANGED_EVENT));
-}
-
 export function getCandidates(): Candidate[] {
-  return readStoredCandidates() ?? candidates;
+  return candidateStore.get();
 }
 
 export function saveCandidates(items: Candidate[]) {
-  writeStoredCandidates(items);
-  notifyCandidatesChanged();
+  candidateStore.save(items);
 }
 
 export function removeCandidatesForJob(jobId: string) {
@@ -320,3 +271,26 @@ export function hiringFunnel(candidateList?: Candidate[]): FunnelStage[] {
     count: list.filter((c) => c.stage === stage).length,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Persistence — the organisation's, not the browser's
+// ---------------------------------------------------------------------------
+// Openings and candidates were localStorage and nothing else: a role posted on
+// one laptop, and a recruiter's whole pipeline, existed on that laptop alone —
+// invisible to the hiring manager and lost with the cache. Registered at the
+// end of the module because the seeds above are what they fall back to.
+// Candidates are applicants' personal details, so only HR and Admin read
+// them; openings are organisation-readable (a published one is public anyway).
+const jobOpeningStore = persistentCollection<JobOpening>(
+  'modcon.hr.jobOpenings',
+  JOB_OPENINGS_CHANGED_EVENT,
+  () => jobOpenings,
+  'jobOpenings',
+);
+const candidateStore = persistentCollection<Candidate>(
+  'modcon.hr.candidates',
+  CANDIDATES_CHANGED_EVENT,
+  () => candidates,
+  'candidates',
+  'orgAdmin',
+);

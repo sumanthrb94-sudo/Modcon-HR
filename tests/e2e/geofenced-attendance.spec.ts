@@ -149,9 +149,12 @@ async function resetAttendance(page: Page, employeeId: string) {
   await clearOrgRecords('attendanceRecords', { employeeId });
   await page.goto('/my-attendance');
   await page.evaluate(() => {
-    Object.keys(localStorage)
-      .filter((key) => /attendance|regulariz/i.test(key))
-      .forEach((key) => localStorage.removeItem(key));
+    // Narrowed stores cache per tab, in sessionStorage — clear both.
+    for (const storage of [localStorage, sessionStorage]) {
+      Object.keys(storage)
+        .filter((key) => /attendance|regulariz/i.test(key))
+        .forEach((key) => storage.removeItem(key));
+    }
   });
   // Reload so the cleared cache is what the page reads, rather than the state
   // React is already holding.

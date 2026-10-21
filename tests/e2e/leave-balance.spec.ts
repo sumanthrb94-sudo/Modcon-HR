@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { LEAVE_BALANCE_PERSONA, PERSONAS } from './config';
+import { employeeLinkFor, signInPersona } from './firestore';
 
 /**
  * The Dashboard and the Leave module must report the same leave balance.
@@ -94,6 +95,15 @@ test.describe.serial('leave balance is the same figure everywhere', () => {
     // record rather than asserting on an address that is never rendered here.
     await page.getByPlaceholder('Search name, role, email, code…').fill(EMPLOYEE.email);
     await expect(page.getByText('Playwright Balance').first()).toBeVisible();
+
+    // The account link is written after Save and not awaited. Signing out
+    // before it lands leaves the account nobody — and since raising leave is
+    // self-service only for the linked subject (firestore.rules), the request
+    // in the test below would be refused. Wait for the app to establish it.
+    const { uid } = await signInPersona(EMPLOYEE.email, EMPLOYEE.password);
+    await expect
+      .poll(async () => (uid ? (await employeeLinkFor(uid))?.employeeId ?? null : null), { timeout: 20_000 })
+      .not.toBeNull();
 
     await page.locator('button[title="Sign out"]').click();
     await expect(page.locator('#username')).toBeVisible({ timeout: 20_000 });

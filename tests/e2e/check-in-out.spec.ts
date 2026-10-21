@@ -92,9 +92,14 @@ async function resetAttendance(page: Page) {
   await clearOrgRecords('regularizationOverrides', { employeeId: linkedEmployeeId });
   await page.goto('/my-attendance');
   await page.evaluate(() => {
-    Object.keys(localStorage)
-      .filter((key) => /attendance|regulariz/i.test(key))
-      .forEach((key) => localStorage.removeItem(key));
+    // Attendance is a narrowed store now, cached per tab in sessionStorage
+    // (src/data/persistence.ts) — both are cleared or the last scenario's day
+    // is still what this tab reads.
+    for (const storage of [localStorage, sessionStorage]) {
+      Object.keys(storage)
+        .filter((key) => /attendance|regulariz/i.test(key))
+        .forEach((key) => storage.removeItem(key));
+    }
   });
   // Reload so the cleared cache is what the page reads, rather than the state
   // React is already holding.
@@ -240,6 +245,9 @@ test.describe.serial('check in and check out', () => {
     const card = clockCard(page);
     await expect(card).toContainText('Out 17:00');
     await expect(card.getByText('Half Day', { exact: true })).toBeVisible();
+    // Navigating is a reload, and an un-acked write does not survive one —
+    // the next test reads this day from the server.
+    await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
 
     // 09:47 → 17:00 is 7h 13m of a 9h day. It flows into the approval queue
     // with no separate step, and the reason says why.

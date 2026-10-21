@@ -16,6 +16,7 @@ import {
   UserX,
   Clock,
   CheckCircle,
+  Upload,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -54,6 +55,7 @@ import { canDecideRegularization, getApprovableEmployeeIds, getVisibleEmployeeId
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { LEAVE_REQUESTS_CHANGED_EVENT } from '@/data/leave';
 import { isLateFor, shiftCaptionFor } from '@/data/shifts';
+import { ImportAttendanceDialog } from './ImportAttendanceDialog';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 import { formatDate, formatDateShort, formatWeekdayShort } from '@/lib/utils';
 import { todayIso } from '@/lib/today';
@@ -107,6 +109,11 @@ export function AttendancePage() {
   const [markStatus, setMarkStatus] = useState<AttendanceStatus>('Present');
   const [markCheckIn, setMarkCheckIn] = useState('09:00');
   const [markCheckOut, setMarkCheckOut] = useState('18:00');
+  // Any day up to today: a missed day is corrected here rather than only
+  // through a regularization the employee has to raise.
+  const [markDate, setMarkDate] = useState(() => todayIso());
+  const [importOpen, setImportOpen] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
 
   // Derived from the attendance records, so it has to re-read when *those*
   // change too. Depending on the regularization event alone left a day marked
@@ -333,6 +340,7 @@ export function AttendancePage() {
     setMarkStatus('Present');
     setMarkCheckIn('09:00');
     setMarkCheckOut('18:00');
+    setMarkDate(todayIso());
   }
 
   function saveAttendance() {
@@ -355,9 +363,9 @@ export function AttendancePage() {
     const isLate = checkIn ? isLateFor(markEmployeeId, checkIn) : false;
 
     const nextRecord: AttendanceRecord = {
-      id: `att-manual-${markEmployeeId}-${todayIso()}`,
+      id: `att-manual-${markEmployeeId}-${markDate}`,
       employeeId: markEmployeeId,
-      date: todayIso(),
+      date: markDate,
       status: markStatus,
       checkIn,
       checkOut: markStatus === 'Absent' || markStatus === 'On Leave' ? null : markCheckOut,
@@ -369,13 +377,14 @@ export function AttendancePage() {
     };
 
     const withoutExisting = getAttendanceRecords().filter(
-      (record) => !(record.employeeId === markEmployeeId && record.date === todayIso()),
+      (record) => !(record.employeeId === markEmployeeId && record.date === markDate),
     );
     saveAttendanceRecords([...withoutExisting, nextRecord]);
 
     setMarkModalOpen(false);
+    const markedDay = markDate;
     resetMarkAttendanceForm();
-    setSelectedDate(todayIso());
+    setSelectedDate(markedDay);
   }
 
   const regColumns: Column<RegularizationRequest>[] = [
@@ -576,11 +585,26 @@ export function AttendancePage() {
         // payroll deducts from. firestore.rules refuses anyone else
         // (attendanceWriteIsAuthorised), so the button is not offered.
         actions={canMarkAttendance ? (
-          <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
-            Mark Attendance
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" icon={<Upload size={16} />} onClick={() => setImportOpen(true)}>
+              Import
+            </Button>
+            <Button variant="primary" icon={<CheckCircle size={16} />} onClick={() => setMarkModalOpen(true)}>
+              Mark Attendance
+            </Button>
+          </div>
         ) : undefined}
       />
+      {importNotice && (
+        <div className="bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">{importNotice}</div>
+      )}
+      {canMarkAttendance && (
+        <ImportAttendanceDialog
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImported={(count) => setImportNotice(`${count} day${count === 1 ? '' : 's'} of attendance imported.`)}
+        />
+      )}
 
       {/* Stat Cards — today's numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -757,7 +781,7 @@ export function AttendancePage() {
         open={markModalOpen}
         onClose={() => setMarkModalOpen(false)}
         title="Mark Attendance"
-        subtitle="Record attendance for an employee for today"
+        subtitle="Record attendance for an employee for a day"
         footer={
           <>
             <Button variant="ghost" onClick={() => setMarkModalOpen(false)}>
@@ -770,6 +794,17 @@ export function AttendancePage() {
         }
       >
         <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1" htmlFor="mark-attendance-date">Date</label>
+            <input
+              id="mark-attendance-date"
+              type="date"
+              className="input w-full"
+              value={markDate}
+              max={todayIso()}
+              onChange={(e) => setMarkDate(e.target.value && e.target.value <= todayIso() ? e.target.value : todayIso())}
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-ink-700 mb-1">Employee</label>
             <select className="input w-full" value={markEmployeeId} onChange={(e) => setMarkEmployeeId(e.target.value)}>

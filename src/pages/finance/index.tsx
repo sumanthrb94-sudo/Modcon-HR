@@ -322,7 +322,7 @@ function EmployeeFinancePage() {
             {partMonthNote(salary.employedDays, currentPayslip.month) && (
               <p className="text-xs text-ink-500">{partMonthNote(salary.employedDays, currentPayslip.month)}, from your joining or last working day.</p>
             )}
-            {salaryArrearsRows(salary.salaryArrears).map((row) => (
+            {salaryArrearsRows(salary.salaryArrears, salary.adjustments).map((row) => (
               <div key={row.label} className="flex items-start justify-between text-sm">
                 <span className="text-ink-600">
                   {row.label}

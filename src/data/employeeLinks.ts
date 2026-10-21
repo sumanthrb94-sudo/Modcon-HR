@@ -20,6 +20,7 @@
 import { useEffect, useState } from 'react';
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getOrgUsers } from '@/lib/orgUsers';
 import { DEFAULT_ORG_KEY } from '@/lib/orgScope';
 
 export interface EmployeeLink {
@@ -125,9 +126,7 @@ export async function linkAccountForEmployee(params: {
     // no `orgId` at all — and an equality filter matches neither a missing
     // field nor a null one. Same split, and the same reasoning, as
     // backfillEmployeeLinks.
-    const snap = orgKey === DEFAULT_ORG_KEY
-      ? await getDocs(collection(db, 'users'))
-      : await getDocs(query(collection(db, 'users'), where('orgId', '==', orgKey)));
+    const snap = await getOrgUsers(orgKey);
 
     const accounts = snap.docs.filter((d) => {
       if (normalizeEmail(d.data().email) !== email) return false;

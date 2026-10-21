@@ -2094,11 +2094,15 @@ function OpeningLeaveSection() {
   function handleApply() {
     if (!result || result.matched.length === 0) return;
     const next: Record<string, Record<string, number>> = { ...current };
+    const carriedIn: Record<string, Record<string, number>> = { ...(stored && stored.financialYear === thisYear ? stored.carriedIn ?? {} : {}) };
     for (const match of result.matched) {
       next[match.employee.id] = { ...next[match.employee.id], [match.typeKey]: match.days };
+      if (match.carried !== undefined) {
+        carriedIn[match.employee.id] = { ...carriedIn[match.employee.id], [match.typeKey]: match.carried };
+      }
     }
     setApplied(result.matched.length);
-    save.track(saveOpeningLeaveTaken({ financialYear: thisYear, byEmployee: next }));
+    save.track(saveOpeningLeaveTaken({ financialYear: thisYear, byEmployee: next, carriedIn }));
     reset();
   }
 
@@ -2124,8 +2128,9 @@ function OpeningLeaveSection() {
         <div className="space-y-4">
           <p className="text-sm text-ink-500">
             Upload one row per person and leave type with the days they have taken since 1 April, from your
-            register or spreadsheet. They count as used, and accrual goes on as configured. Nothing is saved
-            until you have seen the match list.
+            register or spreadsheet. They count as used, and accrual goes on as configured. For a type that
+            carries forward, the optional fourth column is the balance they brought in from last year. Nothing
+            is saved until you have seen the match list.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div>
@@ -2157,7 +2162,10 @@ function OpeningLeaveSection() {
                   {result.matched.map((match) => (
                     <li key={match.line} className="flex justify-between gap-3 px-3 py-2">
                       <span>{match.employee.fullName} <span className="text-ink-400">{match.employee.employeeCode}</span></span>
-                      <span>{match.typeKey}: {match.days} day{match.days === 1 ? '' : 's'} taken</span>
+                      <span>
+                        {match.typeKey}: {match.days} day{match.days === 1 ? '' : 's'} taken
+                        {match.carried !== undefined ? `, ${match.carried} carried in` : ''}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -2200,7 +2208,9 @@ function OpeningLeaveSection() {
                       onClick={() => {
                         const next = { ...current };
                         delete next[employeeId];
-                        save.track(saveOpeningLeaveTaken({ financialYear: thisYear, byEmployee: next }));
+                        const carriedIn = { ...(stored && stored.financialYear === thisYear ? stored.carriedIn ?? {} : {}) };
+                        delete carriedIn[employeeId];
+                        save.track(saveOpeningLeaveTaken({ financialYear: thisYear, byEmployee: next, carriedIn }));
                       }}
                     >
                       <Trash2 size={14} />

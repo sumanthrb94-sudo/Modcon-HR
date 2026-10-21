@@ -41,6 +41,7 @@ import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
 import { downloadPayslipPdf, payslipPasswordHint } from '@/lib/payslipPdf';
 import { BankFileButton, NotifyButton, RegisterButton, UndoRunButton } from './RunActions';
+import { OneOffPayCard } from './OneOffPay';
 import { CURRENT_MONTH_RUNNABLE_FROM_DAY, carriedOverLossOfPay, payRunRoll, runnableMonths } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -262,7 +263,7 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
             {partMonthNote(payslip.employedDays, payslip.month) && (
               <p className="text-xs text-ink-500">{partMonthNote(payslip.employedDays, payslip.month)}.</p>
             )}
-            {salaryArrearsRows(payslip.salaryArrears).map((row) => (
+            {salaryArrearsRows(payslip.salaryArrears, payslip.adjustments).map((row) => (
               <div key={row.label} className="flex items-start justify-between">
                 <span className="text-sm text-ink-600">
                   {row.label}
@@ -882,6 +883,8 @@ export function PayrollPage() {
           payroll rather than in Settings — the month being filed is the month
           on this page, and the people missing a UAN are the ones in the run
           below. */}
+      <OneOffPayCard month={runMonth} monthLabel={monthLabel(runMonth)} alreadyRun={!!alreadyRunFor(runMonth)} />
+
       <div className="mb-6">
         <StatutoryReturnsPanel />
       </div>
@@ -1049,6 +1052,7 @@ export function PayrollPage() {
               </div>
             )}
             <CarriedOverLossOfPaySection payslips={pendingRun.payslips} />
+            <OneOffInRunSection payslips={pendingRun.payslips} />
             {pendingRun.unconfiguredCount > 0 && (
               <p className="text-xs text-amber-700">
                 {pendingRun.unconfiguredCount} of {pendingRun.employeeCount} employee
@@ -1059,6 +1063,27 @@ export function PayrollPage() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** The one-off items this run pays or recovers, listed before Confirm. */
+function OneOffInRunSection({ payslips }: { payslips: Payslip[] }) {
+  const rows = payslips.flatMap((p) => (p.adjustments ?? []).map((a) => ({ ...a, employeeId: p.employeeId })));
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <h3 className="text-sm font-semibold text-ink-900">One-off pay in this run</h3>
+      <ul className="mt-1 divide-y divide-ink-100 border border-ink-200 text-sm">
+        {rows.map((r, i) => (
+          <li key={`${r.employeeId}-${i}`} className="flex justify-between gap-3 px-3 py-1.5">
+            <span>{getEmployee(r.employeeId)?.fullName ?? r.employeeId} · {r.label}</span>
+            <span className={r.kind === 'deduction' ? 'text-rose-700' : 'text-emerald-700'}>
+              {r.kind === 'deduction' ? '−' : '+'}{formatINR(r.amount)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

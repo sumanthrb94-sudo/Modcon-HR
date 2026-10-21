@@ -503,12 +503,11 @@ export function MyAttendancePage() {
       .map((date) => ({ label: `${formatDate(date)} · ${formatWeekdayLong(date)}`, value: date }));
   }, [calendarMonth, targetEmployee, holidays, ownLeaves, companyProfileRevision]);
 
+  // One day, chosen in the dialog. It used to jump to the bulk dialog whenever
+  // the month had flagged days — so the button labelled for one request had no
+  // date picker at all. Bulk has its own buttons beside the flagged days.
   function openRaise() {
-    if (actionableDays.length > 0) {
-      openBulkRaiseAllMonth();
-    } else {
-      openRaiseForDate(todayIso());
-    }
+    openRaiseForDate(raiseDateOptions[0]?.value ?? todayIso());
   }
 
   function openBulkRaiseAllMonth() {

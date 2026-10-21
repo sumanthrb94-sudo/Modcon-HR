@@ -37,6 +37,8 @@ export interface LeavePolicy {
    * resets on 1 April however much was left.
    */
   carryForwardBeyondYear: boolean;
+  /** Most days that may be carried past 31 March. Absent means no cap. */
+  maxCarryForwardDays?: number;
   encashment: boolean;
   halfDay: boolean;
   /** Completed months of service before the entitlement applies. 0 = from day one. */

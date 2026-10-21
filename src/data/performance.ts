@@ -1,12 +1,10 @@
 import type { Goal, GoalStatus, PerformanceReview, ReviewStatus } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { startOfYear } from '@/lib/today';
-import { orgScopedKey } from '@/lib/orgScope';
+import { persistentCollection } from '@/data/persistence';
 
-const GOALS_STORAGE_KEY = 'modcon.hr.goals';
 export const GOALS_CHANGED_EVENT = 'modcon-hr-goals-changed';
 
-const REVIEWS_STORAGE_KEY = 'modcon.hr.reviews';
 export const REVIEWS_CHANGED_EVENT = 'modcon-hr-reviews-changed';
 
 export const goals: Goal[] = isMockDataCleared() ? [] : [
@@ -378,61 +376,14 @@ export const reviews: PerformanceReview[] = isMockDataCleared() ? [] : [
   },
 ];
 
-// ---- Storage & Event Persistence ----
-
-function readStoredGoals(): Goal[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(GOALS_STORAGE_KEY));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Goal[];
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredGoals(items: Goal[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(GOALS_STORAGE_KEY), JSON.stringify(items));
-}
-
-function notifyGoalsChanged() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(GOALS_CHANGED_EVENT));
-}
-
-function readStoredReviews(): PerformanceReview[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(orgScopedKey(REVIEWS_STORAGE_KEY));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PerformanceReview[];
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredReviews(items: PerformanceReview[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(orgScopedKey(REVIEWS_STORAGE_KEY), JSON.stringify(items));
-}
-
-function notifyReviewsChanged() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(REVIEWS_CHANGED_EVENT));
-}
-
 // ---- Getters ----
 
 export function getGoals(): Goal[] {
-  return readStoredGoals() ?? goals;
+  return goalStore.get();
 }
 
 export function saveGoals(items: Goal[]) {
-  writeStoredGoals(items);
-  notifyGoalsChanged();
+  goalStore.save(items);
 }
 
 // Calculate recommended status based on progress and due date
@@ -497,12 +448,11 @@ export function updateGoalStatus(goalId: string, status: GoalStatus) {
 }
 
 export function getReviews(): PerformanceReview[] {
-  return readStoredReviews() ?? reviews;
+  return reviewStore.get();
 }
 
 export function saveReviews(items: PerformanceReview[]) {
-  writeStoredReviews(items);
-  notifyReviewsChanged();
+  reviewStore.save(items);
 }
 
 export function updateReviewStatus(reviewId: string, status: ReviewStatus) {
@@ -539,3 +489,12 @@ export function ratingDistribution(reviewList?: PerformanceReview[]): { rating: 
   });
   return [1, 2, 3, 4, 5].map((r) => ({ rating: `${r} Star${r > 1 ? 's' : ''}`, count: counts[r] }));
 }
+
+// ---- Persistence ----
+// Goals and reviews were this browser's: a goal HR set never reached the
+// manager's laptop, and a review cycle existed on one machine. They are the
+// organisation's now, read by their subject and the reporting line above them
+// ('self' scope) and decided by managers and HR — see
+// performanceWriteIsAuthorised in firestore.rules.
+const goalStore = persistentCollection<Goal>('modcon.hr.goals', GOALS_CHANGED_EVENT, () => goals, 'goals', 'self');
+const reviewStore = persistentCollection<PerformanceReview>('modcon.hr.reviews', REVIEWS_CHANGED_EVENT, () => reviews, 'performanceReviews', 'self');

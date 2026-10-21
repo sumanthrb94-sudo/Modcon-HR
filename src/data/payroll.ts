@@ -13,6 +13,7 @@ import { combineLossOfPay, lossOfPayArrears, unpaidLeaveByDate, type LopArrear, 
 import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
 import { ctcOn, employedDaysInMonth, monthlyCtcFor, salaryArrears, type PaidMonthBasis, type SalaryArrear } from '@/data/payChanges';
 import { projectTaxYear, type PaidMonth as TaxPaidMonth } from '@/data/tdsProjection';
+import { adjustmentsFor } from '@/data/payAdjustments';
 import {
   getTaxElectionFor,
   professionalTaxScheduleForLocation,
@@ -88,6 +89,10 @@ export interface PayslipComponents {
   /** Arrears of earlier months' salary owed after a backdated revision, paid on this payslip. */
   salaryArrears: SalaryArrear[];
   salaryArrearsAmount: number;
+  /** One-off earnings and deductions HR entered for the month — see data/payAdjustments.ts. */
+  adjustments: { label: string; amount: number; kind: 'earning' | 'deduction'; taxable: boolean }[];
+  adjustmentEarnings: number;
+  adjustmentDeductions: number;
   /** Working days in the month, the divisor for the per-day rate. */
   payableDays: number;
   /**
@@ -245,7 +250,8 @@ function taxPaidMonthsFor(employeeId: string): Map<string, TaxPaidMonth> {
   const out = new Map<string, TaxPaidMonth>();
   for (const payslip of storedPayslips()) {
     if (payslip.employeeId !== employeeId || out.has(payslip.month)) continue;
-    const arrears = (payslip.salaryArrears ?? []).reduce((sum, a) => sum + a.amount, 0);
+    const arrears = (payslip.salaryArrears ?? []).reduce((sum, a) => sum + a.amount, 0)
+      + (payslip.adjustments ?? []).filter((a) => a.kind === 'earning' && a.taxable).reduce((sum, a) => sum + a.amount, 0);
     // Loss of pay is not income. Priced per day as the payslip priced it.
     const days = payslip.employedDays ?? daysInMonth(payslip.month);
     const lop = days > 0 ? Math.round((payslip.grossEarnings / days) * (payslip.lopDays ?? 0)) : 0;
@@ -364,6 +370,15 @@ export function buildPayslipComponents(
     : [];
   const salaryArrearsAmount = arrears.reduce((sum, arrear) => sum + arrear.amount, 0);
 
+  // One-off pay for the month. Only the month's own figures are wanted when an
+  // earlier month is recomputed for arrears, so none are read then.
+  const adjustments = withSalaryArrears
+    ? adjustmentsFor(employee.id, month).map(({ label, amount, kind, taxable }) => ({ label, amount: Math.max(0, Math.round(amount)), kind, taxable }))
+    : [];
+  const adjustmentEarnings = adjustments.filter((a) => a.kind === 'earning').reduce((sum, a) => sum + a.amount, 0);
+  const taxableAdjustments = adjustments.filter((a) => a.kind === 'earning' && a.taxable).reduce((sum, a) => sum + a.amount, 0);
+  const adjustmentDeductions = adjustments.filter((a) => a.kind === 'deduction').reduce((sum, a) => sum + a.amount, 0);
+
   // ---- Statutory ----------------------------------------------------------
   //
   // Each of these is null unless the organisation declared the registration,
@@ -376,7 +391,7 @@ export function buildPayslipComponents(
   // plus salary arrears; the Basic in it is taken in the same proportion.
   const unpaid = lossOfPay + lopArrearsAmount;
   const paidShare = grossEarnings > 0 ? Math.max(0, grossEarnings - unpaid) / grossEarnings : 0;
-  const paidThisMonth = Math.max(0, grossEarnings - unpaid) + salaryArrearsAmount;
+  const paidThisMonth = Math.max(0, grossEarnings - unpaid) + salaryArrearsAmount + taxableAdjustments;
   const arrearsBasic = salaryArrearsAmount > 0 ? (splitMonthlyGross(salaryArrearsAmount, structure)?.basic ?? 0) : 0;
   const basicPaid = Math.round(basic * paidShare) + arrearsBasic;
 
@@ -466,14 +481,15 @@ export function buildPayslipComponents(
       }
       : null;
 
-  const totalDeductions = lossOfPay + lopArrearsAmount + pf + tax + otherDeductions;
-  const netPay = grossEarnings + salaryArrearsAmount - totalDeductions;
+  const totalDeductions = lossOfPay + lopArrearsAmount + pf + tax + otherDeductions + adjustmentDeductions;
+  const netPay = grossEarnings + salaryArrearsAmount + adjustmentEarnings - totalDeductions;
 
   return {
     monthly, splitConfigured: split !== null,
     basic, hra, medicalAllowance, conveyanceAllowance, specialAllowance, bonus,
     pf, tax, otherDeductions, lossOfPay, lopDays, payableDays, lopArrears, lopArrearsAmount,
     ctcBasis: monthlyCtc, employedDays, salaryArrears: arrears, salaryArrearsAmount,
+    adjustments, adjustmentEarnings, adjustmentDeductions,
     statutory,
     grossEarnings, totalDeductions, netPay,
   };
@@ -513,6 +529,7 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     ...(c.salaryArrears.length > 0
       ? { salaryArrears: c.salaryArrears.map(({ month: m, amount }) => ({ month: m, amount })) }
       : {}),
+    ...(c.adjustments.length > 0 ? { adjustments: c.adjustments } : {}),
     ...(c.statutory
       ? {
         statutoryPaid: {
@@ -712,15 +729,20 @@ function formatMonth(month: string): string {
  */
 export function salaryArrearsRows(
   arrears: readonly { month: string; amount: number }[] | undefined,
+  /** One-off earnings beside them — see data/payAdjustments.ts. */
+  adjustments?: readonly { label: string; amount: number; kind: 'earning' | 'deduction' }[],
 ): Array<{ label: string; value: number; hint: string }> {
   const list = arrears ?? [];
   const total = list.reduce((sum, a) => sum + a.amount, 0);
-  if (total === 0) return [];
+  const one = (adjustments ?? [])
+    .filter((a) => a.kind === 'earning' && a.amount !== 0)
+    .map((a) => ({ label: a.label, value: a.amount, hint: 'One-off this month' }));
+  if (total === 0) return one;
   return [{
     label: total > 0 ? 'Salary arrears (earlier months)' : 'Salary overpaid (earlier months)',
     value: total,
     hint: list.map((a) => `${formatMonth(a.month)}: ₹${a.amount.toLocaleString('en-IN')}`).join(', '),
-  }];
+  }, ...one];
 }
 
 /** "Paid for 16 of 30 days" for a joiner's or leaver's month; null for a whole month. */
@@ -751,6 +773,10 @@ export function deductionRows(
         .map((a) => `${formatMonth(a.month)}: ${a.days > 0 ? '' : '−'}${Math.abs(a.days)} day${Math.abs(a.days) === 1 ? '' : 's'}`)
         .join(', '),
     });
+  }
+
+  for (const a of components.adjustments) {
+    if (a.kind === 'deduction' && a.amount > 0) rows.push({ label: a.label, value: a.amount, hint: 'One-off this month' });
   }
 
   const s = components.statutory;
@@ -842,6 +868,9 @@ export function storedDeductionRows(payslip: Payslip): Array<{ label: string; va
   }
   rows.push({ label: 'Provident Fund (employee)', value: payslip.pf });
   rows.push({ label: 'Tax Deducted at Source', value: payslip.tax });
+  for (const a of payslip.adjustments ?? []) {
+    if (a.kind === 'deduction') rows.push({ label: a.label, value: a.amount, hint: 'One-off this month' });
+  }
   // Loss of pay is always listed, as on the live payslip; any other head that
   // came to nothing is left out rather than printed as a calculated zero.
   return rows.filter((row, i) => (i === 0 && typeof payslip.lopDays === 'number') || row.value !== 0);

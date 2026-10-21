@@ -16,6 +16,12 @@ export interface OpeningLeaveTaken {
   /** The financial year's starting calendar year: 2026 for FY 2026-27. */
   financialYear: number;
   byEmployee: Record<string, Record<string, number>>;
+  /**
+   * Days each person brought into that year from the one before, for types
+   * that carry forward — the accumulated Earned Leave a register holds. Without
+   * it a company going live could not bring an existing balance in at all.
+   */
+  carriedIn?: Record<string, Record<string, number>>;
 }
 
 const STORAGE_KEY = ORG_SETTINGS.openingLeaveTaken.storageKey;
@@ -30,7 +36,11 @@ export function getOpeningLeaveTaken(): OpeningLeaveTaken | null {
     if (typeof parsed?.financialYear !== 'number' || !parsed.byEmployee || typeof parsed.byEmployee !== 'object') {
       return null;
     }
-    return { financialYear: parsed.financialYear, byEmployee: parsed.byEmployee };
+    return {
+      financialYear: parsed.financialYear,
+      byEmployee: parsed.byEmployee,
+      ...(parsed.carriedIn && typeof parsed.carriedIn === 'object' ? { carriedIn: parsed.carriedIn } : {}),
+    };
   } catch {
     return null;
   }
@@ -42,6 +52,19 @@ export function openingLeaveTakenFor(employeeId: string, typeKey: string, asOf: 
   if (!stored || stored.financialYear !== financialYearOf(asOf)) return 0;
   const days = stored.byEmployee[employeeId]?.[typeKey];
   return typeof days === 'number' && Number.isFinite(days) && days > 0 ? days : 0;
+}
+
+/** Days of `typeKey` this person carried into financial year `year`, as uploaded. */
+export function openingCarriedFor(employeeId: string, typeKey: string, year: number): number {
+  const stored = getOpeningLeaveTaken();
+  if (!stored || stored.financialYear !== year) return 0;
+  const days = stored.carriedIn?.[employeeId]?.[typeKey];
+  return typeof days === 'number' && Number.isFinite(days) && days > 0 ? days : 0;
+}
+
+/** The financial year the opening figures belong to — the first this app tracked — or null. */
+export function openingFinancialYear(): number | null {
+  return getOpeningLeaveTaken()?.financialYear ?? null;
 }
 
 /** Resolves once the organisation's copy has caught up — see publishOrgSetting. */

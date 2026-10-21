@@ -2093,7 +2093,10 @@ function TimeOffTab({ employeeId }: { employeeId: string }) {
                             5 remaining of 5". Identical to `available` whenever
                             nothing is pending. */}
                         <span><span className="font-semibold text-emerald-600">{lb.remaining}</span> remaining</span>
-                        <span>of {lb.granted} accrued · {lb.fullYear} for the year</span>
+                        <span>
+                          of {lb.granted} accrued · {lb.fullYear} for the year
+                          {lb.carried > 0 ? ` · ${lb.carried} carried in` : ''}
+                        </span>
                       </div>
                     )}
                   </div>

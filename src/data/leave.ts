@@ -336,6 +336,45 @@ export function updateLeaveRequestStatus(
   return { ok: true, requests: updated };
 }
 
+/**
+ * Withdraw a request.
+ *
+ * Plans change, and there was no way to say so: 'Cancelled' existed as a
+ * status nothing could set, so an approved leave that was not taken kept its
+ * days as used and any over-quota days as loss of pay, and the only remedy was
+ * a database edit. The subject may withdraw their own request while it is
+ * Pending; HR and Admin may cancel any request that is Pending or Approved.
+ * firestore.rules says the same (`leaveDecisionIsAuthorised`). Cancelling
+ * clears the loss of pay the request carried.
+ */
+export function cancelLeaveRequest(
+  requestId: string,
+  canceller: { profile: UserProfile | null; ownEmployeeId: string | null },
+): LeaveDecision {
+  const current = getLeaveRequests();
+  const request = current.find((r) => r.id === requestId);
+  if (!request) return { ok: false, reason: 'That leave request no longer exists.', requests: current };
+  if (request.status !== 'Pending' && request.status !== 'Approved') {
+    return { ok: false, reason: `A ${request.status.toLowerCase()} request cannot be cancelled.`, requests: current };
+  }
+  const isAdministrator = canceller.profile?.role === 'hr' || canceller.profile?.role === 'admin';
+  const ownPending = request.status === 'Pending' && !!canceller.ownEmployeeId && request.employeeId === canceller.ownEmployeeId;
+  if (!isAdministrator && !ownPending) {
+    return {
+      ok: false,
+      reason: request.status === 'Approved'
+        ? 'An approved request is cancelled by HR — ask them, and they will return the days.'
+        : 'Only the person who raised this request, or HR, can withdraw it.',
+      requests: current,
+    };
+  }
+  const updated = current.map((r) =>
+    r.id === requestId ? { ...r, status: 'Cancelled' as LeaveStatus, lossOfPayDays: undefined } : r,
+  );
+  saveLeaveRequests(updated);
+  return { ok: true, requests: updated };
+}
+
 // ---- Leave Balances ---------------------------------------------------------
 const LEAVE_TYPES: LeaveType[] = ['Casual', 'Sick', 'Earned'];
 

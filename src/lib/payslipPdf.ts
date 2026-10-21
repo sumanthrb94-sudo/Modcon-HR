@@ -132,7 +132,7 @@ export async function downloadPayslipPdf(
       ...(payslip.bonus ? [['Bonus', payslip.bonus] as [string, number]] : []),
     ]
     : [['Gross salary (no salary structure set)', payslip.grossEarnings]];
-  const arrearRows = salaryArrearsRows(payslip.salaryArrears);
+  const arrearRows = salaryArrearsRows(payslip.salaryArrears, payslip.adjustments);
   const deductions = storedDeductionRows(payslip);
 
   const header = (label: string, x: number) => {

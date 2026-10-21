@@ -31,6 +31,7 @@ const HEADER = [
   'employed_days',
   'gross_earnings',
   'salary_arrears',
+  'one_off_earnings',
   'provident_fund',
   'esi',
   'professional_tax',
@@ -52,6 +53,7 @@ export function payrollRegisterCsv(
   for (const p of sorted) {
     const person = personOf(p.employeeId);
     const arrears = (p.salaryArrears ?? []).reduce((sum, a) => sum + a.amount, 0);
+    const oneOff = (p.adjustments ?? []).filter((a) => a.kind === 'earning').reduce((sum, a) => sum + a.amount, 0);
     const esi = p.statutoryPaid?.esiEmployee;
     const pt = p.statutoryPaid?.professionalTax;
     // Without recorded heads, ESI and PT are inside `otherDeductions` and are
@@ -65,6 +67,7 @@ export function payrollRegisterCsv(
       cell(p.employedDays),
       cell(p.grossEarnings),
       cell(arrears || undefined),
+      cell(oneOff || undefined),
       cell(p.pf),
       cell(esi),
       cell(pt),
@@ -73,7 +76,7 @@ export function payrollRegisterCsv(
       cell(p.totalDeductions),
       cell(p.netPay),
     ].join(','));
-    totals.gross += p.grossEarnings + arrears;
+    totals.gross += p.grossEarnings + arrears + oneOff;
     totals.deductions += p.totalDeductions;
     totals.net += p.netPay;
   }

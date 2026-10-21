@@ -18,7 +18,12 @@
  * as every other upload here.
  */
 
-export const OPENING_LEAVE_CSV_HEADER = 'employee_code,leave_type,days_taken';
+/**
+ * `carried_forward` is optional: days brought into this year from the last
+ * for a type that carries past 31 March — the accumulated Earned Leave a
+ * register holds. A company going live otherwise had no way to bring it in.
+ */
+export const OPENING_LEAVE_CSV_HEADER = 'employee_code,leave_type,days_taken,carried_forward';
 
 export interface OpeningLeaveSubject {
   id: string;
@@ -31,6 +36,8 @@ export interface OpeningLeaveMatch {
   /** The stored key, e.g. `'Casual'`. */
   typeKey: string;
   days: number;
+  /** Days carried in from last year, when the row gave a fourth column. */
+  carried?: number;
   line: number;
 }
 
@@ -85,8 +92,15 @@ export function parseOpeningLeaveCsv(
     const key = `${employee.id}::${typeKey}`;
     const earlier = claimed.get(key);
     if (earlier !== undefined) return refuse(`${employee.fullName}'s ${typeKey} is also on line ${earlier}.`);
+    let carried: number | undefined;
+    if (cells[3] !== undefined && cells[3] !== '') {
+      const value = Number(cells[3]);
+      if (!Number.isFinite(value) || value < 0) return refuse(`Carried forward "${cells[3]}" must be a number, 0 or more.`);
+      if (Math.round(value * 2) !== value * 2) return refuse(`Carried forward "${cells[3]}" must be in whole or half days.`);
+      carried = value;
+    }
     claimed.set(key, line);
-    matched.push({ employee, typeKey, days, line });
+    matched.push({ employee, typeKey, days, ...(carried !== undefined ? { carried } : {}), line });
   });
 
   return { matched, unmatched };

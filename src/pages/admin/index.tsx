@@ -92,7 +92,9 @@ function useUserDirectory() {
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const crossOrg = isAdmin || isSuperAdmin;
+    // Across organisations is the super admin's alone — firestore.rules scopes
+    // an organisation's own Administrator to its accounts like HR.
+    const crossOrg = isSuperAdmin;
     const orgKey = resolveOrgKeyForProfile(profile);
 
     useEffect(() => {

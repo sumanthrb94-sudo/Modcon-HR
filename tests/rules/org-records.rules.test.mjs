@@ -907,3 +907,36 @@ describe('attendance is written by its subject, or by HR and Admin', () => {
     );
   });
 });
+
+describe('stores added by the audit fixes', () => {
+  it('one-off pay is HR’s to read and write', async () => {
+    const adj = docId({ store: 'payAdjustments', id: 'adj-1' });
+    const body = record({ store: 'payAdjustments', id: 'adj-1', employeeId: 'emp-a1' });
+    await assertFails(setDoc(doc(as(USERS.employeeA), 'org_records', adj), body));
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_records', adj), body));
+    await assertFails(getDoc(doc(as(USERS.employeeA), 'org_records', adj)));
+  });
+
+  it('candidates are HR’s; job openings are read by everyone and written by HR', async () => {
+    const cand = docId({ store: 'candidates', id: 'cand-1' });
+    await assertFails(setDoc(doc(as(USERS.managerLinkedA), 'org_records', cand), record({ store: 'candidates', id: 'cand-1' })));
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_records', cand), record({ store: 'candidates', id: 'cand-1' })));
+    await assertFails(getDoc(doc(as(USERS.employeeA), 'org_records', cand)));
+    const job = docId({ store: 'jobOpenings', id: 'job-1' });
+    await assertFails(setDoc(doc(as(USERS.employeeA), 'org_records', job), record({ store: 'jobOpenings', id: 'job-1' })));
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_records', job), record({ store: 'jobOpenings', id: 'job-1' })));
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_records', job)));
+  });
+
+  it('a manager above someone sets their goal; nobody sets their own review', async () => {
+    const review = docId({ store: 'performanceReviews', id: 'rev-1' });
+    const body = record({ store: 'performanceReviews', id: 'rev-1', employeeId: 'emp-a1', readableBy: ['emp-a1', 'emp-a2'] });
+    await assertFails(setDoc(doc(as(USERS.employeeA), 'org_records', review), body));
+    await assertSucceeds(setDoc(doc(as(USERS.managerLinkedA), 'org_records', review), body));
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_records', review)));
+    const own = docId({ store: 'goals', id: 'goal-own' });
+    await assertFails(
+      setDoc(doc(as(USERS.managerLinkedA), 'org_records', own), record({ store: 'goals', id: 'goal-own', employeeId: 'emp-a2', readableBy: ['emp-a2'] })),
+    );
+  });
+});

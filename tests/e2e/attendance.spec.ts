@@ -121,9 +121,12 @@ test.describe.serial('raising a regularization', () => {
 
     const dialog = page.getByRole('dialog');
     // Date is prefilled; only the reason is required beyond it.
-    await dialog.getByPlaceholder('Why should this day be corrected?').fill(reason);
-    const statusSelect = dialog.locator('select').nth(1);
-    await statusSelect.selectOption('Work From Home');
+    await dialog.getByPlaceholder(/Why should this day be/).fill(reason);
+    // Requested Status is a row of buttons, not a select; WFH is its label.
+    await dialog.getByRole('button', { name: 'WFH', exact: true }).click();
+    // An administrator's request is applied directly unless this is cleared —
+    // the queue is what this test is about.
+    await dialog.getByRole('checkbox', { name: /Directly apply/ }).uncheck();
     await dialog.getByRole('button', { name: 'Submit Request' }).click();
     await expect(dialog).toBeHidden();
 
@@ -262,7 +265,8 @@ const MONDAY = { instant: '2026-07-27T03:30:00Z', iso: '2026-07-27' };
 async function setWeekOff(page: Page, day: 'Tuesday' | '') {
   await page.getByRole('button', { name: /Edit Profile/i }).first().click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Week Off').selectOption(day);
+  // The profile now has a primary and a second week-off; this is the first.
+  await dialog.getByLabel('Primary Week Off').selectOption(day);
   await dialog.getByRole('button', { name: /^Save/i }).click();
   await expect(dialog).toBeHidden();
 }

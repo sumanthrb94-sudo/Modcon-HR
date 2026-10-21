@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS, UNPAID_FALLBACK_PERSONA } from './config';
-import { FIRESTORE_BASE, adminToken } from './firestore';
+import { FIRESTORE_BASE, adminToken, employeeLinkFor, signInPersona } from './firestore';
 
 /**
  * Leave has to stay usable year-round, whatever the organisation configured.
@@ -172,6 +172,13 @@ test.describe.serial('leave stays usable when the organisation has configured al
     await dialog.getByLabel('Employee ctc').fill('900000');
     await dialog.getByRole('button', { name: 'Save Employee' }).click();
     await expect(dialog).toBeHidden();
+
+    // The account link lands after Save, unawaited; signing out first leaves
+    // the account nobody, and raising leave is the linked subject's alone.
+    const { uid } = await signInPersona(EMPLOYEE.email, EMPLOYEE.password);
+    await expect
+      .poll(async () => (uid ? (await employeeLinkFor(uid))?.employeeId ?? null : null), { timeout: 20_000 })
+      .not.toBeNull();
 
     await page.locator('button[title="Sign out"]').click();
     await expect(page.locator('#username')).toBeVisible({ timeout: 20_000 });

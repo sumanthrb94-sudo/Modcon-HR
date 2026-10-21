@@ -44,9 +44,12 @@ async function resetRegularizationStore(page: Page) {
   await clearOrgRecords('regularizationOverrides');
   await page.goto('/attendance');
   await page.evaluate(() => {
-    Object.keys(localStorage)
-      .filter((key) => /regulariz/i.test(key))
-      .forEach((key) => localStorage.removeItem(key));
+    // Narrowed stores cache per tab, in sessionStorage — clear both.
+    for (const storage of [localStorage, sessionStorage]) {
+      Object.keys(storage)
+        .filter((key) => /regulariz/i.test(key))
+        .forEach((key) => storage.removeItem(key));
+    }
   });
   await page.reload();
 }
@@ -240,8 +243,9 @@ test.describe.serial('deciding a regularization', () => {
     // Pin to the day that was actually marked Absent. The select is sorted
     // newest-first, so its default is Friday, not today.
     await dialog.locator('select').first().selectOption(today);
-    await dialog.locator('select').nth(1).selectOption('Work From Home');
-    await dialog.getByPlaceholder('Why should this day be corrected?').fill(reason);
+    await dialog.getByRole('button', { name: 'WFH', exact: true }).click();
+    await dialog.getByRole('checkbox', { name: /Directly apply/ }).uncheck();
+    await dialog.getByPlaceholder(/Why should this day be/).fill(reason);
     await dialog.getByRole('button', { name: 'Submit Request' }).click();
     await expect(dialog).toBeHidden();
 
@@ -300,10 +304,11 @@ test.describe.serial('deciding a regularization', () => {
     await page.goto('/attendance');
     const row = regRow(page, reason).first();
     await expect(row).toBeVisible();
-    // Recorded (3rd cell) and Requested (4th) must now agree — before the fix
-    // Recorded still said Absent while Requested said Work From Home.
-    await expect(row.locator('td').nth(2)).toContainText('Work From Home');
-    await expect(row.locator('td').nth(3)).toContainText('Work From Home');
+    // Recorded and Requested must now agree — before the fix Recorded still
+    // said Absent while Requested said Work From Home. Cells: select,
+    // employee, date, SLA status, recorded, requested, reason, …
+    await expect(row.locator('td').nth(4)).toContainText('Work From Home');
+    await expect(row.locator('td').nth(5)).toContainText('Work From Home');
 
     // And the day itself, in the Daily Attendance table.
     const dailyTable = page.locator('table').first();

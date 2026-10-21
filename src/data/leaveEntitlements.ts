@@ -14,9 +14,12 @@
  *                        No separate carry-forward bookkeeping exists, because
  *                        there is nothing to move — the balance simply is
  *                        "granted so far this year, minus used so far".
- *   Financial-year reset also implicit: accrual counts from the start of the
- *                        financial year, so on 1 April the elapsed month count
- *                        returns to 1 and everything before it drops out.
+ *   Financial-year reset accrual counts from the start of the financial year,
+ *                        so on 1 April the elapsed month count returns to 1 —
+ *                        and for a policy with `carryForwardBeyondYear`, last
+ *                        year's unused balance is carried in (data/leaveCarry.ts),
+ *                        up to `maxCarryForwardDays`. It was advertised and never
+ *                        applied, so every Earned Leave balance reset.
  *   Tenure gate          `minTenureMonths` against completed months of service.
  *
  * Deriving it means there is no scheduled job to run at midnight on 1 April and
@@ -28,13 +31,41 @@ import type { Employee, Gender, LeaveBalance, LeaveRequest, LeaveType } from '@/
 import { getLeavePoliciesFor, isMonthlyPolicy, normalizeLeaveTypeValue, type LeavePolicy } from './leavePolicies';
 import { accrualMonthsElapsed, financialYearEnd, financialYearOf, financialYearStart, monthsBetween } from '@/lib/financialYear';
 import { todayIso } from '@/lib/today';
-import { openingLeaveTakenFor } from './openingLeave';
+import { openingCarriedFor, openingFinancialYear, openingLeaveTakenFor } from './openingLeave';
+import { carriedInto } from './leaveCarry';
+import { getGoLiveDate } from './goLive';
+
+/**
+ * The first financial year this app has a record of for somebody — nothing is
+ * carried from before it, because there is nothing to compute it from. The
+ * year opening balances were uploaded for, else the go-live year, else the
+ * year of the organisation's earliest recorded leave; never before they
+ * joined, and never after the year asked about.
+ */
+function firstTrackedYear(
+  employee: Pick<Employee, 'dateOfJoining'>,
+  requests: LeaveRequest[],
+  asOf: string,
+): number {
+  const current = financialYearOf(asOf);
+  const opening = openingFinancialYear();
+  const goLive = getGoLiveDate();
+  let first = opening ?? (goLive ? financialYearOf(goLive) : null);
+  if (first === null) {
+    const earliest = requests.reduce<string | null>((min, r) => (!min || r.startDate < min ? r.startDate : min), null);
+    first = earliest ? financialYearOf(earliest) : current;
+  }
+  if (employee.dateOfJoining) first = Math.max(first, financialYearOf(employee.dateOfJoining));
+  return Math.min(first, current);
+}
 
 export interface Entitlement {
   type: LeaveType;
   policy: LeavePolicy;
   /** Days granted so far this financial year. */
   granted: number;
+  /** Days brought in from last year, for a type that carries past 31 March. */
+  carried: number;
   /**
    * Days the employee will have been granted by 31 March — the financial year
    * as a whole rather than the part of it that has happened.
@@ -229,11 +260,22 @@ export function getApplicableEntitlements(
       // counts as used like any approved here — see data/openingLeave.ts.
       const used = daysAtStatus(employee.id, type, 'Approved', requests, asOf) + openingLeaveTakenFor(employee.id, type, asOf);
       const pending = daysAtStatus(employee.id, type, 'Pending', requests, asOf);
-      const available = Math.max(0, granted - used);
+      const carried = carriedInto({
+        year: financialYearOf(asOf),
+        carriesBeyondYear: policy.carryForwardBeyondYear,
+        cap: policy.maxCarryForwardDays,
+        firstTrackedYear: firstTrackedYear(employee, requests, asOf),
+        openingCarried: openingCarriedFor(employee.id, type, openingFinancialYear() ?? -1),
+        grantedInYear: (y) => grantedDays(policy, employee, `${y + 1}-03-31`).granted,
+        usedInYear: (y) =>
+          daysAtStatus(employee.id, type, 'Approved', requests, `${y}-04-01`) + openingLeaveTakenFor(employee.id, type, `${y}-04-01`),
+      });
+      const available = Math.max(0, carried + granted - used);
       return {
         type,
         policy,
         granted,
+        carried,
         fullYear: grantedDays(policy, employee, financialYearEnd(asOf)).granted,
         used,
         pending,
@@ -258,6 +300,7 @@ export function getApplicableEntitlements(
       type: 'Unpaid',
       policy: UNPAID_FALLBACK_POLICY,
       granted: 0,
+      carried: 0,
       fullYear: 0,
       used,
       pending,

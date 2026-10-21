@@ -17,6 +17,7 @@
  */
 import { collection, getDocs, query, where, writeBatch, doc } from 'firebase/firestore';
 import { db } from './firebase';
+import { getOrgUsers } from './orgUsers';
 import { DEFAULT_ORG_KEY } from './orgScope';
 
 const BATCH_SIZE = 400;
@@ -79,9 +80,7 @@ export async function backfillEmployeeLinks(options: {
     // platform admin or super admin once a second organisation exists — the
     // same constraint backfillOrgIds documents, and the reason
     // `backfillIdentityOrgIds` stamps `users` so the filter becomes usable.
-    orgKey === DEFAULT_ORG_KEY
-      ? getDocs(collection(db, 'users'))
-      : getDocs(query(collection(db, 'users'), where('orgId', '==', orgKey))),
+    getOrgUsers(orgKey),
     getDocs(query(collection(db, 'employees'), where('orgId', '==', orgKey))),
     getDocs(collection(db, 'employee_links')),
   ]);

@@ -27,6 +27,7 @@ import {
   getLeaveRequests,
   saveLeaveRequests,
   updateLeaveRequestStatus,
+  cancelLeaveRequest,
   LEAVE_REQUESTS_CHANGED_EVENT,
   getOverlappingTeamLeaves,
 } from '@/data/leave';
@@ -238,6 +239,13 @@ export function LeavePage() {
     setDecisionNotice(result.ok ? null : result.reason);
     setLeaveRequests(result.requests);
   }
+  function cancel(id: string) {
+    const result = cancelLeaveRequest(id, { profile, ownEmployeeId: currentEmployee?.id ?? null });
+    setDecisionNotice(result.ok ? null : result.reason);
+    setLeaveRequests(result.requests);
+  }
+  const canAdminister = role === 'Admin' || role === 'HR Manager';
+  const today = todayIso();
   const approveLeave = (id: string) => decide(id, 'Approved');
   const rejectLeave = (id: string) => decide(id, 'Rejected');
 
@@ -359,7 +367,22 @@ export function LeavePage() {
     {
       key: 'actions',
       header: 'Actions',
-      render: (row) =>
+      render: (row) => {
+        const ownPending = row.status === 'Pending' && row.employeeId === currentEmployee?.id;
+        const cancellable = ownPending || (canAdminister && (row.status === 'Pending' || (row.status === 'Approved' && row.endDate >= today)));
+        const cancelButton = cancellable ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(ownPending ? 'Withdraw this request?' : 'Cancel this leave and return the days?')) cancel(row.id);
+            }}
+          >
+            {ownPending ? 'Withdraw' : 'Cancel'}
+          </Button>
+        ) : null;
+        const body =
         row.status === 'Pending' && approvableEmployeeIds.has(row.employeeId) ? (
           <div className="flex items-center gap-2">
             <Button
@@ -393,7 +416,9 @@ export function LeavePage() {
           <span className="text-xs text-ink-400">{row.approverName}</span>
         ) : (
           <span className="text-xs text-ink-400">—</span>
-        ),
+        );
+        return cancelButton && !ownPending ? <div className="flex items-center gap-2">{body}{cancelButton}</div> : ownPending ? cancelButton : body;
+      },
     },
   ];
 
@@ -651,6 +676,7 @@ export function LeavePage() {
                         <div className="flex items-center justify-between mb-1 text-[10px] text-ink-400">
                           <span>
                             {b.fullYear} day{b.fullYear === 1 ? '' : 's'} for {financialYearLabel()}
+                            {b.carried > 0 && <> · {b.carried} carried from last year</>}
                           </span>
                           <span>
                             {b.used} used
