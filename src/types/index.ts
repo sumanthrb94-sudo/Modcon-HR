@@ -330,7 +330,7 @@ export interface Payslip {
   /** Arrears of an earlier month's salary paid on this payslip, after a backdated raise. */
   salaryArrears?: { month: string; amount: number }[];
   /** One-off earnings and deductions this payslip carried. */
-  adjustments?: { label: string; amount: number; kind: 'earning' | 'deduction'; taxable: boolean }[];
+  adjustments?: { label: string; amount: number; kind: 'earning' | 'deduction'; taxable: boolean; loanId?: string }[];
   /**
    * The statutory heads as this payslip deducted them, so a return is filed on
    * what was withheld rather than on today's recomputation. Absent on payslips

@@ -107,7 +107,7 @@ import { getEntitlements } from '@/data/leaveEntitlements';
 import { getLeavePolicies, hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents, deductionRows, employerContributionRows } from '@/data/payroll';
-import { EmploymentHistoryCard, ExitCard, ProbationCard, SalaryRevisionCard, TaxDeclarationCard, probationEndsOn } from './PayChangesCards';
+import { EmploymentHistoryCard, ExitCard, LettersCard, LoansCard, ProbationCard, SalaryRevisionCard, TaxDeclarationCard, probationEndsOn } from './PayChangesCards';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
@@ -1701,7 +1701,9 @@ function CompensationTab({ emp }: { emp: Employee }) {
           <SalaryRevisionCard emp={emp} />
           <EmploymentHistoryCard emp={emp} />
           <TaxDeclarationCard emp={emp} />
+          <LoansCard emp={emp} />
           <ExitCard emp={emp} />
+          <LettersCard emp={emp} />
         </>
       )}
     </div>

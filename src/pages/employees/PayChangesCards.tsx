@@ -4,7 +4,7 @@ import { Badge, Button, Card, CardHeader, Modal, Select } from '@/components/ui'
 import { updateEmployeeInDirectory } from '@/data/employees';
 import { getApplicableEntitlements } from '@/data/leaveEntitlements';
 import { getLeaveRequests } from '@/data/leave';
-import { buildPayslipComponents } from '@/data/payroll';
+import { buildPayslipComponents, getPayslips } from '@/data/payroll';
 import { ctcOn, finalSettlement } from '@/data/payChanges';
 import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
 import { getStatutoryConfig, getTaxElectionFor, saveTaxElections, taxRegimeFor } from '@/data/statutory';
@@ -12,6 +12,10 @@ import { gratuity } from '@/data/statutoryRules';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
 import { useAuth } from '@/lib/auth';
+import { buildLetter, LETTER_KINDS, type Letter, type LetterKind } from '@/data/hrLetters';
+import { getLoans, LOANS_CHANGED_EVENT, outstandingFor, recoveredSoFar, saveLoans, type Loan } from '@/data/loans';
+import { outstandingOn } from '@/data/loanRules';
+import { useCollectionRevision } from '@/lib/useCollectionRevision';
 import { todayIso } from '@/lib/today';
 import { formatDate, formatINR } from '@/lib/utils';
 import type { Employee, EmployeeStatus } from '@/types';
@@ -398,6 +402,9 @@ export function ExitCard({ emp }: { emp: Employee }) {
           : `Gratuity is not payable: ${assessment.grat.completedYears} completed year(s), short of the qualifying period.`
         : 'Gratuity needs a salary structure (it is computed on Basic) — set one in Settings → Salary Structure.',
       'Notice recovery is gross / 30 per day not served.',
+      ...(outstandingFor(emp.id, getPayslips()) > 0
+        ? [`${formatINR(outstandingFor(emp.id, getPayslips()))} of an advance or loan is still owed. Enter it under "other" as a recovery (a negative figure) if it is to come out of this settlement.`]
+        : []),
       'Tax: leave encashment and gratuity are salary income, exempt for a non-government employee up to ₹25,00,000 (encashment, s.10(10AA)) and ₹20,00,000 (gratuity, s.10(10)) over a working life. This statement deducts no tax: TDS on any taxable part, and on the final month’s salary, is the employer’s to withhold when it is paid — confirm the figure with your accountant first.',
     ]
     : [];
@@ -628,6 +635,130 @@ export function EmploymentHistoryCard({ emp }: { emp: Employee }) {
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HR letters
+// ---------------------------------------------------------------------------
+
+async function letterPdf(letter: Letter, fileName: string) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  let y = 22;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text(letter.title, 15, y);
+  y += 12;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  for (const paragraph of letter.paragraphs) {
+    const lines = doc.splitTextToSize(paragraph, 180) as string[];
+    doc.text(lines, 15, y);
+    y += lines.length * 5.5 + 4;
+  }
+  doc.save(fileName);
+}
+
+/** Appointment, confirmation, relieving and experience letters, drafted from the record. */
+export function LettersCard({ emp }: { emp: Employee }) {
+  const [kind, setKind] = useState<LetterKind>('appointment');
+  const letter = buildLetter(kind, emp, { name: getCompanyProfile().legalName || getCompanyProfile().name }, todayIso());
+  return (
+    <Card>
+      <CardHeader title="Letters" subtitle="Drafted from this record — review, then print on your letterhead and sign" />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px]">
+          <span className="label">Letter</span>
+          <Select
+            ariaLabel="Letter"
+            value={kind}
+            onChange={(v) => setKind(v as LetterKind)}
+            options={LETTER_KINDS.map((l) => ({ value: l.kind, label: l.label }))}
+          />
+        </div>
+        <Button
+          size="sm"
+          icon={<Download size={14} />}
+          onClick={() => void letterPdf(letter, `${kind}-${emp.employeeCode}.pdf`)}
+        >
+          Download PDF
+        </Button>
+      </div>
+      {letter.missing.length > 0 && (
+        <p className="mt-2 text-sm text-amber-800">Left blank, because the record has no {letter.missing.join(', ')}.</p>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Advances and loans
+// ---------------------------------------------------------------------------
+
+/** Lend somebody money and recover it from their pay — see data/loanRules.ts. */
+export function LoansCard({ emp }: { emp: Employee }) {
+  const revision = useCollectionRevision(LOANS_CHANGED_EVENT);
+  const loans = useMemo(() => getLoans().filter((l) => l.employeeId === emp.id), [emp.id, revision]);
+  const payslips = getPayslips();
+  const [label, setLabel] = useState('Salary advance');
+  const [principal, setPrincipal] = useState('');
+  const [emi, setEmi] = useState('');
+  const [start, setStart] = useState(todayIso().slice(0, 7));
+  const [error, setError] = useState<string | null>(null);
+
+  function add() {
+    const p = Math.round(Number(principal.replace(/[,\s]/g, '')));
+    const e = Math.round(Number(emi.replace(/[,\s]/g, '')));
+    if (!Number.isFinite(p) || p <= 0) return setError('Enter the amount lent.');
+    if (!Number.isFinite(e) || e <= 0 || e > p) return setError('Enter a monthly recovery no larger than the amount.');
+    if (!/^\d{4}-\d{2}$/.test(start)) return setError('Choose the first month to recover in.');
+    setError(null);
+    const loan: Loan = { id: `loan-${emp.id}-${Date.now().toString(36)}`, employeeId: emp.id, label: label.trim() || 'Salary advance', principal: p, emi: e, startMonth: start, givenOn: todayIso() };
+    saveLoans([...getLoans(), loan]);
+    setPrincipal('');
+    setEmi('');
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Advances and loans" subtitle="Recovered from pay each month until repaid" />
+      {loans.length > 0 && (
+        <ul className="mb-4 divide-y divide-ink-100 text-sm">
+          {loans.map((l) => {
+            const left = outstandingOn(l, recoveredSoFar(l.id, payslips, '9999-12'));
+            return (
+              <li key={l.id} className="flex justify-between gap-3 py-2">
+                <span>{l.label} · {formatINR(l.principal)} from {formatDate(l.givenOn)} · {formatINR(l.emi)}/month from {monthName(l.startMonth)}</span>
+                <span className={left > 0 ? 'text-amber-800' : 'text-emerald-700'}>{left > 0 ? `${formatINR(left)} owed` : 'Repaid'}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="grid gap-3 sm:grid-cols-5 items-end">
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="loan-label">What it is</label>
+          <input id="loan-label" className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
+        </div>
+        <div>
+          <label className="label" htmlFor="loan-principal">Amount (₹)</label>
+          <input id="loan-principal" className="input" inputMode="numeric" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
+        </div>
+        <div>
+          <label className="label" htmlFor="loan-emi">Monthly (₹)</label>
+          <input id="loan-emi" className="input" inputMode="numeric" value={emi} onChange={(e) => setEmi(e.target.value)} />
+        </div>
+        <div>
+          <label className="label" htmlFor="loan-start">From</label>
+          <input id="loan-start" className="input" type="month" value={start} onChange={(e) => setStart(e.target.value)} />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <Button size="sm" onClick={add}>Record advance</Button>
+        {error && <span className="text-sm text-rose-700" role="alert">{error}</span>}
+      </div>
     </Card>
   );
 }

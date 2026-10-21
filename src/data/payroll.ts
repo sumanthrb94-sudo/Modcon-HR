@@ -14,6 +14,7 @@ import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure
 import { ctcOn, employedDaysInMonth, monthlyCtcFor, salaryArrears, type PaidMonthBasis, type SalaryArrear } from '@/data/payChanges';
 import { projectTaxYear, type PaidMonth as TaxPaidMonth } from '@/data/tdsProjection';
 import { adjustmentsFor } from '@/data/payAdjustments';
+import { loanDeductionsFor } from '@/data/loans';
 import {
   getTaxElectionFor,
   professionalTaxScheduleForLocation,
@@ -90,7 +91,7 @@ export interface PayslipComponents {
   salaryArrears: SalaryArrear[];
   salaryArrearsAmount: number;
   /** One-off earnings and deductions HR entered for the month — see data/payAdjustments.ts. */
-  adjustments: { label: string; amount: number; kind: 'earning' | 'deduction'; taxable: boolean }[];
+  adjustments: { label: string; amount: number; kind: 'earning' | 'deduction'; taxable: boolean; loanId?: string }[];
   adjustmentEarnings: number;
   adjustmentDeductions: number;
   /** Working days in the month, the divisor for the per-day rate. */
@@ -372,8 +373,12 @@ export function buildPayslipComponents(
 
   // One-off pay for the month. Only the month's own figures are wanted when an
   // earlier month is recomputed for arrears, so none are read then.
-  const adjustments = withSalaryArrears
-    ? adjustmentsFor(employee.id, month).map(({ label, amount, kind, taxable }) => ({ label, amount: Math.max(0, Math.round(amount)), kind, taxable }))
+  const adjustments: PayslipComponents['adjustments'] = withSalaryArrears
+    ? [
+      ...adjustmentsFor(employee.id, month).map(({ label, amount, kind, taxable }) => ({ label, amount: Math.max(0, Math.round(amount)), kind, taxable })),
+      // Advances and loans, recovered by their EMI — see data/loanRules.ts.
+      ...loanDeductionsFor(employee.id, month, storedPayslips()),
+    ]
     : [];
   const adjustmentEarnings = adjustments.filter((a) => a.kind === 'earning').reduce((sum, a) => sum + a.amount, 0);
   const taxableAdjustments = adjustments.filter((a) => a.kind === 'earning' && a.taxable).reduce((sum, a) => sum + a.amount, 0);

@@ -1663,7 +1663,7 @@ service cloud.firestore {
       // month carrying a lower `ctcBasis` or more `lopDays`, and the next run
       // would pay them the "arrears" against it. Payroll writes payslips and
       // payroll is the administrators'.
-      return !(request.resource.data.store in ['payrollRuns', 'payslips', 'payAdjustments']) || isOrgAdmin();
+      return !(request.resource.data.store in ['payrollRuns', 'payslips', 'payAdjustments', 'loans']) || isOrgAdmin();
     }
 
     /**
@@ -1705,7 +1705,7 @@ service cloud.firestore {
       let store = resource.data.get('store', '');
       return store == 'employeePrivate'
         ? (isOrgAdmin() || isSelf(resource.data.get('employeeId', null)))
-        : store in ['payrollRuns', 'payAdjustments', 'candidates']
+        : store in ['payrollRuns', 'payAdjustments', 'candidates', 'loans']
         ? isOrgAdmin()
         : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords', 'goals', 'performanceReviews', 'compOffCredits', 'ticketReplies']) || recordIsMineToRead());
     }
