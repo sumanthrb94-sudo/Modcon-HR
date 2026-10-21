@@ -34,13 +34,41 @@ function pdfText(text: string): string {
   return text.replace(/₹\s?/g, 'Rs. ').replace(/[−–—]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
 }
 
+/**
+ * The password a payslip opens with: the PAN in capitals, or the date of birth
+ * as DDMMYYYY when there is no PAN — the convention Indian payroll uses, so a
+ * payslip forwarded by email or WhatsApp is not readable by whoever it lands
+ * with. Null when the record has neither, and then the PDF is not protected.
+ */
+export function payslipPassword(employee: Pick<Employee, 'pan' | 'dateOfBirth'>): string | null {
+  const pan = employee.pan?.trim().toUpperCase();
+  if (pan) return pan;
+  const dob = employee.dateOfBirth?.slice(0, 10);
+  if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) return `${dob.slice(8, 10)}${dob.slice(5, 7)}${dob.slice(0, 4)}`;
+  return null;
+}
+
+/** What to tell somebody about the password, without saying it. */
+export function payslipPasswordHint(employee: Pick<Employee, 'pan' | 'dateOfBirth'>): string {
+  if (employee.pan?.trim()) return 'Opens with the PAN, in capitals.';
+  if (employee.dateOfBirth) return 'Opens with the date of birth as DDMMYYYY.';
+  return 'Not password-protected: the profile has no PAN or date of birth.';
+}
+
 export async function downloadPayslipPdf(
   payslip: Payslip,
   employee: Employee,
   companyName?: string,
 ): Promise<void> {
   const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const password = payslipPassword(employee);
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: 'a4',
+    ...(password
+      ? { encryption: { userPassword: password, ownerPassword: `${password}-owner`, userPermissions: ['print' as const] } }
+      : {}),
+  });
   const left = 14;
   const right = 196;
   const width = right - left;

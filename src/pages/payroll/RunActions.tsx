@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Download, MessageCircle, Mail, Undo2 } from 'lucide-react';
 import { Button, Modal } from '@/components/ui';
 import { bankTransferFile } from '@/data/bankFile';
+import { payrollRegisterCsv } from '@/data/payrollRegister';
 import { getEmployee } from '@/data/employees';
 import { formatINR } from '@/lib/utils';
 import type { Payslip, PayrollRun } from '@/types';
@@ -23,6 +24,31 @@ function download(name: string, text: string) {
   a.download = name;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** The month's salary register, from the payslips the run stored. */
+export function RegisterButton({ run, payslips }: { run: PayrollRun; payslips: Payslip[] }) {
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      className="px-2.5 py-1 text-[11px]"
+      icon={<Download size={12} />}
+      onClick={(e) => {
+        e.stopPropagation();
+        const register = payrollRegisterCsv(
+          payslips.filter((p) => p.month === run.month),
+          (id) => {
+            const emp = getEmployee(id);
+            return emp ? { employeeCode: emp.employeeCode, name: emp.fullName, department: emp.department } : undefined;
+          },
+        );
+        download(`salary-register-${run.month}.csv`, register.csv);
+      }}
+    >
+      Register
+    </Button>
+  );
 }
 
 export function BankFileButton({ run, payslips }: { run: PayrollRun; payslips: Payslip[] }) {

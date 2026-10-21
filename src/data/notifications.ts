@@ -18,7 +18,6 @@ import { getRegularizationRequests } from '@/data/attendance';
 import { getOnboardings } from '@/data/onboarding';
 import { announcements } from '@/data/common';
 import { getNotificationPreferences } from '@/data/notificationPreferences';
-import { getIntegrationPreferences } from '@/data/integrations';
 import { getVisibleEmployeeIds } from '@/lib/dataScope';
 import { resolveAppRole } from '@/lib/accessControl';
 import { todayDate } from '@/lib/today';
@@ -142,11 +141,3 @@ export function getNotifications(profile: UserProfile | null): NotificationItem[
   return buildCandidates(profile).filter((item) => item.count > 0 && enabled.has(item.id));
 }
 
-/** Connected-integration tally shown at the foot of the menu. */
-export function getIntegrationSummary(): { connected: number; total: number } {
-  const integrations = getIntegrationPreferences();
-  return {
-    connected: integrations.filter((integration) => integration.connected).length,
-    total: integrations.length,
-  };
-}

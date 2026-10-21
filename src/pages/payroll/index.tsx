@@ -39,8 +39,8 @@ import { buildPayslip, buildPayslipComponents, storedDeductionRows, partMonthNot
 import { employees, getEmployee } from '@/data/employees';
 import { departments } from '@/data/departments';
 import { currentMonthIso, todayDate, todayIso } from '@/lib/today';
-import { downloadPayslipPdf } from '@/lib/payslipPdf';
-import { BankFileButton, NotifyButton, UndoRunButton } from './RunActions';
+import { downloadPayslipPdf, payslipPasswordHint } from '@/lib/payslipPdf';
+import { BankFileButton, NotifyButton, RegisterButton, UndoRunButton } from './RunActions';
 import { CURRENT_MONTH_RUNNABLE_FROM_DAY, carriedOverLossOfPay, payRunRoll, runnableMonths } from '@/data/payRun';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
@@ -181,13 +181,16 @@ function PayslipModal({ payslip, onClose }: PayslipModalProps) {
       size="lg"
       footer={emp ? (
         // The same PDF the employee downloads from Finance — see lib/payslipPdf.
-        <Button
-          variant="primary"
-          icon={<Download size={16} />}
-          onClick={() => { void downloadPayslipPdf(payslip, emp, getCompanyProfile().name || undefined); }}
-        >
-          Download PDF
-        </Button>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-ink-500">{payslipPasswordHint(emp)}</span>
+          <Button
+            variant="primary"
+            icon={<Download size={16} />}
+            onClick={() => { void downloadPayslipPdf(payslip, emp, getCompanyProfile().name || undefined); }}
+          >
+            Download PDF
+          </Button>
+        </div>
       ) : undefined}
     >
       {/* Header strip */}
@@ -665,6 +668,7 @@ export function PayrollPage() {
       render: (r) => (
         <div className="flex flex-wrap justify-end gap-1.5">
           <BankFileButton run={r} payslips={payslipList} />
+          <RegisterButton run={r} payslips={payslipList} />
           <NotifyButton run={r} payslips={payslipList} />
           {r.id === sortedPayrollRuns[0]?.id && <UndoRunButton run={r} onUndo={() => undoRun(r)} />}
         </div>

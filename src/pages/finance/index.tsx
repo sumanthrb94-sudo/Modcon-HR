@@ -14,7 +14,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { downloadPayslipPdf } from '@/lib/payslipPdf';
+import { downloadPayslipPdf, payslipPasswordHint } from '@/lib/payslipPdf';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployeeRecord } from '@/lib/dataScope';
@@ -146,7 +146,7 @@ function EmployeeFinancePage() {
   async function downloadFinancePdf(payslip: Payslip) {
     try {
       await downloadPayslipPdf(payslip, employeeRecord, getCompanyProfile().name || undefined);
-      showDownloadNotice(`PDF downloaded for ${monthLabel(payslip.month)}.`);
+      showDownloadNotice(`PDF downloaded for ${monthLabel(payslip.month)}. ${payslipPasswordHint(employeeRecord)}`);
     } catch {
       showDownloadNotice('Unable to generate PDF right now. Please try again.');
     }

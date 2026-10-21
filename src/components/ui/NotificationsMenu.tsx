@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, CalendarOff, CheckSquare, Clock, Loader2, Megaphone, Receipt, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from './Button';
-import { getNotifications, getIntegrationSummary, type NotificationIcon } from '@/data/notifications';
+import { getNotifications, type NotificationIcon } from '@/data/notifications';
 import { useNotificationPreferencesRevision } from '@/lib/useNotificationPreferencesRevision';
-import { useIntegrationPreferencesRevision } from '@/lib/useIntegrationPreferencesRevision';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
 // NOTE: useDashboardDataRevision is intentionally NOT used here. That hook
 // listens to the global 'storage' event, which the auth and org-settings
@@ -37,7 +36,6 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
     const notificationRevision = useNotificationPreferencesRevision();
-    const integrationRevision = useIntegrationPreferencesRevision();
     const directoryRevision = useEmployeeDirectoryRevision();
     // Note: useDashboardDataRevision is intentionally excluded — see import
     // comment above. Notifications stay fresh via the three focused hooks.
@@ -48,10 +46,6 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
     const visibleNotifications = useMemo(
         () => getNotifications(profile),
         [profile, notificationRevision, directoryRevision],
-    );
-    const { connected: connectedIntegrations, total: totalIntegrations } = useMemo(
-        () => getIntegrationSummary(),
-        [integrationRevision],
     );
 
     // The badge counts outstanding items, not the number of rows in the menu —
@@ -153,9 +147,6 @@ export function NotificationsMenu({ compact = false, className }: NotificationsM
                     </div>
                     {!isEmployee ? (
                         <div className="mt-1 border-t border-ink-100 pt-1.5">
-                            <div className="px-2.5 pb-2 text-[11px] text-ink-500">
-                                {connectedIntegrations}/{totalIntegrations} integrations connected
-                            </div>
                             <button
                                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-700 hover:bg-ink-50"
                                 onClick={() => {

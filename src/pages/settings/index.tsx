@@ -126,6 +126,7 @@ import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { backfillOrgIds } from '@/lib/orgBackfill';
 import { backfillOrgSettings, isOrgSettingsCacheKey } from '@/lib/orgSettings';
 import { downloadExport, exportOrganisationData } from '@/lib/orgExport';
+import { copyHolidaysForward } from '@/data/holidayCopy';
 import { backfillEmployeeLinks, backfillManagerChains } from '@/lib/accessBackfill';
 import { useAuth } from '@/lib/auth';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
@@ -2632,6 +2633,8 @@ function HolidaysSection() {
   const save = useSaveIndicator();
   const holidayRevision = useHolidayDirectoryRevision();
   const [holidayRows, setHolidayRows] = useState<Holiday[]>(() => getHolidayDirectory());
+  const [copyOpen, setCopyOpen] = useState(false);
+  const copyForward = useMemo(() => copyHolidaysForward(holidayRows), [holidayRows]);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingHolidayId, setEditingHolidayId] = useState('');
@@ -2810,10 +2813,58 @@ function HolidaysSection() {
               <Badge tone="blue">Optional</Badge>
             </div>
           </div>
-          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Holiday</Button>
+          <div className="flex items-center gap-2">
+            {copyForward && copyForward.added.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => setCopyOpen(true)}>
+                Copy to {copyForward.toYear}
+              </Button>
+            )}
+            <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Holiday</Button>
+          </div>
         </div>
         <Table columns={cols} data={holidayRows} keyExtractor={(r) => r.id} />
       </Card>
+
+      <Modal
+        open={copyOpen && copyForward !== null}
+        onClose={() => setCopyOpen(false)}
+        title={copyForward ? `Copy ${copyForward.fromYear}'s holidays to ${copyForward.toYear}` : 'Copy holidays'}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCopyOpen(false)}>Cancel</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (!copyForward) return;
+                const updatedRows = [...holidayRows, ...copyForward.added].sort((a, b) => a.date.localeCompare(b.date));
+                setHolidayRows(updatedRows);
+                save.track(saveHolidayDirectory(updatedRows));
+                setCopyOpen(false);
+              }}
+            >
+              Add {copyForward?.added.length ?? 0} holidays
+            </Button>
+          </>
+        }
+      >
+        {copyForward && (
+          <div className="space-y-3 text-sm text-ink-700">
+            <p>
+              Each holiday is copied to the same day in {copyForward.toYear}. Fixed-date holidays (Republic Day,
+              Independence Day, Gandhi Jayanti, Christmas, May Day, New Year) are right as they are.
+            </p>
+            {copyForward.toCheck.length > 0 && (
+              <div>
+                <p className="font-semibold text-amber-800">These follow a lunar or regional calendar — edit each to its {copyForward.toYear} date after copying:</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {copyForward.toCheck.map((name) => <li key={name}>{name}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={addOpen}

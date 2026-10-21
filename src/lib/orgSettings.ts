@@ -122,7 +122,6 @@ export const ORG_SETTINGS = {
   weekOffRules: setting('weekOffRules', 'modcon.hr.weekOffRules', 'modcon-hr-week-off-changed'),
   // Specific dates HR has rostered one person off — see data/rosterDays.ts.
   rosteredDaysOff: setting('rosteredDaysOff', 'modcon.hr.rosteredDaysOff', 'modcon-hr-week-off-changed', true),
-  integrations: setting('integrations', 'modcon.hr.integrations', 'modcon-hr-integrations-changed'),
   notificationPreferences: setting('notificationPreferences', 'modcon.hr.notificationPreferences', 'modcon-hr-notification-preferences-changed'),
   // The matrix behind RequireModuleAccess. Server-side storage does not make it
   // an authorization boundary — the rules still decide, and `resolveAppRole`
