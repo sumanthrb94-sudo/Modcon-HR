@@ -558,11 +558,11 @@ export function LandingPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   {/* Full Name */}
                   <div>
-                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    <label htmlFor="demo-name" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                       Full Name *
                     </label>
                     <div className="relative">
-                      <input
+                      <input id="demo-name"
                         type="text"
                         required
                         value={fullName}
@@ -575,11 +575,11 @@ export function LandingPage() {
 
                   {/* Company Name */}
                   <div>
-                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    <label htmlFor="demo-company" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                       Company / Organization Name *
                     </label>
                     <div className="relative">
-                      <input
+                      <input id="demo-company"
                         type="text"
                         required
                         value={companyName}
@@ -592,11 +592,11 @@ export function LandingPage() {
 
                   {/* Work Email */}
                   <div>
-                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    <label htmlFor="demo-email" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                       Work Email Address *
                     </label>
                     <div className="relative">
-                      <input
+                      <input id="demo-email"
                         type="email"
                         required
                         value={workEmail}
@@ -609,11 +609,11 @@ export function LandingPage() {
 
                   {/* Phone / WhatsApp */}
                   <div>
-                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    <label htmlFor="demo-phone" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                       Phone / WhatsApp Number *
                     </label>
                     <div className="relative">
-                      <input
+                      <input id="demo-phone"
                         type="tel"
                         required
                         value={phone}
@@ -626,10 +626,10 @@ export function LandingPage() {
 
                   {/* Team Size */}
                   <div>
-                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    <label htmlFor="demo-team-size" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                       Estimated Team Headcount
                     </label>
-                    <select
+                    <select id="demo-team-size"
                       value={teamSize}
                       onChange={(e) => setTeamSize(e.target.value)}
                       className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
@@ -643,10 +643,10 @@ export function LandingPage() {
 
                   {/* Preferred Slot */}
                   <div>
-                    <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                    <label htmlFor="demo-slot" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                       Preferred Demo Time
                     </label>
-                    <select
+                    <select id="demo-slot"
                       value={preferredSlot}
                       onChange={(e) => setPreferredSlot(e.target.value)}
                       className="w-full px-3 py-2.5 text-xs border border-ink-300 bg-ink-50 focus:bg-white focus:outline-none focus:border-brand-600 font-sans"
@@ -661,10 +661,10 @@ export function LandingPage() {
 
                 {/* Specific Questions / Notes */}
                 <div>
-                  <label className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
+                  <label htmlFor="demo-message" className="block text-[11px] font-mono font-bold uppercase tracking-wider text-ink-700 mb-1">
                     Specific Requirements or Current System Challenges (Optional)
                   </label>
-                  <textarea
+                  <textarea id="demo-message"
                     rows={3}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
