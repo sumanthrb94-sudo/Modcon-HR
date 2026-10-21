@@ -107,7 +107,7 @@ import { getEntitlements } from '@/data/leaveEntitlements';
 import { getLeavePolicies, hasEmployeeLeavePolicy } from '@/data/leavePolicies';
 import { financialYearLabel } from '@/lib/financialYear';
 import { buildPayslipComponents, deductionRows, employerContributionRows } from '@/data/payroll';
-import { ExitCard, SalaryRevisionCard, TaxDeclarationCard } from './PayChangesCards';
+import { EmploymentHistoryCard, ExitCard, ProbationCard, SalaryRevisionCard, TaxDeclarationCard, probationEndsOn } from './PayChangesCards';
 import { useDashboardDataRevision } from '@/lib/useDashboardDataRevision';
 import { useSalaryStructureRevision } from '@/lib/useSalaryStructureRevision';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
@@ -674,6 +674,27 @@ export function EmployeesPage() {
           </>
         ) : undefined}
       />
+      {(isHR || isAdmin) && (() => {
+        // Probation that has run its course with nobody confirming it. It sat
+        // in Probation until somebody happened to notice.
+        const due = visibleEmployeeList.filter((e) => {
+          const ends = e.status === 'Probation' ? probationEndsOn(e) : null;
+          return ends !== null && ends <= todayIso();
+        });
+        if (due.length === 0) return null;
+        return (
+          <div className="bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+            <strong>{due.length} probation{due.length === 1 ? '' : 's'} to confirm:</strong>{' '}
+            {due.slice(0, 6).map((e, i) => (
+              <span key={e.id}>
+                {i > 0 ? ', ' : ''}
+                <Link className="underline" to={`/employees/${e.id}`}>{e.fullName}</Link>
+              </span>
+            ))}
+            {due.length > 6 ? ` and ${due.length - 6} more` : ''}. Confirm each from their Compensation tab.
+          </div>
+        );
+      })()}
 
       {/* Stat Cards */}
       <div className={`grid gap-4 ${isEmployeeSelfView ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
@@ -1676,7 +1697,9 @@ function CompensationTab({ emp }: { emp: Employee }) {
 
       {viewerIsOrgAdmin && (
         <>
+          <ProbationCard emp={emp} />
           <SalaryRevisionCard emp={emp} />
+          <EmploymentHistoryCard emp={emp} />
           <TaxDeclarationCard emp={emp} />
           <ExitCard emp={emp} />
         </>

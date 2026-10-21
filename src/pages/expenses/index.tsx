@@ -54,10 +54,11 @@ import { resolveAppRole } from '@/lib/accessControl';
 import { getCurrentEmployee } from '@/lib/currentEmployee';
 import { getApprovableEmployeeIds, getVisibleEmployeeIds } from '@/lib/dataScope';
 import { useEmployeeDirectoryRevision } from '@/lib/useEmployeeDirectoryRevision';
-import { Collections, patch, upsert } from '@/lib/db';
 import type { ExpenseClaim, ExpenseCategory, ExpenseStatus } from '@/types';
 import { currentMonthIso, todayIso } from '@/lib/today';
 import { CHART_AXIS, CHART_GRID, CHART_PRIMARY, CHART_SERIES, CHART_TICK_FILL, CHART_TOOLTIP_STYLE } from '@/lib/chartTheme';
+import { getPayAdjustments, savePayAdjustments } from '@/data/payAdjustments';
+import { runnableMonths } from '@/data/payRun';
 import { useCollectionRevision } from '@/lib/useCollectionRevision';
 
 // ---------------------------------------------------------------------------
@@ -431,10 +432,12 @@ interface ClaimDetailModalProps {
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onReimburse: (id: string) => void;
+  /** HR and Admin: pay an approved claim with the next salary. */
+  onPayWithSalary?: (id: string) => void;
   canManage?: boolean;
 }
 
-function ClaimDetailModal({ claim, onClose, onApprove, onReject, onReimburse, canManage = true }: ClaimDetailModalProps) {
+function ClaimDetailModal({ claim, onClose, onApprove, onReject, onReimburse, onPayWithSalary, canManage = true }: ClaimDetailModalProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   if (!claim) return null;
   const name = getEmployeeName(claim.employeeId);
@@ -486,6 +489,17 @@ function ClaimDetailModal({ claim, onClose, onApprove, onReject, onReimburse, ca
                   Reimburse
                 </Button>
               </div>
+            ) : canManage && claim.status === 'Approved' && onPayWithSalary ? (
+              <Button
+                variant="secondary"
+                icon={<Wallet size={16} />}
+                onClick={() => {
+                  onPayWithSalary(claim.id);
+                  onClose();
+                }}
+              >
+                Pay with next salary
+              </Button>
             ) : (
               <div />
             )}
@@ -695,12 +709,6 @@ export function ExpensesPage() {
     setActiveCategory('all');
     setSearch('');
     setSelectedClaim(claim);
-
-    try {
-      await upsert(Collections.expenses, claim.id, claim);
-    } catch (err) {
-      console.error('Failed to save expense claim to Firestore:', err);
-    }
   }
 
   async function handleSaveDraft(claim: ExpenseClaim) {
@@ -709,12 +717,6 @@ export function ExpensesPage() {
     setActiveTab('Draft');
     setActiveCategory('all');
     setSearch('');
-
-    try {
-      await upsert(Collections.expenses, claim.id, claim);
-    } catch (err) {
-      console.error('Failed to save draft expense claim to Firestore:', err);
-    }
   }
 
   async function handleApprove(id: string) {
@@ -722,12 +724,6 @@ export function ExpensesPage() {
     setClaims((prev) =>
       prev.map((c) => (c.id === id ? { ...c, status: 'Approved' as ExpenseStatus } : c)),
     );
-
-    try {
-      await patch(Collections.expenses, id, { status: 'Approved' });
-    } catch (err) {
-      console.error('Failed to approve expense claim in Firestore:', err);
-    }
   }
 
   async function handleReject(id: string) {
@@ -735,12 +731,29 @@ export function ExpensesPage() {
     setClaims((prev) =>
       prev.map((c) => (c.id === id ? { ...c, status: 'Rejected' as ExpenseStatus } : c)),
     );
+  }
 
-    try {
-      await patch(Collections.expenses, id, { status: 'Rejected' });
-    } catch (err) {
-      console.error('Failed to reject expense claim in Firestore:', err);
-    }
+  // Paid with the next salary rather than by some other route: a
+  // non-taxable one-off earning on the month payroll will run next (see
+  // data/payAdjustments.ts), and the claim is marked Reimbursed. HR and Admin
+  // only — the adjustments store is theirs in firestore.rules.
+  function handlePayWithSalary(id: string) {
+    const claim = claims.find((c) => c.id === id);
+    if (!claim) return;
+    const month = runnableMonths(todayIso())[0];
+    savePayAdjustments([
+      ...getPayAdjustments(),
+      {
+        id: `adj-exp-${claim.id}`,
+        employeeId: claim.employeeId,
+        month,
+        label: `Expense reimbursement — ${claim.title}`.slice(0, 80),
+        amount: claim.amount,
+        kind: 'earning',
+        taxable: false,
+      },
+    ]);
+    void handleReimburse(id);
   }
 
   async function handleReimburse(id: string) {
@@ -748,12 +761,6 @@ export function ExpensesPage() {
     setClaims((prev) =>
       prev.map((c) => (c.id === id ? { ...c, status: 'Reimbursed' as ExpenseStatus } : c)),
     );
-
-    try {
-      await patch(Collections.expenses, id, { status: 'Reimbursed' });
-    } catch (err) {
-      console.error('Failed to mark expense claim reimbursed in Firestore:', err);
-    }
   }
 
   // ----- Aggregates -----
@@ -1245,6 +1252,7 @@ export function ExpensesPage() {
         onApprove={handleApprove}
         onReject={handleReject}
         onReimburse={handleReimburse}
+        onPayWithSalary={role === 'Admin' || role === 'HR Manager' ? handlePayWithSalary : undefined}
         canManage={selectedClaim ? canDecide(selectedClaim) : false}
       />
     </div>

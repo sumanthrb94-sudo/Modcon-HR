@@ -1,4 +1,4 @@
-import type { Ticket, TicketStatus, TicketPriority } from '@/types';
+import type { TicketReply, Ticket, TicketStatus, TicketPriority } from '@/types';
 import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { persistentCollection } from '@/data/persistence';
 
@@ -229,3 +229,28 @@ const ticketStore = persistentCollection<Ticket>(
 export const TICKETS_CHANGED_EVENT = ticketStore.changedEvent;
 export const getTickets = () => ticketStore.get();
 export const saveTickets = (next: Ticket[]) => ticketStore.save(next);
+
+// ---- Replies ------------------------------------------------------------------
+// A ticket could be resolved but not answered: there was no reply at all, so
+// the conversation happened on WhatsApp and the module recorded only that it
+// closed. Replies are their own store, append-only, readable by the person who
+// raised the ticket, the line above them and HR, and written by HR or that
+// person (firestore.rules, ticketReplyWriteIsAuthorised).
+const replyStore = persistentCollection<TicketReply>(
+  'modcon.hr.ticketReplies',
+  'modcon-hr-ticket-replies-changed',
+  () => [],
+  'ticketReplies',
+  'self',
+);
+
+export const TICKET_REPLIES_CHANGED_EVENT = replyStore.changedEvent;
+
+export function getRepliesFor(ticketId: string): TicketReply[] {
+  return replyStore.get().filter((r) => r.ticketId === ticketId).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+export function addTicketReply(reply: Omit<TicketReply, 'id' | 'at'>): TicketReply[] {
+  const at = new Date().toISOString();
+  return replyStore.save([...replyStore.get(), { ...reply, id: `rep-${reply.ticketId}-${Date.now().toString(36)}`, at }]);
+}

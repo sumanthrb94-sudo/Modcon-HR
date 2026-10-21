@@ -139,6 +139,17 @@ export interface Employee {
    */
   salaryHistory?: SalaryRevision[];
   /**
+   * Every change of designation, department or location, appended by
+   * `updateEmployeeInDirectory` — so a year later somebody can say when a
+   * person became Senior Engineer or moved to Pune, which a relieving letter
+   * and a dispute both need. Absent on records older than it.
+   */
+  employmentHistory?: EmploymentChange[];
+  /** Months of probation from joining; absent means the organisation's default. */
+  probationMonths?: number;
+  /** The day probation ended in confirmation, YYYY-MM-DD. */
+  confirmedOn?: string;
+  /**
    * The last day they work here, once somebody has resigned or been let go.
    * Payroll pays their final month to this day and nobody after it.
    */
@@ -160,6 +171,17 @@ export interface SalaryRevision {
   /** When HR recorded it, YYYY-MM-DD. */
   readonly recordedOn: string;
   /** Who recorded it — the question a pay dispute asks first. Absent on older entries. */
+  readonly recordedBy?: string;
+}
+
+export interface EmploymentChange {
+  /** The day the change was recorded as taking effect, YYYY-MM-DD. */
+  readonly effectiveFrom: string;
+  readonly designation: string;
+  readonly department: string;
+  readonly location: string;
+  /** What it was before, so one entry reads without the rest. */
+  readonly previous: { readonly designation: string; readonly department: string; readonly location: string };
   readonly recordedBy?: string;
 }
 
@@ -550,6 +572,20 @@ export interface Ticket {
   priority: TicketPriority;
   createdOn: string;
   assignedTo: string;
+}
+
+/** One message on a ticket after the request itself — append-only. */
+export interface TicketReply {
+  id: ID;
+  ticketId: ID;
+  /** Who raised the ticket — the record's subject, for who may read it. */
+  employeeId: ID;
+  author: string;
+  /** HR answering, or the person who raised it. */
+  side: 'hr' | 'raiser';
+  /** ISO instant. */
+  at: string;
+  text: string;
 }
 
 // ---- Announcements / common ----------------------------------------------

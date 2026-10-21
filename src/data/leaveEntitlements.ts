@@ -33,6 +33,8 @@ import { accrualMonthsElapsed, financialYearEnd, financialYearOf, financialYearS
 import { todayIso } from '@/lib/today';
 import { openingCarriedFor, openingFinancialYear, openingLeaveTakenFor } from './openingLeave';
 import { carriedInto } from './leaveCarry';
+import { compOffDaysGranted } from './compOffRules';
+import { getCompOffCredits } from './compOff';
 import { getGoLiveDate } from './goLive';
 
 /**
@@ -255,7 +257,13 @@ export function getApplicableEntitlements(
     .filter((policy) => appliesToEmployee(policy, employee.gender))
     .map((policy) => {
       const type = normalizeLeaveTypeValue(policy.type);
-      const { granted, withheldReason } = grantedDays(policy, employee, asOf);
+      const accrued = grantedDays(policy, employee, asOf);
+      const withheldReason = accrued.withheldReason;
+      // Comp Off is earned, not accrued: approved days worked on a day off,
+      // within this financial year and not yet expired (data/compOffRules.ts).
+      const granted = accrued.granted + (type === 'Comp Off'
+        ? compOffDaysGranted(getCompOffCredits(), employee.id, asOf, financialYearStart(asOf))
+        : 0);
       // Leave taken this year before the organisation started using this app
       // counts as used like any approved here — see data/openingLeave.ts.
       const used = daysAtStatus(employee.id, type, 'Approved', requests, asOf) + openingLeaveTakenFor(employee.id, type, asOf);

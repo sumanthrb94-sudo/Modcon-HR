@@ -551,3 +551,83 @@ export function ExitCard({ emp }: { emp: Employee }) {
     </Card>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Probation and employment history
+// ---------------------------------------------------------------------------
+
+/** Used when neither the person nor the organisation says otherwise. */
+export const DEFAULT_PROBATION_MONTHS = 6;
+
+/** The day probation ends for somebody, or null without a joining date. */
+export function probationEndsOn(emp: Pick<Employee, 'dateOfJoining' | 'probationMonths'>): string | null {
+  if (!emp.dateOfJoining) return null;
+  const d = new Date(`${emp.dateOfJoining.slice(0, 10)}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + (emp.probationMonths ?? DEFAULT_PROBATION_MONTHS));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Confirming somebody out of probation. Every hire sat in Probation until
+ * somebody remembered to change a dropdown, with no date on record of when
+ * they were confirmed — which notice periods and leave eligibility turn on.
+ */
+export function ProbationCard({ emp }: { emp: Employee }) {
+  const [months, setMonths] = useState(String(emp.probationMonths ?? DEFAULT_PROBATION_MONTHS));
+  if (emp.status !== 'Probation' && !emp.confirmedOn) return null;
+  const ends = probationEndsOn(emp);
+  const due = ends !== null && ends <= todayIso();
+  return (
+    <Card>
+      <CardHeader title="Probation" subtitle={emp.confirmedOn ? `Confirmed on ${formatDate(emp.confirmedOn)}` : 'Not yet confirmed'} />
+      {emp.status === 'Probation' && (
+        <div className="space-y-3 text-sm">
+          <p className={due ? 'text-amber-800' : 'text-ink-600'}>
+            {ends ? `${due ? 'Ended' : 'Ends'} on ${formatDate(ends)} — ${emp.probationMonths ?? DEFAULT_PROBATION_MONTHS} months from joining.` : 'No joining date on record.'}
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="label" htmlFor="probation-months">Probation (months)</label>
+              <input id="probation-months" className="input w-24" inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                const n = Math.round(Number(months));
+                if (Number.isFinite(n) && n >= 0 && n <= 24) updateEmployeeInDirectory({ ...emp, probationMonths: n });
+              }}
+            >
+              Save period
+            </Button>
+            <Button size="sm" onClick={() => updateEmployeeInDirectory({ ...emp, status: 'Active', confirmedOn: todayIso() })}>
+              Confirm employment
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** When somebody's title, department or office changed. */
+export function EmploymentHistoryCard({ emp }: { emp: Employee }) {
+  const history = [...(emp.employmentHistory ?? [])].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  if (history.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader title="Role history" subtitle="Designation, department and location changes" />
+      <ul className="divide-y divide-ink-100 text-sm">
+        {history.map((h, i) => (
+          <li key={`${h.effectiveFrom}-${i}`} className="py-2">
+            <span className="font-semibold text-ink-900">{h.designation}</span>
+            <span className="text-ink-500"> · {h.department} · {h.location}</span>
+            <span className="block text-xs text-ink-500">
+              From {formatDate(h.effectiveFrom)}; was {h.previous.designation}, {h.previous.department}, {h.previous.location}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}

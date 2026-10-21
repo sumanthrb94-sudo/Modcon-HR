@@ -1271,7 +1271,8 @@ service cloud.firestore {
         regularizationDecisionIsAuthorised() &&
         payrollWriteIsAuthorised() &&
         adminStoreWriteIsAuthorised() &&
-        performanceWriteIsAuthorised();
+        performanceWriteIsAuthorised() &&
+        ticketReplyWriteIsAuthorised();
       // Removal is a tombstone written through the same path, not a delete —
       // `get()` merges the seed back otherwise. A hard delete is an
       // administrator clearing data, which is what this allows.
@@ -1639,9 +1640,20 @@ service cloud.firestore {
       let line = resource != null && resource.data.get('data', '') != ''
         ? resource.data.get('readableBy', [])
         : request.resource.data.get('readableBy', []);
-      return !(request.resource.data.store in ['goals', 'performanceReviews']) ||
+      return !(request.resource.data.store in ['goals', 'performanceReviews', 'compOffCredits']) ||
         isOrgAdmin() ||
         (isManager() && !isSelf(subject) && myEmployeeId() != null && myEmployeeId() in line);
+    }
+
+    /**
+     * A ticket reply is added, never changed or removed, by HR or by the
+     * person who raised the ticket (its lifted employeeId). A conversation
+     * people rely on is not one where earlier turns change under later ones.
+     */
+    function ticketReplyWriteIsAuthorised() {
+      return request.resource.data.store != 'ticketReplies' ||
+        (resource == null && !isTombstone() &&
+          (isOrgAdmin() || isSelf(request.resource.data.get('employeeId', ''))));
     }
 
     function payrollWriteIsAuthorised() {
@@ -1693,7 +1705,7 @@ service cloud.firestore {
       let store = resource.data.get('store', '');
       return store in ['payrollRuns', 'payAdjustments', 'candidates']
         ? isOrgAdmin()
-        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords', 'goals', 'performanceReviews']) || recordIsMineToRead());
+        : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords', 'goals', 'performanceReviews', 'compOffCredits', 'ticketReplies']) || recordIsMineToRead());
     }
 
     /**

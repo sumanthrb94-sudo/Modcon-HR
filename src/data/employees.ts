@@ -7,6 +7,7 @@ import { isMockDataCleared } from '@/lib/mockDataFlag';
 import { orgScopedKey } from '@/lib/orgScope';
 import { mergeLocations, LOCATION_DIRECTORY_CHANGED_EVENT } from '@/data/locations';
 import { persistentCollection } from '@/data/persistence';
+import { todayIso } from '@/lib/today';
 
 // ---------------------------------------------------------------------------
 // Master employee directory — the single source of truth for people data.
@@ -376,9 +377,30 @@ export function updateEmployeeInDirectory(employee: Employee) {
   // An edit form has no reason to know about the auth link, so carry it over
   // rather than letting a payload built from form fields drop it.
   const existing = getEmployeeDirectory().find((item) => item.id === employee.id);
-  const record: Employee = !employee.authUid && existing?.authUid
+  let record: Employee = !employee.authUid && existing?.authUid
     ? { ...employee, authUid: existing.authUid }
     : employee;
+  // A promotion, a transfer or a move is history, not an overwrite: the
+  // record kept only the latest title, so nobody could say when it changed.
+  if (
+    existing &&
+    (existing.designation !== record.designation || existing.department !== record.department || existing.location !== record.location)
+  ) {
+    const history = record.employmentHistory ?? existing.employmentHistory ?? [];
+    record = {
+      ...record,
+      employmentHistory: [
+        ...history,
+        {
+          effectiveFrom: todayIso(),
+          designation: record.designation,
+          department: record.department,
+          location: record.location,
+          previous: { designation: existing.designation, department: existing.department, location: existing.location },
+        },
+      ],
+    };
+  }
 
   directoryStore.update((current) => [record, ...current.filter((item) => item.id !== employee.id)]);
   syncDirectorySnapshots();

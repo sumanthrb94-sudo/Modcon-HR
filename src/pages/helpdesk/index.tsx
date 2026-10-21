@@ -22,7 +22,7 @@ import {
   SearchInput,
   Select,
 } from '@/components/ui';
-import { tickets as initialTickets, ticketCategories, getTickets, saveTickets, TICKETS_CHANGED_EVENT } from '@/data/helpdesk';
+import { tickets as initialTickets, ticketCategories, getTickets, saveTickets, TICKETS_CHANGED_EVENT, getRepliesFor, addTicketReply, TICKET_REPLIES_CHANGED_EVENT } from '@/data/helpdesk';
 import { getEmployeeDirectory, getEmployeeName } from '@/data/employees';
 import { useAuth } from '@/lib/auth';
 import { newRecordId, nextCodeNumber } from '@/lib/ids';
@@ -68,12 +68,13 @@ interface ConvoMessage {
 const UNASSIGNED_TICKET_OWNER = 'Unassigned';
 
 /**
- * What was actually said on a ticket: the request itself.
+ * What was actually said on a ticket: the request, then the replies people
+ * wrote.
  *
  * This used to append two replies from "Support" that nobody wrote — an
  * acknowledgement fifteen minutes in and a "this has been resolved" two hours
- * later — so a ticket read as answered when nobody had looked at it. There is
- * no reply feature yet, so the thread is the request and nothing else.
+ * later — so a ticket read as answered when nobody had looked at it. Every
+ * message here now has an author who wrote it.
  */
 function ticketThread(ticket: Ticket): ConvoMessage[] {
   return [
@@ -83,6 +84,7 @@ function ticketThread(ticket: Ticket): ConvoMessage[] {
       text: ticket.subject,
       time: ticket.createdOn,
     },
+    ...getRepliesFor(ticket.id).map((r) => ({ author: r.author, isAgent: r.side === 'hr', text: r.text, time: r.at })),
   ];
 }
 
@@ -95,11 +97,15 @@ interface TicketDetailProps {
   onClose: () => void;
   onStatusChange: (id: string, status: TicketStatus) => void;
   canManage?: boolean;
+  /** Who is replying, when this account may reply — HR, or whoever raised it. */
+  replyAs?: { author: string; side: 'hr' | 'raiser' } | null;
 }
 
-function TicketDetailModal({ ticket, onClose, onStatusChange, canManage = true }: TicketDetailProps) {
+function TicketDetailModal({ ticket, onClose, onStatusChange, canManage = true, replyAs = null }: TicketDetailProps) {
   const [newStatus, setNewStatus] = useState<TicketStatus>(ticket.status);
-  const convo = useMemo(() => ticketThread(ticket), [ticket]);
+  const repliesRevision = useCollectionRevision(TICKET_REPLIES_CHANGED_EVENT);
+  const convo = useMemo(() => ticketThread(ticket), [ticket, repliesRevision]);
+  const [replyText, setReplyText] = useState('');
   const raiserName = getEmployeeName(ticket.raisedById);
 
   const statusOptions: { label: string; value: string }[] = [
@@ -185,6 +191,28 @@ function TicketDetailModal({ ticket, onClose, onStatusChange, canManage = true }
             ))}
           </div>
         </div>
+
+        {replyAs && ticket.status !== 'Closed' && (
+          <div className="flex gap-2">
+            <textarea
+              className="input min-h-[60px] flex-1"
+              placeholder={replyAs.side === 'hr' ? 'Reply to the person who raised this…' : 'Add to your request…'}
+              value={replyText}
+              maxLength={2000}
+              onChange={(e) => setReplyText(e.target.value)}
+              aria-label="Reply"
+            />
+            <Button
+              disabled={!replyText.trim()}
+              onClick={() => {
+                addTicketReply({ ticketId: ticket.id, employeeId: ticket.raisedById, author: replyAs.author, side: replyAs.side, text: replyText.trim() });
+                setReplyText('');
+              }}
+            >
+              Send
+            </Button>
+          </div>
+        )}
 
         {/* Status change */}
         {canManage ? (
@@ -600,6 +628,13 @@ export function HelpdeskPage() {
           onClose={() => setSelectedTicket(null)}
           onStatusChange={handleStatusChange}
           canManage={canManageTickets}
+          replyAs={
+            canManageTickets
+              ? { author: currentEmployee?.fullName ?? profile?.displayName ?? 'HR', side: 'hr' }
+              : currentEmployee && selectedTicket.raisedById === currentEmployee.id
+                ? { author: currentEmployee.fullName, side: 'raiser' }
+                : null
+          }
         />
       )}
     </div>
