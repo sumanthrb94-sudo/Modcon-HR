@@ -24,6 +24,7 @@ import {
   epfContribution,
   esiContribution,
   establishmentAdminCharge,
+  isEpsMember,
   esiContributionPeriod,
   gratuity,
   monthlyTds,
@@ -125,12 +126,15 @@ test('a member\'s admin charge is the percentage, with no floor', () => {
 test('the floor is the establishment\'s, charged once', () => {
   // Three members at ₹25 each is ₹75 of percentage — but so is one member at
   // ₹25, and that one still owes the floor.
-  assert.equal(establishmentAdminCharge([25]), 75);
-  assert.equal(establishmentAdminCharge([25, 25, 25]), 75);
-  assert.equal(establishmentAdminCharge([200, 75, 75]), 350);
+  // EPFO's floor is ₹500 for an establishment with contributing members.
+  assert.equal(establishmentAdminCharge([25]), 500);
+  assert.equal(establishmentAdminCharge([25, 25, 25]), 500);
+  assert.equal(establishmentAdminCharge([200, 75, 75]), 500);
+  assert.equal(establishmentAdminCharge([300, 300]), 600);
   // An establishment with nobody contributing files nothing and owes nothing.
   assert.equal(establishmentAdminCharge([]), 0);
-  assert.equal(establishmentAdminCharge([0, 0]), 0);
+  // Members on the roll, none contributing: the non-functional ₹75.
+  assert.equal(establishmentAdminCharge([0, 0]), 75);
 });
 
 test('an unpaid month costs the employer nothing at all', () => {
@@ -258,14 +262,32 @@ test('a salary inside the rebate ceiling pays nothing under the new regime', () 
   assert.equal(tax.annualTax, 0);
 });
 
-test('a rupee over the rebate ceiling is a cliff, and that cliff is the law\'s', () => {
-  const over = annualIncomeTax({ grossSalary: 1275100, regime: 'new' });
-  // Taxable 12,00,100 — over the ceiling, so no rebate at all.
-  assert.equal(over.rebate, 0);
-  assert.ok(over.annualTax > 60000, `expected a full liability, got ${over.annualTax}`);
-  // Asserted deliberately: modelling §87A as a zero band instead of a rebate
-  // would make this figure a few rupees rather than sixty-odd thousand, and
-  // the difference lands on one employee's payslip.
+test('just over the rebate ceiling, marginal relief caps tax at the excess income', () => {
+  // Taxable 12,25,000 (gross 13,00,000 less 75,000). Slab tax is 63,750, but
+  // under the new regime tax may not exceed the income above 12,00,000:
+  // 25,000, plus 4% cess = 26,000. The earlier version of this test asserted
+  // the full 66,300 and called the cliff the law's; it is not.
+  const tax = annualIncomeTax({ grossSalary: 1300000, regime: 'new' });
+  assert.equal(tax.taxableIncome, 1225000);
+  assert.equal(tax.slabTax, 63750);
+  assert.equal(tax.rebate, 38750);
+  assert.equal(tax.annualTax, 26000);
+
+  // A rupee over: tax of a rupee (plus cess rounding), not sixty thousand.
+  const rupeeOver = annualIncomeTax({ grossSalary: 1275001, regime: 'new' });
+  assert.equal(rupeeOver.annualTax, 1);
+});
+
+test('the relief runs out where slab tax drops below the excess', () => {
+  // Taxable 13,00,000: slab tax 75,000 vs excess 1,00,000 — no relief.
+  const tax = annualIncomeTax({ grossSalary: 1375000, regime: 'new' });
+  assert.equal(tax.rebate, 0);
+  assert.equal(tax.annualTax, 78000);
+});
+
+test('the old regime has no marginal relief', () => {
+  const tax = annualIncomeTax({ grossSalary: 560000, regime: 'old' });
+  assert.equal(tax.rebate, 0);
 });
 
 test('cess is charged on the tax, not on the income', () => {
@@ -520,4 +542,25 @@ test('with no scheme registered, gross is the CTC untouched', () => {
   assert.equal(resolved.grossEarnings, 50000);
   assert.equal(resolved.employerCost, 0);
   // The point of the whole design: switching nothing on changes nothing.
+});
+
+test('EPS: post-2014 joiners above the ceiling and anyone past 58 are not members', () => {
+  assert.equal(isEpsMember({ dateOfJoining: '2020-06-01', pfWagesAtJoining: 20000, month: '2026-10' }), false);
+  assert.equal(isEpsMember({ dateOfJoining: '2020-06-01', pfWagesAtJoining: 15000, month: '2026-10' }), true);
+  assert.equal(isEpsMember({ dateOfJoining: '2012-06-01', pfWagesAtJoining: 40000, month: '2026-10' }), true);
+  assert.equal(isEpsMember({ dateOfJoining: '2012-06-01', dateOfBirth: '1968-03-10', pfWagesAtJoining: 9000, month: '2026-10' }), false);
+  assert.equal(isEpsMember({ dateOfJoining: '2020-06-01', pfWagesAtJoining: 20000, month: '2026-10', override: true }), true);
+});
+
+test('a non-member’s employer share goes wholly to EPF', () => {
+  const epf = epfContribution(40000, REGISTERED, undefined, { epsMember: false })!;
+  assert.equal(epf.employerPension, 0);
+  assert.equal(epf.employerProvidentFund, epf.employerTotal);
+});
+
+test('Maharashtra does not levy professional tax on women up to ₹25,000', () => {
+  const mh = REFERENCE_PROFESSIONAL_TAX.find((s) => s.state === 'Maharashtra')!;
+  assert.equal(professionalTax(20000, mh, '2026-10', { gender: 'Female' }), 0);
+  assert.equal(professionalTax(20000, mh, '2026-10', { gender: 'Male' }), 200);
+  assert.equal(professionalTax(30000, mh, '2026-10', { gender: 'Female' }), 200);
 });

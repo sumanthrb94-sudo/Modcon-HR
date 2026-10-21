@@ -489,10 +489,12 @@ export default function StatutorySection() {
               {INDIA_STATUTORY_RATES.incomeTax.cessPercent}% cess and surcharge above ₹50,00,000.
             </RateNote>
             <p className="text-xs text-ink-500 mt-2 leading-relaxed">
-              The month&rsquo;s deduction is projected from the month&rsquo;s gross annualised — the
-              only estimate an employer can make in April — and corrects itself as soon as the
-              figure moves, because what has already been withheld is credited against the rest of
-              the year. Investment declarations are recorded per employee and only apply under the
+              The year is built month by month from what was actually paid and withheld: months
+              payroll paid here from their payslips, months before it at the monthly rate with the
+              tax HR records for them on the employee&rsquo;s Compensation tab, and the months left
+              until the year ends or their last working day. The liability less what is already
+              withheld is spread over those remaining months, so a leaver&rsquo;s last payslip trues
+              the year up. §87A marginal relief is applied just above ₹12,00,000. Investment declarations are recorded per employee and only apply under the
               old regime; allowing them under the new one would under-deduct all year and land as a
               demand on the employee.
             </p>
@@ -517,10 +519,37 @@ export default function StatutorySection() {
               provident fund and gratuity are owed on at least 50% however the structure is drawn.
               Settings → Salary Structure accepts any Basic percentage, so without this check an
               organisation can configure itself into under-contributing and no surface says so.
-              It is reported and never applied: recomputing everybody&rsquo;s PF on a figure the
-              company did not agree to is not this app&rsquo;s decision to make.
+              The Labour Codes have been in force since 21 November 2025, so a shortfall is an
+              under-contribution, not a style point.
             </p>
           </Row>
+          <Row label="Contributing">
+            <Toggle
+              on={draft.contributeOnWageFloor === true}
+              label="Deduct and contribute PF on the floor where Basic is below it"
+              onChange={(contributeOnWageFloor) => patch({ contributeOnWageFloor })}
+            />
+            <p className="text-xs text-ink-500 mt-2 leading-relaxed">
+              Off, the shortfall is reported on each payslip and PF stays on Basic. On, PF is
+              computed on the higher of Basic and the floor, which raises both the employee&rsquo;s
+              deduction and the employer&rsquo;s contribution — the company&rsquo;s choice to make,
+              which is why it is not on by itself. Restructuring Basic in Settings → Salary
+              Structure is the other way to comply.
+            </p>
+          </Row>
+        </Card>
+
+        {/* ---- Not computed ------------------------------------------------ */}
+        <Card>
+          <h3 className="font-semibold text-ink-900">Not computed here</h3>
+          <p className="text-sm text-ink-600 leading-relaxed">
+            <strong>Statutory bonus</strong> (Payment of Bonus Act — 8.33% to 20% for people earning
+            up to ₹21,000, for establishments of 20 or more) and <strong>Labour Welfare Fund</strong>
+            {' '}(state-specific, half-yearly or annual) are not calculated, deducted or filed by this
+            app. If either applies to you, run it outside payroll and file it yourself. The income-tax
+            rates shown are for FY 2025-26 and were last checked against the Finance Act in September
+            2026; confirm the FY 2026-27 rates with your accountant before relying on them.
+          </p>
         </Card>
       </div>
 

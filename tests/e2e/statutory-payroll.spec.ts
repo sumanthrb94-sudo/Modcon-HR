@@ -188,7 +188,10 @@ test.describe.serial('statutory payroll', () => {
     // ...and the employer's is shown separately, because it is not a deduction.
     // Listed together, a payslip appears to take twice what it does.
     await expect(page.getByText('Paid by the employer')).toBeVisible();
-    await expect(page.getByText('Pension (EPS)')).toBeVisible();
+    // The employer's provident-fund share, whoever the employee is. Pension
+    // (EPS) is not asserted: whether there is one depends on whether this
+    // person is an EPS member (post-2014 joiners above ₹15,000 are not).
+    await expect(page.getByText('Provident Fund (employer)')).toBeVisible();
   });
 
   test('withdrawing the declaration withholds nothing again', async () => {

@@ -11,7 +11,8 @@ import { getLeaveRequests } from '@/data/leave';
 import { normalizeLeaveTypeValue } from '@/data/leavePolicies';
 import { combineLossOfPay, lossOfPayArrears, unpaidLeaveByDate, type LopArrear, type PaidMonth } from '@/data/lossOfPay';
 import { getSalaryStructureFor, splitMonthlyGross } from '@/data/salaryStructure';
-import { employedDaysInMonth, monthlyCtcFor, salaryArrears, type PaidMonthBasis, type SalaryArrear } from '@/data/payChanges';
+import { ctcOn, employedDaysInMonth, monthlyCtcFor, salaryArrears, type PaidMonthBasis, type SalaryArrear } from '@/data/payChanges';
+import { projectTaxYear, type PaidMonth as TaxPaidMonth } from '@/data/tdsProjection';
 import {
   getTaxElectionFor,
   professionalTaxScheduleForLocation,
@@ -22,8 +23,8 @@ import {
   annualIncomeTax,
   epfContribution,
   esiContribution,
+  isEpsMember,
   monthlyTds,
-  monthsLeftInFinancialYear,
   professionalTax,
   resolveMonthlyGross,
   wageFloorFinding,
@@ -239,6 +240,20 @@ function paidBasesFor(employeeId: string): PaidMonthBasis[] {
   return out;
 }
 
+/** Each month already paid, as the TDS projection needs it: gross paid and tax withheld. */
+function taxPaidMonthsFor(employeeId: string): Map<string, TaxPaidMonth> {
+  const out = new Map<string, TaxPaidMonth>();
+  for (const payslip of storedPayslips()) {
+    if (payslip.employeeId !== employeeId || out.has(payslip.month)) continue;
+    const arrears = (payslip.salaryArrears ?? []).reduce((sum, a) => sum + a.amount, 0);
+    // Loss of pay is not income. Priced per day as the payslip priced it.
+    const days = payslip.employedDays ?? daysInMonth(payslip.month);
+    const lop = days > 0 ? Math.round((payslip.grossEarnings / days) * (payslip.lopDays ?? 0)) : 0;
+    out.set(payslip.month, { gross: Math.max(0, payslip.grossEarnings - lop) + arrears, tax: payslip.tax });
+  }
+  return out;
+}
+
 function paidMonthsFor(employeeId: string): PaidMonth[] {
   const seen = new Set<string>();
   const paid: PaidMonth[] = [];
@@ -323,6 +338,32 @@ export function buildPayslipComponents(
   // unconfigured organisation still pays its people.
   const grossEarnings = earned + bonus;
 
+  // Loss of pay and arrears come first now, because the statutory heads are
+  // computed on what is actually paid: PF and ESI were levied on wages for
+  // days the person was not paid, and arrears reached net pay without PF or
+  // TDS ever seeing them.
+  const lopDays = lossOfPayDays(employee.id, month, employee);
+  // Priced on the full month's rate per day, so a part-month's absences cost
+  // the same per day as a whole month's.
+  const lossOfPay = Math.round((monthly / payableDays) * lopDays);
+
+  const lopArrears = lossOfPayArrears(
+    month,
+    paidMonthsFor(employee.id),
+    (earlier) => lossOfPayDays(employee.id, earlier, employee),
+  );
+  const lopArrearsAmount = lopArrears.reduce((sum, arrear) => sum + arrear.amount, 0);
+
+  // Each earlier month is recomputed for its own gross only, never for its
+  // own arrears, so this does not recurse back through every month before it.
+  const arrears = withSalaryArrears
+    ? salaryArrears(month, paidBasesFor(employee.id), (earlier) => {
+      const c = buildPayslipComponents(employee, earlier, false);
+      return { ctcBasis: c.ctcBasis, grossEarnings: c.grossEarnings };
+    })
+    : [];
+  const salaryArrearsAmount = arrears.reduce((sum, arrear) => sum + arrear.amount, 0);
+
   // ---- Statutory ----------------------------------------------------------
   //
   // Each of these is null unless the organisation declared the registration,
@@ -330,22 +371,58 @@ export function buildPayslipComponents(
   // ESI and professional tax on the month's gross, TDS on the projected year.
   // Computing them all from one figure is the mistake worth naming — PF on
   // gross would roughly double every deduction in the country.
-  const epf = election.pfExempt ? null : epfContribution(basic, config);
-  const esi = esiContribution(grossEarnings, config, esiOptions);
+  //
+  // "Paid" is this month's earnings less loss of pay and loss-of-pay arrears,
+  // plus salary arrears; the Basic in it is taken in the same proportion.
+  const unpaid = lossOfPay + lopArrearsAmount;
+  const paidShare = grossEarnings > 0 ? Math.max(0, grossEarnings - unpaid) / grossEarnings : 0;
+  const paidThisMonth = Math.max(0, grossEarnings - unpaid) + salaryArrearsAmount;
+  const arrearsBasic = salaryArrearsAmount > 0 ? (splitMonthlyGross(salaryArrearsAmount, structure)?.basic ?? 0) : 0;
+  const basicPaid = Math.round(basic * paidShare) + arrearsBasic;
+
+  // A finding unless the organisation chose to contribute on it — see the note
+  // on `StatutoryBreakdown.wageFloor` and `contributeOnWageFloor`.
+  const wageFloor = config.enforceWageFloor && split
+    ? wageFloorFinding({ wages: basic, totalRemuneration: grossEarnings })
+    : null;
+  const floorUplift = config.contributeOnWageFloor && wageFloor && !wageFloor.compliant
+    ? Math.round(wageFloor.shortfall * paidShare)
+    : 0;
+
+  const epsMember = isEpsMember({
+    dateOfJoining: employee.dateOfJoining,
+    dateOfBirth: employee.dateOfBirth,
+    pfWagesAtJoining: employee.dateOfJoining
+      ? basicOf(Math.round(ctcOn(employee.dateOfJoining.slice(0, 10), employee.ctc, employee.salaryHistory) / 12))
+      : basic,
+    month,
+    override: election.epsMember,
+  });
+  const epf = election.pfExempt ? null : epfContribution(basicPaid + floorUplift, config, undefined, { epsMember });
+  // Whether somebody is covered is decided on their wage *rate*, not on a
+  // part month: a joiner on the 16th at ₹30,000 is not an insured person for
+  // a fortnight because they earned ₹15,000 of it. Contributions are then on
+  // what was paid.
+  const esiCovered = esiContribution(monthly, config, esiOptions)?.covered;
+  const esi = esiContribution(paidThisMonth, config, { ...esiOptions, coveredOverride: esiCovered });
 
   const ptSchedule = professionalTaxScheduleForLocation(employee.location, config);
-  const ptAmount = professionalTax(grossEarnings, ptSchedule, month);
+  const ptAmount = professionalTax(grossEarnings, ptSchedule, month, { gender: employee.gender });
 
-  // TDS is a year's liability spread over the months that remain, so it needs a
-  // projection of the year rather than this month alone. The projection is this
-  // month's gross annualised: the honest estimate an employer can make in
-  // month one, and it self-corrects, because `taxDeductedSoFar` credits what
-  // has already been withheld against the rest of the year the moment the
-  // figure moves.
-  const monthsRemaining = monthsLeftInFinancialYear(month);
-  // The full monthly rate, not a joiner's part-month: their year is projected
-  // on what they will earn, not on the fortnight they happened to start with.
-  const projectedAnnualSalary = monthly * 12;
+  // TDS is the year's liability, less what is already withheld, over the
+  // months that remain — with the year built from what was actually paid and
+  // withheld, month by month. See data/tdsProjection.ts.
+  const { monthsRemaining, projectedAnnualSalary, alreadyDeducted } = projectTaxYear({
+    month,
+    currentGross: paidThisMonth,
+    monthlyRate: monthly,
+    employedShare: (m) => {
+      const d = employedDaysInMonth(m, employee.dateOfJoining, employee.lastWorkingDay);
+      return d.payableDays > 0 ? d.employedDays / d.payableDays : 0;
+    },
+    paid: taxPaidMonthsFor(employee.id),
+    taxDeductedOutside: election.taxDeductedSoFar ?? 0,
+  });
   const assessment = config.incomeTax.enabled
     ? annualIncomeTax({
       grossSalary: projectedAnnualSalary,
@@ -353,14 +430,8 @@ export function buildPayslipComponents(
       otherDeductions: election.declaredDeductions ?? 0,
     })
     : null;
-  const alreadyDeducted = election.taxDeductedSoFar ?? 0;
   const tds = assessment
     ? monthlyTds({ annualTax: assessment.annualTax, monthsRemaining, alreadyDeducted })
-    : null;
-
-  // A finding, not a correction — see the note on `StatutoryBreakdown.wageFloor`.
-  const wageFloor = config.enforceWageFloor && split
-    ? wageFloorFinding({ wages: basic, totalRemuneration: grossEarnings })
     : null;
 
   const pf = epf?.employee ?? 0;
@@ -394,28 +465,6 @@ export function buildPayslipComponents(
         wageFloor,
       }
       : null;
-
-  const lopDays = lossOfPayDays(employee.id, month, employee);
-  // Priced on the full month's rate per day, so a part-month's absences cost
-  // the same per day as a whole month's.
-  const lossOfPay = Math.round((monthly / payableDays) * lopDays);
-
-  const lopArrears = lossOfPayArrears(
-    month,
-    paidMonthsFor(employee.id),
-    (earlier) => lossOfPayDays(employee.id, earlier, employee),
-  );
-  const lopArrearsAmount = lopArrears.reduce((sum, arrear) => sum + arrear.amount, 0);
-
-  // Each earlier month is recomputed for its own gross only, never for its
-  // own arrears, so this does not recurse back through every month before it.
-  const arrears = withSalaryArrears
-    ? salaryArrears(month, paidBasesFor(employee.id), (earlier) => {
-      const c = buildPayslipComponents(employee, earlier, false);
-      return { ctcBasis: c.ctcBasis, grossEarnings: c.grossEarnings };
-    })
-    : [];
-  const salaryArrearsAmount = arrears.reduce((sum, arrear) => sum + arrear.amount, 0);
 
   const totalDeductions = lossOfPay + lopArrearsAmount + pf + tax + otherDeductions;
   const netPay = grossEarnings + salaryArrearsAmount - totalDeductions;
@@ -463,6 +512,22 @@ export function buildPayslip(employee: Employee, month = currentMonthIso(), stat
     ...(c.employedDays < c.payableDays ? { employedDays: c.employedDays } : {}),
     ...(c.salaryArrears.length > 0
       ? { salaryArrears: c.salaryArrears.map(({ month: m, amount }) => ({ month: m, amount })) }
+      : {}),
+    ...(c.statutory
+      ? {
+        statutoryPaid: {
+          pfWages: c.statutory.epf?.pfWages ?? 0,
+          epsWages: c.statutory.epf && c.statutory.epf.employerPension > 0 ? Math.min(c.statutory.epf.pfWages, 15000) : 0,
+          epf: c.statutory.epf?.employee ?? 0,
+          eps: c.statutory.epf?.employerPension ?? 0,
+          epfEpsDifference: c.statutory.epf?.employerProvidentFund ?? 0,
+          edli: c.statutory.epf?.edli ?? 0,
+          esiEmployee: c.statutory.esi?.employee ?? 0,
+          esiEmployer: c.statutory.esi?.employer ?? 0,
+          professionalTax: c.statutory.professionalTax?.amount ?? 0,
+          ncpDays: Math.round(c.lopDays),
+        },
+      }
       : {}),
     grossEarnings: c.grossEarnings,
     totalDeductions: c.totalDeductions,
@@ -764,7 +829,14 @@ export function storedDeductionRows(payslip: Payslip): Array<{ label: string; va
           .join(', '),
       });
     }
-    rows.push({ label: 'ESI & Professional Tax', value: payslip.otherDeductions - lossOfPay - arrears });
+    if (payslip.statutoryPaid) {
+      // Recorded separately since payslips carry their statutory heads; an
+      // employee needs PT and ESI apart for their return and a PT grievance.
+      rows.push({ label: 'Employees’ State Insurance', value: payslip.statutoryPaid.esiEmployee });
+      rows.push({ label: 'Professional Tax', value: payslip.statutoryPaid.professionalTax });
+    } else {
+      rows.push({ label: 'ESI & Professional Tax', value: payslip.otherDeductions - lossOfPay - arrears });
+    }
   } else {
     rows.push({ label: 'Loss of Pay, ESI & Professional Tax', value: payslip.otherDeductions });
   }

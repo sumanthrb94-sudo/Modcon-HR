@@ -156,8 +156,24 @@ export async function downloadPayslipPdf(
   text(pdfAmount(payslip.netPay), right - 3, y + 1, { bold: true, size: 12, align: 'right', color: [255, 255, 255] });
   y += 14;
 
-  text(`Annual CTC: ${pdfAmount(employee.ctc)}    Monthly CTC: ${pdfAmount(Math.round(employee.ctc / 12))}    Status: ${payslip.status}`, left, y, { size: 8.5, color: [110, 104, 100] });
+  // The CTC this payslip was priced on, not today's: a payslip reprinted after
+  // a raise stated a salary the month was never paid at.
+  const monthlyBasis = payslip.ctcBasis ?? Math.round(employee.ctc / 12);
+  text(`Annual CTC: ${pdfAmount(monthlyBasis * 12)}    Monthly CTC: ${pdfAmount(monthlyBasis)}    Status: ${payslip.status}`, left, y, { size: 8.5, color: [110, 104, 100] });
   y += 5;
+  const ids = [
+    employee.pan ? `PAN: ${employee.pan}` : '',
+    employee.uan ? `UAN: ${employee.uan}` : '',
+    employee.esicNumber ? `ESIC: ${employee.esicNumber}` : '',
+    payslip.statutoryPaid && payslip.statutoryPaid.pfWages > 0 ? `PF wages: ${pdfAmount(payslip.statutoryPaid.pfWages)}` : '',
+    payslip.statutoryPaid && payslip.statutoryPaid.eps + payslip.statutoryPaid.epfEpsDifference > 0
+      ? `Employer PF: ${pdfAmount(payslip.statutoryPaid.eps + payslip.statutoryPaid.epfEpsDifference)} (EPS ${pdfAmount(payslip.statutoryPaid.eps)})`
+      : '',
+  ].filter(Boolean);
+  if (ids.length > 0) {
+    text(ids.join('    '), left, y, { size: 8.5, color: [110, 104, 100] });
+    y += 5;
+  }
   text('Loss of pay = gross earnings / calendar days in the month x days of unpaid absence.', left, y, { size: 8, color: [110, 104, 100] });
   y += 5;
   text('This is a computer-generated payslip and does not need a signature.', left, y, { size: 8, color: [110, 104, 100] });

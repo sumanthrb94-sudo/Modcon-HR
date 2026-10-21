@@ -307,6 +307,24 @@ export interface Payslip {
   employedDays?: number;
   /** Arrears of an earlier month's salary paid on this payslip, after a backdated raise. */
   salaryArrears?: { month: string; amount: number }[];
+  /**
+   * The statutory heads as this payslip deducted them, so a return is filed on
+   * what was withheld rather than on today's recomputation. Absent on payslips
+   * issued before it existed; `otherDeductions` still carries ESI and PT in
+   * their total.
+   */
+  statutoryPaid?: {
+    pfWages: number;
+    epsWages: number;
+    epf: number;
+    eps: number;
+    epfEpsDifference: number;
+    edli: number;
+    esiEmployee: number;
+    esiEmployer: number;
+    professionalTax: number;
+    ncpDays: number;
+  };
   grossEarnings: number;
   totalDeductions: number;
   netPay: number;

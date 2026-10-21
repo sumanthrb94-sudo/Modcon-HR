@@ -6,20 +6,20 @@
  * directory, the statutory configuration and `buildPayslipComponents` and
  * cannot. Same split as statutoryRules / statutory, and shifts before that.
  *
- * ## The returns are built from what payroll computed, not from what it stored
+ * ## The ECR is built from what was deducted, where that was recorded
  *
- * `buildPayslipComponents` is called per employee at the moment the return is
- * generated, rather than reading `payslip_documents` or the payroll-run store.
- * That is deliberate and it is the direction that fails safely: a stored payslip
- * is a record of what was *paid*, and a return has to state what is *owed* under
- * today's configuration. If the two disagree — an establishment code added
- * mid-month, a salary structure corrected — the return should carry the
- * corrected figure and the difference should be visible, not silently filed on
- * whichever copy happened to be reached for.
+ * A payslip issued since `statutoryPaid` existed records the heads it withheld,
+ * and the ECR files those: a return that disagrees with the payslips and the
+ * bank file does not reconcile with the contribution actually taken from
+ * people. A month not yet run — or paid before the field existed — falls back
+ * to `buildPayslipComponents` under today's configuration. Either way the
+ * population is the month's roll (`payRunRoll`), not the whole directory.
  */
 import type { Employee } from '@/types';
 import { getEmployeeDirectory } from '@/data/employees';
-import { buildPayslipComponents } from '@/data/payroll';
+import { buildPayslipComponents, getPayslips } from '@/data/payroll';
+import { payRunRoll } from '@/data/payRun';
+import { currentMonthIso } from '@/lib/today';
 import { getTaxElectionFor, statutoryConfigOrNone } from '@/data/statutory';
 import {
   buildEcrFile,
@@ -41,8 +41,11 @@ import {
  * the month is carried into the ECR with zero wages, which is what EPFO expects
  * and what stops the return reading as a departure.
  */
-function payrollPopulation(): Employee[] {
-  return getEmployeeDirectory();
+function payrollPopulation(month: string): Employee[] {
+  // The month's roll, not the directory: everyone who has left and everyone
+  // not yet joined used to appear on every month's ECR as a zero-wage member,
+  // inviting NCP queries, and HR pruned the file by hand.
+  return payRunRoll(getEmployeeDirectory(), month).payees;
 }
 
 export interface EcrReturn extends GeneratedReturn {
@@ -66,7 +69,36 @@ export function buildMonthlyEcr(month: string): EcrReturn {
   const members: EcrMemberInput[] = [];
 
   if (config.epf.enabled) {
-    for (const employee of payrollPopulation()) {
+    const issued = new Map(
+      getPayslips()
+        .filter((p) => p.month === month && p.statutoryPaid)
+        .map((p) => [p.employeeId, p]),
+    );
+    for (const employee of payrollPopulation(month)) {
+      // What the payslip actually deducted, where one was issued with its
+      // statutory heads recorded. A return that disagrees with the payslips
+      // and the bank file does not reconcile; today's recomputation is the
+      // fallback for a month not yet run.
+      const stored = issued.get(employee.id)?.statutoryPaid;
+      if (stored) {
+        if (stored.pfWages === 0 && stored.epf === 0) continue;
+        members.push({
+          employeeId: employee.id,
+          employeeCode: employee.employeeCode,
+          name: employee.fullName,
+          uan: employee.uan ?? '',
+          grossWages: issued.get(employee.id)!.grossEarnings,
+          epfWages: stored.pfWages,
+          epsWages: stored.epsWages,
+          edliWages: Math.min(stored.pfWages, 15000),
+          epfContribution: stored.epf,
+          epsContribution: stored.eps,
+          epfEpsDifference: stored.epfEpsDifference,
+          ncpDays: stored.ncpDays,
+          refundOfAdvances: 0,
+        });
+        continue;
+      }
       const components = buildPayslipComponents(employee, month);
       const epf = components.statutory?.epf;
       // No EPF line for somebody the scheme does not cover — an exempt member,
@@ -81,7 +113,8 @@ export function buildMonthlyEcr(month: string): EcrReturn {
         uan: employee.uan ?? '',
         grossWages: components.grossEarnings,
         epfWages: epf.pfWages,
-        epsWages: Math.min(epf.pfWages, 15000),
+        // A non-member of EPS files no pension wages.
+        epsWages: epf.employerPension > 0 ? Math.min(epf.pfWages, 15000) : 0,
         edliWages: Math.min(epf.pfWages, 15000),
         epfContribution: epf.employee,
         epsContribution: epf.employerPension,
@@ -132,12 +165,24 @@ export function buildQuarterlyTdsSchedule(month: string): TdsReturn {
   let totalTds = 0;
 
   if (config.incomeTax.enabled) {
-    for (const employee of payrollPopulation()) {
-      const entries = months.map((quarterMonth) => {
+    const rolls = months.map((m) => new Set(payrollPopulation(m).map((e) => e.id)));
+    const everyone = new Map<string, Employee>();
+    for (const m of months) for (const e of payrollPopulation(m)) everyone.set(e.id, e);
+    const issued = new Map(getPayslips().map((p) => [`${p.employeeId}|${p.month}`, p]));
+    for (const employee of everyone.values()) {
+      const entries = months.map((quarterMonth, i) => {
+        if (!rolls[i].has(employee.id)) return { month: quarterMonth, amountPaid: 0, taxDeducted: 0 };
+        // What the payslip withheld, where the month was paid — the schedule
+        // has to reconcile against the challans actually deposited.
+        const paid = issued.get(`${employee.id}|${quarterMonth}`);
+        if (paid) {
+          const arrears = (paid.salaryArrears ?? []).reduce((sum, a) => sum + a.amount, 0);
+          return { month: quarterMonth, amountPaid: paid.grossEarnings + arrears, taxDeducted: paid.tax };
+        }
         const components = buildPayslipComponents(employee, quarterMonth);
         return {
           month: quarterMonth,
-          amountPaid: components.grossEarnings,
+          amountPaid: components.grossEarnings + components.salaryArrearsAmount,
           taxDeducted: components.statutory?.tds ?? 0,
         };
       });
@@ -187,7 +232,7 @@ export function employeesMissingStatutoryIdentifiers(): MissingIdentifier[] {
   const config = statutoryConfigOrNone();
   const out: MissingIdentifier[] = [];
 
-  for (const employee of payrollPopulation()) {
+  for (const employee of payrollPopulation(currentMonthIso())) {
     const missing: string[] = [];
     if (config.epf.enabled && !getTaxElectionFor(employee.id).pfExempt && !employee.uan?.trim()) {
       missing.push('UAN');

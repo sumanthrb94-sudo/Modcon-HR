@@ -183,6 +183,7 @@ export function TaxDeclarationCard({ emp }: { emp: Employee }) {
   const [regime, setRegime] = useState<string>(election.regime ?? '');
   const [declared, setDeclared] = useState(String(election.declaredDeductions ?? ''));
   const [deductedSoFar, setDeductedSoFar] = useState(String(election.taxDeductedSoFar ?? ''));
+  const [eps, setEps] = useState<string>(election.epsMember === undefined ? '' : election.epsMember ? 'yes' : 'no');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   const effective = taxRegimeFor(emp.id, config);
   const tdsOn = config?.incomeTax.enabled === true;
@@ -199,6 +200,7 @@ export function TaxDeclarationCard({ emp }: { emp: Employee }) {
         regime: regime === 'old' || regime === 'new' ? regime : undefined,
         declaredDeductions: regime === 'old' ? amount(declared) : undefined,
         taxDeductedSoFar: amount(deductedSoFar),
+        epsMember: eps === 'yes' ? true : eps === 'no' ? false : undefined,
       },
     });
     setStatus(ok ? 'saved' : 'failed');
@@ -241,9 +243,29 @@ export function TaxDeclarationCard({ emp }: { emp: Employee }) {
           <p className="mt-1 text-xs text-ink-500">80C, 80D, HRA and the rest, in one figure.</p>
         </div>
         <div>
-          <label htmlFor="tax-deducted" className="label">Tax already deducted this year (₹)</label>
+          <label htmlFor="tax-deducted" className="label">Tax deducted this year before payroll ran here (₹)</label>
           <input id="tax-deducted" className="input" inputMode="numeric" value={deductedSoFar} onChange={(e) => setDeductedSoFar(e.target.value)} placeholder="0" />
-          <p className="mt-1 text-xs text-ink-500">Including by a previous employer, so the rest of the year corrects.</p>
+          <p className="mt-1 text-xs text-ink-500">
+            For months paid outside this app, including by a previous employer. Months payroll paid here are
+            counted from their payslips — do not add them.
+          </p>
+        </div>
+        <div>
+          <span className="label">Pension scheme (EPS)</span>
+          <Select
+            ariaLabel="EPS membership"
+            value={eps}
+            onChange={setEps}
+            options={[
+              { label: 'Work it out from joining date, wage and age', value: '' },
+              { label: 'A member', value: 'yes' },
+              { label: 'Not a member', value: 'no' },
+            ]}
+          />
+          <p className="mt-1 text-xs text-ink-500">
+            Since September 2014 somebody joining on PF wages above ₹15,000 is not a member, and nobody is past 58.
+            Choose “A member” for somebody who already was one before.
+          </p>
         </div>
       </div>
       <div className="mt-4 flex items-center gap-3">
@@ -376,6 +398,7 @@ export function ExitCard({ emp }: { emp: Employee }) {
           : `Gratuity is not payable: ${assessment.grat.completedYears} completed year(s), short of the qualifying period.`
         : 'Gratuity needs a salary structure (it is computed on Basic) — set one in Settings → Salary Structure.',
       'Notice recovery is gross / 30 per day not served.',
+      'Tax: leave encashment and gratuity are salary income, exempt for a non-government employee up to ₹25,00,000 (encashment, s.10(10AA)) and ₹20,00,000 (gratuity, s.10(10)) over a working life. This statement deducts no tax: TDS on any taxable part, and on the final month’s salary, is the employer’s to withhold when it is paid — confirm the figure with your accountant first.',
     ]
     : [];
 

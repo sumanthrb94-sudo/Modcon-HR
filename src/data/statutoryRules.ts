@@ -70,6 +70,11 @@ export interface ProfessionalTaxSchedule {
   readonly februaryAmount?: number;
   /** When this table was last checked against the state's notification. */
   readonly checkedAgainst: string;
+  /**
+   * People the state exempts below a pay level whatever the slab says —
+   * Maharashtra exempts women up to ₹25,000 a month (from 1 April 2023).
+   */
+  readonly exemptions?: readonly { readonly gender: 'Female'; readonly upTo: number }[];
 }
 
 export interface StatutoryRates {
@@ -99,6 +104,8 @@ export interface StatutoryRates {
      * establishment's remittance to apply once — see `establishmentAdminCharge`.
      */
     readonly adminChargeMinimum: number;
+    /** What an establishment with no contributing member pays instead. */
+    readonly adminChargeNonFunctional: number;
     /** Employees' Deposit Linked Insurance, employer-borne, capped wages. */
     readonly edliPercent: number;
   };
@@ -171,7 +178,10 @@ export const INDIA_STATUTORY_RATES: StatutoryRates = {
     pensionPercent: 8.33,
     wageCeiling: 15000,
     adminChargePercent: 0.5,
-    adminChargeMinimum: 75,
+    // EPFO, from 1 June 2018: ₹500 a month for an establishment with
+    // contributing members, ₹75 for one with none. It read ₹75 and 0.
+    adminChargeMinimum: 500,
+    adminChargeNonFunctional: 75,
     edliPercent: 0.5,
   },
   esi: {
@@ -258,6 +268,7 @@ export const REFERENCE_PROFESSIONAL_TAX: readonly ProfessionalTaxSchedule[] = [
     ],
     // ₹300 in February brings the year to the ₹2,500 constitutional ceiling.
     februaryAmount: 300,
+    exemptions: [{ gender: 'Female', upTo: 25000 }],
     checkedAgainst: '2026-09',
   },
   {
@@ -378,6 +389,14 @@ export interface StatutoryConfig {
    * deciding whether to register.
    */
   readonly enforceWageFloor: boolean;
+  /**
+   * Contribute PF on the Code on Wages floor rather than on Basic, where
+   * Basic is below it. A declared choice, off unless an administrator turns
+   * it on: it changes what is deducted from people, and the Labour Codes have
+   * been in force since 21 November 2025, so an organisation with Basic below
+   * half of pay is under-contributing until it does this or restructures.
+   */
+  readonly contributeOnWageFloor?: boolean;
 }
 
 /** An organisation that has declared nothing: every scheme off. */
@@ -467,6 +486,11 @@ export function epfContribution(
   wages: number,
   config: StatutoryConfig,
   rates: StatutoryRates = INDIA_STATUTORY_RATES,
+  /**
+   * False for somebody who is not an EPS member (see `isEpsMember`): the
+   * employer's whole 12% goes to their provident fund and nothing to pension.
+   */
+  options: { epsMember?: boolean } = {},
 ): EpfContribution | null {
   if (!config.epf.enabled) return null;
 
@@ -492,7 +516,7 @@ export function epfContribution(
   }
 
   const employee = roundRupee(pfWages * (rates.epf.employeePercent / 100));
-  const employerPension = roundRupee(pensionWages * (rates.epf.pensionPercent / 100));
+  const employerPension = options.epsMember === false ? 0 : roundRupee(pensionWages * (rates.epf.pensionPercent / 100));
   const employerTotal = roundRupee(pfWages * (rates.epf.employerPercent / 100));
   // The provident-fund half is the remainder, so the two always sum to the
   // employer's 12% exactly — including the rupee that rounding 8.33% leaves.
@@ -516,6 +540,36 @@ export function epfContribution(
 }
 
 /**
+ * Whether somebody is a member of the Employees' Pension Scheme.
+ *
+ * Everybody was treated as one, and two groups are not. Since 1 September 2014
+ * somebody joining with PF wages above ₹15,000 is not an EPS member — their
+ * employer's whole 12% goes to EPF — and EPS contributions stop at 58. An ECR
+ * carrying pension wages for them is rejected or mis-credited by EPFO.
+ *
+ * `override` is HR's answer where the record cannot tell (somebody who was an
+ * EPS member at a previous employer before 2014 stays one).
+ */
+export function isEpsMember(input: {
+  /** First day of EPF membership — this employer's joining date unless HR says otherwise. */
+  dateOfJoining?: string;
+  dateOfBirth?: string;
+  /** PF wages at joining. */
+  pfWagesAtJoining: number;
+  /** The month being paid, YYYY-MM. */
+  month: string;
+  override?: boolean;
+}, rates: StatutoryRates = INDIA_STATUTORY_RATES): boolean {
+  if (input.override !== undefined) return input.override;
+  if (input.dateOfBirth && /^\d{4}-\d{2}/.test(input.dateOfBirth)) {
+    const turns58 = `${Number(input.dateOfBirth.slice(0, 4)) + 58}${input.dateOfBirth.slice(4, 7)}`;
+    if (input.month > turns58) return false;
+  }
+  const joinedBefore2014Amendment = !!input.dateOfJoining && input.dateOfJoining < '2014-09-01';
+  return joinedBefore2014Amendment || safe(input.pfWagesAtJoining) <= rates.epf.wageCeiling;
+}
+
+/**
  * The establishment's EPFO administration charge for a month.
  *
  * The floor lives here rather than in `epfContribution` because it is a floor
@@ -534,7 +588,7 @@ export function establishmentAdminCharge(
   rates: StatutoryRates = INDIA_STATUTORY_RATES,
 ): number {
   const charged = memberCharges.filter((amount) => safe(amount) > 0);
-  if (charged.length === 0) return 0;
+  if (charged.length === 0) return memberCharges.length === 0 ? 0 : rates.epf.adminChargeNonFunctional;
   const total = charged.reduce((sum, amount) => sum + safe(amount), 0);
   return Math.max(rates.epf.adminChargeMinimum, roundRupee(total));
 }
@@ -617,9 +671,11 @@ export function professionalTax(
   monthlyGross: number,
   schedule: ProfessionalTaxSchedule | null,
   month: string,
+  employee: { gender?: string } = {},
 ): number {
   if (!schedule) return 0;
   const gross = safe(monthlyGross);
+  if (schedule.exemptions?.some((e) => e.gender === employee.gender && gross <= e.upTo)) return 0;
   const slab = schedule.slabs.find((entry) => entry.upTo === null || gross <= entry.upTo);
   if (!slab) return 0;
   // The February override applies to the top band only — it exists to true up
@@ -712,10 +768,17 @@ export function annualIncomeTax(
   const taxableIncome = Math.max(0, grossSalary - standardDeduction - otherDeductions);
   const beforeRebate = slabTax(taxableIncome, scale.slabs);
 
+  // §87A, with the marginal relief the new regime carries: just over the
+  // ceiling, tax may not exceed the income above it. Without that relief a
+  // rupee over ₹12,00,000 cost sixty-odd thousand, which is not the law —
+  // somebody at ₹12,25,000 taxable owes ₹25,000 plus cess, not ₹63,750. The
+  // relief runs out by itself once slab tax falls below the excess income.
   const rebate =
     taxableIncome <= scale.rebateIncomeCeiling
       ? Math.min(beforeRebate, scale.rebateCeiling)
-      : 0;
+      : input.regime === 'new'
+        ? Math.max(0, beforeRebate - (taxableIncome - scale.rebateIncomeCeiling))
+        : 0;
   const afterRebate = Math.max(0, beforeRebate - rebate);
 
   const surcharge = afterRebate * (surchargeRate(taxableIncome, rates) / 100);

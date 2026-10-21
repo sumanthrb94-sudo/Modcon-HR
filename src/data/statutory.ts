@@ -100,10 +100,19 @@ export function normalizeProfessionalTaxSchedule(value: unknown): ProfessionalTa
   if (slabs.length === 0) return null;
 
   const february = finiteNumber(raw.februaryAmount);
+  // Exemptions are the state's, not the organisation's: a schedule copied
+  // before they were modelled takes the reference one's, so a Maharashtra
+  // office set up last year stops deducting from women under ₹25,000 too.
+  const stored = Array.isArray(raw.exemptions)
+    ? raw.exemptions
+      .map((e) => (e && e.gender === 'Female' && finiteNumber(e.upTo) !== null ? { gender: 'Female' as const, upTo: Math.round(finiteNumber(e.upTo) as number) } : null))
+      .filter((e): e is { gender: 'Female'; upTo: number } => e !== null)
+    : REFERENCE_PROFESSIONAL_TAX.find((r) => r.state.toLowerCase() === state.toLowerCase())?.exemptions;
   return {
     state,
     slabs,
     ...(february === null ? {} : { februaryAmount: Math.round(february) }),
+    ...(stored && stored.length > 0 ? { exemptions: stored } : {}),
     checkedAgainst: code(raw.checkedAgainst, 10) || 'unknown',
   };
 }
@@ -159,6 +168,7 @@ export function normalizeStatutoryConfig(value: unknown): StatutoryConfig | null
       defaultRegime: it.defaultRegime === 'old' ? 'old' : 'new',
     },
     enforceWageFloor: boolean(raw.enforceWageFloor, true),
+    ...(boolean(raw.contributeOnWageFloor, false) ? { contributeOnWageFloor: true } : {}),
   };
 }
 
@@ -269,12 +279,22 @@ export interface TaxElection {
    * just looks it.
    */
   readonly declaredDeductions?: number;
-  /** Tax already withheld this financial year, so a mid-year change corrects. */
+  /**
+   * Tax withheld this financial year for months paid *before* payroll ran in
+   * this app. Months this app paid are credited from their own payslips, so
+   * this is not re-typed every month — see data/tdsProjection.ts.
+   */
   readonly taxDeductedSoFar?: number;
   /** Raises the ESI coverage threshold. Recorded by HR, not self-declared. */
   readonly hasDisability?: boolean;
   /** Excluded from EPF as an existing exempt member. */
   readonly pfExempt?: boolean;
+  /**
+   * HR's answer to whether they are an EPS member, where the record cannot
+   * tell — see `isEpsMember`. Absent means work it out from joining date,
+   * joining wage and age.
+   */
+  readonly epsMember?: boolean;
 }
 
 export type EmployeeTaxElections = Record<string, TaxElection>;
@@ -290,6 +310,7 @@ function normalizeElection(value: unknown): TaxElection | null {
     ...(deducted === null ? {} : { taxDeductedSoFar: Math.round(deducted) }),
     ...(raw.hasDisability === true ? { hasDisability: true } : {}),
     ...(raw.pfExempt === true ? { pfExempt: true } : {}),
+    ...(typeof raw.epsMember === 'boolean' ? { epsMember: raw.epsMember } : {}),
   };
   // An entry that says nothing is not an entry. Kept, it would show up in
   // Settings as a person with an exception nobody can see the content of.
