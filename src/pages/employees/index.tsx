@@ -50,6 +50,7 @@ import {
   canVerifyDocuments,
   documentCategory,
   fileEmployeeDocument,
+  downloadEmployeeDocument,
   setEmployeeDocumentStatus,
   useEmployeeDocuments,
   type DocumentCategory,
@@ -1785,6 +1786,7 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
         type: detectDocumentType(selectedUploadFile.name),
         uploaded: todayIso(),
         size: formatUploadedSize(selectedUploadFile.size),
+        file: selectedUploadFile,
       });
     } catch (error) {
       // Includes permission-denied from firestore.rules, which is the check
@@ -1847,8 +1849,16 @@ function DocumentsTab({ employeeId }: { employeeId: string }) {
       key: 'action',
       header: '',
       align: 'right',
-      render: () => (
-        <button className="inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium">
+      render: (d) => (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium"
+          onClick={() => {
+            void downloadEmployeeDocument(d.id).catch((error) => {
+              window.alert(error instanceof EmployeeDocumentError ? error.message : 'That file could not be opened from this account.');
+            });
+          }}
+        >
           <Download size={13} />
           Download
         </button>

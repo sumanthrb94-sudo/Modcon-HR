@@ -2224,6 +2224,31 @@ service cloud.firestore {
       ];
     }
 
+    // The file filed with an employee document — see src/lib/employeeDocuments.ts.
+    // Its own collection so the read can be the subject's and the
+    // administrators' alone: the record beside it is organisation-readable,
+    // and an Aadhaar scan is not.
+    match /employee_document_files/{docId} {
+      // A document filed before files were kept has none; asking is not an
+      // error, so a missing one reads as absent rather than refused.
+      allow get: if isSignedIn() && (resource == null || (inMyOrg() && (isOrgAdmin() || isSelf(resource.data.employeeId))));
+      allow list: if false;
+      allow create, update: if writingToMyOrg() &&
+        request.resource.data.id == docId &&
+        docId.split('__')[0] == request.resource.data.orgId &&
+        request.resource.data.uploadedByUid == request.auth.uid &&
+        request.resource.data.employeeId is string &&
+        request.resource.data.name is string &&
+        mayFileEmployeeDocument(request.resource.data) &&
+        request.resource.data.contentBase64 is string &&
+        // 720 KB of file is ~983,040 characters of base64.
+        request.resource.data.contentBase64.size() <= 1000000 &&
+        request.resource.data.contentType is string &&
+        request.resource.data.contentType.size() <= 100 &&
+        request.resource.data.keys().hasOnly(['id', 'orgId', 'employeeId', 'name', 'contentType', 'fileName', 'contentBase64', 'uploadedByUid']);
+      allow delete: if isOrgAdmin() && inMyOrg();
+    }
+
     /**
      * Primary: the employee themselves, or HR on their behalf. Deliberately not
      * a platform admin — filing somebody else's PAN card is not their job.

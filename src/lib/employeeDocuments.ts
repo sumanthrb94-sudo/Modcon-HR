@@ -30,12 +30,18 @@
  *
  * ## What is stored
  *
- * Metadata only. The library has never held the file itself, and adding that is
- * the same base64-in-the-document decision written up in
- * src/lib/handbookStorage.ts.
+ * The record here, and the file beside it in `employee_document_files/{same id}`
+ * — base64, capped at `EMPLOYEE_DOCUMENT_MAX_BYTES`, the decision written up in
+ * src/lib/handbookStorage.ts. It used to be metadata only: the upload form took
+ * a file and threw it away, and the Download button did nothing, so a document
+ * listed as Verified could not be produced at an inspection. The file is its
+ * own collection so that listing a person's documents does not download every
+ * file, and so its read can be narrower — the subject and administrators.
  */
 import { useEffect, useState } from 'react';
-import { deleteDoc, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { readAsBase64, formatBytes } from '@/lib/handbookStorage';
 
 import { Collections } from '@/lib/db';
 import { resolveAppRole } from '@/lib/accessControl';
@@ -204,6 +210,8 @@ export async function fileEmployeeDocument(
     type: string;
     uploaded: string;
     size: string;
+    /** The file itself; stored beside the record when given. */
+    file?: File;
   },
 ): Promise<EmployeeDocument> {
   if (!profile) throw new EmployeeDocumentError('Not signed in.');
@@ -236,8 +244,57 @@ export async function fileEmployeeDocument(
     uploadedByUid: profile.uid,
   };
 
+  if (params.file && params.file.size > EMPLOYEE_DOCUMENT_MAX_BYTES) {
+    throw new EmployeeDocumentError(
+      `That file is ${formatBytes(params.file.size)}; the limit is ${formatBytes(EMPLOYEE_DOCUMENT_MAX_BYTES)}.`,
+    );
+  }
   await setDoc(doc(Collections.employeeDocuments, record.id), record);
+  if (params.file) await storeDocumentFile(record, params.file);
   return record;
+}
+
+/** The largest file kept with a document — the same ceiling as payslips. */
+export const EMPLOYEE_DOCUMENT_MAX_BYTES = 720 * 1024;
+
+/** Store the file itself next to an already-filed document record. */
+async function storeDocumentFile(record: EmployeeDocument, file: File): Promise<void> {
+  if (file.size > EMPLOYEE_DOCUMENT_MAX_BYTES) {
+    throw new EmployeeDocumentError(
+      `That file is ${formatBytes(file.size)}; the limit is ${formatBytes(EMPLOYEE_DOCUMENT_MAX_BYTES)}. A scan at a lower resolution, or a PDF, usually fits.`,
+    );
+  }
+  const contentBase64 = await readAsBase64(file);
+  await setDoc(doc(db, 'employee_document_files', record.id), {
+    id: record.id,
+    orgId: record.orgId,
+    employeeId: record.employeeId,
+    name: record.name,
+    contentType: file.type || 'application/octet-stream',
+    fileName: file.name.slice(0, 200),
+    contentBase64,
+    uploadedByUid: record.uploadedByUid,
+  });
+}
+
+/** Download a document's stored file, or explain why there is none. */
+export async function downloadEmployeeDocument(documentId: string): Promise<void> {
+  const snap = await getDoc(doc(db, 'employee_document_files', documentId));
+  if (!snap.exists()) {
+    throw new EmployeeDocumentError('Only the record of this document was kept — it was filed before files were stored. Upload it again to keep the file.');
+  }
+  const data = snap.data() as { contentBase64: string; contentType: string; fileName?: string; name: string };
+  const binary = atob(data.contentBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: data.contentType }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = data.fileName || data.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**

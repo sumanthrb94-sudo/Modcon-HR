@@ -380,3 +380,39 @@ describe('employee documents — the filer, and the organisation', () => {
     await assertFails(setDoc(doc(anon, 'employee_documents', PAN), record()));
   });
 });
+
+describe('the file kept with a document', () => {
+  const fileDoc = (overrides = {}) => ({
+    id: 'org-a__emp-a1__aadhaar-card',
+    orgId: 'org-a',
+    employeeId: 'emp-a1',
+    name: 'Aadhaar Card',
+    contentType: 'application/pdf',
+    fileName: 'aadhaar.pdf',
+    contentBase64: 'JVBERi0xLjQK',
+    uploadedByUid: USERS.employeeA.uid,
+    ...overrides,
+  });
+
+  it('the employee files their own, and reads it back', async () => {
+    await assertSucceeds(setDoc(doc(as(USERS.employeeA), 'employee_document_files', 'org-a__emp-a1__aadhaar-card'), fileDoc()));
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'employee_document_files', 'org-a__emp-a1__aadhaar-card')));
+  });
+
+  it('a colleague can neither file nor read it; HR can read it', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'employee_document_files', 'org-a__emp-a1__aadhaar-card'), fileDoc());
+    });
+    await assertFails(getDoc(doc(as(USERS.colleagueA), 'employee_document_files', 'org-a__emp-a1__aadhaar-card')));
+    await assertFails(
+      setDoc(doc(as(USERS.colleagueA), 'employee_document_files', 'org-a__emp-a1__aadhaar-card'), fileDoc({ uploadedByUid: USERS.colleagueA.uid })),
+    );
+    await assertSucceeds(getDoc(doc(as(USERS.hrA), 'employee_document_files', 'org-a__emp-a1__aadhaar-card')));
+  });
+
+  it('an oversized file is refused', async () => {
+    await assertFails(
+      setDoc(doc(as(USERS.employeeA), 'employee_document_files', 'org-a__emp-a1__aadhaar-card'), fileDoc({ contentBase64: 'A'.repeat(1_000_001) })),
+    );
+  });
+});
