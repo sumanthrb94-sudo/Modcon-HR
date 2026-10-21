@@ -1286,6 +1286,9 @@ service cloud.firestore {
         // Firestore's ceiling is 1 MiB for the whole document; a single record
         // approaching that is a bug in the writer rather than a record.
         request.resource.data.data.size() <= 200000 &&
+        // A write's author is the caller, never somebody they name.
+        (!('updatedByUid' in request.resource.data) ||
+          request.resource.data.updatedByUid == request.auth.uid) &&
         // The id carries the tenant as well as the store, so a record cannot
         // be filed under one organisation while claiming another — the same
         // trick org_settings uses.

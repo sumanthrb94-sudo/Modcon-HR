@@ -59,11 +59,12 @@ import {
   doc,
   onSnapshot,
   query,
+  serverTimestamp,
   setDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { getActiveOrgKey, orgScopedKey } from '@/lib/orgScope';
 
 /** The Firestore collection every store shares. */
@@ -436,8 +437,22 @@ export function persistentCollection<T extends Identified>(
     window.dispatchEvent(new Event(changedEvent));
   }
 
+  /**
+   * The overlay this session holds when the browser would not keep it.
+   *
+   * localStorage is a few megabytes per origin, shared by every store and
+   * setting; a hundred people's attendance crosses that within a year. The
+   * quota error used to be swallowed on the claim that "the in-memory value
+   * still stands" — but there was no in-memory value: `get()` reads the cache,
+   * so the store froze at whatever it last held. HR's next mark vanished from
+   * the screen and payroll deducted from the frozen copy. This is that
+   * in-memory value, and the failure is now said out loud.
+   */
+  let memoryOverlay: Overlay<T> | null = null;
+
   function readOverlay(): Overlay<T> {
     if (typeof window === 'undefined') return [];
+    if (memoryOverlay) return memoryOverlay;
     try {
       const raw = cache().getItem(orgScopedKey(overlayKey));
       if (raw) {
@@ -465,10 +480,28 @@ export function persistentCollection<T extends Identified>(
     if (typeof window === 'undefined') return;
     try {
       cache().setItem(orgScopedKey(overlayKey), JSON.stringify(overlay));
+      memoryOverlay = null;
     } catch {
-      // Quota or private-mode failure: the in-memory value the caller already
-      // holds still stands for this session, and the server write below is
-      // what actually persists it.
+      // Quota or private-mode failure. The server write is what persists the
+      // change; this session reads from memory so it goes on showing it, and
+      // the person is told once why a reload will be slower.
+      if (!memoryOverlay) {
+        window.dispatchEvent(
+          new CustomEvent(ORG_RECORDS_WRITE_FAILED_EVENT, {
+            detail: {
+              store: storeKey,
+              message:
+                'This browser has run out of local storage. Your changes are still saved to the organisation, but this page will reload them from the server each time.',
+            },
+          }),
+        );
+      }
+      memoryOverlay = overlay;
+      try {
+        cache().removeItem(orgScopedKey(overlayKey));
+      } catch {
+        // nothing more to free
+      }
     }
   }
 
@@ -487,7 +520,13 @@ export function persistentCollection<T extends Identified>(
     const nextState = new Map(
       overlay.map((entry) => [entry.id, entry.deleted ? ' deleted' : stableJson(entry.record)]),
     );
-    const previous = lastPushed ?? new Map<string, string>();
+    // Before the first snapshot there is no server state to diff against, and
+    // treating everything as changed sent the whole overlay — thousands of
+    // writes, over Firestore's 500-per-batch limit, refused whole and blamed
+    // on the connection. What this save changed is what differs from `before`.
+    const previous =
+      lastPushed ??
+      new Map(before.map((entry) => [entry.id, entry.deleted ? ' deleted' : stableJson(entry.record)]));
 
     const changed = [...nextState.entries()].filter(([id, json]) => previous.get(id) !== json);
     // An id that had an overlay entry and no longer does is back to its seed
@@ -498,7 +537,20 @@ export function persistentCollection<T extends Identified>(
     if (changed.length === 0 && reverted.length === 0) return;
 
     try {
-      const batch = writeBatch(db);
+      // Firestore refuses a batch of more than 500 writes, whole. Chunked, a
+      // large save lands in parts; each part is atomic on its own.
+      const BATCH_LIMIT = 450;
+      let batch = writeBatch(db);
+      let pending = 0;
+      const commits: Promise<void>[] = [];
+      const queued = () => {
+        pending += 1;
+        if (pending >= BATCH_LIMIT) {
+          commits.push(batch.commit());
+          batch = writeBatch(db);
+          pending = 0;
+        }
+      };
       for (const [id] of changed) {
         const entry = overlay.find((item) => item.id === id) as OverlayEntry<T>;
         const record = entry.record as (T & { employeeId?: string; status?: string; date?: string }) | undefined;
@@ -526,7 +578,12 @@ export function persistentCollection<T extends Identified>(
           // array of two or three ids and it means narrowing a further store
           // later is a rules change rather than a backfill.
           ...(record?.employeeId ? { readableBy: readableByFor(record.employeeId) } : {}),
+          // Who wrote it and when — the question a dispute or an inspector
+          // asks, which a record with no author cannot answer.
+          updatedAt: serverTimestamp(),
+          ...(auth.currentUser ? { updatedByUid: auth.currentUser.uid } : {}),
         });
+        queued();
       }
       for (const id of reverted) {
         batch.set(doc(db, ORG_RECORDS_COLLECTION, `${orgKey}__${storeKey}__${id}`), {
@@ -536,9 +593,13 @@ export function persistentCollection<T extends Identified>(
           deleted: false,
           data: '',
           reverted: true,
+          updatedAt: serverTimestamp(),
+          ...(auth.currentUser ? { updatedByUid: auth.currentUser.uid } : {}),
         });
+        queued();
       }
-      await batch.commit();
+      if (pending > 0) commits.push(batch.commit());
+      await Promise.all(commits);
       lastPushed = nextState;
     } catch (err) {
       console.warn(`[org-records] could not publish "${storeKey}":`, err);

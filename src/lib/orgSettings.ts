@@ -205,6 +205,11 @@ export function publishOrgSetting(target: OrgSetting, value: unknown): Promise<b
 // ---------------------------------------------------------------------------
 
 /** The raw cached JSON for a setting, or null. Data modules read their own. */
+/** True when a localStorage key is this browser's cache of an org setting. */
+export function isOrgSettingsCacheKey(key: string): boolean {
+  return Object.values(ORG_SETTINGS).some((target) => key === orgScopedKey(target.storageKey));
+}
+
 export function readCachedOrgSetting(target: OrgSetting): string | null {
   if (typeof window === 'undefined') return null;
   try {

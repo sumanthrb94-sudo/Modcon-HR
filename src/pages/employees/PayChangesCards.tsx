@@ -11,6 +11,7 @@ import { getStatutoryConfig, getTaxElectionFor, saveTaxElections, taxRegimeFor }
 import { gratuity } from '@/data/statutoryRules';
 import { getCompanyProfile } from '@/data/companyProfile';
 import { useStatutoryRevision } from '@/lib/useStatutoryRevision';
+import { useAuth } from '@/lib/auth';
 import { todayIso } from '@/lib/today';
 import { formatDate, formatINR } from '@/lib/utils';
 import type { Employee, EmployeeStatus } from '@/types';
@@ -40,6 +41,7 @@ function monthName(month: string): string {
 // ---------------------------------------------------------------------------
 
 export function SalaryRevisionCard({ emp }: { emp: Employee }) {
+  const { profile } = useAuth();
   const [open, setOpen] = useState(false);
   const [ctc, setCtc] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(todayIso());
@@ -74,6 +76,7 @@ export function SalaryRevisionCard({ emp }: { emp: Employee }) {
       previousCtc,
       ...(reason.trim() ? { reason: reason.trim() } : {}),
       recordedOn: today,
+      ...(profile?.email ? { recordedBy: profile.displayName || profile.email } : {}),
     };
     const salaryHistory = [...(emp.salaryHistory ?? []), revision];
     // `ctc` is the latest agreed figure — the one with the latest start date.
@@ -116,6 +119,7 @@ export function SalaryRevisionCard({ emp }: { emp: Employee }) {
               </span>
               <span className="text-xs text-ink-500">
                 From {formatDate(revision.effectiveFrom)} · recorded {formatDate(revision.recordedOn)}
+                {revision.recordedBy ? ` by ${revision.recordedBy}` : ''}
               </span>
             </li>
           ))}

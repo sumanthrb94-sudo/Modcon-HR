@@ -124,7 +124,8 @@ import { cn, formatDate, formatINR, formatWeekdayLong } from '@/lib/utils';
 import type { BadgeTone } from '@/components/ui';
 import { seedFirestore, purgeSeededFirestoreData } from '@/lib/seed';
 import { backfillOrgIds } from '@/lib/orgBackfill';
-import { backfillOrgSettings } from '@/lib/orgSettings';
+import { backfillOrgSettings, isOrgSettingsCacheKey } from '@/lib/orgSettings';
+import { downloadExport, exportOrganisationData } from '@/lib/orgExport';
 import { backfillEmployeeLinks, backfillManagerChains } from '@/lib/accessBackfill';
 import { useAuth } from '@/lib/auth';
 import { setMockDataCleared } from '@/lib/mockDataFlag';
@@ -3004,6 +3005,7 @@ function DatabaseSection() {
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
   const [resetOpen, setResetOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
   const [resetStatus, setResetStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [resetLogs, setResetLogs] = useState<string[]>([]);
   const [backfillStatus, setBackfillStatus] = useState<'idle' | 'running' | 'dry-run' | 'done' | 'error'>('idle');
@@ -3110,8 +3112,15 @@ function DatabaseSection() {
         (msg) => setResetLogs((prev) => [...prev, msg]),
         getActiveOrgKey(),
       );
+      // The settings caches go only where the settings themselves did — the
+      // demo organisation. A real one's configuration is kept on the server,
+      // and clearing its cache here would only make this browser re-read it.
+      const keepSettings = getActiveOrgKey() !== DEFAULT_ORG_KEY;
       const keysToRemove = Object.keys(window.localStorage).filter(
-        (key) => key.startsWith('modcon.hr.') && belongsToActiveOrg(key),
+        (key) =>
+          key.startsWith('modcon.hr.') &&
+          belongsToActiveOrg(key) &&
+          !(keepSettings && isOrgSettingsCacheKey(key)),
       );
       keysToRemove.forEach((key) => window.localStorage.removeItem(key));
       // The narrowed stores (payslips, payroll runs, expense claims) cache per
@@ -3153,6 +3162,7 @@ function DatabaseSection() {
       title="Firestore Database"
       subtitle="Seed Firestore with the built-in mock data. Safe to re-run — existing documents are overwritten."
     >
+      <OrgBackupCard />
       <Card className="mb-4">
         <CardHeader
           title="Backfill employee access mapping"
@@ -3319,8 +3329,10 @@ function DatabaseSection() {
             <Button variant="secondary" onClick={() => setResetOpen(false)}>Cancel</Button>
             <Button
               variant="danger"
+              disabled={resetConfirmText.trim() !== getActiveOrgKey()}
               onClick={() => {
                 setResetOpen(false);
+                setResetConfirmText('');
                 void handleResetMockData();
               }}
             >
@@ -3336,8 +3348,71 @@ function DatabaseSection() {
           Helpdesk — then reloads. Anyone else viewing this app against the same Firestore project also loses
           that Firestore data. Click Seed Firestore afterward to bring everything back.
         </p>
+        <p className="text-sm text-ink-600 mt-3">
+          {getActiveOrgKey() === DEFAULT_ORG_KEY
+            ? 'This is the demo organisation, so its settings are deleted too.'
+            : 'Your organisation’s settings — leave policies, salary structure, statutory registrations, tax declarations, holidays, week-off — are kept. Download a backup first (above) if you are unsure.'}
+        </p>
+        <label className="label mt-3" htmlFor="reset-confirm">
+          Type <span className="font-mono">{getActiveOrgKey()}</span> to confirm
+        </label>
+        <input
+          id="reset-confirm"
+          className="input"
+          value={resetConfirmText}
+          onChange={(e) => setResetConfirmText(e.target.value)}
+          autoComplete="off"
+        />
       </Modal>
     </SettingsSection>
+  );
+}
+
+/**
+ * Download everything this organisation keeps here. See src/lib/orgExport.ts.
+ */
+function OrgBackupCard() {
+  const [running, setRunning] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  async function run() {
+    setRunning(true);
+    setLog([]);
+    try {
+      const data = await exportOrganisationData(getActiveOrgKey(), (m) => setLog((prev) => [...prev, m]));
+      downloadExport(data);
+      setLog((prev) => [
+        ...prev,
+        data.skipped.length
+          ? `Downloaded, without ${data.skipped.map((x) => x.collection).join(', ')} (not readable from this account).`
+          : 'Downloaded.',
+      ]);
+    } catch (err) {
+      setLog((prev) => [...prev, `Error: ${String(err)}`]);
+    } finally {
+      setRunning(false);
+    }
+  }
+  return (
+    <Card className="mb-4">
+      <CardHeader
+        title="Download a backup"
+        subtitle="Every record and setting this organisation keeps here, as one JSON file"
+      />
+      <div className="space-y-3">
+        <p className="text-sm text-ink-500">
+          Attendance, leave, payroll runs and payslips, the directory, expense claims, uploaded payslip and
+          document records, check-in stamps, the Board and every setting. Keep a copy before any change you
+          cannot undo, and before each payroll run. This is a copy for safekeeping — there is no restore button
+          yet, so bringing data back from it is a task for support.
+        </p>
+        <Button icon={<Download size={15} />} onClick={() => void run()} disabled={running}>
+          {running ? 'Preparing…' : 'Download backup'}
+        </Button>
+        {log.length > 0 && (
+          <pre className="max-h-40 overflow-auto bg-ink-900 p-3 text-xs text-ink-100">{log.join('\n')}</pre>
+        )}
+      </div>
+    </Card>
   );
 }
 

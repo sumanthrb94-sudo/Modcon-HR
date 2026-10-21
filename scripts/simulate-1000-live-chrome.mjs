@@ -2,6 +2,15 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// The administrator's password comes from the environment, never the source.
+// It was a literal in a dozen scripts that can rewrite or delete tenant data.
+function adminPassword() {
+  const value = process.env.MODCON_ADMIN_PASSWORD;
+  if (!value) throw new Error('Set MODCON_ADMIN_PASSWORD to run this script.');
+  return value;
+}
+
+
 function getChromePath() {
   const possible = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -529,7 +538,7 @@ async function runLiveChromeSimulations() {
   
   await appPage.goto('https://modcon-hr.vercel.app/login', { waitUntil: 'domcontentloaded' });
   await appPage.fill('#username', 'mintstudios823@gmail.com');
-  await appPage.fill('#password', 'Eagleeye@123');
+  await appPage.fill('#password', adminPassword());
   await appPage.click('button[type="submit"]');
   await appPage.waitForURL(u => !u.href.includes('/login'), { timeout: 25000 });
   await appPage.waitForTimeout(1500);

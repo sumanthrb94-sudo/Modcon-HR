@@ -2,6 +2,15 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// The administrator's password comes from the environment, never the source.
+// It was a literal in a dozen scripts that can rewrite or delete tenant data.
+function adminPassword() {
+  const value = process.env.MODCON_ADMIN_PASSWORD;
+  if (!value) throw new Error('Set MODCON_ADMIN_PASSWORD to run this script.');
+  return value;
+}
+
+
 const outDir = path.join(process.cwd(), 'audit_screenshots', 'live_parallel_simulation');
 if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
@@ -21,7 +30,7 @@ const PERSONAS = [
     id: 'asha',
     name: 'Asha Rao',
     email: 'mintstudios823@gmail.com',
-    pass: 'Eagleeye@123',
+    pass: adminPassword(),
     role: 'Root HR Admin & Superadmin',
     color: '#dc2626',
     emoji: '👑'

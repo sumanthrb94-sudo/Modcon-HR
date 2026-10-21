@@ -2,6 +2,15 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// The administrator's password comes from the environment, never the source.
+// It was a literal in a dozen scripts that can rewrite or delete tenant data.
+function adminPassword() {
+  const value = process.env.MODCON_ADMIN_PASSWORD;
+  if (!value) throw new Error('Set MODCON_ADMIN_PASSWORD to run this script.');
+  return value;
+}
+
+
 const outDir = path.join(process.cwd(), 'audit_screenshots');
 if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
@@ -27,7 +36,7 @@ async function runOrgDetailsAndSeptemberAttendance() {
   console.log('>>> [1/5] Authenticating as Asha Rao (mintstudios823@gmail.com)...');
   await page.goto('https://modcon-hr.vercel.app/login', { waitUntil: 'domcontentloaded' });
   await page.fill('#username', 'mintstudios823@gmail.com');
-  await page.fill('#password', 'Eagleeye@123');
+  await page.fill('#password', adminPassword());
   await page.click('button[type="submit"]');
   await page.waitForURL(url => !url.href.includes('/login'), { timeout: 30000 });
   console.log('    ✓ Successfully logged in.');

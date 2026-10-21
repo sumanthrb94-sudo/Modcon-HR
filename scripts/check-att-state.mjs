@@ -1,11 +1,20 @@
 import { chromium } from '@playwright/test';
 
+// The administrator's password comes from the environment, never the source.
+// It was a literal in a dozen scripts that can rewrite or delete tenant data.
+function adminPassword() {
+  const value = process.env.MODCON_ADMIN_PASSWORD;
+  if (!value) throw new Error('Set MODCON_ADMIN_PASSWORD to run this script.');
+  return value;
+}
+
+
 async function checkAttendanceState() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   await page.goto('https://modcon-hr.vercel.app/login', { waitUntil: 'domcontentloaded' });
   await page.fill('#username', 'mintstudios823@gmail.com');
-  await page.fill('#password', 'Eagleeye@123');
+  await page.fill('#password', adminPassword());
   await page.click('button[type="submit"]');
   await page.waitForURL(url => !url.href.includes('/login'));
   await page.waitForTimeout(2000);

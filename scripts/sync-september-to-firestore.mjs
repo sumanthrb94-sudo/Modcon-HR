@@ -2,6 +2,15 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, writeBatch, collection, getDocs, query, where } from 'firebase/firestore';
 
+// The administrator's password comes from the environment, never the source.
+// It was a literal in a dozen scripts that can rewrite or delete tenant data.
+function adminPassword() {
+  const value = process.env.MODCON_ADMIN_PASSWORD;
+  if (!value) throw new Error('Set MODCON_ADMIN_PASSWORD to run this script.');
+  return value;
+}
+
+
 const firebaseConfig = {
   apiKey: 'AIzaSyAAl32aMY8mZ36PPcB4wZEc4pOkB2qpFDA',
   authDomain: 'modconhr-b2789.firebaseapp.com',
@@ -22,7 +31,7 @@ async function syncToFirestore() {
   const db = getFirestore(app);
 
   console.log('>>> [1/3] Authenticating as Asha Rao (mintstudios823@gmail.com)...');
-  const userCred = await signInWithEmailAndPassword(auth, 'mintstudios823@gmail.com', 'Eagleeye@123');
+  const userCred = await signInWithEmailAndPassword(auth, 'mintstudios823@gmail.com', adminPassword());
   console.log('    ✓ Signed in as UID:', userCred.user.uid);
 
   const orgKey = 'iOpAEnEkKgqmiVlHhtZn';

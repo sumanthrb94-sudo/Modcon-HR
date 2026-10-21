@@ -128,7 +128,13 @@ export async function purgeSeededFirestoreData(
         onProgress?.(msg);
     };
 
-    for (const name of [...SEEDED_COLLECTION_NAMES, ...PURGED_ONLY_COLLECTION_NAMES]) {
+    // Configuration is purged for the demo organisation only. Elsewhere it is
+    // the company's own — PF/ESI registrations, the salary split, tax
+    // declarations, holidays — and an HR manager clearing the demo rows they
+    // saw during a trial took all of it, with no backup to restore from.
+    const purgeSettings = orgKey === DEFAULT_ORG_KEY;
+    if (!purgeSettings) log('Keeping org_settings: this organisation’s configuration is its own, not demo data.');
+    for (const name of [...SEEDED_COLLECTION_NAMES, ...(purgeSettings ? PURGED_ONLY_COLLECTION_NAMES : [])]) {
         try {
             log(`Deleting ${name}…`);
             const count = await batchDeleteCollection(name, orgKey);

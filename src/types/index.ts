@@ -159,6 +159,8 @@ export interface SalaryRevision {
   readonly reason?: string;
   /** When HR recorded it, YYYY-MM-DD. */
   readonly recordedOn: string;
+  /** Who recorded it — the question a pay dispute asks first. Absent on older entries. */
+  readonly recordedBy?: string;
 }
 
 export interface ConfirmedSettlement {
