@@ -134,7 +134,7 @@ test.describe.serial('an employee account is scoped to itself everywhere', () =>
   });
 
   test('the global search offers only people this account may see', async () => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     const search = page.getByPlaceholder('Search employees, requests, documents…');
 
     if (isEmployee) {

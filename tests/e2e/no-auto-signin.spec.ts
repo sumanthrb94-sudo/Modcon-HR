@@ -42,7 +42,10 @@ test('the session does not outlive the browser', async ({ browser }) => {
 
   const second = await browser.newContext({ storageState: carried });
   const reopened = await second.newPage();
-  await reopened.goto('/');
+  // `/login`, not `/`: the root is the public landing page for everyone, so
+  // it shows no login form either way. The login page sends a signed-in
+  // session straight into the app, so a form here means no session.
+  await reopened.goto('/login');
 
   // Signed out: the login form, not the app shell.
   await expect(reopened.locator('#password')).toBeVisible({ timeout: 20_000 });

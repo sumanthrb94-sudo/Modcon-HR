@@ -234,7 +234,8 @@ test.describe.serial('a manager’s approval queues follow their reporting line'
   // counts what they decide, the same figure the queue behind it holds.
   test('the dashboard tile counts the leave this manager decides', async ({ page }) => {
     await login(page);
-    await page.goto('/');
+    // `/` is the public landing page; the dashboard is its own route.
+    await page.goto('/dashboard');
     const tile = page.locator('p', { hasText: /^Leave Awaiting Your Approval$/ }).locator('xpath=..');
     // The report's request and not the outsider's: one, not two.
     await expect(tile.locator('p').nth(1)).toHaveText('1', { timeout: 20_000 });
