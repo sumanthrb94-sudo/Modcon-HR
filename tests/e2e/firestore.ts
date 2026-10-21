@@ -544,3 +544,23 @@ export async function seedOrgRecords<T extends { id: string }>(
     }
   }
 }
+
+/**
+ * The directory as an administrator sees it: each `employees` record with its
+ * `employeePrivate` record — CTC, salary history, PAN, bank, exit — merged in.
+ * Those fields moved out of the shared record (src/data/employees.ts), so a
+ * spec asserting on pay reads both, the way the app does.
+ */
+export async function listEmployeesWithPrivate<T = Record<string, unknown>>(orgKey = 'default'): Promise<T[]> {
+  const [people, privates] = await Promise.all([
+    listOrgRecords<Record<string, unknown>>('employees', { orgKey }),
+    listOrgRecords<Record<string, unknown>>('employeePrivate', { orgKey }),
+  ]);
+  const byId = new Map(privates.map((p) => [String(p.employeeId ?? p.id), p]));
+  return people.map((person) => {
+    const priv = byId.get(String(person.id));
+    if (!priv) return person as T;
+    const { id: _id, employeeId: _employeeId, ...rest } = priv;
+    return { ...person, ...rest } as T;
+  });
+}

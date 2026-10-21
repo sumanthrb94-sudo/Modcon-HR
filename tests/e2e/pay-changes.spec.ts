@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
-import { FIRESTORE_BASE, adminToken, listOrgRecords, seedOrgRecords } from './firestore';
+import { FIRESTORE_BASE, adminToken, listOrgRecords, seedOrgRecords , listEmployeesWithPrivate } from './firestore';
 
 /**
  * A raise, a tax declaration and an exit, recorded on somebody's profile.
@@ -46,7 +46,7 @@ interface Stored {
 }
 
 async function stored(): Promise<Stored | undefined> {
-  return (await listOrgRecords<Stored>('employees')).find((e) => e.id === PERSON.id);
+  return (await listEmployeesWithPrivate<Stored>()).find((e) => e.id === PERSON.id);
 }
 
 async function login(page: Page) {

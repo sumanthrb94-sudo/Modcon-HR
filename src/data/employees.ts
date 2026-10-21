@@ -272,12 +272,136 @@ export const locations: string[] = [];
  * reappears once, and is deleted again for everybody. That is the same
  * trade-off, and the same one-time cost, the other nine stores already took.
  */
-const directoryStore = persistentCollection<Employee>(
+const rawDirectoryStore = persistentCollection<Employee>(
   CUSTOM_EMPLOYEE_STORAGE_KEY,
   EMPLOYEE_DIRECTORY_CHANGED_EVENT,
-  () => (isMockDataCleared() ? [] : buildEmployeeDirectory(seeds)),
+  () => (isMockDataCleared() ? [] : buildEmployeeDirectory(seeds).map(publicPart)),
   'employees',
 );
+
+/**
+ * Pay and identity details, kept out of the directory.
+ *
+ * The directory record is read by everybody in the organisation — it has to
+ * be, or nobody could find a colleague — and it carried every person's CTC,
+ * salary history, PAN, UAN, bank account, address, exit reason and final
+ * settlement, so every employee's browser downloaded the whole company's pay
+ * on every sign-in. These fields now live in `employeePrivate`, one record per
+ * person, readable by that person and the administrators only (`subject`
+ * scope, and `orgRecordReadIsAuthorised` in firestore.rules). The directory
+ * getter merges them back for whoever may read them, so code that asks an
+ * Employee for its `ctc` keeps working; for anybody else it is 0.
+ *
+ * Records written before this still hold the fields in the directory until
+ * they are next saved — Settings → Database → "Move pay details out of the
+ * directory" re-saves everybody at once.
+ */
+export const PRIVATE_EMPLOYEE_FIELDS = [
+  'ctc',
+  'salaryHistory',
+  'pan',
+  'uan',
+  'pfAccountNumber',
+  'esicNumber',
+  'bankAccountNumber',
+  'bankIfsc',
+  'address',
+  'exitReason',
+  'finalSettlement',
+] as const;
+
+type PrivateField = (typeof PRIVATE_EMPLOYEE_FIELDS)[number];
+export type EmployeePrivate = Partial<Pick<Employee, PrivateField>> & { id: string; employeeId: string };
+
+/** JSON with keys sorted at every level, so two copies compare by content. */
+function sameShape(value: unknown): string {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.keys(v as Record<string, unknown>).sort().map((k) => [k, (v as Record<string, unknown>)[k]]))
+      : v,
+  );
+}
+
+function publicPart(employee: Employee): Employee {
+  const copy = { ...employee } as Partial<Employee>;
+  for (const field of PRIVATE_EMPLOYEE_FIELDS) delete copy[field];
+  // Derived on read from the manager's record; storing it would turn every
+  // seed employee into an override the first time anybody saved anyone.
+  delete copy.reportingManagerName;
+  return copy as Employee;
+}
+
+/** People whose `ctc` this account could not read, so it was shown as 0. */
+const defaultedCtc = new Set<string>();
+
+function privatePart(employee: Employee): EmployeePrivate | null {
+  const out: EmployeePrivate = { id: employee.id, employeeId: employee.id };
+  let any = false;
+  for (const field of PRIVATE_EMPLOYEE_FIELDS) {
+    if (field === 'ctc' && employee.ctc === 0 && defaultedCtc.has(employee.id)) continue;
+    if (employee[field] !== undefined) {
+      (out as Record<string, unknown>)[field] = employee[field];
+      any = true;
+    }
+  }
+  return any ? out : null;
+}
+
+const privateStore = persistentCollection<EmployeePrivate>(
+  'modcon.hr.employeePrivate',
+  EMPLOYEE_DIRECTORY_CHANGED_EVENT,
+  () => (isMockDataCleared() ? [] : buildEmployeeDirectory(seeds).map(privatePart).filter((p): p is EmployeePrivate => p !== null)),
+  'employeePrivate',
+  'subject',
+);
+
+/**
+ * The directory store, with every write split: the public part to the
+ * directory, the private part to `employeePrivate`. Callers hand it whole
+ * Employees — usually from `getEmployeeDirectory`, already merged — and
+ * nothing private reaches the shared record.
+ */
+const directoryStore = {
+  get: () => rawDirectoryStore.get(),
+  update(fn: (current: Employee[]) => Employee[]): Employee[] {
+    const before = new Map(getEmployeeDirectory().map((e) => [e.id, e]));
+    // Compared with what the private store holds, not with the merged copy: a
+    // record saved before the split carries its pay in the directory, the
+    // merged copy shows it, and comparing against that would strip it from
+    // the directory without ever writing it to the private store.
+    const heldPrivately = new Map(privateStore.get().map((p) => [p.id, sameShape(p)]));
+    const next = fn(getEmployeeDirectory());
+    const changedPrivate: EmployeePrivate[] = [];
+    for (const employee of next) {
+      const priv = privatePart(employee);
+      if (priv && heldPrivately.get(priv.id) !== sameShape(priv)) changedPrivate.push(priv);
+    }
+    const nextIds = new Set(next.map((e) => e.id));
+    const result = rawDirectoryStore.save(next.map(publicPart));
+    if (changedPrivate.length > 0 || [...before.keys()].some((id) => !nextIds.has(id))) {
+      const changedIds = new Set(changedPrivate.map((p) => p.id));
+      privateStore.update((current) => [
+        ...changedPrivate,
+        ...current.filter((p) => !changedIds.has(p.id) && nextIds.has(p.id)),
+      ]);
+    }
+    return result;
+  },
+};
+
+/** Re-save everybody so no pay or identity detail is left in the shared directory. */
+export function movePrivateDetailsOutOfDirectory(): number {
+  const everyone = getEmployeeDirectory();
+  const stillPublic = rawDirectoryStore.getStored().filter((e) => PRIVATE_EMPLOYEE_FIELDS.some((f) => (e as Employee)[f] !== undefined));
+  if (stillPublic.length === 0) return 0;
+  const ids = new Set(stillPublic.map((e) => e.id));
+  rawDirectoryStore.save(everyone.map(publicPart));
+  privateStore.update((current) => [
+    ...everyone.filter((e) => ids.has(e.id)).map(privatePart).filter((p): p is EmployeePrivate => p !== null),
+    ...current.filter((p) => !ids.has(p.id)),
+  ]);
+  return stillPublic.length;
+}
 
 function notifyEmployeeDirectoryChanged() {
   if (typeof window === 'undefined') return;
@@ -286,8 +410,22 @@ function notifyEmployeeDirectoryChanged() {
 
 export function getEmployeeDirectory(): Employee[] {
   // The merge — seed, plus this organisation's changes, minus its tombstones —
-  // is the collection's job now. What is left here is the derived field.
-  const people = directoryStore.get();
+  // is the collection's job now. What is left here is the derived field, and
+  // the private details for whoever may read them.
+  const privateById = new Map(privateStore.get().map((p) => [p.employeeId, p]));
+  const people = rawDirectoryStore.get().map((employee) => {
+    const priv = privateById.get(employee.id);
+    const merged = { ...employee, ...(priv ? (({ id: _id, employeeId: _employeeId, ...rest }) => rest)(priv) : {}) } as Employee;
+    if (typeof merged.ctc !== 'number') {
+      // Not readable from this account. 0 keeps arithmetic finite, and is
+      // remembered so a save never writes it back as somebody's salary.
+      merged.ctc = 0;
+      defaultedCtc.add(employee.id);
+    } else {
+      defaultedCtc.delete(employee.id);
+    }
+    return merged;
+  });
   const byId = new Map(people.map((employee) => [employee.id, employee]));
   people.forEach((employee) => {
     employee.reportingManagerName = employee.reportingManagerId

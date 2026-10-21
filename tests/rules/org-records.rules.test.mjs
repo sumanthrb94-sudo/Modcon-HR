@@ -963,3 +963,23 @@ describe('ticket replies and comp-off credits', () => {
     await assertSucceeds(setDoc(doc(as(USERS.managerLinkedA), 'org_records', id), body));
   });
 });
+
+describe('pay and identity details are the subject’s and HR’s', () => {
+  const id = docId({ store: 'employeePrivate', id: 'emp-a1' });
+  const body = record({ store: 'employeePrivate', id: 'emp-a1', employeeId: 'emp-a1', readableBy: ['emp-a1', 'emp-a2'] });
+
+  it('HR writes them; nobody else does, the subject included', async () => {
+    await assertFails(setDoc(doc(as(USERS.employeeA), 'org_records', id), body));
+    await assertFails(setDoc(doc(as(USERS.managerLinkedA), 'org_records', id), body));
+    await assertSucceeds(setDoc(doc(as(USERS.hrA), 'org_records', id), body));
+  });
+
+  it('the subject reads their own; their manager does not', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'org_records', id), body);
+    });
+    await assertSucceeds(getDoc(doc(as(USERS.employeeA), 'org_records', id)));
+    await assertFails(getDoc(doc(as(USERS.managerLinkedA), 'org_records', id)));
+    await assertSucceeds(getDoc(doc(as(USERS.hrA), 'org_records', id)));
+  });
+});

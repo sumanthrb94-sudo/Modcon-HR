@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
-import { FIRESTORE_BASE, adminToken, listOrgRecords } from './firestore';
+import { FIRESTORE_BASE, adminToken, listOrgRecords , listEmployeesWithPrivate } from './firestore';
 
 /**
  * The guided setup (`/setup`) brings a team in from a spreadsheet.
@@ -53,7 +53,7 @@ async function login(page: Page) {
 }
 
 async function imported(): Promise<StoredEmployee[]> {
-  const everyone = await listOrgRecords<StoredEmployee>('employees');
+  const everyone = await listEmployeesWithPrivate<StoredEmployee>();
   return everyone.filter((employee) => GOOD.includes(employee.email) || employee.email === BAD);
 }
 

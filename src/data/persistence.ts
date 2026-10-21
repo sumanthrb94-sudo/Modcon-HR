@@ -113,7 +113,12 @@ type Overlay<T> = OverlayEntry<T>[];
  * organisation. `orgAdmin` is for a store whose documents are about the
  * company rather than about a person — see the note on `activeReader`.
  */
-type StoreReadScope = 'org' | 'orgAdmin' | 'self';
+/**
+ * `subject` is narrower than `self`: the person the record is about and the
+ * administrators, not the reporting line — pay and identity details, which a
+ * manager has no claim on.
+ */
+type StoreReadScope = 'org' | 'orgAdmin' | 'self' | 'subject';
 
 interface RegisteredStore {
   storeKey: string;
@@ -247,7 +252,7 @@ function subscribeStore(store: RegisteredStore, orgKey: string) {
   // for everything would be asking for a denial. Better to send no query than
   // one the rules will refuse for every member of the company, every session.
   const narrowTo =
-    store.readScope === 'self' && !activeReader?.isOrgAdmin
+    (store.readScope === 'self' || store.readScope === 'subject') && !activeReader?.isOrgAdmin
       ? activeReader?.employeeId ?? '~nobody~'
       : null;
   listeners.set(
@@ -258,7 +263,9 @@ function subscribeStore(store: RegisteredStore, orgKey: string) {
             fsCollection(db, ORG_RECORDS_COLLECTION),
             where('orgId', '==', orgKey),
             where('store', '==', store.storeKey),
-            where('readableBy', 'array-contains', narrowTo),
+            store.readScope === 'subject'
+              ? where('employeeId', '==', narrowTo)
+              : where('readableBy', 'array-contains', narrowTo),
           )
         : query(
             fsCollection(db, ORG_RECORDS_COLLECTION),
@@ -776,7 +783,7 @@ export function setOrgRecordsReaderEmployee(employeeId: string | null): void {
   activeReader = { ...activeReader, employeeId };
   const orgKey = activeOrgKey;
   registry.forEach((store) => {
-    if (store.readScope === 'self') subscribeStore(store, orgKey);
+    if (store.readScope === 'self' || store.readScope === 'subject') subscribeStore(store, orgKey);
   });
 }
 

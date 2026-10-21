@@ -12,7 +12,7 @@ import {
 } from '@/components/ui';
 import type { Column } from '@/components/ui';
 import { Select } from '@/components/ui';
-import { employees } from '@/data/employees';
+import { employees , movePrivateDetailsOutOfDirectory } from '@/data/employees';
 import { HR_DEPARTMENT, getCompanyProfile, isHrDepartment, saveCompanyProfile, type CompanyProfile as CompanyProfileRecord } from '@/data/companyProfile';
 import { getDepartmentDirectory, addDepartmentToDirectory, updateDepartmentInDirectory, deleteDepartmentFromDirectory, renameDepartmentInDirectory, getDepartmentRecord } from '@/data/departments';
 import { statutoryConfigOrNone } from '@/data/statutory';
@@ -3224,6 +3224,7 @@ function DatabaseSection() {
       subtitle="Seed Firestore with the built-in mock data. Safe to re-run — existing documents are overwritten."
     >
       <OrgBackupCard />
+      <PrivateDetailsCard />
       <Card className="mb-4">
         <CardHeader
           title="Backfill employee access mapping"
@@ -3432,6 +3433,35 @@ function DatabaseSection() {
 /**
  * Download everything this organisation keeps here. See src/lib/orgExport.ts.
  */
+/** Settings → Database: finish moving pay and identity details out of the shared directory. */
+function PrivateDetailsCard() {
+  const [result, setResult] = useState<string | null>(null);
+  return (
+    <Card className="mb-4">
+      <CardHeader
+        title="Move pay details out of the directory"
+        subtitle="CTC, salary history, PAN, UAN, bank account, address and exit details"
+      />
+      <div className="space-y-3">
+        <p className="text-sm text-ink-500">
+          These now live in a record only the employee and administrators can read. People saved before the change
+          still carry them in the shared directory until they are next saved; this saves everybody at once.
+        </p>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const moved = movePrivateDetailsOutOfDirectory();
+            setResult(moved === 0 ? 'Nothing left to move.' : `Moved for ${moved} ${moved === 1 ? 'person' : 'people'}.`);
+          }}
+        >
+          Move now
+        </Button>
+        {result && <p className="text-sm text-emerald-700" role="status">{result}</p>}
+      </div>
+    </Card>
+  );
+}
+
 function OrgBackupCard() {
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);

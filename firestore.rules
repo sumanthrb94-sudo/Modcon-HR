@@ -1621,7 +1621,7 @@ service cloud.firestore {
      */
     function adminStoreWriteIsAuthorised() {
       let store = request.resource.data.store;
-      return !(store in ['assets', 'onboarding', 'tickets', 'jobOpenings', 'candidates']) ||
+      return !(store in ['assets', 'onboarding', 'tickets', 'jobOpenings', 'candidates', 'employeePrivate']) ||
         isOrgAdmin() ||
         (store == 'tickets' && !isTombstone() && resource == null &&
           request.resource.data.get('status', '') == 'Open');
@@ -1703,7 +1703,9 @@ service cloud.firestore {
      */
     function orgRecordReadIsAuthorised() {
       let store = resource.data.get('store', '');
-      return store in ['payrollRuns', 'payAdjustments', 'candidates']
+      return store == 'employeePrivate'
+        ? (isOrgAdmin() || isSelf(resource.data.get('employeeId', null)))
+        : store in ['payrollRuns', 'payAdjustments', 'candidates']
         ? isOrgAdmin()
         : (!(store in ['expenseClaims', 'payslips', 'regularizationOverrides', 'attendanceRecords', 'goals', 'performanceReviews', 'compOffCredits', 'ticketReplies']) || recordIsMineToRead());
     }

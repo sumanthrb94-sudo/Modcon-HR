@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
-import { listOrgRecords } from './firestore';
+import { listOrgRecords , listEmployeesWithPrivate } from './firestore';
 
 // Hiring is not self-service: the Employee role gets its own record and no
 // Add Employee button, and the job fields on a profile are read-only to it.
@@ -105,7 +105,7 @@ const OWN_ADDRESSES = new Set([HIRE.email, MANAGER.email, SECOND_MANAGER.email])
  */
 async function addedEmployees(page: Page): Promise<StoredEmployee[]> {
   void page;
-  const everyone = await listOrgRecords<StoredEmployee>('employees');
+  const everyone = await listEmployeesWithPrivate<StoredEmployee>();
   return everyone.filter((employee) => OWN_ADDRESSES.has(employee.email));
 }
 
