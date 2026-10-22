@@ -133,7 +133,7 @@ export function parseAttendanceCsv(
   employees: readonly ImportSubject[],
   today: string,
 ): { days: ImportedDay[]; problems: ImportProblem[] } {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
   const days: ImportedDay[] = [];
   const problems: ImportProblem[] = [];
   const headerIndex = lines.findIndex((l) => l.trim() !== '');

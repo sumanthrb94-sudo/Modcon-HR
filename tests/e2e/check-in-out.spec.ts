@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PERSONAS } from './config';
 import { istDay, istToday } from './clock';
-import { clearOrgRecords, waitForOrgRecordsQuiet } from './firestore';
+import { clearOrgRecords, listOrgRecords, waitForOrgRecordsQuiet } from './firestore';
 
 /**
  * Check in, check out, and what the captured times then drive.
@@ -246,8 +246,18 @@ test.describe.serial('check in and check out', () => {
     await expect(card).toContainText('Out 17:00');
     await expect(card.getByText('Half Day', { exact: true })).toBeVisible();
     // Navigating is a reload, and an un-acked write does not survive one —
-    // the next test reads this day from the server.
-    await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
+    // the next tests read this day from the server. Wait for the check-out
+    // itself: "quiet" can be two identical reads taken before the commit
+    // lands, and the half day then reverts on the next page load.
+    await expect
+      .poll(async () => {
+        const stored = await listOrgRecords<{ checkIn?: string; checkOut?: string | null }>(
+          'attendanceRecords',
+          { employeeId: linkedEmployeeId },
+        );
+        return stored.some((record) => record.checkIn === '09:47' && record.checkOut === '17:00');
+      }, { timeout: 15_000 })
+      .toBe(true);
 
     // 09:47 → 17:00 is 7h 13m of a 9h day. It flows into the approval queue
     // with no separate step, and the reason says why.
@@ -309,7 +319,14 @@ test.describe.serial('check in and check out', () => {
     await page.clock.setFixedTime(istDay(1, '00:05'));
     // The 23:50 stamp has to have reached the server, or the reload below
     // discards it and the day this test is about never existed.
-    await waitForOrgRecordsQuiet('attendanceRecords', { employeeId: linkedEmployeeId });
+    await expect
+      .poll(async () => {
+        const stored = await listOrgRecords<{ checkIn?: string }>('attendanceRecords', {
+          employeeId: linkedEmployeeId,
+        });
+        return stored.some((record) => record.checkIn === '23:50');
+      }, { timeout: 15_000 })
+      .toBe(true);
     await page.reload();
 
     // A fresh day, free to check into.

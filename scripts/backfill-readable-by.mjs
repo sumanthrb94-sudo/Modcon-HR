@@ -42,7 +42,16 @@ import { createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const DEFAULT_STORES = ['expenseClaims', 'payslips'];
-const KNOWN_STORES = [...DEFAULT_STORES, 'regularizationOverrides'];
+// The October 2026 audit narrowed these too (orgRecordReadIsAuthorised); each is
+// stamped by the same readableByFor(employeeId) at write time.
+const KNOWN_STORES = [
+  ...DEFAULT_STORES,
+  'regularizationOverrides',
+  'attendanceRecords',
+  'goals',
+  'performanceReviews',
+  'ticketReplies',
+];
 const onlyStore = process.argv.find((a) => a.startsWith('--store='))?.slice('--store='.length) ?? null;
 if (onlyStore && !KNOWN_STORES.includes(onlyStore)) {
   console.error(`--store must be one of ${KNOWN_STORES.join(', ')}`);

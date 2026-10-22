@@ -73,7 +73,7 @@ export function parseOpeningLeaveCsv(
   const unmatched: OpeningLeaveMiss[] = [];
   const claimed = new Map<string, number>();
 
-  text.replace(/^﻿/, '').split(/\r?\n/).forEach((raw, index) => {
+  text.replace(/^\uFEFF/, '').split(/\r?\n/).forEach((raw, index) => {
     const line = index + 1;
     const trimmed = raw.trim();
     if (trimmed === '') return;

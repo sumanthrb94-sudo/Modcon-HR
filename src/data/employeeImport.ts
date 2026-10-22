@@ -305,7 +305,7 @@ export function parseEmployeeImportCsv(
   suggestCode: (ahead: number) => string,
   today: string,
 ): EmployeeImportResult {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
   const headerIndex = lines.findIndex((line) => line.trim() !== '');
   if (headerIndex === -1) {
     return { rows: [], unmatched: [], fileError: 'The file is empty.' };
